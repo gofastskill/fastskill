@@ -2,7 +2,7 @@
 
 Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
-[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/release.yml/badge.svg)](https://github.com/aroff/fastskill/actions/workflows/release.yml)
+[![Python/Rust package build status](https://github.com/aroff/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/aroff/fastskill/actions/workflows/ci.yml)
 
 ## What is FastSkill?
 
@@ -84,6 +84,37 @@ tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
 sudo mv fastskill /usr/local/bin/
 fastskill --version
 ```
+
+**From Source:**
+```bash
+cargo install fastskill
+# Or build from source
+git clone https://github.com/aroff/fastskill.git
+cd fastskill/tools/fastskill/rust
+cargo install --path .
+```
+
+**Requirements**: Rust 1.70+ (for source builds), OpenAI API key for embedding features
+
+### Kubernetes Deployment (Production)
+
+Deploy FastSkill as a production service in Kubernetes using Helm:
+
+```bash
+# Create secrets and install chart
+kubectl create namespace fastskill
+kubectl create secret generic fastskill-github-token \
+  --from-literal=GITHUB_TOKEN=your-token -n fastskill
+kubectl create secret generic fastskill-s3-credentials \
+  --from-literal=AWS_ACCESS_KEY_ID=your-key \
+  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret -n fastskill
+
+helm install fastskill ./tools/fastskill/helm/fastskill \
+  --namespace fastskill --create-namespace
+```
+
+For detailed Kubernetes deployment instructions, see the [Kubernetes Deployment Guide](/integration/kubernetes-deployment).
+
 ## Quick Start
 
 ### 1. Configure FastSkill

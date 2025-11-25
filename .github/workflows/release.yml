@@ -1,0 +1,338 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  verify-version:
+    name: Verify Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          # Strip 'v' prefix
+          VERSION="${TAG_VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $TAG_VERSION"
+          echo "Extracted version: $VERSION"
+
+      - name: Read version from Cargo.toml
+        id: cargo-version
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "cargo-version=$CARGO_VERSION" >> $GITHUB_OUTPUT
+          echo "Cargo.toml version: $CARGO_VERSION"
+
+      - name: Verify versions match
+        run: |
+          TAG_VER="${{ steps.extract-version.outputs.version }}"
+          CARGO_VER="${{ steps.cargo-version.outputs.cargo-version }}"
+
+          # Skip version verification for test/pre-release tags (containing hyphens)
+          if [[ "$TAG_VER" == *"-"* ]]; then
+            echo "⚠️  Skipping version verification for pre-release tag: $TAG_VER"
+            echo "Cargo.toml version: $CARGO_VER"
+          elif [ "$TAG_VER" != "$CARGO_VER" ]; then
+            echo "❌ Version mismatch!"
+            echo "Tag version: $TAG_VER"
+            echo "Cargo.toml version: $CARGO_VER"
+            exit 1
+          else
+            echo "✅ Versions match: $TAG_VER"
+          fi
+
+  build:
+    name: Build ${{ matrix.os }} binary
+    needs: verify-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary-name: fastskill
+            archive-format: tar.gz
+            archive-name: fastskill-x86_64-unknown-linux-gnu.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary-name: fastskill.exe
+            archive-format: zip
+            archive-name: fastskill-x86_64-pc-windows-msvc.zip
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          target: ${{ matrix.target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --verbose --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: ""  # Allow warnings for release builds
+
+      - name: Create release directory
+        shell: bash
+        run: |
+          mkdir -p release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
+          else
+            cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
+          fi
+
+      - name: Create README for release
+        shell: bash
+        run: |
+          cat > release/README.md << 'EOF'
+          # FastSkill ${{ needs.verify-version.outputs.version }}
+          
+          ## Installation
+          
+          ### Linux
+          Extract the archive and move the binary to your PATH:
+          ```bash
+          tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
+          sudo mv fastskill /usr/local/bin/
+          fastskill --version
+          ```
+          
+          ### Windows
+          Extract the ZIP file and add to your PATH, or run from the extracted directory:
+          ```powershell
+          # Extract fastskill-x86_64-pc-windows-msvc.zip
+          # Add to PATH or run from extracted directory
+          fastskill.exe --version
+          ```
+          
+          For more information, visit: https://github.com/aroff/fastskill
+          EOF
+
+      - name: Create archive
+        shell: bash
+        run: |
+          cd release
+          if [ "${{ matrix.archive-format }}" = "tar.gz" ]; then
+            tar -czf ../${{ matrix.archive-name }} *
+          else
+            # Use PowerShell Compress-Archive on Windows
+            if [ "${{ runner.os }}" = "Windows" ]; then
+              powershell -Command "Compress-Archive -Path * -DestinationPath ../${{ matrix.archive-name }} -Force"
+            else
+              zip -r ../${{ matrix.archive-name }} *
+            fi
+          fi
+          cd ..
+          ls -lh ${{ matrix.archive-name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive-name }}
+          path: ${{ matrix.archive-name }}
+          retention-days: 30
+
+  collect-artifacts:
+    name: Collect Release Artifacts
+    needs: [verify-version, build]
+    runs-on: ubuntu-latest
+    if: always() && needs.verify-version.result == 'success'
+    
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastskill-x86_64-unknown-linux-gnu.tar.gz
+          path: ./artifacts
+        continue-on-error: true
+      
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastskill-x86_64-pc-windows-msvc.zip
+          path: ./artifacts
+        continue-on-error: true
+      
+      - name: Verify artifacts
+        run: |
+          echo "Checking artifacts..."
+          ls -lh ./artifacts/ || echo "No artifacts found"
+          if [ -f "./artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
+            echo "✅ Linux binary found"
+          else
+            echo "⚠️  Linux binary missing"
+          fi
+          if [ -f "./artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
+            echo "✅ Windows binary found"
+          else
+            echo "⚠️  Windows binary missing"
+          fi
+      
+      - name: Upload collected artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: ./artifacts
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [verify-version, collect-artifacts]
+    runs-on: ubuntu-latest
+    if: always() && needs.verify-version.result == 'success'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download collected artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: ./artifacts
+
+      - name: Prepare file list for release
+        id: prepare-files
+        run: |
+          # Build newline-separated list of files (required by softprops/action-gh-release)
+          FILES=""
+          
+          if [ -f "artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
+            FILES="artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz"
+            echo "✅ Linux artifact found"
+          else
+            echo "⚠️  Linux artifact missing"
+          fi
+          
+          if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
+            if [ -n "$FILES" ]; then
+              FILES="$FILES"$'\n'"artifacts/fastskill-x86_64-pc-windows-msvc.zip"
+            else
+              FILES="artifacts/fastskill-x86_64-pc-windows-msvc.zip"
+            fi
+            echo "✅ Windows artifact found"
+          else
+            echo "⚠️  Windows artifact missing"
+          fi
+          
+          echo "Files to upload:"
+          echo "$FILES"
+          
+          # Output as multiline string
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Delete existing releases if present
+        continue-on-error: true
+        run: |
+          TAG="${{ github.ref_name }}"
+          
+          # Delete from main repository (aroff/fastskill)
+          echo "Checking for existing release in aroff/fastskill..."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists in aroff/fastskill, deleting it..."
+            gh release delete "$TAG" --yes
+            sleep 2
+            # Verify deletion
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Warning: Release $TAG still exists in aroff/fastskill after deletion attempt"
+              exit 1
+            else
+              echo "Confirmed: Release $TAG deleted from aroff/fastskill"
+            fi
+          else
+            echo "No existing release found in aroff/fastskill for $TAG"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          VERSION="${{ needs.verify-version.outputs.version }}"
+          TAG="${{ github.ref_name }}"
+          
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since $PREV_TAG" >> release_notes.md
+            echo "" >> release_notes.md
+            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${TAG} >> release_notes.md || echo "- Initial release" >> release_notes.md
+          else
+            echo "## Release $VERSION" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "- Initial release" >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "## Installation" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "Download the pre-built binary for your platform:" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "- **Linux**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\`" >> release_notes.md
+          
+          # Check if Windows artifact exists
+          if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
+            echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`" >> release_notes.md
+          else
+            echo "- **Windows**: Not available in this release (build issue - see [Windows Build Issue](https://github.com/aroff/fastskill/blob/main/docs/WINDOWS_BUILD_ISSUE.md))" >> release_notes.md
+          fi
+          
+          cat release_notes.md
+
+      - name: Create Release (as draft to allow asset uploads)
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ needs.verify-version.outputs.version }}
+          body_path: release_notes.md
+          files: ${{ steps.prepare-files.outputs.files }}
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: false
+          generate_release_notes: false
+
+      - name: Publish release (remove draft status)
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "Publishing release $TAG..."
+          gh release edit "$TAG" --draft=false
+          echo "Release $TAG is now published!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

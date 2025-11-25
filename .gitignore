@@ -1,0 +1,322 @@
+# Rust-specific files
+/rust/target/
+/rust/Cargo.lock
+/rust/src/**/*.rs.bk
+/rust/debug/
+/rust/release/
+
+# Python-specific files
+/python/__pycache__/
+/python/.venv/
+/python/.pytest_cache/
+/python/.coverage
+/python/htmlcov/
+/python/.tox/
+/python/dist/
+/python/build/
+/python/*.egg-info/
+/python/.Python
+/python/env/
+/python/venv/
+/python/ENV/
+/python/env.bak/
+/python/venv.bak/
+/python/.env
+/python/.venv
+/python/pip-log.txt
+/python/pip-delete-this-directory.txt
+/python/.DS_Store
+/python/*.py[cod]
+/python/*$py.class
+/python/*.so
+/python/Pipfile.lock
+
+# Build artifacts and temporary files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+*.jar
+*.war
+*.ear
+*.class
+*.com
+*.bat
+*.cmd
+*.nt
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*~
+*.bak
+*.backup
+*.orig
+*.rej
+*.tmp
+*.temp
+.cache/
+*.cache
+tmp/
+temp/
+.tmp/
+.temp/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Documentation build outputs
+/docs/_build/
+/docs/build/
+/docs/site/
+/docs/.doctrees
+*.pdf
+*.html
+!src/http/static/index.html
+*.epub
+*.mobi
+*.azw3
+
+# Test and coverage files
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+*.prof
+*.profraw
+
+# Environment and configuration
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+config.local.*
+.settings.local.*
+
+# Logs
+*.log
+logs/
+*.log.*
+log/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Node.js (if any frontend tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Package manager files
+poetry.lock
+Pipfile.lock
+yarn.lock
+package-lock.json
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*.rej
+
+# Archive files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Compressed files
+*.gz
+*.bz2
+*.xz
+*.lzma
+
+# Documentation build
+docs/_build/
+docs/build/
+
+# CI/CD
+.github/workflows/cache/
+
+# Local development
+local/
+tmp/
+
+# Specific to this project
+skills/
+*.skill
+*.zip
+temp_skills/
+extracted_skills/
+
+# Performance and profiling
+*.prof
+*.profraw
+perf.data
+perf.data.old
+flamegraph.svg
+
+# Rust-specific
+/rust/target/
+**/target/
+
+# Python-specific
+/python/.venv/
+/python/__pycache__/
+/python/*.pyc
+/python/build/
+/python/dist/
+/python/*.egg-info/
+
+# Cross-compilation artifacts
+/rust/x86_64-unknown-linux-gnu/
+/rust/aarch64-unknown-linux-gnu/
+/rust/x86_64-pc-windows-gnu/
+/rust/x86_64-apple-darwin/
+
+# Rust analyzer
+/rust/rust-analyzer/
+
+# Python virtual environments
+.python-version
+.python-version
+pyrightconfig.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Specific to Claude Code compatibility project
+test_skills/
+example_skills/
+temp_extract/
+validation_reports/
+performance_logs/
+
+# Security and audit files
+audit.log
+security.log
+*.audit
+
+repomix-output.xml
+COMMIT_EDITMSG
+HEAD
+ORIG_HEAD
+commondir
+gitdir
+index

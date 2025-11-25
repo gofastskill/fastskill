@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**'
+      - '.github/workflows/ci.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Rust Implementation Tests and Build
+  rust:
+    name: Rust Implementation
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run Clippy
+      run: cargo clippy -- -D warnings
+
+    - name: Build release binary
+      run: cargo build --release --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Run benchmarks
+      run: cargo test --release --benches || echo "No benchmarks found - skipping"
+
+    # Note: Test output is already captured in GitHub Actions logs
+    # Uploading compiled test binaries (target/debug/deps/) is unnecessary and creates
+    # very large artifacts (700MB+). If test result reports (e.g., JUnit XML) are needed
+    # in the future, they should be generated separately and uploaded here.
+    # - name: Upload test results
+    #   uses: actions/upload-artifact@v4
+    #   if: always()
+    #   with:
+    #     name: rust-test-results
+    #     path: |
+    #       target/debug/deps/
+    #       target/release/deps/
+    #     retention-days: 7
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        name: rust-binary
+        path: target/release/fastskill
+        if-no-files-found: ignore
+        retention-days: 30
+
+  # Integration Tests (Rust-only after Python removal)
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    - name: Run integration tests
+      run: cargo test --test '*' --verbose
+
+  # Security Audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run Rust security audit
+      run: cargo audit
+
+    - name: Run dependency vulnerability scan
+      if: github.event_name == 'pull_request'
+      uses: actions/dependency-review-action@v4
