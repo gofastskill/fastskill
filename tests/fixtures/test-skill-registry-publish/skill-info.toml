@@ -1,0 +1,8 @@
+[metadata]
+name = "test-skill-registry-publish"
+version = "1.0.0"
+description = "A fake test skill for production registry publishing integration tests"
+author = "FastSkill Test Suite"
+tags = ["test", "integration", "registry"]
+capabilities = ["testing", "registry-publishing"]
+
