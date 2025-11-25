@@ -1,0 +1,143 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - 'specs/**'
+      - 'examples/**'
+      - 'skills/**'
+      - 'webdocs/**'
+      - 'helm/**'
+      - 'reports/**'
+      - '*.md'
+      - '.github/*.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    name: Auto Release
+    runs-on: ubuntu-latest
+    
+    # Skip if commit message contains skip flags
+    if: |
+      !contains(github.event.head_commit.message, '[skip release]') &&
+      !contains(github.event.head_commit.message, '[no release]') &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for no-release label
+        id: check-label
+        run: |
+          # Get the PR number from the merge commit message
+          PR_NUMBER=$(echo "${{ github.event.head_commit.message }}" | grep -oP '#\K[0-9]+' | head -1 || echo "")
+          
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Found PR #$PR_NUMBER in commit message"
+            
+            # Check if PR has no-release label
+            LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || echo "")
+            
+            if echo "$LABELS" | grep -qE '^no-release$'; then
+              echo "Found 'no-release' label on PR #$PR_NUMBER"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          
+          echo "skip=false" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current and last released versions
+        if: steps.check-label.outputs.skip != 'true'
+        id: versions
+        run: |
+          # Current version in Cargo.toml
+          CURRENT=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          
+          # Last released version (from latest tag)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_VERSION="${LAST_TAG#v}"
+          echo "last=$LAST_VERSION" >> $GITHUB_OUTPUT
+          
+          echo "Current Cargo.toml version: $CURRENT"
+          echo "Last released tag: $LAST_TAG ($LAST_VERSION)"
+
+      - name: Determine release version
+        if: steps.check-label.outputs.skip != 'true'
+        id: release
+        run: |
+          CURRENT="${{ steps.versions.outputs.current }}"
+          LAST="${{ steps.versions.outputs.last }}"
+          
+          if [ "$CURRENT" != "$LAST" ]; then
+            # Developer already bumped version in their PR - use it
+            echo "version=$CURRENT" >> $GITHUB_OUTPUT
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
+            echo "Developer set version: $CURRENT (was $LAST)"
+          else
+            # Auto-bump patch version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "needs_bump=true" >> $GITHUB_OUTPUT
+            echo "Auto-bumping patch: $CURRENT -> $NEW_VERSION"
+          fi
+
+      - name: Update Cargo.toml version
+        if: steps.check-label.outputs.skip != 'true' && steps.release.outputs.needs_bump == 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          
+          echo "Updated Cargo.toml to version $VERSION:"
+          grep '^version = ' Cargo.toml
+
+      - name: Commit version bump
+        if: steps.check-label.outputs.skip != 'true' && steps.release.outputs.needs_bump == 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add Cargo.toml
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git push origin main
+
+      - name: Create and push tag
+        if: steps.check-label.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          TAG="v$VERSION"
+          
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping"
+            exit 0
+          fi
+          
+          git tag "$TAG"
+          git push origin "$TAG"
+          
+          echo "::notice::Created and pushed tag $TAG - release workflow will be triggered"
+
+      - name: Skip notice
+        if: steps.check-label.outputs.skip == 'true'
+        run: |
+          echo "::notice::Release skipped due to 'no-release' label on PR"
+
