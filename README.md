@@ -2,19 +2,19 @@
 
 Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
-[![Python/Rust package build status](https://github.com/aroff/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/aroff/fastskill/actions/workflows/ci.yml)
+[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/release.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/release.yml)
 
 ## What is FastSkill?
 
 FastSkill is a skill package manager and operational toolkit for the AI agent ecosystem. It builds on Anthropic's standardized Skills format, adding registry services, semantic search, version management, and deployment tooling.
 
-Skills are modular packages that extend AI agent capabilities with specialized workflows, tool integrations, and domain knowledge. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
+Skills are recipes that extend AI Agent capabilities with specialized procedures, tool integrations, and domain knowledge. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
 
 ## Key Capabilities
 
 - **Package Management**: Install, update, and remove skills from multiple sources (Git, local, ZIP)
 - **Semantic Search**: Find skills using OpenAI embeddings and natural language queries
-- **Registry Services**: Publish, version, and distribute skills via crates.io-like registry
+- **Registry Services**: Publish, version, and distribute skills via registry
 - **Manifest System**: Declarative dependency management with lock files for reproducible installations
 - **HTTP API**: RESTful service layer for agent integration
 - **Web UI**: Browse and manage skills through web interface
@@ -44,52 +44,77 @@ FastSkill can be installed in several ways depending on your use case:
 
 ### CLI Installation
 
-**Quick Install (Recommended)**
+**Quick Install**
 
 Install FastSkill with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aroff/fastskill/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 ```
 
 Or download and run the script manually:
 
 ```bash
-wget https://raw.githubusercontent.com/aroff/fastskill/main/scripts/install.sh
+wget https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh
 chmod +x install.sh
 ./install.sh
 ```
 
 The script automatically:
+
 - Detects your platform
-- Downloads the latest version (or specify a version: `./install.sh v0.6.8`)
+- Downloads the latest version (or specify a version: `./install.sh v0.7.8`)
 - Installs to `/usr/local/bin` (or `~/.local/bin` if sudo is unavailable)
 - Verifies the installation
 
 **Options:**
+
 - `--user`: Install to `~/.local/bin` instead of system directory
 - `--prefix DIR`: Install to a custom directory
 - `--force`: Overwrite existing installation
 - `--help`: Show all available options
 
+**Homebrew (Linux)**
+
+Install FastSkill via [Homebrew](https://brew.sh/) on Linux:
+
+```bash
+brew install gofastskill/cli/fastskill
+```
+
+For more details, see the [Homebrew tap repository](https://github.com/gofastskill/homebrew-cli).
+
+**Scoop (Windows)**
+
+Install FastSkill via [Scoop](https://scoop.sh/) on Windows:
+
+```powershell
+scoop bucket add gofastskill https://github.com/gofastskill/scoop-bucket
+scoop install fastskill
+```
+
+For more details, see the [Scoop bucket repository](https://github.com/gofastskill/scoop-bucket).
+
 **Manual Installation from GitHub Releases**
 
-Download the pre-built binary for your platform from [GitHub Releases](https://github.com/aroff/fastskill/releases).
+Download the pre-built binary for your platform from [GitHub Releases](https://github.com/gofastskill/fastskill/releases).
 
 **Linux:**
+
 ```bash
 VERSION="0.6.8"  # Replace with latest version
-wget https://github.com/aroff/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
+wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
 sudo mv fastskill /usr/local/bin/
 fastskill --version
 ```
 
 **From Source:**
+
 ```bash
 cargo install fastskill
 # Or build from source
-git clone https://github.com/aroff/fastskill.git
+git clone https://github.com/gofastskill/fastskill.git
 cd fastskill/tools/fastskill/rust
 cargo install --path .
 ```
