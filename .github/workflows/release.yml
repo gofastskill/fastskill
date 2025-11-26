@@ -134,7 +134,7 @@ jobs:
           fastskill.exe --version
           ```
           
-          For more information, visit: https://github.com/aroff/fastskill
+          For more information, visit: https://github.com/gofastskill/fastskill
           EOF
 
       - name: Create archive
@@ -261,21 +261,21 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           
-          # Delete from main repository (aroff/fastskill)
-          echo "Checking for existing release in aroff/fastskill..."
+          # Delete from main repository
+          echo "Checking for existing release ..."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists in aroff/fastskill, deleting it..."
+            echo "Release $TAG exists, deleting it..."
             gh release delete "$TAG" --yes
             sleep 2
             # Verify deletion
             if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Warning: Release $TAG still exists in aroff/fastskill after deletion attempt"
+              echo "Warning: Release $TAG still exists in fastskill repo after deletion attempt"
               exit 1
             else
-              echo "Confirmed: Release $TAG deleted from aroff/fastskill"
+              echo "Confirmed: Release $TAG deleted from fastskill repo"
             fi
           else
-            echo "No existing release found in aroff/fastskill for $TAG"
+            echo "No existing release found in repo fastskill for $TAG"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -310,7 +310,7 @@ jobs:
           if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
             echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`" >> release_notes.md
           else
-            echo "- **Windows**: Not available in this release (build issue - see [Windows Build Issue](https://github.com/aroff/fastskill/blob/main/docs/WINDOWS_BUILD_ISSUE.md))" >> release_notes.md
+            echo "- **Windows**: Not available in this release (build issue - see [Windows Build Issue](https://github.com/gofastskill/fastskill/blob/main/docs/WINDOWS_BUILD_ISSUE.md))" >> release_notes.md
           fi
           
           cat release_notes.md
