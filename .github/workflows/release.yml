@@ -67,11 +67,19 @@ jobs:
             binary-name: fastskill
             archive-format: tar.gz
             archive-name: fastskill-x86_64-unknown-linux-gnu.tar.gz
+            use-cross: false
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary-name: fastskill
+            archive-format: tar.gz
+            archive-name: fastskill-x86_64-unknown-linux-musl.tar.gz
+            use-cross: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary-name: fastskill.exe
             archive-format: zip
             archive-name: fastskill-x86_64-pc-windows-msvc.zip
+            use-cross: false
 
 
     steps:
@@ -95,10 +103,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build release binary
+      - name: Install cross-rs
+        if: matrix.use-cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release binary (cross)
+        if: matrix.use-cross
+        run: cross build --release --verbose --target ${{ matrix.target }} --no-default-features --features "filesystem-storage,hot-reload"
+        env:
+          RUSTFLAGS: ""
+
+      - name: Build release binary (cargo)
+        if: ${{ !matrix.use-cross }}
         run: cargo build --release --verbose --target ${{ matrix.target }}
         env:
-          RUSTFLAGS: ""  # Allow warnings for release builds
+          RUSTFLAGS: ""
 
       - name: Create release directory
         shell: bash
@@ -119,7 +138,22 @@ jobs:
           ## Installation
           
           ### Linux
-          Extract the archive and move the binary to your PATH:
+          
+          Two Linux binaries are available:
+          
+          | Binary | Best For |
+          |--------|----------|
+          | `fastskill-x86_64-unknown-linux-musl.tar.gz` | Universal - containers, CI/CD, older distributions |
+          | `fastskill-x86_64-unknown-linux-gnu.tar.gz` | FIPS/compliance environments requiring dynamic linking |
+          
+          **Recommended (musl/static - works everywhere):**
+          ```bash
+          tar -xzf fastskill-x86_64-unknown-linux-musl.tar.gz
+          sudo mv fastskill /usr/local/bin/
+          fastskill --version
+          ```
+          
+          **For FIPS/compliance (glibc - requires glibc 2.38+):**
           ```bash
           tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
           sudo mv fastskill /usr/local/bin/
@@ -181,15 +215,27 @@ jobs:
           name: fastskill-x86_64-pc-windows-msvc.zip
           path: ./artifacts
         continue-on-error: true
+
+      - name: Download Linux musl artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastskill-x86_64-unknown-linux-musl.tar.gz
+          path: ./artifacts
+        continue-on-error: true
       
       - name: Verify artifacts
         run: |
           echo "Checking artifacts..."
           ls -lh ./artifacts/ || echo "No artifacts found"
           if [ -f "./artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
-            echo "✅ Linux binary found"
+            echo "✅ Linux (glibc) binary found"
           else
-            echo "⚠️  Linux binary missing"
+            echo "⚠️  Linux (glibc) binary missing"
+          fi
+          if [ -f "./artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz" ]; then
+            echo "✅ Linux (musl/static) binary found"
+          else
+            echo "⚠️  Linux (musl/static) binary missing"
           fi
           if [ -f "./artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
             echo "✅ Windows binary found"
@@ -232,9 +278,20 @@ jobs:
           
           if [ -f "artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
             FILES="artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz"
-            echo "✅ Linux artifact found"
+            echo "✅ Linux (glibc) artifact found"
           else
-            echo "⚠️  Linux artifact missing"
+            echo "⚠️  Linux (glibc) artifact missing"
+          fi
+          
+          if [ -f "artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz" ]; then
+            if [ -n "$FILES" ]; then
+              FILES="$FILES"$'\n'"artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
+            else
+              FILES="artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
+            fi
+            echo "✅ Linux (musl/static) artifact found"
+          else
+            echo "⚠️  Linux (musl/static) artifact missing"
           fi
           
           if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
@@ -304,12 +361,24 @@ jobs:
           echo "" >> release_notes.md
           echo "Download the pre-built binary for your platform:" >> release_notes.md
           echo "" >> release_notes.md
-          echo "- **Linux**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\`" >> release_notes.md
+          echo "### Linux" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "- **Linux (glibc)**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\` - for FIPS/compliance environments requiring dynamic linking" >> release_notes.md
+          echo "- **Linux (musl/static)**: \`fastskill-x86_64-unknown-linux-musl.tar.gz\` - universal compatibility, containers, CI/CD (works on Ubuntu 20.04+, RHEL 8+, Alpine, etc.)" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "**Which Linux binary should I use?**" >> release_notes.md
+          echo "- Use **musl** for maximum compatibility (containers, CI/CD, older distributions)" >> release_notes.md
+          echo "- Use **glibc** only if you require dynamic linking for FIPS or compliance reasons" >> release_notes.md
+          echo "" >> release_notes.md
           
           # Check if Windows artifact exists
           if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
+            echo "### Windows" >> release_notes.md
+            echo "" >> release_notes.md
             echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`" >> release_notes.md
           else
+            echo "### Windows" >> release_notes.md
+            echo "" >> release_notes.md
             echo "- **Windows**: Not available in this release (build issue - see [Windows Build Issue](https://github.com/gofastskill/fastskill/blob/main/docs/WINDOWS_BUILD_ISSUE.md))" >> release_notes.md
           fi
           

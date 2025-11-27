@@ -1,6 +1,6 @@
 [package]
 name = "fastskill"
-version = "0.7.12"
+version = "0.7.13"
 edition = "2021"
 description = "FastSkill is a AI Skills management tool"
 authors = ["aroff"]
@@ -48,8 +48,8 @@ fs2 = "0.4"  # Cross-platform file locking
 # Archive handling
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
-# HTTP client for embedding API
-reqwest = { version = "0.11", features = ["json", "stream", "multipart"] }
+# HTTP client for embedding API (rustls for musl compatibility)
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
 
 # Multipart form data handling for skill uploads
 multer = "3.1"
