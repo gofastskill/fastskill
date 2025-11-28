@@ -269,6 +269,7 @@ check_existing_installation() {
 }
 
 # Download and extract binary
+# Sets CLEANUP_TEMP_DIR global variable with the temp directory path
 download_binary() {
     local version="$1"
     local platform="$2"
@@ -281,9 +282,8 @@ download_binary() {
     temp_dir=$(mktemp -d)
     archive_path="${temp_dir}/${archive_name}"
     
-    # Store in global variable for cleanup on exit
+    # Store in global variable (used by caller and for cleanup)
     CLEANUP_TEMP_DIR="$temp_dir"
-    trap 'rm -rf "$CLEANUP_TEMP_DIR"' EXIT
     
     info "Downloading FastSkill v${version}..."
     
@@ -305,9 +305,8 @@ download_binary() {
     
     info "Extracting binary..."
     
-    # Extract
-    cd "$temp_dir"
-    if ! tar -xzf "$archive_path"; then
+    # Extract to temp directory
+    if ! tar -xzf "$archive_path" -C "$temp_dir"; then
         error "Failed to extract archive. The download may be corrupted."
     fi
     
@@ -318,8 +317,6 @@ download_binary() {
     
     # Make binary executable
     chmod +x "${temp_dir}/${BINARY_NAME}"
-    
-    echo "$temp_dir"
 }
 
 # Install binary to target directory
@@ -436,7 +433,6 @@ parse_args() {
 # Main function
 main() {
     local platform
-    local temp_dir
     
     # Parse arguments
     parse_args "$@"
@@ -465,11 +461,14 @@ main() {
     # Check for existing installation
     check_existing_installation
     
-    # Download and extract
-    temp_dir=$(download_binary "$VERSION" "$platform")
+    # Download and extract (sets CLEANUP_TEMP_DIR global variable)
+    download_binary "$VERSION" "$platform"
     
-    # Install
-    install_binary "$temp_dir"
+    # Set up cleanup trap now that we have the temp directory
+    trap 'rm -rf "$CLEANUP_TEMP_DIR"' EXIT
+    
+    # Install using the global temp directory variable
+    install_binary "$CLEANUP_TEMP_DIR"
     
     # Verify
     verify_installation
