@@ -14,6 +14,7 @@ VERSION=""
 INSTALL_DIR=""
 FORCE=false
 SHOW_VERSION_ONLY=false
+CLEANUP_TEMP_DIR=""
 
 # Colors for output (if terminal supports it)
 if [[ -t 1 ]]; then
@@ -43,7 +44,7 @@ warn() {
 
 # Print info message
 info() {
-    echo -e "${BLUE}Info:${NC} $1"
+    echo -e "${BLUE}Info:${NC} $1" >&2
 }
 
 # Print success message
@@ -280,11 +281,9 @@ download_binary() {
     temp_dir=$(mktemp -d)
     archive_path="${temp_dir}/${archive_name}"
     
-    # Cleanup on exit
-    cleanup_temp_dir() {
-        rm -rf "$temp_dir"
-    }
-    trap cleanup_temp_dir EXIT
+    # Store in global variable for cleanup on exit
+    CLEANUP_TEMP_DIR="$temp_dir"
+    trap 'rm -rf "$CLEANUP_TEMP_DIR"' EXIT
     
     info "Downloading FastSkill v${version}..."
     
