@@ -49,7 +49,7 @@ pub async fn create_client(
         RepositoryType::GitMarketplace | RepositoryType::ZipUrl | RepositoryType::Local => {
             Ok(Arc::new(MarketplaceRepositoryClient::new(repo)?))
         }
-        RepositoryType::GitRegistry => Ok(Arc::new(CratesRegistryClient::new(repo)?)),
+        RepositoryType::HttpRegistry => Ok(Arc::new(CratesRegistryClient::new(repo)?)),
     }
 }
 
@@ -116,9 +116,9 @@ impl MarketplaceRepositoryClient {
                 }
             }
             RepositoryConfig::Local { path } => SourceConfig::Local { path: path.clone() },
-            RepositoryConfig::GitRegistry { .. } => {
+            RepositoryConfig::HttpRegistry { .. } => {
                 return Err(ServiceError::Custom(
-                    "GitRegistry should use CratesRegistryClient".to_string(),
+                    "HttpRegistry should use CratesRegistryClient".to_string(),
                 ));
             }
         };
@@ -225,7 +225,7 @@ impl RepositoryClient for MarketplaceRepositoryClient {
     }
 }
 
-/// Crates.io-style registry client (wraps RegistryClient logic)
+/// HTTP registry client (wraps RegistryClient logic)
 pub struct CratesRegistryClient {
     registry_client: RegistryClient,
 }
@@ -233,10 +233,10 @@ pub struct CratesRegistryClient {
 impl CratesRegistryClient {
     pub fn new(repo: &RepositoryDefinition) -> Result<Self, ServiceError> {
         let index_url = match &repo.config {
-            RepositoryConfig::GitRegistry { index_url } => index_url.clone(),
+            RepositoryConfig::HttpRegistry { index_url } => index_url.clone(),
             _ => {
                 return Err(ServiceError::Custom(
-                    "GitRegistry requires index_url".to_string(),
+                    "HttpRegistry requires index_url".to_string(),
                 ))
             }
         };
@@ -295,7 +295,7 @@ impl CratesRegistryClient {
 #[async_trait::async_trait]
 impl RepositoryClient for CratesRegistryClient {
     async fn list_skills(&self) -> Result<Vec<SkillMetadata>, RepositoryClientError> {
-        // Crates.io-style registries don't have a simple "list all" - would need to scan index
+        // HTTP registries don't have a simple "list all" - would need to scan index
         Err(RepositoryClientError::NotImplemented)
     }
 

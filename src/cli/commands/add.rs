@@ -520,14 +520,15 @@ async fn add_from_registry(
     // Parse skill ID and version
     let (skill_id, version_opt) = parse_skill_id(skill_id_input);
 
-    // Load repository configuration from repositories.toml
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    // Load repository configuration from repositories.toml (searches up directory tree)
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
         .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
 
-    // Get default repository (prefer git-registry type, fallback to any)
+    // Get default repository (prefer http-registry type, fallback to any)
     let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
         CliError::Config(
             "No default repository configured. Use 'fastskill registry add' to add a repository."
@@ -535,14 +536,14 @@ async fn add_from_registry(
         )
     })?;
 
-    // For now, we only support git-registry type for add command
+    // For now, we only support http-registry type for add command
     // TODO: Support other repository types
     if !matches!(
         default_repo.repo_type,
-        fastskill::core::repository::RepositoryType::GitRegistry
+        fastskill::core::repository::RepositoryType::HttpRegistry
     ) {
         return Err(CliError::Config(
-            format!("Repository '{}' is not a git-registry type. Only git-registry repositories are supported for 'fastskill add' currently.", default_repo.name)
+            format!("Repository '{}' is not an http-registry type. Only http-registry repositories are supported for 'fastskill add' currently.", default_repo.name)
         ));
     }
 
@@ -602,7 +603,10 @@ async fn add_from_registry(
     let extract_path = temp_dir.path();
 
     // Write ZIP to temp file
-    let temp_zip = extract_path.join(format!("{}-{}.zip", skill_id, version));
+    // Normalize skill_id by URL-encoding '/' to avoid creating subdirectories
+    // Using %2F (URL encoding) prevents collisions: dev-user/test vs dev/user-test
+    let normalized_skill_id = skill_id.replace('/', "%2F");
+    let temp_zip = extract_path.join(format!("{}-{}.zip", normalized_skill_id, version));
     std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
 
     // Extract ZIP

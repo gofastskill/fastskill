@@ -52,8 +52,9 @@ pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
 
     // Determine target (API URL or local path)
     let target = if let Some(registry_name) = &args.registry {
-        // Load from repositories.toml
-        let repos_path = PathBuf::from(".claude/repositories.toml");
+        // Load from repositories.toml (searches up directory tree)
+        let repos_path = crate::cli::config::get_repositories_toml_path()
+            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
         let mut repo_manager = RepositoryManager::new(repos_path);
         repo_manager
             .load()
@@ -337,8 +338,8 @@ async fn publish_to_local_folder(target: &str, packages: &[PathBuf]) -> CliResul
 /// Extract API URL from repository configuration
 fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<String> {
     match &repo.repo_type {
-        RepositoryType::GitRegistry => {
-            // For git-registry, check storage.base_url first
+        RepositoryType::HttpRegistry => {
+            // For http-registry, check storage.base_url first
             if let Some(storage) = &repo.storage {
                 if let Some(base_url) = &storage.base_url {
                     return Ok(base_url.clone());
@@ -347,7 +348,7 @@ fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<Str
 
             // If index_url is already an API URL (not a git URL), use it
             let index_url = match &repo.config {
-                RepositoryConfig::GitRegistry { index_url } => index_url,
+                RepositoryConfig::HttpRegistry { index_url } => index_url,
                 _ => {
                     return Err(CliError::Config(
                         "Invalid repository config".to_string(),
@@ -355,37 +356,22 @@ fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<Str
                 }
             };
 
-            // Check if it's a sparse registry format
-            if index_url.starts_with("sparse+") {
-                let api_url = index_url.strip_prefix("sparse+").unwrap_or_else(|| {
-                    // This should never happen since we checked starts_with above
-                    index_url
-                });
-                // Extract base URL (remove /index suffix if present)
-                let base = api_url.trim_end_matches("/index").trim_end_matches("/");
-                return Ok(base.to_string());
-            }
-
-            // If it's already an HTTP(S) URL (not git), use it
-            if (index_url.starts_with("http://") || index_url.starts_with("https://"))
-                && !index_url.contains(".git")
-            {
-                // It's an API URL, use it
+            // If it's already an HTTP(S) URL, use it
+            if index_url.starts_with("http://") || index_url.starts_with("https://") {
+                // It's an API URL, extract base URL (remove /index suffix if present)
                 let base = index_url.trim_end_matches("/index").trim_end_matches("/");
                 return Ok(base.to_string());
             }
 
-            // For GitHub-based registries, try to derive API URL
-            // Convention: if index is at github.com/org/repo, API might be at api.org.com or similar
-            // This is a convention that may need to be configurable
+            // For non-HTTP URLs, we can't determine the API URL
             Err(CliError::Config(format!(
-                "Cannot determine API URL for git-registry '{}'. \
+                "Cannot determine API URL for http-registry '{}'. \
                 Please specify storage.base_url in repositories.toml or use --target flag.",
                 repo.name
             )))
         }
         _ => Err(CliError::Config(format!(
-            "Repository type '{}' does not support publishing. Only git-registry type supports publishing.",
+            "Repository type '{}' does not support publishing. Only http-registry type supports publishing.",
             repo.name
         ))),
     }
