@@ -117,24 +117,6 @@ fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
 fn display_startup_banner() {
     let version = crate::VERSION;
     let version_line = format!("Version {}", version);
-    let padding = (63 - version_line.len()) / 2;
-    let left_padding = " ".repeat(padding);
-    let right_padding = " ".repeat(60 - version_line.len() - padding);
-
-    println!();
-    println!("╔═══════════════════════════════════════════════════════════╗");
-    println!("║                                                           ║");
-    println!("║   ███████╗ █████╗ ███████╗████████╗███████╗██╗██╗     ██╗ ║");
-    println!("║   ██╔════╝██╔══██╗██╔════╝╚══██╔══╝██╔════╝██║██║     ██║ ║");
-    println!("║   █████╗  ███████║███████╗   ██║   █████╗  ██║██║     ██║ ║");
-    println!("║   ██╔══╝  ██╔══██║╚════██║   ██║   ██╔══╝  ██║██║     ██║ ║");
-    println!("║   ██║     ██║  ██║███████║   ██║   ██║     ██║███████╗██║ ║");
-    println!("║   ╚═╝     ╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝     ╚═╝╚══════╝╚═╝ ║");
-    println!("║                                                           ║");
-    println!("║{}{}{}║", left_padding, version_line, right_padding);
-    println!("║                                                           ║");
-    println!("╚═══════════════════════════════════════════════════════════╝");
-    println!();
 }
 
 /// FastSkill HTTP server
