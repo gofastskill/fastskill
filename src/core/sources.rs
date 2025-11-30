@@ -26,7 +26,7 @@ pub struct SourceDefinition {
 impl SourceDefinition {
     /// Check if this source supports listing skills
     /// Returns true for git-marketplace, zip-url, and local sources
-    /// Returns false for crates.io-style registries (git-registry)
+    /// Returns false for HTTP registries (http-registry)
     pub fn supports_listing(&self) -> bool {
         matches!(
             &self.source,

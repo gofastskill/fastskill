@@ -47,8 +47,8 @@ fn default_priority() -> u32 {
 pub enum RepositoryType {
     /// Git repository with marketplace.json
     GitMarketplace,
-    /// Git repository with crates.io-style index
-    GitRegistry,
+    /// HTTP-based registry with flat index layout
+    HttpRegistry,
     /// ZIP URL base with marketplace.json
     ZipUrl,
     /// Local directory
@@ -67,8 +67,8 @@ pub enum RepositoryConfig {
         #[serde(default)]
         tag: Option<String>,
     },
-    /// Git registry configuration
-    GitRegistry { index_url: String },
+    /// HTTP registry configuration
+    HttpRegistry { index_url: String },
     /// ZIP URL configuration
     ZipUrl { base_url: String },
     /// Local path configuration

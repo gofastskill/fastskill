@@ -69,55 +69,11 @@ impl RegistryClient {
         })
     }
 
-    /// Get the index URL for a skill (crates.io format: single file per skill)
+    /// Get the index URL for a skill (flat layout: scope/skill-name)
     fn get_index_url(&self, skill_id: &str) -> String {
-        // Use crates.io directory structure: 1/{name}, 2/{name}, 3/{first}/{name}, or {first2}/{second2}/{name}
-        let chars: Vec<char> = skill_id.chars().collect();
-
-        let path = match chars.len() {
-            1 => format!("1/{}", skill_id),
-            2 => format!("2/{}", skill_id),
-            3 => {
-                let first: String = chars[0..1].iter().collect();
-                format!("3/{}/{}", first, skill_id)
-            }
-            _ => {
-                let first_two: String = chars[0..2].iter().collect();
-                let next_two: String = chars[2..4].iter().collect();
-                format!("{}/{}/{}", first_two, next_two, skill_id)
-            }
-        };
-
-        // Construct URL based on registry type
-        if self.config.index_url.contains("github.com") {
-            // GitHub raw content URL
-            let repo_path = self
-                .config
-                .index_url
-                .trim_start_matches("https://github.com/")
-                .trim_end_matches(".git");
-            format!(
-                "https://raw.githubusercontent.com/{}/main/{}",
-                repo_path, path
-            )
-        } else if self.config.index_url.starts_with("sparse+") {
-            // Sparse registry format: sparse+https://api.example.com/index/
-            // We've already verified it starts with "sparse+", so strip_prefix will always succeed
-            let base_url = self
-                .config
-                .index_url
-                .strip_prefix("sparse+")
-                .unwrap_or_else(|| {
-                    // This should never happen since we checked starts_with above
-                    &self.config.index_url
-                });
-            format!("{}/{}", base_url.trim_end_matches('/'), path)
-        } else {
-            // Custom registry URL (HTTP-based or other)
-            // index_url should be the base URL for the index (e.g., https://api.fastskill.io/index)
-            // We just append the path
-            format!("{}/{}", self.config.index_url.trim_end_matches('/'), path)
-        }
+        // Flat layout: use skill_id directly (e.g., "dev-user/test-skill")
+        // index_url should be the base URL for the index (e.g., http://159.69.182.11:8080/index)
+        format!("{}/{}", self.config.index_url.trim_end_matches('/'), skill_id)
     }
 
     /// Get skill information from registry

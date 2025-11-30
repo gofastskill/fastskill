@@ -478,6 +478,8 @@ impl FastSkillServer {
                 .fallback_service(ServeDir::new(static_dir.clone()));
 
             router = router
+                // Registry index file serving (flat layout: /index/{scope}/{skill-name})
+                .route("/index/*skill_id", get(registry::serve_index_file))
                 // Registry API endpoints
                 .route("/api/registry/sources", get(registry::list_sources))
                 .route("/api/registry/skills", get(registry::list_all_skills))

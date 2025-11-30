@@ -38,10 +38,10 @@ pub enum RegistryCommand {
     Add {
         /// Repository name
         name: String,
-        /// Repository type: git-marketplace, git-registry, zip-url, or local
+        /// Repository type: git-marketplace, http-registry, zip-url, or local
         #[arg(long)]
         repo_type: String,
-        /// URL for git-marketplace or git-registry, base_url for zip-url, or path for local
+        /// URL for git-marketplace or http-registry, base_url for zip-url, or path for local
         url_or_path: String,
         /// Priority (lower number = higher priority, default: 0)
         #[arg(long)]
@@ -241,7 +241,8 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
 // Repository management functions
 
 async fn execute_list() -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -255,7 +256,7 @@ async fn execute_list() -> CliResult<()> {
         for repo in repos {
             let repo_type_str = match repo.repo_type {
                 RepositoryType::GitMarketplace => "git-marketplace",
-                RepositoryType::GitRegistry => "git-registry",
+                RepositoryType::HttpRegistry => "http-registry",
                 RepositoryType::ZipUrl => "zip-url",
                 RepositoryType::Local => "local",
             };
@@ -280,7 +281,8 @@ async fn execute_add(
     auth_key_path: Option<PathBuf>,
     auth_username: Option<String>,
 ) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -289,12 +291,12 @@ async fn execute_add(
     // Parse repository type
     let repo_type_enum = match repo_type.as_str() {
         "git-marketplace" => RepositoryType::GitMarketplace,
-        "git-registry" => RepositoryType::GitRegistry,
+        "http-registry" => RepositoryType::HttpRegistry,
         "zip-url" => RepositoryType::ZipUrl,
         "local" => RepositoryType::Local,
         _ => {
             return Err(CliError::Config(format!(
-            "Invalid repository type: {}. Use: git-marketplace, git-registry, zip-url, or local",
+            "Invalid repository type: {}. Use: git-marketplace, http-registry, zip-url, or local",
             repo_type
         )))
         }
@@ -307,7 +309,7 @@ async fn execute_add(
             branch,
             tag,
         },
-        RepositoryType::GitRegistry => RepositoryConfig::GitRegistry {
+        RepositoryType::HttpRegistry => RepositoryConfig::HttpRegistry {
             index_url: url_or_path,
         },
         RepositoryType::ZipUrl => RepositoryConfig::ZipUrl {
@@ -389,7 +391,8 @@ async fn execute_add(
 }
 
 async fn execute_remove(name: String) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -407,7 +410,8 @@ async fn execute_remove(name: String) -> CliResult<()> {
 }
 
 async fn execute_show(name: String) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -419,7 +423,7 @@ async fn execute_show(name: String) -> CliResult<()> {
 
     let repo_type_str = match repo.repo_type {
         RepositoryType::GitMarketplace => "git-marketplace",
-        RepositoryType::GitRegistry => "git-registry",
+        RepositoryType::HttpRegistry => "http-registry",
         RepositoryType::ZipUrl => "zip-url",
         RepositoryType::Local => "local",
     };
@@ -438,7 +442,7 @@ async fn execute_show(name: String) -> CliResult<()> {
                 println!("  Tag: {}", t);
             }
         }
-        RepositoryConfig::GitRegistry { index_url } => {
+        RepositoryConfig::HttpRegistry { index_url } => {
             println!("  Index URL: {}", index_url);
         }
         RepositoryConfig::ZipUrl { base_url } => {
@@ -465,7 +469,8 @@ async fn execute_update(
     branch: Option<String>,
     priority: Option<u32>,
 ) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -523,7 +528,8 @@ async fn execute_update(
 }
 
 async fn execute_test(name: String) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -586,7 +592,8 @@ async fn execute_refresh(name: Option<String>) -> CliResult<()> {
 // Skill browsing functions
 
 async fn execute_list_skills(repository: Option<String>) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -646,7 +653,8 @@ async fn execute_list_skills(repository: Option<String>) -> CliResult<()> {
 }
 
 async fn execute_show_skill(skill_id: String, repository: Option<String>) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -707,7 +715,8 @@ async fn execute_show_skill(skill_id: String, repository: Option<String>) -> Cli
 }
 
 async fn execute_versions(skill_id: String, repository: Option<String>) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -760,7 +769,8 @@ async fn execute_versions(skill_id: String, repository: Option<String>) -> CliRe
 }
 
 async fn execute_search(query: String, repository: Option<String>) -> CliResult<()> {
-    let repos_path = PathBuf::from(".claude/repositories.toml");
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
     repo_manager
         .load()
