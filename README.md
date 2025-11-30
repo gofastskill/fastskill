@@ -249,17 +249,6 @@ The CLI resolves the skills directory using this priority:
 2. Walk up directory tree to find existing `.claude/skills/`
 3. Default to `.claude/skills/` in current directory (doesn't auto-create)
 
-## Troubleshooting
-
-### Configuration Not Found
-
-If you see "Embedding configuration required but not found":
-
-1. Create `.fastskill.yaml` with embedding configuration (see Quick Start section)
-2. Set `OPENAI_API_KEY` environment variable
-
-**Note**: The error message may mention `fastskill init`, but that command is for skill authors only. For project setup, manually create `.fastskill.yaml` as shown in Quick Start.
-
 ### API Key Issues
 
 ```bash
