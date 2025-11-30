@@ -105,7 +105,7 @@ async fn get_sources_manager_from_repos(
                     None
                 }
             }
-            RepositoryType::GitRegistry => None, // Git-registry repos don't work with SourcesManager
+            RepositoryType::HttpRegistry => None, // Http-registry repos don't work with SourcesManager
         };
 
         if let Some(source_config) = source_config {
@@ -151,8 +151,8 @@ pub async fn list_sources(
                 crate::core::repository::RepositoryConfig::GitMarketplace { url, .. } => {
                     ("git-marketplace".to_string(), Some(url.clone()), None, true)
                 }
-                crate::core::repository::RepositoryConfig::GitRegistry { index_url } => (
-                    "git-registry".to_string(),
+                crate::core::repository::RepositoryConfig::HttpRegistry { index_url } => (
+                    "http-registry".to_string(),
                     Some(index_url.clone()),
                     None,
                     false,
@@ -396,5 +396,67 @@ impl SourceDefinition {
             &self.source,
             SourceConfig::Git { .. } | SourceConfig::ZipUrl { .. }
         )
+    }
+}
+
+/// GET /index/:skill_id - Serve registry index file for a skill (flat layout)
+/// This endpoint serves the index file from the registry_index_path
+/// Format: /index/{scope}/{skill-name} (e.g., /index/dev-user/test-skill)
+pub async fn serve_index_file(
+    State(state): State<AppState>,
+    Path(skill_id): Path<String>,
+) -> HttpResult<axum::response::Response> {
+    let config = state.service.config();
+    
+    let registry_index_path = config.registry_index_path.as_ref().ok_or_else(|| {
+        HttpError::InternalServerError("Registry index path not configured".to_string())
+    })?;
+
+    // Use flat layout: skill_id is already in format "scope/skill-name"
+    // Security: Normalize paths to prevent directory traversal
+    let index_file_path = registry_index_path.join(&skill_id);
+    
+    // Canonicalize both paths to resolve any .. or . components
+    let canonical_registry_path = registry_index_path.canonicalize().map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to canonicalize registry path: {}", e))
+    })?;
+    
+    let canonical_index_path = index_file_path.canonicalize().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            HttpError::NotFound(format!("Index file not found for skill: {}", skill_id))
+        } else {
+            HttpError::InternalServerError(format!("Failed to canonicalize index path: {}", e))
+        }
+    })?;
+
+    // Security: Ensure the canonical path is within the registry_index_path
+    if !canonical_index_path.starts_with(&canonical_registry_path) {
+        return Err(HttpError::BadRequest(format!(
+            "Invalid skill ID: {}",
+            skill_id
+        )));
+    }
+
+    // Read the index file (use canonical path)
+    match tokio::fs::read_to_string(&canonical_index_path).await {
+        Ok(content) => {
+            Ok(axum::response::Response::builder()
+                .status(axum::http::StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(axum::body::Body::from(content))
+                .map_err(|e| HttpError::InternalServerError(format!("Failed to build response: {}", e)))?)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err(HttpError::NotFound(format!(
+                "Index file not found for skill: {}",
+                skill_id
+            )))
+        }
+        Err(e) => {
+            Err(HttpError::InternalServerError(format!(
+                "Failed to read index file: {}",
+                e
+            )))
+        }
     }
 }

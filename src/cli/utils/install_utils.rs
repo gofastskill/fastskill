@@ -250,8 +250,9 @@ async fn install_from_source(
     use fastskill::core::version::VersionConstraint;
     use std::sync::Arc;
 
-    // Create resolver - load from repositories.toml
-    let repos_path = std::path::PathBuf::from(".claude/repositories.toml");
+    // Create resolver - load from repositories.toml (searches up directory tree)
+    let repos_path = crate::cli::config::get_repositories_toml_path()
+        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = fastskill::core::repository::RepositoryManager::new(repos_path);
     repo_manager
         .load()
@@ -393,8 +394,8 @@ fn create_sources_manager_from_repositories(
                     None
                 }
             }
-            RepositoryType::GitRegistry => {
-                // Git-registry repos don't work with SourcesManager, skip them
+            RepositoryType::HttpRegistry => {
+                // Http-registry repos don't work with SourcesManager, skip them
                 None
             }
         };

@@ -70,6 +70,45 @@ fn walk_up_for_skills_dir(start_path: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Get repositories.toml path with priority:
+/// 1. Walk up directory tree to find .claude/repositories.toml
+/// 2. Default to .claude/repositories.toml in current directory
+pub fn get_repositories_toml_path() -> CliResult<PathBuf> {
+    // Priority 1: Walk up directory tree to find .claude/repositories.toml
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+
+    if let Some(found_path) = walk_up_for_repositories_toml(current_dir.as_path()) {
+        debug!(
+            "Found .claude/repositories.toml by walking up: {}",
+            found_path.display()
+        );
+        return Ok(found_path);
+    }
+
+    // Priority 2: Default to current directory (but don't create it)
+    Ok(PathBuf::from(".claude/repositories.toml"))
+}
+
+/// Walk up the directory tree searching for existing .claude/repositories.toml file
+fn walk_up_for_repositories_toml(start_path: &Path) -> Option<PathBuf> {
+    let mut current = start_path.to_path_buf();
+
+    loop {
+        let repositories_toml = current.join(".claude/repositories.toml");
+        if repositories_toml.is_file() {
+            return Some(repositories_toml.canonicalize().unwrap_or(repositories_toml));
+        }
+
+        // Check if we've reached the filesystem root
+        if !current.pop() {
+            break;
+        }
+    }
+
+    None
+}
+
 /// Resolve skills storage directory
 /// Priority:
 /// 1. skills_directory from .fastskill.yaml (if exists)
