@@ -109,7 +109,7 @@ Two Linux binaries are available:
 **Recommended: Use the musl (static) binary for maximum compatibility:**
 
 ```bash
-VERSION="0.8.0"  # Replace with latest version
+VERSION="0.8.6"  # Replace with latest version
 wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-musl.tar.gz
 tar -xzf fastskill-x86_64-unknown-linux-musl.tar.gz
 sudo mv fastskill /usr/local/bin/
@@ -119,7 +119,7 @@ fastskill --version
 **For FIPS/compliance environments requiring dynamic linking:**
 
 ```bash
-VERSION="0.8.0"  # Replace with latest version
+VERSION="0.8.6"  # Replace with latest version
 wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
 sudo mv fastskill /usr/local/bin/
