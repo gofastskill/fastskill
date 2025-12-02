@@ -2,7 +2,7 @@
 
 Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
-[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/release.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/release.yml)
+[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml)
 
 ## What is FastSkill?
 
@@ -44,7 +44,7 @@ FastSkill can be installed in several ways depending on your use case:
 
 ### CLI Installation
 
-**Quick Install**
+**Quick Install (Recommended)**
 
 Install FastSkill with a single command:
 
@@ -61,14 +61,12 @@ chmod +x install.sh
 ```
 
 The script automatically:
-
 - Detects your platform
-- Downloads the latest version (or specify a version: `./install.sh v0.7.8`)
+- Downloads the latest version (or specify a version: `./install.sh v0.6.8`)
 - Installs to `/usr/local/bin` (or `~/.local/bin` if sudo is unavailable)
 - Verifies the installation
 
 **Options:**
-
 - `--user`: Install to `~/.local/bin` instead of system directory
 - `--prefix DIR`: Install to a custom directory
 - `--force`: Overwrite existing installation
@@ -101,8 +99,27 @@ Download the pre-built binary for your platform from [GitHub Releases](https://g
 
 **Linux:**
 
+Two Linux binaries are available:
+
+| Binary | Best For | Compatibility |
+|--------|----------|---------------|
+| `fastskill-x86_64-unknown-linux-musl.tar.gz` | Containers, CI/CD, older distributions | Universal - works on any Linux (Ubuntu 18.04+, RHEL 7+, Alpine, etc.). Note: Built without git-support; use system git for git operations. |
+| `fastskill-x86_64-unknown-linux-gnu.tar.gz` | FIPS/compliance, full git2 support | Requires glibc 2.38+ (Ubuntu 24.04+, Fedora 39+). Includes native git integration. |
+
+**Recommended: Use the musl (static) binary for maximum compatibility:**
+
 ```bash
-VERSION="0.6.8"  # Replace with latest version
+VERSION="0.8.0"  # Replace with latest version
+wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-musl.tar.gz
+tar -xzf fastskill-x86_64-unknown-linux-musl.tar.gz
+sudo mv fastskill /usr/local/bin/
+fastskill --version
+```
+
+**For FIPS/compliance environments requiring dynamic linking:**
+
+```bash
+VERSION="0.8.0"  # Replace with latest version
 wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
 sudo mv fastskill /usr/local/bin/
@@ -110,7 +127,6 @@ fastskill --version
 ```
 
 **From Source:**
-
 ```bash
 cargo install fastskill
 # Or build from source
@@ -220,7 +236,7 @@ fastskill package --force --recursive # Package all skills recursively from nest
 
 FastSkill provides a unified repository system for managing all skill storage locations. Repositories can be:
 
-- **Public registries** (crates.io-style with Git index + S3 storage)
+- **Public registries** (HTTP-based index with S3 storage)
 - **Private registries** (enterprise/internal registries)
 - **Git repositories** (with marketplace.json for skill discovery)
 - **ZIP URL sources** (static hosting with marketplace.json)
@@ -248,6 +264,17 @@ The CLI resolves the skills directory using this priority:
 1. `skills_directory` from `.fastskill.yaml`
 2. Walk up directory tree to find existing `.claude/skills/`
 3. Default to `.claude/skills/` in current directory (doesn't auto-create)
+
+## Troubleshooting
+
+### Configuration Not Found
+
+If you see "Embedding configuration required but not found":
+
+1. Create `.fastskill.yaml` with embedding configuration (see Quick Start section)
+2. Set `OPENAI_API_KEY` environment variable
+
+**Note**: The error message may mention `fastskill init`, but that command is for skill authors only. For project setup, manually create `.fastskill.yaml` as shown in Quick Start.
 
 ### API Key Issues
 

@@ -244,11 +244,10 @@ pub struct SkillProjectToml {
 /// Metadata section for skill author information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataSection {
+    /// Required skill ID (must not contain slashes or scope, e.g., "my-skill")
+    pub id: String,
     /// Required semantic version (e.g., "1.0.0")
     pub version: String,
-    /// Optional skill name
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
     /// Optional skill description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

@@ -73,7 +73,11 @@ impl RegistryClient {
     fn get_index_url(&self, skill_id: &str) -> String {
         // Flat layout: use skill_id directly (e.g., "dev-user/test-skill")
         // index_url should be the base URL for the index (e.g., http://159.69.182.11:8080/index)
-        format!("{}/{}", self.config.index_url.trim_end_matches('/'), skill_id)
+        format!(
+            "{}/{}",
+            self.config.index_url.trim_end_matches('/'),
+            skill_id
+        )
     }
 
     /// Get skill information from registry

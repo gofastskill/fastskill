@@ -115,8 +115,8 @@ fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
 
 /// Display startup banner with ASCII art
 fn display_startup_banner() {
-    let version = crate::VERSION;
-    let version_line = format!("Version {}", version);
+    // TODO: Implement startup banner display
+    let _version = crate::VERSION;
 }
 
 /// FastSkill HTTP server
