@@ -19,8 +19,8 @@ fn test_init_creates_skill_project_toml_with_both_sections() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "my-skill".to_string(),
             version: "1.0.0".to_string(),
-            name: Some("my-skill".to_string()),
             description: Some("Test skill".to_string()),
             author: None,
             tags: None,
@@ -50,8 +50,8 @@ fn test_init_without_skill_md() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "test-skill".to_string(),
             version: "1.0.0".to_string(),
-            name: Some("test-skill".to_string()),
             description: None,
             author: None,
             tags: None,
@@ -95,8 +95,8 @@ capabilities: [testing]
     // The actual extraction logic is in init.rs
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "extracted-skill".to_string(),
             version: "2.0.0".to_string(), // From frontmatter
-            name: Some("extracted-skill".to_string()),
             description: Some("Extracted from frontmatter".to_string()),
             author: Some("Test Author".to_string()),
             tags: Some(vec!["test".to_string(), "example".to_string()]),
@@ -113,7 +113,7 @@ capabilities: [testing]
     let loaded = SkillProjectToml::load_from_file(&project_path).unwrap();
     let metadata = loaded.metadata.unwrap();
     assert_eq!(metadata.version, "2.0.0");
-    assert_eq!(metadata.name, Some("extracted-skill".to_string()));
+    // name field removed - name comes from SKILL.md frontmatter only
     assert_eq!(metadata.author, Some("Test Author".to_string()));
 }
 
@@ -124,8 +124,8 @@ fn test_package_command_uses_metadata_section() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "package-test".to_string(),
             version: "1.2.3".to_string(),
-            name: Some("package-test".to_string()),
             description: Some("Test for package command".to_string()),
             author: Some("Package Author".to_string()),
             tags: Some(vec!["package".to_string()]),
@@ -142,7 +142,7 @@ fn test_package_command_uses_metadata_section() {
     let metadata = loaded.metadata.unwrap();
 
     assert_eq!(metadata.version, "1.2.3");
-    assert_eq!(metadata.name, Some("package-test".to_string()));
+    // name field removed - name comes from SKILL.md frontmatter only
     // Package command should be able to use this metadata
 }
 
@@ -154,8 +154,8 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
     // Create skill-project.toml with metadata
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "package-test-skill".to_string(),
             version: "1.2.3".to_string(),
-            name: Some("package-test-skill".to_string()),
             description: Some("Test skill for package command".to_string()),
             author: Some("Package Author".to_string()),
             tags: Some(vec!["package".to_string(), "test".to_string()]),
@@ -172,7 +172,7 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
     let metadata = loaded.metadata.unwrap();
 
     assert_eq!(metadata.version, "1.2.3");
-    assert_eq!(metadata.name, Some("package-test-skill".to_string()));
+    // name field removed - name comes from SKILL.md frontmatter only
     assert_eq!(metadata.author, Some("Package Author".to_string()));
     assert_eq!(
         metadata.tags,

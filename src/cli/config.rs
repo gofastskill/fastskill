@@ -97,7 +97,11 @@ fn walk_up_for_repositories_toml(start_path: &Path) -> Option<PathBuf> {
     loop {
         let repositories_toml = current.join(".claude/repositories.toml");
         if repositories_toml.is_file() {
-            return Some(repositories_toml.canonicalize().unwrap_or(repositories_toml));
+            return Some(
+                repositories_toml
+                    .canonicalize()
+                    .unwrap_or(repositories_toml),
+            );
         }
 
         // Check if we've reached the filesystem root

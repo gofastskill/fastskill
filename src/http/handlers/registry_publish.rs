@@ -151,37 +151,34 @@ pub async fn publish_package(
     let package_data = package_data
         .ok_or_else(|| HttpError::BadRequest("No file provided in multipart form".to_string()))?;
 
-    // Extract package name and version from ZIP
-    let (package_name, version) = extract_skill_metadata_from_zip(&package_data)?;
+    // Extract id and version from ZIP (id comes from skill-project.toml)
+    let (id, version) = extract_skill_metadata_from_zip(&package_data)?;
 
-    // Apply scope from user account to package name
-    // Normalize package name (remove any existing scope, lowercase, replace spaces/underscores with hyphens)
-    let normalized_package_name = package_name
-        .to_lowercase()
-        .replace([' ', '_'], "-")
-        // Remove any existing scope prefix if present
-        .split('/')
-        .next_back()
-        .unwrap_or(&package_name)
-        .to_string();
+    // Combine user scope with id: scope/id (for response)
+    // id from skill-project.toml should not contain slashes
+    let skill_id = format!("{}/{}", user_scope, id);
 
-    // Combine user scope with package name: scope/package-name
-    let skill_id = format!("{}/{}", user_scope, normalized_package_name);
-
-    // Store in staging
+    // Store in staging (pass scope and id separately)
     tracing::info!(
-        "Storing package: skill_id={}, version={}, package_size={} bytes",
-        skill_id,
+        "Storing package: scope={}, id={}, version={}, package_size={} bytes",
+        user_scope,
+        id,
         version,
         package_data.len()
     );
 
     // Calculate the staging path that will be created
-    let staging_path = staging_manager.get_staging_path(&skill_id, &version);
+    let staging_path = staging_manager.get_staging_path(&user_scope, &id, &version);
     tracing::info!("Calculated staging path: {}", staging_path.display());
 
     let (_, job_id) = staging_manager
-        .store_package(&skill_id, &version, &package_data, uploaded_by.as_deref())
+        .store_package(
+            &user_scope,
+            &id,
+            &version,
+            &package_data,
+            uploaded_by.as_deref(),
+        )
         .await
         .map_err(|e| {
             // Log detailed error information on server side for debugging
@@ -360,15 +357,17 @@ pub async fn get_publish_status(
 }
 
 /// Extract skill_id and version from ZIP package
-/// Priority: SKILL.md frontmatter > skill-project.toml > default "1.0.0"
+/// id is mandatory from skill-project.toml
+/// version priority: skill-project.toml > SKILL.md frontmatter > default "1.0.0"
 fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, String)> {
+    use crate::core::manifest::MetadataSection;
     use std::io::Cursor;
 
     let cursor = Cursor::new(zip_data);
     let mut archive = ZipArchive::new(cursor)
         .map_err(|e| HttpError::BadRequest(format!("Invalid ZIP file: {}", e)))?;
 
-    // Find and read SKILL.md
+    // Find and read SKILL.md and skill-project.toml
     let mut skill_content = String::new();
     let mut skill_project_content: Option<String> = None;
 
@@ -394,66 +393,50 @@ fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, Strin
         }
     }
 
-    if skill_content.is_empty() {
-        return Err(HttpError::BadRequest(
-            "SKILL.md not found in package".to_string(),
-        ));
-    }
-
-    // Parse frontmatter
-    let frontmatter = parse_yaml_frontmatter(&skill_content).map_err(|e| {
-        HttpError::BadRequest(format!("Failed to parse SKILL.md frontmatter: {}", e))
+    // skill-project.toml is mandatory
+    let skill_project_str = skill_project_content.ok_or_else(|| {
+        HttpError::BadRequest("skill-project.toml is required but not found in package".to_string())
     })?;
 
-    // Extract skill_id from name (normalize to lowercase, replace spaces with dashes)
-    let skill_id = frontmatter.name.to_lowercase().replace([' ', '_'], "-");
+    // Parse skill-project.toml to extract id (mandatory) and version
+    #[derive(serde::Deserialize)]
+    struct SkillProjectToml {
+        #[serde(default)]
+        metadata: Option<MetadataSection>,
+    }
 
-    // Determine version: priority SKILL.md frontmatter > skill-project.toml > default
-    let version = if !frontmatter.version.is_empty() && frontmatter.version != "1.0.0" {
-        // Use version from SKILL.md frontmatter if present and not default
-        frontmatter.version
-    } else if let Some(ref skill_project_str) = skill_project_content {
-        // Try to extract version from skill-project.toml
-        #[derive(serde::Deserialize)]
-        struct SkillProjectToml {
-            #[serde(default)]
-            metadata: Option<SkillProjectMetadata>,
-        }
+    let skill_project: SkillProjectToml = toml::from_str(&skill_project_str)
+        .map_err(|e| HttpError::BadRequest(format!("Failed to parse skill-project.toml: {}", e)))?;
 
-        #[derive(serde::Deserialize)]
-        struct SkillProjectMetadata {
-            version: Option<String>,
-        }
+    let metadata = skill_project.metadata.ok_or_else(|| {
+        HttpError::BadRequest("skill-project.toml must have a [metadata] section".to_string())
+    })?;
 
-        // Try to parse with [metadata] section first
-        if let Ok(skill_project) = toml::from_str::<SkillProjectToml>(skill_project_str) {
-            if let Some(metadata) = &skill_project.metadata {
-                if let Some(ref v) = metadata.version {
-                    if !v.is_empty() {
-                        return Ok((skill_id, v.clone()));
-                    }
-                }
+    // Extract id (mandatory)
+    if metadata.id.is_empty() {
+        return Err(HttpError::BadRequest(
+            "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
+        ));
+    }
+    let skill_id = metadata.id;
+
+    // Extract version: priority skill-project.toml > SKILL.md frontmatter > default
+    let version = if !metadata.version.is_empty() {
+        metadata.version
+    } else if !skill_content.is_empty() {
+        // Try to get version from SKILL.md frontmatter as fallback
+        let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
+        if let Some(ref f) = frontmatter {
+            if !f.version.is_empty() {
+                f.version.clone()
+            } else {
+                "1.0.0".to_string()
             }
-        }
-
-        // Fallback: try to parse as flat structure
-        if let Ok(metadata) = toml::from_str::<SkillProjectMetadata>(skill_project_str) {
-            if let Some(ref v) = metadata.version {
-                if !v.is_empty() {
-                    return Ok((skill_id, v.clone()));
-                }
-            }
-        }
-
-        // If skill-project.toml exists but no version found, use default
-        "1.0.0".to_string()
-    } else {
-        // No metadata files, use version from frontmatter (or default)
-        if frontmatter.version.is_empty() {
-            "1.0.0".to_string()
         } else {
-            frontmatter.version
+            "1.0.0".to_string()
         }
+    } else {
+        "1.0.0".to_string()
     };
 
     Ok((skill_id, version))
