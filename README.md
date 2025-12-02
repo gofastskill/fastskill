@@ -2,7 +2,7 @@
 
 Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
-[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml)
+[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/release.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/release.yml)
 
 ## What is FastSkill?
 
