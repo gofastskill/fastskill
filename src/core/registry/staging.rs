@@ -10,7 +10,14 @@ use uuid::Uuid;
 /// Staging metadata for a published package
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StagingMetadata {
+    /// Full skill ID in format scope/id (kept for backward compatibility)
     pub skill_id: String,
+    /// Scope (e.g., "dev-user")
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Package ID without scope (e.g., "test-skill")
+    #[serde(default)]
+    pub id: Option<String>,
     pub version: String,
     pub checksum: String,
     pub uploaded_at: DateTime<Utc>,
@@ -60,29 +67,25 @@ impl StagingManager {
     }
 
     /// Get staging path for a skill version
-    pub fn get_staging_path(&self, skill_id: &str, version: &str) -> PathBuf {
-        // skill_id is now in org/package format, so we need to handle the '/' properly
-        // Instead of sanitizing the whole skill_id, we split on '/' and sanitize each component
-        let mut path = self.staging_dir.clone();
-
-        // Split skill_id on '/' and add each component as a directory
-        for component in skill_id.split('/') {
-            path = path.join(sanitize_path(component));
-        }
-
-        // Add version as final directory
-        path.join(sanitize_path(version))
+    /// Accepts scope and id separately
+    pub fn get_staging_path(&self, scope: &str, id: &str, version: &str) -> PathBuf {
+        self.staging_dir
+            .join(sanitize_path(scope))
+            .join(sanitize_path(id))
+            .join(sanitize_path(version))
     }
 
     /// Store package in staging area
+    /// Accepts scope and id separately
     pub async fn store_package(
         &self,
-        skill_id: &str,
+        scope: &str,
+        id: &str,
         version: &str,
         package_data: &[u8],
         uploaded_by: Option<&str>,
     ) -> Result<(PathBuf, String), ServiceError> {
-        let staging_path = self.get_staging_path(skill_id, version);
+        let staging_path = self.get_staging_path(scope, id, version);
         tracing::info!(
             "StagingManager: creating directory: {}",
             staging_path.display()
@@ -123,10 +126,8 @@ impl StagingManager {
         hasher.update(package_data);
         let checksum = format!("sha256:{:x}", hasher.finalize());
 
-        // Use package name from skill_id (part after '/') for filename
-        // skill_id format is scope/package, so package_name is the part after '/'
-        let package_name = skill_id.split('/').nth(1).unwrap_or(skill_id);
-        let package_filename = format!("{}-{}.zip", package_name, version);
+        // Use id directly for package filename
+        let package_filename = format!("{}-{}.zip", id, version);
         let package_path = staging_path.join(&package_filename);
         tracing::info!(
             "StagingManager: writing package file: {}",
@@ -134,9 +135,12 @@ impl StagingManager {
         );
         fs::write(&package_path, package_data).map_err(ServiceError::Io)?;
 
-        // Create metadata
+        // Create metadata with scope and id stored separately
+        let full_skill_id = format!("{}/{}", scope, id);
         let metadata = StagingMetadata {
-            skill_id: skill_id.to_string(),
+            skill_id: full_skill_id.clone(),
+            scope: Some(scope.to_string()),
+            id: Some(id.to_string()),
             version: version.to_string(),
             checksum,
             uploaded_at: Utc::now(),
@@ -195,7 +199,23 @@ impl StagingManager {
             .load_metadata(job_id)?
             .ok_or_else(|| ServiceError::Custom(format!("Job {} not found", job_id)))?;
 
-        let staging_path = self.get_staging_path(&metadata.skill_id, &metadata.version);
+        // Extract scope and id from metadata
+        let (scope, id) = if let (Some(s), Some(i)) = (metadata.scope.clone(), metadata.id.clone())
+        {
+            (s, i)
+        } else {
+            // Fallback: extract from skill_id for backward compatibility
+            let parts: Vec<&str> = metadata.skill_id.split('/').collect();
+            if parts.len() >= 2 {
+                (parts[0].to_string(), parts[1..].join("/"))
+            } else {
+                return Err(ServiceError::Custom(format!(
+                    "Invalid skill_id format in metadata: {}",
+                    metadata.skill_id
+                )));
+            }
+        };
+        let staging_path = self.get_staging_path(&scope, &id, &metadata.version);
         let metadata_path = staging_path.join("metadata.json");
 
         let updated_metadata = StagingMetadata {
@@ -217,15 +237,25 @@ impl StagingManager {
             .load_metadata(job_id)?
             .ok_or_else(|| ServiceError::Custom(format!("Job {} not found", job_id)))?;
 
-        let staging_path = self.get_staging_path(&metadata.skill_id, &metadata.version);
-        // Use package name from skill_id (part after '/') for filename
-        // This must match the filename used in store_package
-        let package_name = metadata
-            .skill_id
-            .split('/')
-            .nth(1)
-            .unwrap_or(&metadata.skill_id);
-        let package_filename = format!("{}-{}.zip", package_name, metadata.version);
+        // Extract scope and id from metadata
+        let (scope, id) = if let (Some(s), Some(i)) = (metadata.scope.clone(), metadata.id.clone())
+        {
+            (s, i)
+        } else {
+            // Fallback: extract from skill_id for backward compatibility
+            let parts: Vec<&str> = metadata.skill_id.split('/').collect();
+            if parts.len() >= 2 {
+                (parts[0].to_string(), parts[1..].join("/"))
+            } else {
+                return Err(ServiceError::Custom(format!(
+                    "Invalid skill_id format in metadata: {}",
+                    metadata.skill_id
+                )));
+            }
+        };
+        let staging_path = self.get_staging_path(&scope, &id, &metadata.version);
+        // Use id directly for filename (must match store_package)
+        let package_filename = format!("{}-{}.zip", id, metadata.version);
         let package_path = staging_path.join(&package_filename);
 
         if package_path.exists() {
@@ -257,7 +287,13 @@ mod tests {
 
         let package_data = b"test package data";
         let (staging_path, job_id) = manager
-            .store_package("test-skill", "1.0.0", package_data, Some("user1"))
+            .store_package(
+                "test-scope",
+                "test-skill",
+                "1.0.0",
+                package_data,
+                Some("user1"),
+            )
             .await
             .unwrap();
 
@@ -265,7 +301,9 @@ mod tests {
         assert!(staging_path.join("metadata.json").exists());
 
         let metadata = manager.load_metadata(&job_id).unwrap().unwrap();
-        assert_eq!(metadata.skill_id, "test-skill");
+        assert_eq!(metadata.skill_id, "test-scope/test-skill");
+        assert_eq!(metadata.scope, Some("test-scope".to_string()));
+        assert_eq!(metadata.id, Some("test-skill".to_string()));
         assert_eq!(metadata.version, "1.0.0");
         assert_eq!(metadata.status, StagingStatus::Pending);
         assert_eq!(metadata.uploaded_by, Some("user1".to_string()));

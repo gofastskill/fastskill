@@ -1,6 +1,6 @@
 [package]
 name = "fastskill"
-version = "0.7.14"
+version = "0.8.6"
 edition = "2021"
 description = "FastSkill is a AI Skills management tool"
 authors = ["aroff"]
@@ -101,17 +101,12 @@ semver = "1.0"
 aws-sdk-s3 = { version = "1" }
 aws-config = { version = "1" }
 
-# Python bindings (optional, Linux-only)
-[target.'cfg(target_os = "linux")'.dependencies]
-pyo3 = { version = "0.24", features = ["extension-module"], optional = true }
-
 [dev-dependencies]
 tempfile = "3.0"
 
 
 [features]
 default = ["filesystem-storage", "hot-reload", "git-support"]
-python-bindings = ["pyo3"]
 
 # Storage backends
 filesystem-storage = []

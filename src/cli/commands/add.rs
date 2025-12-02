@@ -144,6 +144,7 @@ async fn add_from_zip(
     validate_skill_structure(&skill_path)?;
 
     // Read and parse SKILL.md to create skill definition
+    // Skill ID will be read from skill-project.toml (mandatory)
     let skill_def = create_skill_from_path(&skill_path)?;
 
     // Copy skill to skills storage directory
@@ -253,9 +254,10 @@ async fn add_from_folder(
     validate_skill_structure(folder_path)?;
 
     // Read and parse SKILL.md to create skill definition
+    // Skill ID will be read from skill-project.toml (mandatory)
     let skill_def = create_skill_from_path(folder_path)?;
 
-    // Copy skill to skills storage directory
+    // Copy skill to skills storage directory (local skills stored at id path, no scope)
     let skill_storage_dir = service
         .config()
         .skill_storage_path
@@ -396,9 +398,10 @@ async fn add_from_git(
         validate_skill_structure(&skill_path)?;
 
         // Read and parse SKILL.md to create skill definition
+        // Skill ID will be read from skill-project.toml (mandatory)
         let skill_def = create_skill_from_path(&skill_path)?;
 
-        // Copy skill to skills storage directory
+        // Copy skill to skills storage directory (local skills stored at id path, no scope)
         let skill_storage_dir = service
             .config()
             .skill_storage_path
@@ -518,7 +521,21 @@ async fn add_from_registry(
     info!("Adding skill from registry: {}", skill_id_input);
 
     // Parse skill ID and version
-    let (skill_id, version_opt) = parse_skill_id(skill_id_input);
+    let (skill_id_full, version_opt) = parse_skill_id(skill_id_input);
+
+    // Extract scope and id from skill_id (format: scope/id or just id)
+    let (scope, expected_id) = if let Some(slash_pos) = skill_id_full.find('/') {
+        let s = &skill_id_full[..slash_pos];
+        let i = &skill_id_full[slash_pos + 1..];
+        (s.to_string(), i.to_string())
+    } else {
+        // No scope provided, use "default" or error?
+        // For now, treat as unscoped (local skill)
+        return Err(CliError::Config(format!(
+            "Registry skill ID must be in format 'scope/id', got: {}",
+            skill_id_full
+        )));
+    };
 
     // Load repository configuration from repositories.toml (searches up directory tree)
     let repos_path = crate::cli::config::get_repositories_toml_path()
@@ -559,14 +576,14 @@ async fn add_from_registry(
     } else {
         // Get all versions and pick the latest
         let versions = repo_client
-            .get_versions(&skill_id)
+            .get_versions(&skill_id_full)
             .await
             .map_err(|e| CliError::Config(format!("Failed to get versions: {}", e)))?;
 
         if versions.is_empty() {
             return Err(CliError::Config(format!(
                 "No versions found for skill '{}' in repository",
-                skill_id
+                skill_id_full
             )));
         }
 
@@ -581,32 +598,34 @@ async fn add_from_registry(
 
     // Get skill metadata to verify it exists
     let _skill_metadata = repo_client
-        .get_skill(&skill_id, Some(&version))
+        .get_skill(&skill_id_full, Some(&version))
         .await
         .map_err(|e| CliError::Config(format!("Failed to get skill: {}", e)))?
         .ok_or_else(|| {
             CliError::Config(format!(
                 "Skill '{}' version '{}' not found in repository",
-                skill_id, version
+                skill_id_full, version
             ))
         })?;
 
     // Download package
-    info!("Downloading {}@{} from repository...", skill_id, version);
+    info!(
+        "Downloading {}@{} from repository...",
+        skill_id_full, version
+    );
     let zip_data = repo_client
-        .download(&skill_id, &version)
+        .download(&skill_id_full, &version)
         .await
         .map_err(|e| CliError::Config(format!("Failed to download package: {}", e)))?;
 
     // Extract to temporary directory
+    // The skill ID will be read from skill-project.toml in the extracted package
     let temp_dir = TempDir::new().map_err(CliError::Io)?;
-    let extract_path = temp_dir.path();
+    let extract_path = temp_dir.path().join("extracted");
+    fs::create_dir_all(&extract_path).map_err(CliError::Io)?;
 
     // Write ZIP to temp file
-    // Normalize skill_id by URL-encoding '/' to avoid creating subdirectories
-    // Using %2F (URL encoding) prevents collisions: dev-user/test vs dev/user-test
-    let normalized_skill_id = skill_id.replace('/', "%2F");
-    let temp_zip = extract_path.join(format!("{}-{}.zip", normalized_skill_id, version));
+    let temp_zip = temp_dir.path().join(format!("package-{}.zip", version));
     std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
 
     // Extract ZIP
@@ -634,16 +653,26 @@ async fn add_from_registry(
     }
 
     // Find SKILL.md in extracted directory
-    let skill_path = find_skill_in_directory(extract_path)?;
+    let skill_path = find_skill_in_directory(&extract_path)?;
     validate_skill_structure(&skill_path)?;
 
     // Read and parse SKILL.md to create skill definition
+    // Skill ID will be read from skill-project.toml in the extracted package (mandatory)
     let skill_def = create_skill_from_path(&skill_path)?;
 
-    // Copy skill to skills storage directory
+    // Verify that the extracted id matches the expected id from the registry reference
+    if skill_def.id.as_str() != expected_id {
+        return Err(CliError::Config(format!(
+            "Skill ID mismatch: expected '{}' from registry reference '{}', but found '{}' in skill-project.toml",
+            expected_id, skill_id_full, skill_def.id.as_str()
+        )));
+    }
+
+    // Copy skill to skills storage directory at scope/id path
     let skill_storage_dir = service
         .config()
         .skill_storage_path
+        .join(&scope)
         .join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
@@ -736,6 +765,41 @@ async fn add_from_registry(
     Ok(())
 }
 
+/// Read skill ID from skill-project.toml (mandatory)
+fn read_skill_id_from_toml(skill_path: &Path) -> CliResult<String> {
+    let skill_project_path = skill_path.join("skill-project.toml");
+
+    if !skill_project_path.exists() {
+        return Err(CliError::Validation(format!(
+            "skill-project.toml is required but not found in: {}. Run 'fastskill init' to create it.",
+            skill_path.display()
+        )));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SkillProjectToml {
+        metadata: Option<fastskill::core::manifest::MetadataSection>,
+    }
+
+    let content = fs::read_to_string(&skill_project_path)
+        .map_err(|e| CliError::Validation(format!("Failed to read skill-project.toml: {}", e)))?;
+
+    let project: SkillProjectToml = toml::from_str(&content)
+        .map_err(|e| CliError::Validation(format!("Failed to parse skill-project.toml: {}", e)))?;
+
+    let metadata = project.metadata.ok_or_else(|| {
+        CliError::Validation("skill-project.toml must have a [metadata] section".to_string())
+    })?;
+
+    if metadata.id.is_empty() {
+        Err(CliError::Validation(
+            "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
+        ))
+    } else {
+        Ok(metadata.id)
+    }
+}
+
 /// Find SKILL.md in a directory (could be at root or in subdirectory)
 fn find_skill_in_directory(dir: &Path) -> CliResult<PathBuf> {
     // Check root
@@ -760,7 +824,10 @@ fn find_skill_in_directory(dir: &Path) -> CliResult<PathBuf> {
 }
 
 /// Create a skill definition from a path containing SKILL.md
+/// The skill ID is read from skill-project.toml (mandatory)
 pub fn create_skill_from_path(skill_path: &Path) -> CliResult<SkillDefinition> {
+    // Read skill ID from skill-project.toml (mandatory)
+    let skill_id_str = read_skill_id_from_toml(skill_path)?;
     let skill_file = skill_path.join("SKILL.md");
     let content = fs::read_to_string(&skill_file).map_err(CliError::Io)?;
 
@@ -768,13 +835,11 @@ pub fn create_skill_from_path(skill_path: &Path) -> CliResult<SkillDefinition> {
     let frontmatter = fastskill::core::metadata::parse_yaml_frontmatter(&content)
         .map_err(|e| CliError::Validation(format!("Failed to parse SKILL.md: {}", e)))?;
 
-    // Use directory name as skill ID
-    let skill_id_str = skill_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| CliError::Validation("Invalid skill directory name".to_string()))?;
-    let skill_id = fastskill::SkillId::new(skill_id_str.to_string())
-        .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id_str)))?;
+    // Validate and create skill ID
+    let skill_id_str_clone = skill_id_str.clone();
+    let skill_id = fastskill::SkillId::new(skill_id_str).map_err(|_| {
+        CliError::Validation(format!("Invalid skill ID format: {}", skill_id_str_clone))
+    })?;
 
     // Create skill definition from parsed frontmatter
     let mut skill = SkillDefinition::new(

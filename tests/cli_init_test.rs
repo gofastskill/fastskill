@@ -24,9 +24,12 @@ fn get_binary_path() -> String {
 #[test]
 fn test_init_command_in_empty_directory() {
     let temp_dir = TempDir::new().unwrap();
+    // Create a subdirectory with a valid skill ID name
+    let skill_dir = temp_dir.path().join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
     let original_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
 
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    std::env::set_current_dir(&skill_dir).unwrap();
 
     let binary = get_binary_path();
     let output = if binary == "cargo" {
@@ -37,14 +40,14 @@ fn test_init_command_in_empty_directory() {
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
-            .current_dir(temp_dir.path())
+            .current_dir(&skill_dir)
             .args(&["init", "--yes"])
             .output()
             .expect("Failed to execute init command")
     };
 
     // Verify skill-project.toml was created (check before changing directory)
-    let project_toml = temp_dir.path().join("skill-project.toml");
+    let project_toml = skill_dir.join("skill-project.toml");
 
     // Debug: check if command succeeded
     if !output.status.success() {
@@ -82,9 +85,12 @@ fn test_init_command_in_empty_directory() {
 #[test]
 fn test_init_command_with_existing_file() {
     let temp_dir = TempDir::new().unwrap();
+    // Create a subdirectory with a valid skill ID name
+    let skill_dir = temp_dir.path().join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
     let original_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
 
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    std::env::set_current_dir(&skill_dir).unwrap();
 
     // Create existing skill-project.toml
     fs::write("skill-project.toml", "[metadata]\nversion = \"0.1.0\"\n").unwrap();
@@ -98,7 +104,7 @@ fn test_init_command_with_existing_file() {
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
-            .current_dir(temp_dir.path())
+            .current_dir(&skill_dir)
             .args(&["init", "--yes"])
             .output()
             .expect("Failed to execute init command")
@@ -132,9 +138,12 @@ fn test_init_command_with_existing_file() {
 #[test]
 fn test_init_command_with_force_flag() {
     let temp_dir = TempDir::new().unwrap();
+    // Create a subdirectory with a valid skill ID name
+    let skill_dir = temp_dir.path().join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
     let original_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
 
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    std::env::set_current_dir(&skill_dir).unwrap();
 
     // Create existing skill-project.toml
     fs::write("skill-project.toml", "[metadata]\nversion = \"0.1.0\"\n").unwrap();
@@ -158,7 +167,7 @@ fn test_init_command_with_force_flag() {
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
-            .current_dir(temp_dir.path())
+            .current_dir(&skill_dir)
             .args(&["init", "--yes", "--force", "--version", "2.0.0"])
             .output()
             .expect("Failed to execute init command")
@@ -196,7 +205,7 @@ fn test_init_command_with_force_flag() {
     );
 
     // Verify file was overwritten with new version
-    let project_toml = temp_dir.path().join("skill-project.toml");
+    let project_toml = skill_dir.join("skill-project.toml");
     assert!(
         project_toml.exists(),
         "File should exist at: {:?}",

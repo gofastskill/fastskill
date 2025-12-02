@@ -278,6 +278,23 @@ impl ValidationWorker {
             .load_metadata(job_id)?
             .ok_or_else(|| ServiceError::Custom(format!("Job {} not found", job_id)))?;
 
+        // Extract scope and id from metadata
+        let (scope, id) = if let (Some(s), Some(i)) = (metadata.scope.clone(), metadata.id.clone())
+        {
+            (s, i)
+        } else {
+            // Fallback: extract from skill_id for backward compatibility
+            let parts: Vec<&str> = metadata.skill_id.split('/').collect();
+            if parts.len() >= 2 {
+                (parts[0].to_string(), parts[1..].join("/"))
+            } else {
+                return Err(ServiceError::Custom(format!(
+                    "Invalid skill_id format in metadata: {}",
+                    metadata.skill_id
+                )));
+            }
+        };
+
         // Get package path
         let package_path = staging_manager
             .get_package_path(job_id)?
@@ -300,14 +317,7 @@ impl ValidationWorker {
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| ServiceError::Custom("Invalid package filename".to_string()))?;
 
-            // Extract scope from the user who uploaded the package
-            // Scope is the part before '/' in uploaded_by, or the entire uploaded_by if no '/'
-            let scope = metadata
-                .uploaded_by
-                .as_ref()
-                .map(|u| u.split('/').next().unwrap_or(u).to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-
+            // Use scope from metadata for blob storage path
             let storage_path = format!("skills/{}/{}", scope, package_filename);
             let package_data = std::fs::read(&package_path).map_err(ServiceError::Io)?;
 
@@ -358,14 +368,15 @@ impl ValidationWorker {
                 ServiceError::Validation(format!("Failed to parse SKILL.md: {}", e))
             })?;
 
-            // Get version metadata
+            // Get version metadata (use full skill_id in format scope/id)
+            let full_skill_id = format!("{}/{}", scope, id);
             let version_metadata =
-                get_version_metadata(&metadata.skill_id, &package_path, download_url)
+                get_version_metadata(&full_skill_id, &package_path, download_url)
                     .map_err(|e| ServiceError::Custom(format!("Failed to get metadata: {}", e)))?;
 
             // Create VersionEntry for IndexManager
             let version_entry = VersionEntry {
-                name: metadata.skill_id.clone(),
+                name: full_skill_id.clone(),
                 vers: metadata.version.clone(),
                 deps: version_metadata.deps.clone(),
                 cksum: version_metadata.cksum.clone(),
@@ -382,20 +393,20 @@ impl ValidationWorker {
                     license: None,
                     repository: None,
                 }),
-                scoped_name: if metadata.skill_id.contains('@') || metadata.skill_id.contains(':') {
-                    Some(metadata.skill_id.clone())
+                scoped_name: if full_skill_id.contains('@') || full_skill_id.contains(':') {
+                    Some(full_skill_id.clone())
                 } else {
                     None
                 },
             };
 
-            // Use IndexManager for atomic update
+            // Use IndexManager for atomic update (skill_id in format scope/id)
             let index_manager = IndexManager::new(registry_index_path.clone());
-            index_manager.atomic_update(&metadata.skill_id, &metadata.version, &version_entry)?;
+            index_manager.atomic_update(&full_skill_id, &metadata.version, &version_entry)?;
 
             info!(
                 "Updated registry index for {} v{}",
-                metadata.skill_id, metadata.version
+                full_skill_id, metadata.version
             );
         } else {
             info!("Skipping registry index update (not configured)");

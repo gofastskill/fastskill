@@ -72,10 +72,6 @@ pub use core::vector_index::{
     IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl,
 };
 
-// Python bindings
-#[cfg(feature = "python-bindings")]
-pub mod python;
-
 // Re-export commonly used types
 pub use async_trait::async_trait;
 pub use serde::{Deserialize, Serialize};

@@ -7,8 +7,8 @@ use std::collections::HashMap;
 fn test_skill_project_toml_serialization_with_metadata_only() {
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "my-skill".to_string(),
             version: "1.0.0".to_string(),
-            name: Some("my-skill".to_string()),
             description: Some("A test skill".to_string()),
             author: Some("Test Author".to_string()),
             tags: Some(vec!["test".to_string(), "example".to_string()]),
@@ -21,7 +21,7 @@ fn test_skill_project_toml_serialization_with_metadata_only() {
     let toml_string = toml::to_string_pretty(&project).unwrap();
 
     assert!(toml_string.contains("version = \"1.0.0\""));
-    assert!(toml_string.contains("name = \"my-skill\""));
+    assert!(toml_string.contains("id = \"my-skill\""));
     assert!(toml_string.contains("description = \"A test skill\""));
     assert!(toml_string.contains("[metadata]"));
 }
@@ -66,8 +66,8 @@ fn test_skill_project_toml_serialization_with_both_sections() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
+            id: "my-skill".to_string(),
             version: "1.0.0".to_string(),
-            name: Some("my-skill".to_string()),
             description: None,
             author: None,
             tags: None,
@@ -89,8 +89,8 @@ fn test_skill_project_toml_serialization_with_both_sections() {
 fn test_skill_project_toml_deserialization() {
     let toml_content = r#"
 [metadata]
+id = "test-skill"
 version = "1.0.0"
-name = "test-skill"
 description = "Test description"
 
 [dependencies]
@@ -103,7 +103,7 @@ skill2 = { source = "enterprise", version = "2.0.0" }
     assert!(project.metadata.is_some());
     let metadata = project.metadata.unwrap();
     assert_eq!(metadata.version, "1.0.0");
-    assert_eq!(metadata.name, Some("test-skill".to_string()));
+    // name field removed - name comes from SKILL.md frontmatter only
 
     assert!(project.dependencies.is_some());
     let deps = project.dependencies.unwrap();

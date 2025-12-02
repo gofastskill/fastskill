@@ -987,21 +987,26 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
         CliError::Validation(format!("Failed to parse SKILL.md frontmatter: {}", e))
     })?;
 
-    // Use directory name as ID (always)
-    let id = skill_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| {
-            CliError::Validation("Cannot determine skill ID from directory name".to_string())
-        })?
-        .to_string();
-
-    // Apply priority: skill-project.toml > SKILL.md frontmatter
-    let name = skill_metadata
+    // Get skill ID from skill-project.toml (mandatory)
+    let id = skill_metadata
         .as_ref()
-        .and_then(|m| m.name.clone())
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| frontmatter.name.clone());
+        .ok_or_else(|| {
+            CliError::Validation(format!(
+                "skill-project.toml is required but not found in: {}",
+                skill_dir.display()
+            ))
+        })?
+        .id
+        .clone();
+
+    if id.is_empty() {
+        return Err(CliError::Validation(
+            "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
+        ));
+    }
+
+    // Read name from SKILL.md frontmatter only (for display purposes)
+    let name = frontmatter.name.clone();
 
     let description = skill_metadata
         .as_ref()

@@ -167,6 +167,12 @@ impl SkillId {
                 "Skill ID too long (max 255 characters)".to_string(),
             ));
         }
+        // Reject forward slashes (scope should be handled separately)
+        if id.contains('/') {
+            return Err(ServiceError::Validation(
+                "Skill ID cannot contain forward slashes. Scope should be handled separately during publishing.".to_string(),
+            ));
+        }
         // Basic validation for allowed characters (alphanumeric, dash, underscore)
         if !id
             .chars()

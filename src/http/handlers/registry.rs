@@ -407,7 +407,7 @@ pub async fn serve_index_file(
     Path(skill_id): Path<String>,
 ) -> HttpResult<axum::response::Response> {
     let config = state.service.config();
-    
+
     let registry_index_path = config.registry_index_path.as_ref().ok_or_else(|| {
         HttpError::InternalServerError("Registry index path not configured".to_string())
     })?;
@@ -415,12 +415,12 @@ pub async fn serve_index_file(
     // Use flat layout: skill_id is already in format "scope/skill-name"
     // Security: Normalize paths to prevent directory traversal
     let index_file_path = registry_index_path.join(&skill_id);
-    
+
     // Canonicalize both paths to resolve any .. or . components
     let canonical_registry_path = registry_index_path.canonicalize().map_err(|e| {
         HttpError::InternalServerError(format!("Failed to canonicalize registry path: {}", e))
     })?;
-    
+
     let canonical_index_path = index_file_path.canonicalize().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             HttpError::NotFound(format!("Index file not found for skill: {}", skill_id))
@@ -439,24 +439,20 @@ pub async fn serve_index_file(
 
     // Read the index file (use canonical path)
     match tokio::fs::read_to_string(&canonical_index_path).await {
-        Ok(content) => {
-            Ok(axum::response::Response::builder()
-                .status(axum::http::StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(axum::body::Body::from(content))
-                .map_err(|e| HttpError::InternalServerError(format!("Failed to build response: {}", e)))?)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            Err(HttpError::NotFound(format!(
-                "Index file not found for skill: {}",
-                skill_id
-            )))
-        }
-        Err(e) => {
-            Err(HttpError::InternalServerError(format!(
-                "Failed to read index file: {}",
-                e
-            )))
-        }
+        Ok(content) => Ok(axum::response::Response::builder()
+            .status(axum::http::StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from(content))
+            .map_err(|e| {
+                HttpError::InternalServerError(format!("Failed to build response: {}", e))
+            })?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(HttpError::NotFound(format!(
+            "Index file not found for skill: {}",
+            skill_id
+        ))),
+        Err(e) => Err(HttpError::InternalServerError(format!(
+            "Failed to read index file: {}",
+            e
+        ))),
     }
 }

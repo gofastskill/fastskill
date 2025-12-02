@@ -61,14 +61,11 @@ pub fn package_skill_with_id(
             })?
     };
 
-    // Normalize skill ID for filename (replace slashes with hyphens)
-    let normalized_id = skill_id.replace('/', "-");
-
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir).map_err(ServiceError::Io)?;
 
-    // Create ZIP file path
-    let zip_filename = format!("{}-{}.zip", normalized_id, version);
+    // Create ZIP file path (skill_id should not contain slashes)
+    let zip_filename = format!("{}-{}.zip", skill_id, version);
     let zip_path = output_dir.join(&zip_filename);
 
     // Create ZIP file

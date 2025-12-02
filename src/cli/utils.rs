@@ -31,10 +31,9 @@ pub fn is_skill_id(input: &str) -> bool {
     // Supports both unscoped (skillid) and scoped (scope/skillid) formats
     // This regex is a compile-time constant pattern, so it should never fail
     #[allow(clippy::expect_used)]
-    let skill_id_pattern = regex::Regex::new(
-        r"^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)?(@[0-9]+\.[0-9]+(\.[0-9]+)?.*)?$"
-    )
-    .expect("Invalid regex pattern");
+    let skill_id_pattern =
+        regex::Regex::new(r"^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)?(@[0-9]+\.[0-9]+(\.[0-9]+)?.*)?$")
+            .expect("Invalid regex pattern");
     skill_id_pattern.is_match(input)
 }
 

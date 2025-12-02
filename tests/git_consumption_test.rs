@@ -108,7 +108,7 @@ fn test_repository_type_enum_completeness() {
     // Verify all repository types are available
     let types = vec![
         RepositoryType::GitMarketplace,
-        RepositoryType::GitRegistry,
+        RepositoryType::HttpRegistry,
         RepositoryType::ZipUrl,
         RepositoryType::Local,
     ];
@@ -118,8 +118,8 @@ fn test_repository_type_enum_completeness() {
         .iter()
         .any(|t| matches!(t, RepositoryType::GitMarketplace)));
 
-    // Verify GitRegistry is present (for crates.io-style Git registries)
+    // Verify HttpRegistry is present (for HTTP-based registries with index)
     assert!(types
         .iter()
-        .any(|t| matches!(t, RepositoryType::GitRegistry)));
+        .any(|t| matches!(t, RepositoryType::HttpRegistry)));
 }
