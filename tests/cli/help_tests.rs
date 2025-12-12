@@ -1,5 +1,7 @@
 //! Tests for CLI help functionality
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use std::process::Command;
 
 fn get_binary_path() -> String {
@@ -8,9 +10,7 @@ fn get_binary_path() -> String {
 
 #[test]
 fn test_help_with_no_args() {
-    let output = Command::new(get_binary_path())
-        .output()
-        .expect("Failed to execute command");
+    let output = Command::new(get_binary_path()).output().expect("Failed to execute command");
 
     // CLI requires arguments, so it shows help (exit code 1, but help is shown)
     let stdout = String::from_utf8_lossy(&output.stdout);

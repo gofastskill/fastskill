@@ -49,8 +49,30 @@ pub fn package_skill_with_id(
         )));
     }
 
-    // Get skill ID - use override if provided, otherwise extract from directory name
+    // Try to read metadata from skill-project.toml if it exists (T042, T043)
+    let skill_project_toml_path = skill_path.join("skill-project.toml");
+    let (skill_id, package_version) = if skill_project_toml_path.exists() {
+        match crate::core::manifest::SkillProjectToml::load_from_file(&skill_project_toml_path) {
+            Ok(project) => {
+                // Extract skill ID and version from metadata
+                let id = project.metadata.as_ref().and_then(|m| m.id.as_ref()).cloned();
+                let ver = project.metadata.as_ref().and_then(|m| m.version.as_ref()).cloned();
+                // Dependencies are available in project.dependencies if needed (T043, T044)
+                (id, ver)
+            }
+            Err(_) => {
+                // If parsing fails, fall back to directory name and passed version
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
+    };
+
+    // Get skill ID - priority: override > skill-project.toml > directory name
     let skill_id = if let Some(id) = skill_id_override {
+        id.to_string()
+    } else if let Some(id) = skill_id {
         id
     } else {
         skill_path
@@ -59,13 +81,17 @@ pub fn package_skill_with_id(
             .ok_or_else(|| {
                 ServiceError::Custom("Cannot determine skill ID from directory name".to_string())
             })?
+            .to_string()
     };
+
+    // Get version - priority: skill-project.toml > passed version parameter
+    let package_version = package_version.unwrap_or_else(|| version.to_string());
 
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir).map_err(ServiceError::Io)?;
 
     // Create ZIP file path (skill_id should not contain slashes)
-    let zip_filename = format!("{}-{}.zip", skill_id, version);
+    let zip_filename = format!("{}-{}.zip", skill_id, package_version);
     let zip_path = output_dir.join(&zip_filename);
 
     // Create ZIP file
@@ -98,8 +124,7 @@ pub fn package_skill_with_id(
         // Read file content
         let mut file_content = Vec::new();
         let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
-        file.read_to_end(&mut file_content)
-            .map_err(ServiceError::Io)?;
+        file.read_to_end(&mut file_content).map_err(ServiceError::Io)?;
 
         // Add file to ZIP
         zip.start_file(relative_path_str.as_ref(), options)
@@ -110,8 +135,8 @@ pub fn package_skill_with_id(
     // Get git commit if available
     let git_commit = get_git_commit().ok();
 
-    // Create build metadata (use original skill_id, not normalized)
-    let build_metadata = create_build_metadata(skill_id, version, git_commit.as_deref());
+    // Create build metadata (use skill_id and package_version from skill-project.toml if available)
+    let build_metadata = create_build_metadata(&skill_id, &package_version, git_commit.as_deref());
 
     // Add BUILD_INFO.json to ZIP
     let build_info_json = serde_json::to_string_pretty(&build_metadata)
@@ -119,8 +144,7 @@ pub fn package_skill_with_id(
 
     zip.start_file("BUILD_INFO.json", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add BUILD_INFO.json: {}", e)))?;
-    zip.write_all(build_info_json.as_bytes())
-        .map_err(ServiceError::Io)?;
+    zip.write_all(build_info_json.as_bytes()).map_err(ServiceError::Io)?;
 
     // Finish ZIP first (without checksum) to calculate checksum
     zip.finish()
@@ -159,8 +183,7 @@ pub fn package_skill_with_id(
 
         let mut file_content = Vec::new();
         let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
-        file.read_to_end(&mut file_content)
-            .map_err(ServiceError::Io)?;
+        file.read_to_end(&mut file_content).map_err(ServiceError::Io)?;
 
         zip.start_file(relative_path_str.as_ref(), options)
             .map_err(|e| ServiceError::Custom(format!("Failed to add file to ZIP: {}", e)))?;
@@ -175,14 +198,12 @@ pub fn package_skill_with_id(
 
     zip.start_file("BUILD_INFO.json", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add BUILD_INFO.json: {}", e)))?;
-    zip.write_all(build_info_json.as_bytes())
-        .map_err(ServiceError::Io)?;
+    zip.write_all(build_info_json.as_bytes()).map_err(ServiceError::Io)?;
 
     // Add CHECKSUM.sha256 (checksum of ZIP before this file was added)
     zip.start_file("CHECKSUM.sha256", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add CHECKSUM.sha256: {}", e)))?;
-    zip.write_all(checksum.as_bytes())
-        .map_err(ServiceError::Io)?;
+    zip.write_all(checksum.as_bytes()).map_err(ServiceError::Io)?;
 
     zip.finish().map_err(|e| {
         ServiceError::Custom(format!("Failed to finalize ZIP with checksum: {}", e))
@@ -233,54 +254,40 @@ pub fn calculate_checksum(file_path: &Path) -> Result<String, ServiceError> {
 
 /// Get git commit hash
 fn get_git_commit() -> Result<String, ServiceError> {
-    #[cfg(feature = "git-support")]
-    {
-        use git2::Repository;
+    use std::process::Command;
 
-        let repo = Repository::open(".")
-            .map_err(|e| ServiceError::Custom(format!("Failed to open git repository: {}", e)))?;
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| ServiceError::Custom(format!("Failed to execute git: {}", e)))?;
 
-        let head = repo
-            .head()
-            .map_err(|e| ServiceError::Custom(format!("Failed to get HEAD: {}", e)))?;
-
-        let commit = head
-            .peel_to_commit()
-            .map_err(|e| ServiceError::Custom(format!("Failed to get commit: {}", e)))?;
-
-        Ok(commit.id().to_string())
+    if !output.status.success() {
+        return Err(ServiceError::Custom(
+            "Failed to get git commit hash".to_string(),
+        ));
     }
 
-    #[cfg(not(feature = "git-support"))]
-    {
-        Err(ServiceError::Custom("Git support not enabled".to_string()))
-    }
+    let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(commit_hash)
 }
 
 /// Get git branch name
 fn get_git_branch() -> Result<String, ServiceError> {
-    #[cfg(feature = "git-support")]
-    {
-        use git2::Repository;
+    use std::process::Command;
 
-        let repo = Repository::open(".")
-            .map_err(|e| ServiceError::Custom(format!("Failed to open git repository: {}", e)))?;
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .map_err(|e| ServiceError::Custom(format!("Failed to execute git: {}", e)))?;
 
-        let head = repo
-            .head()
-            .map_err(|e| ServiceError::Custom(format!("Failed to get HEAD: {}", e)))?;
-
-        let branch_name = head
-            .shorthand()
-            .ok_or_else(|| ServiceError::Custom("Failed to get branch name".to_string()))?;
-
-        Ok(branch_name.to_string())
+    if !output.status.success() {
+        return Err(ServiceError::Custom(
+            "Failed to get git branch name".to_string(),
+        ));
     }
 
-    #[cfg(not(feature = "git-support"))]
-    {
-        Err(ServiceError::Custom("Git support not enabled".to_string()))
-    }
+    let branch_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(branch_name)
 }
 
 /// Get Rust version

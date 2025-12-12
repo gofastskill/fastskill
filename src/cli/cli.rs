@@ -5,8 +5,8 @@ use fastskill::FastSkillService;
 use std::sync::Arc;
 
 use crate::cli::commands::{
-    add, auth, disable, init, install, package, publish, registry, reindex, remove, search, serve,
-    show, update, version, Commands,
+    add, auth, disable, init, install, list, package, publish, read, registry, reindex, remove,
+    search, serve, show, update, version, Commands,
 };
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -106,16 +106,15 @@ impl Cli {
         }
 
         // Initialize service
-        let mut service = FastSkillService::new(config)
-            .await
-            .map_err(CliError::Service)?;
+        let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
         service.initialize().await.map_err(CliError::Service)?;
 
         // Handle commands
         match command {
             Some(Commands::Add(args)) => add::execute_add(&service, args).await,
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
-            Some(Commands::Proxy(args)) => args.execute(Arc::new(service)).await,
+            Some(Commands::List(args)) => list::execute_list(&service, args).await,
+            Some(Commands::Read(args)) => read::execute_read(Arc::new(service), args).await,
             Some(Commands::Reindex(args)) => reindex::execute_reindex(&service, args).await,
             Some(Commands::Remove(args)) => remove::execute_remove(&service, args).await,
             Some(Commands::Search(args)) => search::execute_search(&service, args).await,

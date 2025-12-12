@@ -48,23 +48,17 @@ impl BlobStorage for LocalBlobStorage {
 
         // Create parent directory if needed
         if let Some(parent) = full_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(ServiceError::Io)?;
+            tokio::fs::create_dir_all(parent).await.map_err(ServiceError::Io)?;
         }
 
-        tokio::fs::write(&full_path, data)
-            .await
-            .map_err(ServiceError::Io)?;
+        tokio::fs::write(&full_path, data).await.map_err(ServiceError::Io)?;
 
         Ok(path.to_string())
     }
 
     async fn download(&self, path: &str) -> Result<Vec<u8>, ServiceError> {
         let full_path = self.base_path.join(path);
-        let data = tokio::fs::read(&full_path)
-            .await
-            .map_err(ServiceError::Io)?;
+        let data = tokio::fs::read(&full_path).await.map_err(ServiceError::Io)?;
         Ok(data)
     }
 
@@ -77,13 +71,9 @@ impl BlobStorage for LocalBlobStorage {
         let full_path = self.base_path.join(path);
         if full_path.exists() {
             if full_path.is_dir() {
-                tokio::fs::remove_dir_all(&full_path)
-                    .await
-                    .map_err(ServiceError::Io)?;
+                tokio::fs::remove_dir_all(&full_path).await.map_err(ServiceError::Io)?;
             } else {
-                tokio::fs::remove_file(&full_path)
-                    .await
-                    .map_err(ServiceError::Io)?;
+                tokio::fs::remove_file(&full_path).await.map_err(ServiceError::Io)?;
             }
         }
         Ok(())
@@ -171,21 +161,21 @@ impl BlobStorage for S3BlobStorage {
     }
 
     async fn download(&self, path: &str) -> Result<Vec<u8>, ServiceError> {
-        let result = self
-            .client
-            .get_object()
-            .bucket(&self.bucket)
-            .key(path)
-            .send()
-            .await
-            .map_err(|e| {
-                let error_msg = map_s3_error(&e as &dyn std::error::Error);
-                if error_msg.contains("NoSuchKey") || error_msg.contains("not found") {
-                    ServiceError::Custom(format!("Object not found: {}", path))
-                } else {
-                    ServiceError::Custom(format!("Failed to download from S3: {}", error_msg))
-                }
-            })?;
+        let result =
+            self.client
+                .get_object()
+                .bucket(&self.bucket)
+                .key(path)
+                .send()
+                .await
+                .map_err(|e| {
+                    let error_msg = map_s3_error(&e as &dyn std::error::Error);
+                    if error_msg.contains("NoSuchKey") || error_msg.contains("not found") {
+                        ServiceError::Custom(format!("Object not found: {}", path))
+                    } else {
+                        ServiceError::Custom(format!("Failed to download from S3: {}", error_msg))
+                    }
+                })?;
 
         let mut body = result.body;
         let mut data = Vec::new();
@@ -199,13 +189,7 @@ impl BlobStorage for S3BlobStorage {
     }
 
     async fn exists(&self, path: &str) -> Result<bool, ServiceError> {
-        let result = self
-            .client
-            .head_object()
-            .bucket(&self.bucket)
-            .key(path)
-            .send()
-            .await;
+        let result = self.client.head_object().bucket(&self.bucket).key(path).send().await;
 
         match result {
             Ok(_) => Ok(true),
@@ -227,13 +211,7 @@ impl BlobStorage for S3BlobStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), ServiceError> {
-        let result = self
-            .client
-            .delete_object()
-            .bucket(&self.bucket)
-            .key(path)
-            .send()
-            .await;
+        let result = self.client.delete_object().bucket(&self.bucket).key(path).send().await;
 
         match result {
             Ok(_) => Ok(()),

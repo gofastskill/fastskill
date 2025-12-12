@@ -5,9 +5,10 @@ pub mod auth;
 pub mod disable;
 pub mod init;
 pub mod install;
+pub mod list;
 pub mod package;
-pub mod proxy;
 pub mod publish;
+pub mod read;
 pub mod registry;
 pub mod reindex;
 pub mod remove;
@@ -42,9 +43,9 @@ pub enum Commands {
     #[command(about = "Install skills from skills.toml to registry")]
     Install(install::InstallArgs),
 
-    /// Start the FastSkill proxy server for Anthropic API interception
-    #[command(about = "Start proxy server to intercept and enhance Anthropic API calls")]
-    Proxy(proxy::ProxyCommand),
+    /// List locally installed skills
+    #[command(about = "List locally installed skills (similar to pip list)")]
+    List(list::ListArgs),
 
     /// Reindex the vector index by scanning skills directory
     #[command(about = "Reindex the vector index for semantic search")]
@@ -61,6 +62,10 @@ pub enum Commands {
     /// Publish artifacts to blob storage
     #[command(about = "Publish artifacts to S3 blob storage")]
     Publish(publish::PublishArgs),
+
+    /// Read skill documentation
+    #[command(about = "Read skill documentation and output to stdout")]
+    Read(read::ReadArgs),
 
     /// Registry management commands
     #[command(about = "Manage repositories and browse skills")]

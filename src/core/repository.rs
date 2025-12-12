@@ -2,9 +2,9 @@
 //!
 //! This module provides a unified repositories.toml configuration for all repository types.
 
-mod client;
+pub mod client;
 
-pub use client::{RepositoryClient, RepositoryClientError};
+pub use client::{CratesRegistryClient, RepositoryClient, RepositoryClientError};
 
 use crate::core::service::ServiceError;
 use serde::{Deserialize, Serialize};
@@ -42,7 +42,7 @@ fn default_priority() -> u32 {
 }
 
 /// Repository type
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepositoryType {
     /// Git repository with marketplace.json
@@ -139,14 +139,17 @@ impl RepositoryManager {
                 ServiceError::Custom(format!("Failed to parse repositories config: {}", e))
             })?;
 
+            // T068: Repository priority conflict resolution (first occurrence wins)
             // Sort repositories by priority (lower number = higher priority)
             let mut sorted_repos: Vec<RepositoryDefinition> = config.repositories;
             sorted_repos.sort_by_key(|r| r.priority);
 
-            self.repositories = sorted_repos
-                .into_iter()
-                .map(|repo| (repo.name.clone(), repo))
-                .collect();
+            // First occurrence wins - only insert if name doesn't already exist
+            let mut repo_map: HashMap<String, RepositoryDefinition> = HashMap::new();
+            for repo in sorted_repos {
+                repo_map.entry(repo.name.clone()).or_insert(repo);
+            }
+            self.repositories = repo_map;
 
             return Ok(());
         }

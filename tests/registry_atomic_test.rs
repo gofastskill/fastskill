@@ -1,5 +1,7 @@
 //! Integration tests for atomic registry operations and concurrent publishing
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use fastskill::core::registry::index_manager::IndexManager;
 use fastskill::core::registry_index::{read_skill_versions, VersionEntry};
 use std::collections::HashMap;

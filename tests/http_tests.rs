@@ -1,5 +1,15 @@
 //! Integration tests for HTTP/registry endpoints
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::needless_borrows_for_generic_args,
+    clippy::single_char_add_str,
+    clippy::to_string_in_format_args,
+    clippy::useless_vec
+)]
+
 #[test]
 fn test_marketplace_json_structure() {
     use fastskill::core::sources::{MarketplaceJson, MarketplaceSkill};

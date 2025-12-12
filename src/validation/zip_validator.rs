@@ -23,6 +23,7 @@ impl ZipValidator {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::fs;
@@ -74,6 +75,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_zip_validator_default() {
+        #[allow(clippy::default_constructed_unit_structs)]
         let validator = ZipValidator::default();
         let temp_dir = TempDir::new().unwrap();
         let zip_path = temp_dir.path().join("test.zip");

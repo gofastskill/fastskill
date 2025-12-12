@@ -286,6 +286,7 @@ fn escape_xml(input: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use fastskill::{EmbeddingConfig, ServiceConfig};

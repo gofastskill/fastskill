@@ -1,5 +1,7 @@
 //! Integration tests for Git repository consumption (external repositories with marketplace.json)
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use fastskill::core::repository::{
     RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
 };
@@ -114,12 +116,8 @@ fn test_repository_type_enum_completeness() {
     ];
 
     // Verify GitMarketplace is present (for external Git consumption)
-    assert!(types
-        .iter()
-        .any(|t| matches!(t, RepositoryType::GitMarketplace)));
+    assert!(types.iter().any(|t| matches!(t, RepositoryType::GitMarketplace)));
 
     // Verify HttpRegistry is present (for HTTP-based registries with index)
-    assert!(types
-        .iter()
-        .any(|t| matches!(t, RepositoryType::HttpRegistry)));
+    assert!(types.iter().any(|t| matches!(t, RepositoryType::HttpRegistry)));
 }

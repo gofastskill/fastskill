@@ -91,14 +91,8 @@ impl MetadataServiceImpl {
                 // Only match words longer than 2 characters
                 if skill.name.to_lowercase().contains(word)
                     || skill.description.to_lowercase().contains(word)
-                    || skill
-                        .tags
-                        .iter()
-                        .any(|tag| tag.to_lowercase().contains(word))
-                    || skill
-                        .capabilities
-                        .iter()
-                        .any(|cap| cap.to_lowercase().contains(word))
+                    || skill.tags.iter().any(|tag| tag.to_lowercase().contains(word))
+                    || skill.capabilities.iter().any(|cap| cap.to_lowercase().contains(word))
                 {
                     return true;
                 }
@@ -202,9 +196,7 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         .and_then(|v| serde_yaml::from_value(v).ok())
         .unwrap_or_else(|| "1.0.0".to_string());
 
-    let author = frontmatter
-        .remove("author")
-        .and_then(|v| serde_yaml::from_value(v).ok());
+    let author = frontmatter.remove("author").and_then(|v| serde_yaml::from_value(v).ok());
 
     let tags = frontmatter
         .remove("tags")

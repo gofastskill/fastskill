@@ -181,9 +181,7 @@ impl DependencyGraph {
                 .graph
                 .get(skill_id)
                 .map(|deps| {
-                    deps.iter()
-                        .filter(|dep| self.graph.contains_key(&dep.skill_id))
-                        .count()
+                    deps.iter().filter(|dep| self.graph.contains_key(&dep.skill_id)).count()
                 })
                 .unwrap_or(0);
             in_degree.insert(skill_id.clone(), dep_count);
@@ -240,10 +238,7 @@ impl DependencyGraph {
 
     /// Get all skills that depend on a given skill
     pub fn get_dependents(&self, skill_id: &str) -> Vec<String> {
-        self.reverse_graph
-            .get(skill_id)
-            .cloned()
-            .unwrap_or_default()
+        self.reverse_graph.get(skill_id).cloned().unwrap_or_default()
     }
 }
 
@@ -254,6 +249,7 @@ impl Default for DependencyGraph {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

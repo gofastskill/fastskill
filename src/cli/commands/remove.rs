@@ -3,11 +3,16 @@
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::manifest_utils;
 use clap::Args;
+use fastskill::core::project::resolve_project_file;
 use fastskill::FastSkillService;
+use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-/// Remove skills from the database
+/// Remove skills and update skill-project.toml [dependencies]
+///
+/// Removes skills from both the installation and skill-project.toml [dependencies].
+/// Updates skills.lock to reflect removals.
 #[derive(Debug, Args)]
 pub struct RemoveArgs {
     /// Skill IDs to remove
@@ -47,34 +52,46 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
     for skill_id in &args.skill_ids {
         let skill_id_parsed = fastskill::SkillId::new(skill_id.clone())
             .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
-        service
-            .skill_manager()
-            .unregister_skill(&skill_id_parsed)
-            .await
-            .map_err(|e| {
-                CliError::Service(fastskill::ServiceError::Custom(format!(
-                    "Failed to remove skill {}: {}",
-                    skill_id, e
-                )))
-            })?;
+        service.skill_manager().unregister_skill(&skill_id_parsed).await.map_err(|e| {
+            CliError::Service(fastskill::ServiceError::Custom(format!(
+                "Failed to remove skill {}: {}",
+                skill_id, e
+            )))
+        })?;
 
-        // Remove from manifest and lock files
-        let manifest_path = PathBuf::from(".claude/skills.toml");
-        let lock_path = PathBuf::from(".claude/skills.lock");
-        manifest_utils::remove_skill_from_manifest(&manifest_path, &lock_path, skill_id)
-            .map_err(|e| CliError::Config(format!("Failed to update manifest files: {}", e)))?;
+        // T029: Remove from skill-project.toml
+        manifest_utils::remove_skill_from_project_toml(skill_id)
+            .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
+
+        // T033: Remove from lock file at project root
+        let current_dir = env::current_dir()
+            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+        let project_file_result = resolve_project_file(&current_dir);
+        let lock_path = if let Some(parent) = project_file_result.path.parent() {
+            parent.join("skills.lock")
+        } else {
+            PathBuf::from("skills.lock")
+        };
+        if lock_path.exists() {
+            let mut lock = fastskill::core::lock::SkillsLock::load_from_file(&lock_path)
+                .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
+            lock.remove_skill(skill_id);
+            lock.save_to_file(&lock_path)
+                .map_err(|e| CliError::Config(format!("Failed to save lock file: {}", e)))?;
+        }
 
         println!("Removed skill: {}", skill_id);
     }
 
     println!(
         "{}",
-        crate::cli::utils::messages::ok("Updated skills.toml and skills.lock")
+        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );
     Ok(())
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use fastskill::ServiceConfig;

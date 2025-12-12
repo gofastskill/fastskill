@@ -1,5 +1,7 @@
 //! Integration tests for CLI functionality
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 mod cli;
 
 #[test]
@@ -9,10 +11,7 @@ fn test_cli_help() {
     let binary = format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"));
 
     // Test --help flag
-    let output = Command::new(&binary)
-        .arg("--help")
-        .output()
-        .expect("Failed to execute CLI");
+    let output = Command::new(&binary).arg("--help").output().expect("Failed to execute CLI");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);

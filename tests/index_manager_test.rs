@@ -1,5 +1,7 @@
 //! Unit tests for IndexManager
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use fastskill::core::registry::index_manager::IndexManager;
 use fastskill::core::registry_index::{ScopedSkillName, VersionEntry};
 use fastskill::core::service::ServiceError;

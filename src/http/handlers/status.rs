@@ -12,7 +12,6 @@ use std::time::SystemTime;
 pub struct AppState {
     pub service: Arc<FastSkillService>,
     pub start_time: SystemTime,
-    pub config: Option<crate::http::proxy::ProxyConfig>,
     pub skills_toml_path: std::path::PathBuf,
     pub auto_generate_mdc: bool,
 }
@@ -22,15 +21,9 @@ impl AppState {
         Self {
             service,
             start_time: SystemTime::now(),
-            config: None,
             skills_toml_path: std::path::PathBuf::from(".claude/skills.toml"),
             auto_generate_mdc: false,
         }
-    }
-
-    pub fn with_config(mut self, config: crate::http::proxy::ProxyConfig) -> Self {
-        self.config = Some(config);
-        self
     }
 
     pub fn with_skills_toml_path(mut self, path: std::path::PathBuf) -> Self {
@@ -44,10 +37,7 @@ impl AppState {
     }
 
     pub fn uptime_seconds(&self) -> u64 {
-        SystemTime::now()
-            .duration_since(self.start_time)
-            .unwrap_or_default()
-            .as_secs()
+        SystemTime::now().duration_since(self.start_time).unwrap_or_default().as_secs()
     }
 }
 

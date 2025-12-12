@@ -291,6 +291,7 @@ pub struct LockMismatch {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::core::service::SkillId;

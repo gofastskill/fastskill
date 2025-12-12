@@ -24,10 +24,7 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
 
     // Derive lock path from skills directory
     let skills_dir = crate::cli::config::resolve_skills_storage_directory()?;
-    let lock_path = skills_dir
-        .parent()
-        .unwrap_or(&PathBuf::from(".claude"))
-        .join("skills.lock");
+    let lock_path = skills_dir.parent().unwrap_or(&PathBuf::from(".claude")).join("skills.lock");
 
     if lock_path.exists() {
         let lock = SkillsLock::load_from_file(&lock_path)
@@ -57,9 +54,7 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
         // Fall back to service
         // Note: show command doesn't have access to CLI sources_path, so uses env var or walk-up
         let config = create_service_config(None, None)?;
-        let mut service = FastSkillService::new(config)
-            .await
-            .map_err(CliError::Service)?;
+        let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
         service.initialize().await.map_err(CliError::Service)?;
 
         if let Some(ref skill_id) = args.skill_id {
@@ -86,11 +81,8 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                 return Err(CliError::Config(format!("Skill '{}' not found", skill_id)));
             }
         } else {
-            let skills = service
-                .skill_manager()
-                .list_skills(None)
-                .await
-                .map_err(CliError::Service)?;
+            let skills =
+                service.skill_manager().list_skills(None).await.map_err(CliError::Service)?;
             println!("Installed Skills ({}):\n", skills.len());
             for skill in skills {
                 println!("  • {} (v{})", skill.name, skill.version);
@@ -115,6 +107,7 @@ fn print_skill_details(skill: &fastskill::core::lock::LockedSkillEntry) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

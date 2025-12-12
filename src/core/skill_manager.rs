@@ -282,10 +282,7 @@ impl SkillManagementService for SkillManager {
             // Filter by capabilities
             if let Some(capabilities) = filters.capabilities {
                 filtered_skills.retain(|skill| {
-                    skill
-                        .capabilities
-                        .iter()
-                        .any(|cap| capabilities.contains(cap))
+                    skill.capabilities.iter().any(|cap| capabilities.contains(cap))
                 });
             }
         }

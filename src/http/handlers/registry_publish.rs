@@ -60,12 +60,7 @@ pub async fn publish_package(
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .map(|s| s.to_string())
-        .or_else(|| {
-            headers
-                .get("x-api-key")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_string())
-        })
+        .or_else(|| headers.get("x-api-key").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| HttpError::Unauthorized("No authentication token provided".to_string()))?;
 
     let claims = jwt_service.validate_token(&token)?;
@@ -86,12 +81,7 @@ pub async fn publish_package(
     // Extract scope from user account (claims.sub)
     // If sub is "org/user", use "org" as scope; if "user", use "user" as scope
     let user_scope = if claims.sub.contains('/') {
-        claims
-            .sub
-            .split('/')
-            .next()
-            .unwrap_or(&claims.sub)
-            .to_string()
+        claims.sub.split('/').next().unwrap_or(&claims.sub).to_string()
     } else {
         claims.sub.clone()
     };
@@ -229,12 +219,7 @@ pub async fn get_publish_status(
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .map(|s| s.to_string())
-        .or_else(|| {
-            headers
-                .get("x-api-key")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_string())
-        })
+        .or_else(|| headers.get("x-api-key").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| HttpError::Unauthorized("No authentication token provided".to_string()))?;
 
     let claims = jwt_service.validate_token(&token)?;
@@ -292,10 +277,8 @@ pub async fn get_publish_status(
                     HttpError::InternalServerError(format!("Package not found for job {}", job_id))
                 })?;
 
-            let package_filename = package_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
+            let package_filename =
+                package_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
 
             // Extract scope from the user who uploaded the package
             // Scope is the part before '/' in uploaded_by, or the entire uploaded_by if no '/'
@@ -413,16 +396,31 @@ fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, Strin
     })?;
 
     // Extract id (mandatory)
-    if metadata.id.is_empty() {
-        return Err(HttpError::BadRequest(
+    let skill_id = metadata.id.ok_or_else(|| {
+        HttpError::BadRequest(
             "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
-        ));
-    }
-    let skill_id = metadata.id;
+        )
+    })?;
 
     // Extract version: priority skill-project.toml > SKILL.md frontmatter > default
-    let version = if !metadata.version.is_empty() {
-        metadata.version
+    let version = if let Some(ref v) = metadata.version {
+        if !v.is_empty() {
+            v.clone()
+        } else if !skill_content.is_empty() {
+            // Try to get version from SKILL.md frontmatter as fallback
+            let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
+            if let Some(ref f) = frontmatter {
+                if !f.version.is_empty() {
+                    f.version.clone()
+                } else {
+                    "1.0.0".to_string()
+                }
+            } else {
+                "1.0.0".to_string()
+            }
+        } else {
+            "1.0.0".to_string()
+        }
     } else if !skill_content.is_empty() {
         // Try to get version from SKILL.md frontmatter as fallback
         let frontmatter = parse_yaml_frontmatter(&skill_content).ok();

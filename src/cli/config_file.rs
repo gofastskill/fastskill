@@ -28,15 +28,18 @@ pub struct FastSkillConfig {
     pub skills_directory: Option<PathBuf>,
 }
 
-/// Load configuration from .fastskill.yaml file
-/// Priority: current directory -> walk up directory tree -> user home config directory
+/// Load configuration from .fastskill/config.yaml file
+/// T069: Updated to use .fastskill/config.yaml as primary location
+/// Priority: .fastskill/config.yaml (walk up) -> .fastskill.yaml (walk up) -> user home config directory
 pub fn load_config() -> CliResult<Option<FastSkillConfig>> {
-    // Try current directory first
-    if let Ok(config) = load_config_from_path(".fastskill.yaml") {
-        return Ok(Some(config));
+    // T069: Try .fastskill/config.yaml first (walking up directory tree)
+    if let Some(found_config) = walk_up_for_config_dir() {
+        if let Ok(config) = load_config_from_path(&found_config) {
+            return Ok(Some(config));
+        }
     }
 
-    // Try walking up directory tree
+    // Fallback: Try .fastskill.yaml (walking up directory tree) for backward compatibility
     if let Some(found_config) = walk_up_for_config() {
         if let Ok(config) = load_config_from_path(&found_config) {
             return Ok(Some(config));
@@ -55,7 +58,29 @@ pub fn load_config() -> CliResult<Option<FastSkillConfig>> {
     Ok(None)
 }
 
+/// Walk up the directory tree searching for `.fastskill/config.yaml` file
+/// T069: Primary location for configuration
+fn walk_up_for_config_dir() -> Option<PathBuf> {
+    let current_dir = std::env::current_dir().ok()?;
+    let mut current = current_dir;
+
+    loop {
+        let config_file = current.join(".fastskill").join("config.yaml");
+        if config_file.is_file() {
+            return Some(config_file);
+        }
+
+        // Check if we've reached the filesystem root
+        if !current.pop() {
+            break;
+        }
+    }
+
+    None
+}
+
 /// Walk up the directory tree searching for `.fastskill.yaml` file
+/// Kept for backward compatibility
 fn walk_up_for_config() -> Option<PathBuf> {
     let current_dir = std::env::current_dir().ok()?;
     let mut current = current_dir;
@@ -104,13 +129,24 @@ pub fn get_openai_api_key() -> CliResult<String> {
 }
 
 /// Get all searched configuration paths for error reporting
+/// T069: Updated to include .fastskill/config.yaml paths
 pub fn get_config_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
-    // Current directory
-    paths.push(PathBuf::from(".fastskill.yaml"));
+    // T069: Walk up directory tree for .fastskill/config.yaml (primary location)
+    if let Ok(current_dir) = std::env::current_dir() {
+        let mut current = current_dir;
+        loop {
+            let config_file = current.join(".fastskill").join("config.yaml");
+            paths.push(config_file);
 
-    // Walk up directory tree
+            if !current.pop() {
+                break;
+            }
+        }
+    }
+
+    // Walk up directory tree for .fastskill.yaml (backward compatibility)
     if let Ok(current_dir) = std::env::current_dir() {
         let mut current = current_dir;
         loop {

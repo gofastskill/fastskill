@@ -55,9 +55,6 @@ pub mod http;
 pub mod storage;
 pub mod validation;
 
-// Note: bin module is not exposed as it's for the binary only
-// Tests can access it through integration tests in tests/ directory
-
 pub use core::embedding::{EmbeddingService, OpenAIEmbeddingService};
 pub use core::loading::{LoadedSkill, ProgressiveLoadingService};
 pub use core::metadata::{
@@ -100,6 +97,7 @@ pub fn init_logging() {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
