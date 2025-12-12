@@ -10,6 +10,7 @@ use tracing::debug;
 /// 1. FASTSKILL_SKILLS_TOML_PATH environment variable
 /// 2. Walk up directory tree to find .claude/skills.toml
 /// 3. Default to .claude/skills.toml in current directory
+#[allow(dead_code)]
 pub fn get_skills_toml_path() -> CliResult<PathBuf> {
     // Priority 1: Environment variable
     if let Ok(env_path) = env::var("FASTSKILL_SKILLS_TOML_PATH") {
@@ -33,6 +34,7 @@ pub fn get_skills_toml_path() -> CliResult<PathBuf> {
 }
 
 /// Walk up the directory tree searching for existing .claude/skills.toml file
+#[allow(dead_code)]
 fn walk_up_for_skills_toml(start_path: &Path) -> Option<PathBuf> {
     let mut current = start_path.to_path_buf();
 
@@ -97,11 +99,7 @@ fn walk_up_for_repositories_toml(start_path: &Path) -> Option<PathBuf> {
     loop {
         let repositories_toml = current.join(".claude/repositories.toml");
         if repositories_toml.is_file() {
-            return Some(
-                repositories_toml
-                    .canonicalize()
-                    .unwrap_or(repositories_toml),
-            );
+            return Some(repositories_toml.canonicalize().unwrap_or(repositories_toml));
         }
 
         // Check if we've reached the filesystem root
@@ -185,13 +183,13 @@ pub fn create_service_config(
     let config_file = crate::cli::config_file::load_config()?;
 
     // Extract embedding config from file
-    let embedding_config = config_file
-        .and_then(|config| config.embedding)
-        .map(|embedding| fastskill::EmbeddingConfig {
+    let embedding_config = config_file.and_then(|config| config.embedding).map(|embedding| {
+        fastskill::EmbeddingConfig {
             openai_base_url: embedding.openai_base_url,
             embedding_model: embedding.embedding_model,
             index_path: embedding.index_path,
-        });
+        }
+    });
 
     // Read registry configuration from environment variables
     let registry_blob_storage =

@@ -1,4 +1,4 @@
-//! Install command - installs skills from skills.toml to .claude/skills/ registry
+//! Install command - installs skills from skill-project.toml to .claude/skills/ registry
 
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -6,15 +6,20 @@ use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
     lock::SkillsLock,
-    manifest::SkillsManifest,
+    manifest::SkillProjectToml,
+    project::resolve_project_file,
     repository::{RepositoryConfig, RepositoryManager, RepositoryType},
     sources::{SourceAuth, SourceConfig, SourcesManager},
 };
 use fastskill::FastSkillService;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-/// Install skills from skills.toml to .claude/skills/ registry
+/// Install skills from skill-project.toml [dependencies] to .claude/skills/ registry
+///
+/// Reads dependencies from skill-project.toml at the project root.
+/// Creates or updates skills.lock for reproducible installations.
 #[derive(Debug, Args)]
 pub struct InstallArgs {
     /// Exclude skills from these groups (like poetry --without dev)
@@ -34,12 +39,18 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     println!("Installing skills...");
     println!();
 
-    let manifest_path = PathBuf::from(".claude/skills.toml");
-    let lock_path = PathBuf::from(".claude/skills.lock");
+    // T027: Resolve skill-project.toml from project root
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let project_file_result = resolve_project_file(&current_dir);
+    let project_file_path = project_file_result.path;
 
-    // Ensure .claude directory exists
-    fs::create_dir_all(".claude")
-        .map_err(|e| CliError::Config(format!("Failed to create .claude directory: {}", e)))?;
+    // T033: Lock file at project root (skills.lock)
+    let lock_path = if let Some(parent) = project_file_path.parent() {
+        parent.join("skills.lock")
+    } else {
+        PathBuf::from("skills.lock")
+    };
 
     // Check for lock file early if lock mode is requested (before service initialization)
     if args.lock && !lock_path.exists() {
@@ -54,27 +65,50 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     // Initialize service
     // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
     let config = create_service_config(None, None)?;
-    let mut service = FastSkillService::new(config)
-        .await
-        .map_err(CliError::Service)?;
+    let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
     service.initialize().await.map_err(CliError::Service)?;
 
-    // Load repositories and create sources manager for marketplace-based repos
-    let repos_path = crate::cli::config::get_repositories_toml_path()
-        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-    let mut repo_manager = RepositoryManager::new(repos_path);
-    repo_manager
-        .load()
-        .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+    // Load repositories from skill-project.toml [tool.fastskill.repositories] if available
+    // Otherwise fall back to .claude/repositories.toml for backward compatibility
+    let repo_manager = if project_file_result.found {
+        // Try to load repositories from skill-project.toml
+        let project = SkillProjectToml::load_from_file(&project_file_path)
+            .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
+
+        if let Some(ref tool) = project.tool {
+            if let Some(ref fastskill_config) = tool.fastskill {
+                if let Some(ref _repos) = fastskill_config.repositories {
+                    // Create RepositoryManager from skill-project.toml repositories
+                    // For now, we'll still use the old path for RepositoryManager
+                    // TODO: Update RepositoryManager to work with skill-project.toml directly
+                }
+            }
+        }
+
+        // Fall back to old repositories.toml path
+        let repos_path = crate::cli::config::get_repositories_toml_path()
+            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
+        let mut rm = RepositoryManager::new(repos_path);
+        rm.load()
+            .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+        rm
+    } else {
+        // No skill-project.toml, use old repositories.toml
+        let repos_path = crate::cli::config::get_repositories_toml_path()
+            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
+        let mut rm = RepositoryManager::new(repos_path);
+        rm.load()
+            .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+        rm
+    };
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver
     let sources_manager = create_sources_manager_from_repositories(&repo_manager)
         .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
 
-    // Load manifest or lock file
+    // T027: Load from skill-project.toml or lock file
     let skills_to_install = if args.lock {
         // Lock file already checked above, so it exists
-
         let lock = SkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
 
@@ -84,21 +118,46 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         // For now, we'll install from lock file
         vec![] // TODO: Convert lock entries to install format
     } else {
-        if !manifest_path.exists() {
+        // Load from skill-project.toml
+        if !project_file_result.found {
             return Err(CliError::Config(
-                "skills.toml not found. Create it or use 'fastskill add' to add skills."
+                "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
                     .to_string(),
             ));
         }
 
-        let manifest = SkillsManifest::load_from_file(&manifest_path)
-            .map_err(|e| CliError::Config(format!("Failed to load manifest: {}", e)))?;
+        let project = SkillProjectToml::load_from_file(&project_file_path)
+            .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
+
+        // Validate context
+        let context = project_file_result.context;
+        project.validate_for_context(context).map_err(|e| {
+            CliError::Config(format!("skill-project.toml validation failed: {}", e))
+        })?;
+
+        // Convert dependencies to SkillEntry format
+        let mut entries = project
+            .to_skill_entries()
+            .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
 
         // Filter skills by groups
         let exclude_groups = args.without.as_deref();
         let only_groups = args.only.as_deref();
-        let skills = manifest.get_skills_for_groups(exclude_groups, only_groups);
-        skills.into_iter().cloned().collect()
+
+        if let Some(exclude) = exclude_groups {
+            entries.retain(|entry| {
+                !entry.groups.iter().any(|g| exclude.iter().any(|ex| ex == g.as_str()))
+            });
+        }
+
+        if let Some(only) = only_groups {
+            entries.retain(|entry| {
+                entry.groups.iter().any(|g| only.iter().any(|on| on == g.as_str()))
+                    || entry.groups.is_empty()
+            });
+        }
+
+        entries
     };
 
     println!("Found {} skills to install", skills_to_install.len());
@@ -151,143 +210,6 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     println!("   Updated skills.lock");
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_execute_install_no_manifest() {
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-        };
-
-        let result = execute_install(args).await;
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            // Accept either "not found" error, parse error, repository error, or directory creation error (if files exist from other tests)
-            assert!(
-                msg.contains("skills.toml not found")
-                    || msg.contains("Failed to load manifest")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("Failed to create .claude directory"),
-                "Error message '{}' does not contain expected text",
-                msg
-            );
-        } else {
-            panic!("Expected Config error, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_install_with_lock_file_not_found() {
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create .claude directory but no lock file
-        fs::create_dir_all(".claude").unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: true,
-        };
-
-        let result = execute_install(args).await;
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            // Accept either "lock not found" error, repository error, or directory creation error (if files exist from other tests)
-            assert!(
-                msg.contains("skills.lock not found")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("Failed to create .claude directory"),
-                "Error message '{}' does not contain expected text",
-                msg
-            );
-        } else {
-            panic!("Expected Config error, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_install_with_empty_manifest() {
-        // Use a static mutex to serialize directory changes across parallel tests
-        use std::sync::Mutex;
-        static DIR_MUTEX: Mutex<()> = Mutex::new(());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Lock the mutex for the duration of directory change
-        let _lock = DIR_MUTEX.lock().unwrap();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create .claude directory and empty skills.toml using absolute paths
-        let claude_dir = temp_dir.path().join(".claude");
-        let skills_toml = claude_dir.join("skills.toml");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(&skills_toml, "[skills]").unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-        };
-
-        // Should succeed with empty manifest (no skills to install)
-        let result = execute_install(args).await;
-        // May succeed or fail depending on service initialization, but shouldn't panic
-        assert!(result.is_ok() || result.is_err());
-
-        // Cleanup
-        fs::remove_dir_all(".claude").ok();
-    }
 }
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
@@ -403,4 +325,152 @@ fn create_sources_manager_from_repositories(
     }
 
     Ok(Some(sources_manager))
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::await_holding_lock,
+    clippy::collapsible_if
+)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_install_no_manifest() {
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let args = InstallArgs {
+            without: None,
+            only: None,
+            lock: false,
+        };
+
+        let result = execute_install(args).await;
+        assert!(result.is_err(), "Expected error, got: {:?}", result);
+        if let Err(CliError::Config(msg)) = result {
+            // Accept either "not found" error, parse error, repository error, directory creation error, or current directory error
+            assert!(
+                msg.contains("skill-project.toml not found")
+                    || msg.contains("skills.toml not found")
+                    || msg.contains("Failed to load skill-project.toml")
+                    || msg.contains("Failed to load manifest")
+                    || msg.contains("Failed to load repositories")
+                    || msg.contains("Failed to create .claude directory")
+                    || msg.contains("Failed to get current directory")
+                    || msg.contains("Failed to find repositories.toml"),
+                "Error message '{}' does not contain expected text",
+                msg
+            );
+        } else {
+            panic!("Expected Config error, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_install_with_lock_file_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create .claude directory but no lock file
+        fs::create_dir_all(".claude").unwrap();
+
+        let args = InstallArgs {
+            without: None,
+            only: None,
+            lock: true,
+        };
+
+        let result = execute_install(args).await;
+        assert!(result.is_err(), "Expected error, got: {:?}", result);
+        if let Err(CliError::Config(msg)) = result {
+            // Accept either "lock not found" error, repository error, or directory creation error (if files exist from other tests)
+            assert!(
+                msg.contains("skills.lock not found")
+                    || msg.contains("Failed to load repositories")
+                    || msg.contains("Failed to create .claude directory"),
+                "Error message '{}' does not contain expected text",
+                msg
+            );
+        } else {
+            panic!("Expected Config error, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_install_with_empty_manifest() {
+        // Use a static mutex to serialize directory changes across parallel tests
+        use std::sync::Mutex;
+        static DIR_MUTEX: Mutex<()> = Mutex::new(());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        // Lock the mutex for the duration of directory change
+        let _lock = DIR_MUTEX.lock().unwrap();
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create .claude directory and empty skills.toml using absolute paths
+        let claude_dir = temp_dir.path().join(".claude");
+        let skills_toml = claude_dir.join("skills.toml");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(&skills_toml, "[skills]").unwrap();
+
+        let args = InstallArgs {
+            without: None,
+            only: None,
+            lock: false,
+        };
+
+        // Should succeed with empty manifest (no skills to install)
+        let result = execute_install(args).await;
+        // May succeed or fail depending on service initialization, but shouldn't panic
+        assert!(result.is_ok() || result.is_err());
+
+        // Cleanup
+        fs::remove_dir_all(".claude").ok();
+    }
 }

@@ -2,7 +2,7 @@
 
 Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
-[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/release.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/release.yml)
+[![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml)
 
 ## What is FastSkill?
 
@@ -221,7 +221,6 @@ fastskill reindex                    # Rebuild search index
 ```bash
 fastskill serve                      # Start HTTP API server
 fastskill serve --enable-registry    # Enable web UI at /registry
-fastskill proxy                      # Start Claude API proxy server
 ```
 
 ### Skill Authoring

@@ -4,9 +4,8 @@
 //! matching Anthropic's API specification for skill creation, versioning, and management.
 
 use crate::http::errors::{HttpError, HttpResult};
-use crate::http::handlers::AppState;
+use crate::http::handlers::{skill_storage::SkillStorage, AppState};
 use crate::http::models::*;
-use crate::http::proxy::skill_storage::SkillStorage;
 use axum::{
     extract::{Multipart, Path, Query, State},
     Json,
@@ -115,16 +114,7 @@ pub async fn create_skill(
     let skill_id = SkillStorage::generate_skill_id();
 
     // Create skill metadata
-    let skills_dir = state
-        .config
-        .as_ref()
-        .ok_or_else(|| {
-            crate::http::errors::HttpError::InternalServerError(
-                "Proxy config not available".to_string(),
-            )
-        })?
-        .skills_dir
-        .clone();
+    let skills_dir = state.service.config().skill_storage_path.clone();
     let _skill_storage = SkillStorage::new(state.service.clone(), skills_dir);
     let created_at = chrono::Utc::now();
 
@@ -146,16 +136,7 @@ pub async fn list_skills(
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
 ) -> HttpResult<Json<ApiResponse<ListSkillsResponse>>> {
-    let skills_dir = state
-        .config
-        .as_ref()
-        .ok_or_else(|| {
-            crate::http::errors::HttpError::InternalServerError(
-                "Proxy config not available".to_string(),
-            )
-        })?
-        .skills_dir
-        .clone();
+    let skills_dir = state.service.config().skill_storage_path.clone();
     let skill_storage = SkillStorage::new(state.service.clone(), skills_dir);
 
     // Get skills from storage
@@ -179,11 +160,7 @@ pub async fn list_skills(
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(50);
     let total = skills.len();
-    let paginated_skills = skills
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect::<Vec<_>>();
+    let paginated_skills = skills.into_iter().skip(offset).take(limit).collect::<Vec<_>>();
     let count = paginated_skills.len();
 
     // Convert to response format
@@ -221,16 +198,7 @@ pub async fn get_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> HttpResult<Json<ApiResponse<GetSkillResponse>>> {
-    let skills_dir = state
-        .config
-        .as_ref()
-        .ok_or_else(|| {
-            crate::http::errors::HttpError::InternalServerError(
-                "Proxy config not available".to_string(),
-            )
-        })?
-        .skills_dir
-        .clone();
+    let skills_dir = state.service.config().skill_storage_path.clone();
     let skill_storage = SkillStorage::new(state.service.clone(), skills_dir);
 
     let skill = skill_storage
@@ -262,16 +230,7 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> HttpResult<Json<ApiResponse<serde_json::Value>>> {
-    let skills_dir = state
-        .config
-        .as_ref()
-        .ok_or_else(|| {
-            crate::http::errors::HttpError::InternalServerError(
-                "Proxy config not available".to_string(),
-            )
-        })?
-        .skills_dir
-        .clone();
+    let skills_dir = state.service.config().skill_storage_path.clone();
     let skill_storage = SkillStorage::new(state.service.clone(), skills_dir);
 
     skill_storage.delete_skill(&skill_id).await?;
@@ -287,16 +246,7 @@ pub async fn create_skill_version(
     Path(skill_id): Path<String>,
     mut multipart: Multipart,
 ) -> HttpResult<Json<ApiResponse<CreateSkillVersionResponse>>> {
-    let skills_dir = state
-        .config
-        .as_ref()
-        .ok_or_else(|| {
-            crate::http::errors::HttpError::InternalServerError(
-                "Proxy config not available".to_string(),
-            )
-        })?
-        .skills_dir
-        .clone();
+    let skills_dir = state.service.config().skill_storage_path.clone();
     let skill_storage = SkillStorage::new(state.service.clone(), skills_dir);
 
     // Parse multipart form data

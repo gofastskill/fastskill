@@ -219,10 +219,8 @@ impl SourcesManager {
         let mut sorted_sources: Vec<SourceDefinition> = config.sources;
         sorted_sources.sort_by_key(|s| s.priority);
 
-        self.sources = sorted_sources
-            .into_iter()
-            .map(|source| (source.name.clone(), source))
-            .collect();
+        self.sources =
+            sorted_sources.into_iter().map(|source| (source.name.clone(), source)).collect();
 
         Ok(())
     }
@@ -320,8 +318,7 @@ impl SourcesManager {
             }
             SourceConfig::ZipUrl { base_url, .. } => {
                 // Load marketplace.json from ZipUrl source
-                self.load_marketplace_from_url_with_branch(base_url, None, source_name)
-                    .await
+                self.load_marketplace_from_url_with_branch(base_url, None, source_name).await
             }
             SourceConfig::Local { path } => {
                 // Scan local path for skills
@@ -340,10 +337,7 @@ impl SourcesManager {
     ) -> Result<MarketplaceJson, SourcesError> {
         let mut skills = Vec::new();
         let owner_name = claude_marketplace.owner.as_ref().map(|o| o.name.clone());
-        let metadata_version = claude_marketplace
-            .metadata
-            .as_ref()
-            .and_then(|m| m.version.clone());
+        let metadata_version = claude_marketplace.metadata.as_ref().and_then(|m| m.version.clone());
 
         for plugin in claude_marketplace.plugins {
             let plugin_source = plugin.source.as_deref().unwrap_or("./");
@@ -378,10 +372,7 @@ impl SourcesManager {
                     .description
                     .clone()
                     .or_else(|| {
-                        claude_marketplace
-                            .metadata
-                            .as_ref()
-                            .and_then(|m| m.description.clone())
+                        claude_marketplace.metadata.as_ref().and_then(|m| m.description.clone())
                     })
                     .unwrap_or_else(|| format!("Skill from {}", plugin.name));
 
@@ -409,9 +400,7 @@ impl SourcesManager {
                     id: skill_id.clone(),
                     name: skill_id.clone(), // Use ID as name if not available
                     description,
-                    version: metadata_version
-                        .clone()
-                        .unwrap_or_else(|| "1.0.0".to_string()),
+                    version: metadata_version.clone().unwrap_or_else(|| "1.0.0".to_string()),
                     author: owner_name.clone(),
                     tags: vec![plugin.name.clone()], // Use plugin name as tag
                     capabilities: Vec::new(),
@@ -772,9 +761,7 @@ impl SourcesManager {
             path.clone()
         } else {
             // Resolve relative to current directory
-            std::env::current_dir()
-                .map_err(SourcesError::Io)?
-                .join(path)
+            std::env::current_dir().map_err(SourcesError::Io)?.join(path)
         };
 
         if !resolved_path.exists() {
@@ -791,10 +778,7 @@ impl SourcesManager {
         let mut skills = Vec::new();
 
         // Walk directory recursively
-        for entry in WalkDir::new(&resolved_path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(&resolved_path).into_iter().filter_map(|e| e.ok()) {
             let entry_path = entry.path();
             if entry_path.is_file()
                 && entry_path.file_name() == Some(std::ffi::OsStr::new("SKILL.md"))
@@ -852,11 +836,8 @@ impl SourcesManager {
         // Simple frontmatter parser - look for --- delimited YAML
         if !content.starts_with("---\n") {
             // No frontmatter, use directory name as fallback
-            let id = skill_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+            let id =
+                skill_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
             return Ok((
                 id.clone(),
                 id.clone(),
@@ -881,35 +862,20 @@ impl SourcesManager {
         for line in frontmatter.lines() {
             let line = line.trim();
             if line.starts_with("id:") {
-                id = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
+                id = line.split(':').nth(1).map(|s| s.trim().trim_matches('"').to_string());
             } else if line.starts_with("name:") {
-                name = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
+                name = line.split(':').nth(1).map(|s| s.trim().trim_matches('"').to_string());
             } else if line.starts_with("description:") {
-                description = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
+                description =
+                    line.split(':').nth(1).map(|s| s.trim().trim_matches('"').to_string());
             } else if line.starts_with("version:") {
-                version = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
+                version = line.split(':').nth(1).map(|s| s.trim().trim_matches('"').to_string());
             }
         }
 
         // Use directory name as fallback for id
         let skill_id = id.unwrap_or_else(|| {
-            skill_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string()
+            skill_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string()
         });
 
         Ok((
@@ -976,6 +942,7 @@ pub enum SourcesError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;

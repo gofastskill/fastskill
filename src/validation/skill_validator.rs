@@ -275,11 +275,7 @@ impl SkillValidator {
         mut result: ValidationResult,
     ) -> ValidationResult {
         // Validate skill name format
-        if !skill
-            .name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
+        if !skill.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
             result = result.with_warning(
                 "name",
                 "Skill name should only contain alphanumeric characters, hyphens, and underscores",
@@ -603,9 +599,7 @@ impl SkillValidator {
 
         // Validate subdirectory contents
         if has_scripts {
-            result = self
-                .validate_scripts_directory(&skill_path.join("scripts"), result)
-                .await?;
+            result = self.validate_scripts_directory(&skill_path.join("scripts"), result).await?;
         }
 
         if has_references {
@@ -615,9 +609,7 @@ impl SkillValidator {
         }
 
         if has_assets {
-            result = self
-                .validate_assets_directory(&skill_path.join("assets"), result)
-                .await?;
+            result = self.validate_assets_directory(&skill_path.join("assets"), result).await?;
         }
 
         result.calculate_score();
@@ -809,6 +801,7 @@ impl SkillValidator {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::core::service::SkillId;
@@ -824,7 +817,7 @@ mod tests {
         // Create valid skill ID (no dots allowed, replace with dashes)
         let valid_id = format!("{}-{}", name, version.replace('.', "-"));
         let skill_id = SkillId::new(valid_id).unwrap();
-        let skill_dir = temp_dir.path().join(&skill_id.to_string());
+        let skill_dir = temp_dir.path().join(skill_id.to_string());
         std::fs::create_dir_all(&skill_dir).unwrap();
 
         let skill_file = skill_dir.join("SKILL.md");
@@ -947,10 +940,7 @@ mod tests {
 
         let result = validator.validate_skill(&skill).await.unwrap();
         assert!(!result.errors.is_empty());
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.field.starts_with("capabilities[")));
+        assert!(result.errors.iter().any(|e| e.field.starts_with("capabilities[")));
     }
 
     // Tests for validate_file_structure (tested through validate_skill)
@@ -980,10 +970,7 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         // Don't create SKILL.md
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         assert!(!result.is_valid);
         assert!(!result.errors.is_empty());
         assert!(result
@@ -1002,10 +989,7 @@ mod tests {
         let skill_file = skill_dir.join("SKILL.md");
         std::fs::write(&skill_file, "# Test Skill\n\nDescription").unwrap();
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         // Should be valid or have minimal warnings
         assert!(result.is_valid || result.errors.is_empty());
     }
@@ -1017,10 +1001,7 @@ mod tests {
 
         let skill_dir = temp_dir.path().join("nonexistent");
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         assert!(!result.is_valid);
         assert!(!result.errors.is_empty());
     }
@@ -1033,10 +1014,7 @@ mod tests {
         let skill_path = temp_dir.path().join("not-a-dir");
         std::fs::write(&skill_path, "file content").unwrap();
 
-        let result = validator
-            .validate_skill_directory(&skill_path)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_path).await.unwrap();
         assert!(!result.is_valid);
         assert!(!result.errors.is_empty());
     }
@@ -1194,10 +1172,7 @@ mod tests {
         std::fs::create_dir_all(&scripts_dir).unwrap();
         std::fs::write(scripts_dir.join("script.py"), "print('hello')").unwrap();
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         // Should validate directory structure
         assert!(result.is_valid || result.errors.is_empty());
     }
@@ -1217,10 +1192,7 @@ mod tests {
         std::fs::create_dir_all(&refs_dir).unwrap();
         std::fs::write(refs_dir.join("ref.md"), "Reference").unwrap();
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         assert!(result.is_valid || result.errors.is_empty());
     }
 
@@ -1239,10 +1211,7 @@ mod tests {
         std::fs::create_dir_all(&assets_dir).unwrap();
         std::fs::write(assets_dir.join("image.png"), "fake png").unwrap();
 
-        let result = validator
-            .validate_skill_directory(&skill_dir)
-            .await
-            .unwrap();
+        let result = validator.validate_skill_directory(&skill_dir).await.unwrap();
         assert!(result.is_valid || result.errors.is_empty());
     }
 

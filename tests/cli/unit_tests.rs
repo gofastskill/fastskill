@@ -1,4 +1,6 @@
 //! Unit tests for CLI utilities
+
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 //!
 //! These tests verify utility functions that can be tested indirectly
 //! through CLI execution or by testing exported library functionality.
@@ -50,12 +52,7 @@ fn test_path_extension_detection() {
     // Folder might not have extension or might be a directory
     assert!(
         folder_path.extension().is_none()
-            || !folder_path
-                .extension()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains(".")
+            || !folder_path.extension().unwrap().to_str().unwrap().contains(".")
     );
 }
 

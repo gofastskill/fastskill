@@ -109,10 +109,7 @@ impl ApiClient {
         // Check status
         let status = response.status();
         if !status.is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
             return Err(CliError::Validation(format!(
                 "Publish failed with status {}: {}",
                 status, error_text
@@ -158,10 +155,7 @@ impl ApiClient {
         // Check status
         let status = response.status();
         if !status.is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
             return Err(CliError::Validation(format!(
                 "Status check failed with status {}: {}",
                 status, error_text

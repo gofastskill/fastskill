@@ -10,8 +10,6 @@ pub struct SkillsManifest {
     pub metadata: ManifestMetadata,
     #[serde(default)]
     pub skills: Vec<SkillEntry>,
-    #[serde(default)]
-    pub proxy: Option<ProxyManifestConfig>,
 }
 
 /// Manifest metadata
@@ -66,89 +64,6 @@ pub enum SkillSource {
         #[serde(default)]
         version: Option<String>,
     },
-}
-
-/// Proxy configuration in skills manifest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyManifestConfig {
-    #[serde(default = "default_proxy_port")]
-    pub port: u16,
-    #[serde(default = "default_target_url")]
-    pub target_url: String,
-    #[serde(default)]
-    pub enable_dynamic: bool,
-    #[serde(default)]
-    pub hardcoded_skills: Option<HardcodedSkillsConfig>,
-    #[serde(default)]
-    pub dynamic_skills: Option<DynamicSkillsConfig>,
-    #[serde(default)]
-    pub openai: Option<OpenAIManifestConfig>,
-    #[serde(default)]
-    pub anthropic: Option<AnthropicManifestConfig>,
-}
-
-/// Hardcoded skills configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HardcodedSkillsConfig {
-    pub skills: Vec<String>,
-}
-
-/// Dynamic skills configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamicSkillsConfig {
-    #[serde(default = "default_min_relevance")]
-    pub min_relevance: f64,
-    #[serde(default = "default_max_skills")]
-    pub max_skills: usize,
-}
-
-/// OpenAI proxy configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenAIManifestConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    #[serde(default = "default_openai_endpoint")]
-    pub endpoint: String,
-    #[serde(default)]
-    pub model_mapping: HashMap<String, String>,
-}
-
-/// Anthropic proxy configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnthropicManifestConfig {
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    #[serde(default = "default_anthropic_endpoint")]
-    pub endpoint: String,
-}
-
-// Default value functions for serde
-fn default_proxy_port() -> u16 {
-    8081
-}
-
-fn default_target_url() -> String {
-    "https://api.anthropic.com".to_string()
-}
-
-fn default_min_relevance() -> f64 {
-    0.7
-}
-
-fn default_max_skills() -> usize {
-    5
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_openai_endpoint() -> String {
-    "/v1/chat/completions".to_string()
-}
-
-fn default_anthropic_endpoint() -> String {
-    "/v1/messages".to_string()
 }
 
 impl SkillsManifest {
@@ -231,57 +146,215 @@ impl SkillsManifest {
 
 /// Root structure for skill-project.toml file
 /// Contains both project metadata and dependencies
+/// Works in both project-level (skill consumer) and skill-level (skill author) contexts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillProjectToml {
-    /// Optional metadata section for skill author information
+    /// Optional metadata section (required for skill-level, optional for project-level)
     #[serde(default)]
     pub metadata: Option<MetadataSection>,
-    /// Optional dependencies section for skill dependencies
+    /// Optional dependencies section (required for project-level, optional for skill-level)
     #[serde(default)]
     pub dependencies: Option<DependenciesSection>,
+    /// Optional tool configuration (project-level only)
+    #[serde(default)]
+    #[serde(rename = "tool")]
+    pub tool: Option<ToolSection>,
 }
 
-/// Metadata section for skill author information
+/// Metadata section for skill or project metadata
+/// Contains skill author information for skill-level, project documentation for project-level
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataSection {
-    /// Required skill ID (must not contain slashes or scope, e.g., "my-skill")
-    pub id: String,
-    /// Required semantic version (e.g., "1.0.0")
-    pub version: String,
-    /// Optional skill description
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Required for skill-level, optional for project-level
+    pub id: Option<String>,
+    /// Required for skill-level, optional for project-level
+    pub version: Option<String>,
+    /// Optional: Description
+    #[serde(default)]
     pub description: Option<String>,
-    /// Optional author name
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional: Author name
+    #[serde(default)]
     pub author: Option<String>,
-    /// Optional tags for categorization
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional: Tags array
+    #[serde(default)]
     pub tags: Option<Vec<String>>,
-    /// Optional capabilities
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional: Capabilities array
+    #[serde(default)]
     pub capabilities: Option<Vec<String>>,
-    /// Optional download URL
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional: Download URL
+    #[serde(default)]
     pub download_url: Option<String>,
+    /// Optional: Project name (project-level only)
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
-/// Dependencies section - HashMap of skill ID to dependency specification
-pub type DependenciesSection = HashMap<String, DependencySpec>;
+/// Dependencies section containing skill dependencies
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependenciesSection {
+    /// Map of skill ID to dependency specification
+    #[serde(flatten)]
+    pub dependencies: HashMap<String, DependencySpec>,
+}
 
-/// Dependency specification - can be a simple version string or inline table
+/// Dependency specification - can be a simple version string or inline table with source details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DependencySpec {
     /// Simple version string: "1.0.0"
     Version(String),
-    /// Inline table with source and version: { source = "registry", version = "1.0.0" }
-    InlineTable {
-        /// Optional source/registry name
-        #[serde(skip_serializing_if = "Option::is_none")]
-        source: Option<String>,
-        /// Required version
-        version: String,
+    /// Inline table with source details
+    Inline {
+        source: DependencySource,
+        #[serde(flatten)]
+        source_specific: SourceSpecificFields,
+        #[serde(default)]
+        groups: Option<Vec<String>>,
+        #[serde(default)]
+        editable: Option<bool>,
     },
+}
+
+/// Dependency source type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DependencySource {
+    #[serde(rename = "git")]
+    Git,
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "zip-url")]
+    ZipUrl,
+    #[serde(rename = "source")]
+    Source,
+}
+
+/// Source-specific fields for dependency specifications
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSpecificFields {
+    /// For git source
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// For local source
+    #[serde(default)]
+    pub path: Option<String>,
+    /// For source source
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub skill: Option<String>,
+    /// For zip-url source
+    #[serde(default)]
+    pub zip_url: Option<String>,
+    /// Version (for source source)
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// Tool section containing tool-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSection {
+    #[serde(default)]
+    pub fastskill: Option<FastSkillToolConfig>,
+}
+
+/// FastSkill tool configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FastSkillToolConfig {
+    /// Optional skills storage directory override
+    #[serde(default)]
+    pub skills_directory: Option<PathBuf>,
+    /// Optional repository configuration
+    #[serde(default)]
+    pub repositories: Option<Vec<RepositoryDefinition>>,
+}
+
+/// Repository definition with name, type, priority, authentication, and connection details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryDefinition {
+    /// Repository name (unique identifier)
+    pub name: String,
+    /// Repository type
+    pub r#type: RepositoryType,
+    /// Priority (lower number = higher priority)
+    pub priority: u32,
+    /// Connection details (type-specific)
+    #[serde(flatten)]
+    pub connection: RepositoryConnection,
+    /// Authentication configuration
+    #[serde(default)]
+    pub auth: Option<AuthConfig>,
+}
+
+/// Repository type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RepositoryType {
+    #[serde(rename = "http-registry")]
+    HttpRegistry,
+    #[serde(rename = "git-marketplace")]
+    GitMarketplace,
+    #[serde(rename = "zip-url")]
+    ZipUrl,
+    #[serde(rename = "local")]
+    Local,
+}
+
+/// Repository connection details (type-specific)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RepositoryConnection {
+    HttpRegistry {
+        index_url: String,
+    },
+    GitMarketplace {
+        url: String,
+        #[serde(default)]
+        branch: Option<String>,
+    },
+    ZipUrl {
+        zip_url: String,
+    },
+    Local {
+        path: String,
+    },
+}
+
+/// Authentication configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    pub r#type: AuthType,
+    #[serde(default)]
+    pub env_var: Option<String>,
+}
+
+/// Authentication type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AuthType {
+    #[serde(rename = "pat")]
+    Pat,
+}
+
+/// Project context enum for context detection
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectContext {
+    /// Project-level context (skill consumer)
+    Project,
+    /// Skill-level context (skill author)
+    Skill,
+    /// Ambiguous context (requires content-based detection)
+    Ambiguous,
+}
+
+/// File resolution result
+#[derive(Debug, Clone)]
+pub struct FileResolutionResult {
+    /// Resolved file path
+    pub path: PathBuf,
+    /// Context detected for the file
+    pub context: ProjectContext,
+    /// Whether file was found or created
+    pub found: bool,
 }
 
 impl SkillProjectToml {
@@ -293,8 +366,30 @@ impl SkillProjectToml {
 
         let content = std::fs::read_to_string(path).map_err(ManifestError::Io)?;
 
-        let project: SkillProjectToml =
-            toml::from_str(&content).map_err(|e| ManifestError::Parse(e.to_string()))?;
+        let project: SkillProjectToml = toml::from_str(&content).map_err(|e| {
+            // T066: Enhanced TOML error message with line numbers
+            let error_msg = e.to_string();
+            // Extract line number if available
+            let line_info = if let Some(line_start) = error_msg.find("line ") {
+                let after_line = &error_msg[line_start + 5..];
+                let line_end = after_line
+                    .find(|c: char| !c.is_ascii_digit() && c != ',')
+                    .unwrap_or(after_line.len());
+                if let Ok(line) = after_line[..line_end].parse::<usize>() {
+                    format!("line {}", line)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            if !line_info.is_empty() {
+                ManifestError::Parse(format!("TOML syntax error at {}: {}", line_info, error_msg))
+            } else {
+                ManifestError::Parse(format!("TOML syntax error: {}", error_msg))
+            }
+        })?;
 
         Ok(project)
     }
@@ -307,6 +402,152 @@ impl SkillProjectToml {
         std::fs::write(path, content).map_err(ManifestError::Io)?;
 
         Ok(())
+    }
+
+    /// Validate required sections based on context
+    /// T060: Enhanced error messages with context information
+    pub fn validate_for_context(&self, context: ProjectContext) -> Result<(), String> {
+        match context {
+            ProjectContext::Skill => {
+                // Skill-level: metadata with id and version required
+                if let Some(ref metadata) = self.metadata {
+                    if metadata.id.as_ref().is_none_or(|id| id.is_empty()) {
+                        return Err(
+                            "Skill-level skill-project.toml (in directory with SKILL.md) requires [metadata].id field. \
+                            Add 'id = \"your-skill-id\"' to the [metadata] section.".to_string()
+                        );
+                    }
+                    if metadata.version.as_ref().is_none_or(|v| v.is_empty()) {
+                        return Err(
+                            "Skill-level skill-project.toml (in directory with SKILL.md) requires [metadata].version field. \
+                            Add 'version = \"1.0.0\"' to the [metadata] section.".to_string()
+                        );
+                    }
+                } else {
+                    return Err(
+                        "Skill-level skill-project.toml (in directory with SKILL.md) requires [metadata] section with 'id' and 'version' fields. \
+                        This file is used for skill author metadata.".to_string()
+                    );
+                }
+            }
+            ProjectContext::Project => {
+                // Project-level: dependencies required
+                if self.dependencies.is_none() {
+                    return Err(
+                        "Project-level skill-project.toml (at project root) requires [dependencies] section. \
+                        Add '[dependencies]' section to manage skill dependencies. \
+                        Use 'fastskill add <skill-id>' to add skills.".to_string()
+                    );
+                }
+            }
+            ProjectContext::Ambiguous => {
+                // Ambiguous: cannot validate without clear context
+                // T059: Provide helpful error message for ambiguous context
+                return Err(
+                    "Cannot determine context for skill-project.toml. \
+                    The file location and content are ambiguous. \
+                    For skill-level: ensure SKILL.md exists in the same directory and add [metadata] section with 'id' and 'version'. \
+                    For project-level: ensure file is at project root and add [dependencies] section.".to_string()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Convert SkillProjectToml dependencies to SkillEntry format for installation
+    /// T027: Helper to convert unified format to legacy format for compatibility
+    pub fn to_skill_entries(&self) -> Result<Vec<SkillEntry>, String> {
+        let mut entries = Vec::new();
+
+        if let Some(ref deps_section) = self.dependencies {
+            for (skill_id, dep_spec) in &deps_section.dependencies {
+                let (source, version, groups, editable) = match dep_spec {
+                    DependencySpec::Version(version_str) => {
+                        // Version-only dependency - treat as source-based
+                        (
+                            SkillSource::Source {
+                                name: "default".to_string(),
+                                skill: skill_id.clone(),
+                                version: Some(version_str.clone()),
+                            },
+                            Some(version_str.clone()),
+                            Vec::new(),
+                            false,
+                        )
+                    }
+                    DependencySpec::Inline {
+                        source,
+                        source_specific,
+                        groups,
+                        editable,
+                    } => {
+                        let source = match source {
+                            DependencySource::Git => {
+                                let url = source_specific.url.clone().ok_or_else(|| {
+                                    format!("Git source requires 'url' field for {}", skill_id)
+                                })?;
+                                SkillSource::Git {
+                                    url,
+                                    branch: source_specific.branch.clone(),
+                                    tag: None,
+                                    subdir: None,
+                                }
+                            }
+                            DependencySource::Local => {
+                                let path = source_specific.path.clone().ok_or_else(|| {
+                                    format!("Local source requires 'path' field for {}", skill_id)
+                                })?;
+                                SkillSource::Local {
+                                    path: PathBuf::from(path),
+                                    editable: editable.unwrap_or(false),
+                                }
+                            }
+                            DependencySource::ZipUrl => {
+                                let zip_url = source_specific.zip_url.clone().ok_or_else(|| {
+                                    format!(
+                                        "ZipUrl source requires 'zip_url' field for {}",
+                                        skill_id
+                                    )
+                                })?;
+                                SkillSource::ZipUrl {
+                                    base_url: zip_url,
+                                    version: source_specific.version.clone(),
+                                }
+                            }
+                            DependencySource::Source => {
+                                let name = source_specific.name.clone().ok_or_else(|| {
+                                    format!("Source source requires 'name' field for {}", skill_id)
+                                })?;
+                                let skill = source_specific.skill.clone().ok_or_else(|| {
+                                    format!("Source source requires 'skill' field for {}", skill_id)
+                                })?;
+                                SkillSource::Source {
+                                    name,
+                                    skill,
+                                    version: source_specific.version.clone(),
+                                }
+                            }
+                        };
+                        (
+                            source,
+                            source_specific.version.clone(),
+                            groups.clone().unwrap_or_default(),
+                            editable.unwrap_or(false),
+                        )
+                    }
+                };
+
+                entries.push(SkillEntry {
+                    id: skill_id.clone(),
+                    source,
+                    version,
+                    groups,
+                    editable,
+                });
+            }
+        }
+
+        Ok(entries)
     }
 }
 
@@ -327,6 +568,7 @@ pub enum ManifestError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::path::PathBuf;

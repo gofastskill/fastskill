@@ -124,8 +124,6 @@ pub struct FastSkillServer {
     service: Arc<FastSkillService>,
     addr: SocketAddr,
     enable_registry: bool,
-    enable_proxy: bool,
-    proxy_config: Option<crate::http::proxy::ProxyConfig>,
     auto_generate_mdc: bool,
 }
 
@@ -136,19 +134,6 @@ impl FastSkillServer {
         host: &str,
         port: u16,
         enable_registry: bool,
-    ) -> Self {
-        Self::new_with_proxy(service, host, port, enable_registry, false, None, false)
-    }
-
-    /// Create a new server instance with proxy support
-    pub fn new_with_proxy(
-        service: Arc<FastSkillService>,
-        host: &str,
-        port: u16,
-        enable_registry: bool,
-        enable_proxy: bool,
-        proxy_config: Option<crate::http::proxy::ProxyConfig>,
-        auto_generate_mdc: bool,
     ) -> Self {
         let addr = match Self::parse_address(host, port) {
             Ok(addr) => addr,
@@ -162,9 +147,7 @@ impl FastSkillServer {
             service,
             addr,
             enable_registry,
-            enable_proxy,
-            proxy_config,
-            auto_generate_mdc,
+            auto_generate_mdc: false,
         }
     }
 
@@ -343,15 +326,20 @@ impl FastSkillServer {
             Arc::from_raw(service as *const FastSkillService)
         };
 
-        Self::new_with_proxy(
-            service_arc,
-            host,
-            port,
+        let addr = match Self::parse_address(host, port) {
+            Ok(addr) => addr,
+            Err(e) => {
+                eprintln!("Invalid address: {}:{} - {}", host, port, e);
+                std::process::exit(1);
+            }
+        };
+
+        Self {
+            service: service_arc,
+            addr,
             enable_registry,
-            false,
-            None,
             auto_generate_mdc,
-        )
+        }
     }
 
     /// Create the Axum router with all routes
@@ -360,12 +348,9 @@ impl FastSkillServer {
         // Try to use the config module if available, otherwise default
         let skills_toml_path = resolve_skills_toml_path();
 
-        let mut state = AppState::new(self.service.clone())
+        let state = AppState::new(self.service.clone())
             .with_skills_toml_path(skills_toml_path)
             .with_auto_generate_mdc(self.auto_generate_mdc);
-        if let Some(config) = &self.proxy_config {
-            state = state.with_config(config.clone());
-        }
 
         let mut router = Router::new()
             // Root endpoint
@@ -462,6 +447,10 @@ impl FastSkillServer {
             router = router
                 // Registry index file serving (flat layout: /index/{scope}/{skill-name})
                 .route("/index/*skill_id", get(registry::serve_index_file))
+                .route(
+                    "/api/registry/index/skills",
+                    get(registry::list_index_skills),
+                )
                 // Registry API endpoints
                 .route("/api/registry/sources", get(registry::list_sources))
                 .route("/api/registry/skills", get(registry::list_all_skills))
@@ -514,25 +503,6 @@ impl FastSkillServer {
                 .nest_service("/registry/", registry_router);
         }
 
-        // Add proxy routes if enabled
-        if self.enable_proxy {
-            if let Some(proxy_config) = &self.proxy_config {
-                use crate::http::proxy::ProxyHandler;
-                let proxy_handler =
-                    ProxyHandler::new(proxy_config.clone(), self.service.clone())
-                        .map_err(|e| format!("Failed to create proxy handler: {}", e))?;
-
-                router = router
-                    // Proxy Anthropic API calls
-                    .route(
-                        "/v1/messages",
-                        axum::routing::post(move |req: axum::extract::Request| async move {
-                            proxy_handler.handle_request(req).await
-                        }),
-                    );
-            }
-        }
-
         // Add middleware and state
         Ok(router
             .layer(
@@ -565,10 +535,8 @@ impl FastSkillServer {
                 return Err(err_msg.into());
             }
 
-            let staging_dir = config
-                .staging_dir
-                .clone()
-                .unwrap_or_else(|| PathBuf::from(".staging"));
+            let staging_dir =
+                config.staging_dir.clone().unwrap_or_else(|| PathBuf::from(".staging"));
 
             let staging_manager = StagingManager::new(staging_dir);
             staging_manager

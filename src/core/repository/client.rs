@@ -2,9 +2,11 @@
 
 use crate::core::metadata::SkillMetadata;
 use crate::core::registry::{RegistryClient, RegistryConfig as OldRegistryConfig};
+use crate::core::registry_index::{ListSkillsOptions, SkillSummary};
 use crate::core::repository::{RepositoryConfig, RepositoryDefinition, RepositoryType};
-use crate::core::service::ServiceError;
+use crate::core::service::{ServiceError, SkillId};
 use crate::core::sources::{SourceConfig, SourceDefinition, SourcesManager};
+use reqwest::Client;
 use std::sync::Arc;
 
 /// Error type for repository client operations
@@ -217,17 +219,15 @@ impl RepositoryClient for MarketplaceRepositoryClient {
         use crate::core::service::SkillId;
         let skill_id = SkillId::from(id.to_string());
         let skills = self.list_skills().await?;
-        Ok(skills
-            .into_iter()
-            .filter(|s| s.id == skill_id)
-            .map(|s| s.version)
-            .collect())
+        Ok(skills.into_iter().filter(|s| s.id == skill_id).map(|s| s.version).collect())
     }
 }
 
 /// HTTP registry client (wraps RegistryClient logic)
 pub struct CratesRegistryClient {
     registry_client: RegistryClient,
+    index_url: String,
+    auth: Option<crate::core::registry::config::AuthConfig>,
 }
 
 impl CratesRegistryClient {
@@ -240,6 +240,21 @@ impl CratesRegistryClient {
                 ))
             }
         };
+
+        // Validate URL is not empty
+        if index_url.trim().is_empty() {
+            return Err(ServiceError::Custom(
+                "index_url cannot be empty".to_string(),
+            ));
+        }
+
+        // Validate URL format
+        if url::Url::parse(&index_url).is_err() {
+            return Err(ServiceError::Custom(format!(
+                "Invalid index_url format: {}",
+                index_url
+            )));
+        }
 
         // Convert auth
         let auth = repo.auth.as_ref().map(|a| {
@@ -273,30 +288,155 @@ impl CratesRegistryClient {
             registry_type: "git".to_string(),
             index_url,
             auth,
-            storage: repo
-                .storage
-                .clone()
-                .map(|s| crate::core::registry::config::StorageConfig {
-                    storage_type: s.storage_type,
-                    repository: s.repository,
-                    bucket: s.bucket,
-                    region: s.region,
-                    endpoint: s.endpoint,
-                    base_url: s.base_url,
-                }),
+            storage: repo.storage.clone().map(|s| crate::core::registry::config::StorageConfig {
+                storage_type: s.storage_type,
+                repository: s.repository,
+                bucket: s.bucket,
+                region: s.region,
+                endpoint: s.endpoint,
+                base_url: s.base_url,
+            }),
         };
 
-        let registry_client = RegistryClient::new(registry_config)?;
+        let registry_client = RegistryClient::new(registry_config.clone())?;
 
-        Ok(Self { registry_client })
+        Ok(Self {
+            registry_client,
+            index_url: registry_config.index_url.clone(),
+            auth: registry_config.auth.clone(),
+        })
+    }
+
+    /// Fetch skills from the registry HTTP API endpoint
+    pub async fn fetch_skills(
+        &self,
+        options: &ListSkillsOptions,
+    ) -> Result<Vec<SkillSummary>, RepositoryClientError> {
+        use crate::core::registry::auth::Auth;
+
+        // Build the API endpoint URL
+        let base_url = self.index_url.trim_end_matches('/');
+        let mut url = format!("{}/api/registry/index/skills", base_url);
+
+        // Add query parameters
+        let mut query_params = Vec::new();
+        if let Some(ref scope) = options.scope {
+            query_params.push(("scope", scope.clone()));
+        }
+        if options.all_versions {
+            query_params.push(("all_versions", "true".to_string()));
+        }
+        if options.include_pre_release {
+            query_params.push(("include_pre_release", "true".to_string()));
+        }
+
+        if !query_params.is_empty() {
+            let mut url_obj = url::Url::parse(&url)
+                .map_err(|e| RepositoryClientError::Client(format!("Invalid URL: {}", e)))?;
+            for (k, v) in query_params {
+                url_obj.query_pairs_mut().append_pair(k, &v);
+            }
+            url = url_obj.to_string();
+        }
+
+        // Create HTTP client
+        let client = Client::builder().user_agent("fastskill/0.8.6").build().map_err(|e| {
+            RepositoryClientError::Client(format!("Failed to create HTTP client: {}", e))
+        })?;
+
+        // Build request
+        let mut request = client.get(&url);
+
+        // Add authentication if configured
+        if let Some(ref auth_config) = self.auth {
+            let auth: Option<Box<dyn Auth>> = match auth_config {
+                crate::core::registry::config::AuthConfig::Pat { env_var } => Some(Box::new(
+                    crate::core::registry::auth::GitHubPat::new(env_var.clone()),
+                )),
+                crate::core::registry::config::AuthConfig::Ssh { key_path } => Some(Box::new(
+                    crate::core::registry::auth::SshKey::new(key_path.clone()),
+                )),
+                crate::core::registry::config::AuthConfig::ApiKey { env_var } => Some(Box::new(
+                    crate::core::registry::auth::ApiKey::new(env_var.clone()),
+                )),
+            };
+
+            if let Some(auth) = auth {
+                if auth.is_configured() {
+                    if let Ok(header_value) = auth.get_auth_header() {
+                        request = request.header("Authorization", header_value);
+                    }
+                }
+            }
+        }
+
+        // Send request
+        let response = request
+            .send()
+            .await
+            .map_err(|e| RepositoryClientError::Client(format!("HTTP request failed: {}", e)))?;
+
+        // Handle HTTP status codes
+        let status = response.status();
+        match status.as_u16() {
+            200 => {
+                // Parse JSON response
+                let summaries: Vec<SkillSummary> = response.json().await.map_err(|e| {
+                    RepositoryClientError::Client(format!("Failed to parse JSON response: {}", e))
+                })?;
+                Ok(summaries)
+            }
+            400 => Err(RepositoryClientError::Client(
+                "Bad request: Invalid query parameters".to_string(),
+            )),
+            401 => Err(RepositoryClientError::Client(
+                "Unauthorized: Authentication required for this scope".to_string(),
+            )),
+            403 => Err(RepositoryClientError::Client(
+                "Forbidden: Access denied to this scope".to_string(),
+            )),
+            404 => Err(RepositoryClientError::Client(
+                "Not found: Registry endpoint not available".to_string(),
+            )),
+            500..=599 => Err(RepositoryClientError::Client(format!(
+                "Server error: HTTP {}",
+                status
+            ))),
+            _ => Err(RepositoryClientError::Client(format!(
+                "Unexpected HTTP status: {}",
+                status
+            ))),
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl RepositoryClient for CratesRegistryClient {
     async fn list_skills(&self) -> Result<Vec<SkillMetadata>, RepositoryClientError> {
-        // HTTP registries don't have a simple "list all" - would need to scan index
-        Err(RepositoryClientError::NotImplemented)
+        // Use default options (no filtering)
+        let options = ListSkillsOptions::default();
+        let summaries = self.fetch_skills(&options).await?;
+
+        // Convert SkillSummary to SkillMetadata
+        let metadata: Vec<SkillMetadata> = summaries
+            .into_iter()
+            .map(|s| {
+                SkillMetadata {
+                    id: SkillId::from(s.id.clone()),
+                    name: s.name.clone(),
+                    description: s.description.clone(),
+                    version: s.latest_version.clone(),
+                    author: None,             // Not available in SkillSummary
+                    tags: Vec::new(),         // Not available in SkillSummary
+                    capabilities: Vec::new(), // Not available in SkillSummary
+                    enabled: true,
+                    token_estimate: s.description.len() / 4, // Rough estimate
+                    last_updated: s.published_at.unwrap_or_else(chrono::Utc::now),
+                }
+            })
+            .collect();
+
+        Ok(metadata)
     }
 
     async fn get_skill(

@@ -31,8 +31,8 @@ async fn main() {
             std::process::exit(0);
         }
         Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
+            // Error message already printed by command
+            std::process::exit(e.exit_code());
         }
     }
 }

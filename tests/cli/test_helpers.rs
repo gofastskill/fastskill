@@ -1,11 +1,14 @@
 //! Helper functions for CLI tests
 
-use fastskill::{FastSkillService, ServiceConfig};
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
+use fastskill::ServiceConfig;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// Create a test service instance
-pub fn create_test_service(skills_dir: Option<PathBuf>) -> (FastSkillService, TempDir) {
+/// Create a test service configuration
+#[allow(dead_code)]
+pub fn create_test_service(skills_dir: Option<PathBuf>) -> (ServiceConfig, TempDir) {
     let temp_dir = TempDir::new().unwrap();
     let skills_path = skills_dir.unwrap_or_else(|| temp_dir.path().join("skills"));
     std::fs::create_dir_all(&skills_path).unwrap();
@@ -20,6 +23,7 @@ pub fn create_test_service(skills_dir: Option<PathBuf>) -> (FastSkillService, Te
 }
 
 /// Create a temporary skill directory with SKILL.md
+#[allow(dead_code)]
 pub fn create_temp_skill(temp_dir: &TempDir, skill_name: &str) -> PathBuf {
     let skill_dir = temp_dir.path().join(skill_name);
     std::fs::create_dir_all(&skill_dir).unwrap();
@@ -44,4 +48,3 @@ capabilities: [test_capability]
 
     skill_dir
 }
-

@@ -14,7 +14,6 @@ pub trait StorageBackend: Send + Sync {
 }
 
 pub mod filesystem;
-#[cfg(feature = "git-support")]
 pub mod git;
 pub mod hot_reload;
 pub mod vector_index;

@@ -1,13 +1,15 @@
 //! Crates.io-like registry index management
 
 use crate::core::service::ServiceError;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
+use semver;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 /// Scoped skill name normalization utilities
 pub struct ScopedSkillName;
@@ -232,6 +234,60 @@ pub struct Dependency {
     pub kind: Option<String>,
 }
 
+/// Options for listing skills from registry
+#[derive(Debug, Clone, Default)]
+pub struct ListSkillsOptions {
+    pub scope: Option<String>,
+    pub all_versions: bool,
+    pub include_pre_release: bool,
+}
+
+/// Summary of a skill from the registry index
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSummary {
+    pub id: String,
+    pub scope: String,
+    pub name: String,
+    pub description: String,
+    pub latest_version: String,
+    #[serde(
+        serialize_with = "serialize_datetime_option",
+        deserialize_with = "deserialize_datetime_option"
+    )]
+    pub published_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub versions: Option<Vec<String>>,
+}
+
+/// Serialize DateTime<Utc> as ISO 8601 string
+fn serialize_datetime_option<S>(
+    dt: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match dt {
+        Some(dt) => serializer.serialize_str(&dt.to_rfc3339()),
+        None => serializer.serialize_none(),
+    }
+}
+
+/// Deserialize ISO 8601 string to DateTime<Utc>
+fn deserialize_datetime_option<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        Some(s) => DateTime::parse_from_rfc3339(&s)
+            .map(|dt| Some(dt.with_timezone(&Utc)))
+            .map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
+}
+
 /// Calculate SHA256 checksum of a file
 fn calculate_file_checksum(file_path: &Path) -> Result<String, ServiceError> {
     let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
@@ -286,10 +342,7 @@ pub fn migrate_index_format(
                     let content = fs::read_to_string(path).map_err(ServiceError::Io)?;
 
                     if let Ok(entry) = serde_json::from_str::<VersionEntry>(&content) {
-                        skill_versions
-                            .entry(skill_id)
-                            .or_default()
-                            .push((version, entry));
+                        skill_versions.entry(skill_id).or_default().push((version, entry));
                     }
                 }
             }
@@ -332,7 +385,232 @@ fn parse_old_index_filename(filename: &str) -> Option<(String, String)> {
     }
 }
 
+/// Extract scope from skill ID (format: scope/name)
+fn extract_scope(skill_id: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = skill_id.split('/').collect();
+    if parts.len() == 2 {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
+/// Determine if a version is a pre-release
+fn is_pre_release(version: &str) -> bool {
+    semver::Version::parse(version).map(|v| !v.pre.is_empty()).unwrap_or(false)
+}
+
+/// Determine latest version from a list of version entries
+/// Returns the highest stable version, or highest pre-release if include_pre_release is true
+fn determine_latest_version(
+    entries: &[VersionEntry],
+    include_pre_release: bool,
+) -> Option<&VersionEntry> {
+    let mut valid_entries: Vec<&VersionEntry> = entries
+        .iter()
+        .filter(|e| !e.yanked)
+        .filter(|e| include_pre_release || !is_pre_release(&e.vers))
+        .collect();
+
+    if valid_entries.is_empty() {
+        return None;
+    }
+
+    // Sort by semantic version (highest first)
+    valid_entries.sort_by(|a, b| {
+        let ver_a = semver::Version::parse(&a.vers).ok();
+        let ver_b = semver::Version::parse(&b.vers).ok();
+        match (ver_a, ver_b) {
+            (Some(va), Some(vb)) => vb.cmp(&va), // Reverse order (highest first)
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.vers.cmp(&a.vers), // String fallback
+        }
+    });
+
+    valid_entries.first().copied()
+}
+
+/// Scan registry index directory and return skill summaries
+/// This is used by the server-side HTTP endpoint
+pub async fn scan_registry_index(
+    registry_path: &Path,
+    options: &ListSkillsOptions,
+) -> Result<Vec<SkillSummary>, ServiceError> {
+    use tracing::{error, warn};
+
+    if !registry_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut skill_map: std::collections::HashMap<String, Vec<VersionEntry>> =
+        std::collections::HashMap::new();
+
+    // Recursively scan registry directory
+    for entry in WalkDir::new(registry_path).min_depth(1) {
+        let entry = entry.map_err(|e| ServiceError::Io(e.into()))?;
+        let path = entry.path();
+
+        // Skip directories and hidden files
+        if path.is_dir()
+            || path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(false)
+        {
+            continue;
+        }
+
+        // Try to determine skill_id from path
+        // Path format: {registry_path}/{scope}/{name}
+        let relative_path = path.strip_prefix(registry_path).map_err(|e| {
+            ServiceError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Failed to strip prefix: {}", e),
+            ))
+        })?;
+
+        let parts: Vec<&str> =
+            relative_path.components().filter_map(|c| c.as_os_str().to_str()).collect();
+
+        // Must have at least 2 parts (scope/name)
+        if parts.len() < 2 {
+            warn!("Skipping invalid path structure: {:?}", path);
+            continue;
+        }
+
+        // Reconstruct skill_id from path
+        let skill_id = format!("{}/{}", parts[0], parts[1]);
+
+        // Validate skill_id format
+        if extract_scope(&skill_id).is_none() {
+            warn!("Skipping invalid skill_id format: {}", skill_id);
+            continue;
+        }
+
+        // Apply scope filter if specified
+        if let Some(ref filter_scope) = options.scope {
+            if let Some((scope, _)) = extract_scope(&skill_id) {
+                if scope != *filter_scope {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+        }
+
+        // Read version entries from index file
+        match read_skill_versions(registry_path, &skill_id) {
+            Ok(entries) => {
+                if !entries.is_empty() {
+                    skill_map.insert(skill_id, entries);
+                }
+            }
+            Err(e) => {
+                error!("Failed to read index file for skill {}: {}", skill_id, e);
+                // Continue processing other skills
+            }
+        }
+    }
+
+    let mut summaries = Vec::new();
+
+    for (skill_id, entries) in skill_map {
+        let (scope, name) = extract_scope(&skill_id).ok_or_else(|| {
+            ServiceError::Custom(format!("Invalid skill_id format: {}", skill_id))
+        })?;
+
+        if options.all_versions {
+            // Return one summary per version
+            let mut seen_versions = std::collections::HashSet::new();
+            for entry in entries {
+                // Skip yanked versions
+                if entry.yanked {
+                    continue;
+                }
+
+                // Apply pre-release filter
+                if !options.include_pre_release && is_pre_release(&entry.vers) {
+                    continue;
+                }
+
+                // Deduplicate: use first occurrence of each version
+                if seen_versions.contains(&entry.vers) {
+                    warn!(
+                        "Duplicate version {} for skill {}, skipping",
+                        entry.vers, skill_id
+                    );
+                    continue;
+                }
+                seen_versions.insert(entry.vers.clone());
+
+                // Parse published_at
+                let published_at = entry.published_at.parse::<DateTime<Utc>>().ok();
+
+                // Extract description from metadata
+                let description =
+                    entry.metadata.as_ref().and_then(|m| m.description.clone()).unwrap_or_default();
+
+                summaries.push(SkillSummary {
+                    id: skill_id.clone(),
+                    scope: scope.clone(),
+                    name: name.clone(),
+                    description,
+                    latest_version: entry.vers.clone(),
+                    published_at,
+                    versions: None,
+                });
+            }
+        } else {
+            // Return one summary per skill (latest version)
+            if let Some(latest_entry) =
+                determine_latest_version(&entries, options.include_pre_release)
+            {
+                // Parse published_at
+                let published_at = latest_entry.published_at.parse::<DateTime<Utc>>().ok();
+
+                // Extract description from metadata
+                let description = latest_entry
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.description.clone())
+                    .unwrap_or_default();
+
+                // Collect all versions if needed
+                let versions = if options.include_pre_release {
+                    Some(entries.iter().filter(|e| !e.yanked).map(|e| e.vers.clone()).collect())
+                } else {
+                    Some(
+                        entries
+                            .iter()
+                            .filter(|e| !e.yanked && !is_pre_release(&e.vers))
+                            .map(|e| e.vers.clone())
+                            .collect(),
+                    )
+                };
+
+                summaries.push(SkillSummary {
+                    id: skill_id,
+                    scope,
+                    name,
+                    description,
+                    latest_version: latest_entry.vers.clone(),
+                    published_at,
+                    versions,
+                });
+            }
+        }
+    }
+
+    // Sort alphabetically by skill ID (ascending)
+    summaries.sort_by(|a, b| a.id.cmp(&b.id));
+
+    Ok(summaries)
+}
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

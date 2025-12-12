@@ -19,16 +19,12 @@ pub async fn execute_disable(service: &FastSkillService, args: DisableArgs) -> C
     for skill_id in &args.skill_ids {
         let skill_id_parsed = fastskill::SkillId::new(skill_id.clone())
             .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
-        service
-            .skill_manager()
-            .disable_skill(&skill_id_parsed)
-            .await
-            .map_err(|e| {
-                CliError::Service(fastskill::ServiceError::Custom(format!(
-                    "Failed to disable skill {}: {}",
-                    skill_id, e
-                )))
-            })?;
+        service.skill_manager().disable_skill(&skill_id_parsed).await.map_err(|e| {
+            CliError::Service(fastskill::ServiceError::Custom(format!(
+                "Failed to disable skill {}: {}",
+                skill_id, e
+            )))
+        })?;
         println!("Disabled skill: {}", skill_id);
     }
 
@@ -36,6 +32,7 @@ pub async fn execute_disable(service: &FastSkillService, args: DisableArgs) -> C
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use fastskill::ServiceConfig;

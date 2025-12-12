@@ -15,6 +15,9 @@ use tracing::info;
 use walkdir::WalkDir;
 
 /// Package skills into ZIP artifacts
+///
+/// Reads skill metadata from skill-project.toml [metadata] section (skill-level context).
+/// Includes skill dependencies from skill-project.toml [dependencies] if present.
 #[derive(Debug, Args)]
 pub struct PackageArgs {
     /// Auto-detect changed skills
@@ -240,7 +243,99 @@ pub async fn execute_package(args: PackageArgs) -> CliResult<()> {
     Ok(())
 }
 
+fn get_all_skills_shallow(skills_dir: &Path) -> CliResult<Vec<String>> {
+    if !skills_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut skills = Vec::new();
+    let entries = std::fs::read_dir(skills_dir).map_err(CliError::Io)?;
+
+    for entry in entries {
+        let entry = entry.map_err(CliError::Io)?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            if let Some(skill_id) = path.file_name().and_then(|n| n.to_str()) {
+                if path.join("SKILL.md").exists() {
+                    skills.push(skill_id.to_string());
+                }
+            }
+        }
+    }
+
+    Ok(skills)
+}
+
+fn get_all_skills_recursive(skills_dir: &Path) -> CliResult<Vec<String>> {
+    if !skills_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut skills = Vec::new();
+    let skills_dir_canonical = skills_dir.canonicalize().map_err(CliError::Io)?;
+
+    for entry in WalkDir::new(skills_dir).min_depth(1).max_depth(usize::MAX).follow_links(false) {
+        let entry = entry.map_err(|e| {
+            CliError::Io(
+                e.into_io_error().unwrap_or_else(|| std::io::Error::other("WalkDir error")),
+            )
+        })?;
+        let path = entry.path();
+
+        // Check if this directory contains SKILL.md
+        if path.is_dir() && path.join("SKILL.md").exists() {
+            // Compute relative path from skills_dir to this skill directory
+            let path_canonical = path.canonicalize().map_err(CliError::Io)?;
+            let relative_path =
+                path_canonical.strip_prefix(&skills_dir_canonical).map_err(|_| {
+                    CliError::Validation(format!(
+                        "Failed to compute relative path for: {}",
+                        path.display()
+                    ))
+                })?;
+
+            // Skip hidden directories and tooling directories (check relative path components)
+            let should_skip = relative_path.components().any(|c| {
+                if let std::path::Component::Normal(name) = c {
+                    name.to_string_lossy().starts_with('.')
+                } else {
+                    false
+                }
+            });
+            if should_skip {
+                continue;
+            }
+
+            // Convert to string with forward slashes (normalize path separators)
+            let skill_id = relative_path.to_string_lossy().replace('\\', "/");
+            skills.push(skill_id.to_string());
+        }
+    }
+
+    Ok(skills)
+}
+
+fn get_git_commit() -> Result<String, CliError> {
+    use std::process::Command;
+
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| CliError::Validation(format!("Failed to execute git: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(CliError::Validation(
+            "Failed to get git commit hash".to_string(),
+        ));
+    }
+
+    let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(commit_hash)
+}
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::fs;
@@ -399,110 +494,5 @@ mod tests {
 
         let skills = get_all_skills_recursive(&nonexistent_dir).unwrap();
         assert_eq!(skills.len(), 0);
-    }
-}
-
-fn get_all_skills_shallow(skills_dir: &Path) -> CliResult<Vec<String>> {
-    if !skills_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut skills = Vec::new();
-    let entries = std::fs::read_dir(skills_dir).map_err(CliError::Io)?;
-
-    for entry in entries {
-        let entry = entry.map_err(CliError::Io)?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            if let Some(skill_id) = path.file_name().and_then(|n| n.to_str()) {
-                if path.join("SKILL.md").exists() {
-                    skills.push(skill_id.to_string());
-                }
-            }
-        }
-    }
-
-    Ok(skills)
-}
-
-fn get_all_skills_recursive(skills_dir: &Path) -> CliResult<Vec<String>> {
-    if !skills_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut skills = Vec::new();
-    let skills_dir_canonical = skills_dir.canonicalize().map_err(CliError::Io)?;
-
-    for entry in WalkDir::new(skills_dir)
-        .min_depth(1)
-        .max_depth(usize::MAX)
-        .follow_links(false)
-    {
-        let entry = entry.map_err(|e| {
-            CliError::Io(
-                e.into_io_error()
-                    .unwrap_or_else(|| std::io::Error::other("WalkDir error")),
-            )
-        })?;
-        let path = entry.path();
-
-        // Check if this directory contains SKILL.md
-        if path.is_dir() && path.join("SKILL.md").exists() {
-            // Compute relative path from skills_dir to this skill directory
-            let path_canonical = path.canonicalize().map_err(CliError::Io)?;
-            let relative_path =
-                path_canonical
-                    .strip_prefix(&skills_dir_canonical)
-                    .map_err(|_| {
-                        CliError::Validation(format!(
-                            "Failed to compute relative path for: {}",
-                            path.display()
-                        ))
-                    })?;
-
-            // Skip hidden directories and tooling directories (check relative path components)
-            let should_skip = relative_path.components().any(|c| {
-                if let std::path::Component::Normal(name) = c {
-                    name.to_string_lossy().starts_with('.')
-                } else {
-                    false
-                }
-            });
-            if should_skip {
-                continue;
-            }
-
-            // Convert to string with forward slashes (normalize path separators)
-            let skill_id = relative_path.to_string_lossy().replace('\\', "/");
-            skills.push(skill_id.to_string());
-        }
-    }
-
-    Ok(skills)
-}
-
-fn get_git_commit() -> Result<String, CliError> {
-    #[cfg(feature = "git-support")]
-    {
-        use git2::Repository;
-
-        let repo = Repository::open(".")
-            .map_err(|e| CliError::Validation(format!("Failed to open git repository: {}", e)))?;
-
-        let head = repo
-            .head()
-            .map_err(|e| CliError::Validation(format!("Failed to get HEAD: {}", e)))?;
-
-        let commit = head
-            .peel_to_commit()
-            .map_err(|e| CliError::Validation(format!("Failed to get commit: {}", e)))?;
-
-        Ok(commit.id().to_string())
-    }
-
-    #[cfg(not(feature = "git-support"))]
-    {
-        Err(CliError::Validation("Git support not enabled".to_string()))
     }
 }

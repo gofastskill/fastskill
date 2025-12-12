@@ -186,11 +186,9 @@ pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+    })?;
     let skill_manager = state.service.skill_manager();
 
     // Get all installed skills
@@ -275,11 +273,9 @@ pub async fn list_source_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SourceSkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+    })?;
     let skill_manager = state.service.skill_manager();
 
     // Get source definition
@@ -295,12 +291,9 @@ pub async fn list_source_skills(
     }
 
     // Get marketplace.json
-    let marketplace = sources_manager
-        .get_marketplace_json(&source_name)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
-        })?;
+    let marketplace = sources_manager.get_marketplace_json(&source_name).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
+    })?;
 
     // Get installed skills to check installation status
     let installed_skills = skill_manager
@@ -343,11 +336,9 @@ pub async fn get_marketplace(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<MarketplaceJson>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+    })?;
 
     // Get source definition
     let source_def = sources_manager
@@ -362,12 +353,9 @@ pub async fn get_marketplace(
     }
 
     // Get marketplace.json
-    let marketplace = sources_manager
-        .get_marketplace_json(&source_name)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
-        })?;
+    let marketplace = sources_manager.get_marketplace_json(&source_name).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
+    })?;
 
     Ok(Json(ApiResponse::success(marketplace)))
 }
@@ -377,11 +365,9 @@ pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+    })?;
 
     // Clear the cache
     sources_manager.clear_cache().await;
@@ -397,6 +383,70 @@ impl SourceDefinition {
             SourceConfig::Git { .. } | SourceConfig::ZipUrl { .. }
         )
     }
+}
+
+/// GET /api/registry/index/skills - List all skills from the registry index
+/// Query parameters:
+///   - scope: Filter by scope (optional)
+///   - all_versions: Include all versions (default: false)
+///   - include_pre_release: Include pre-release versions (default: false)
+pub async fn list_index_skills(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> HttpResult<Json<Vec<crate::core::registry_index::SkillSummary>>> {
+    use crate::core::registry_index::{scan_registry_index, ListSkillsOptions};
+    use crate::http::errors::HttpError;
+
+    let config = state.service.config();
+
+    let registry_index_path = config
+        .registry_index_path
+        .as_ref()
+        .ok_or_else(|| HttpError::NotFound("Registry index path not configured".to_string()))?;
+
+    // Parse query parameters
+    let scope = params.get("scope").map(|s| s.to_string());
+
+    // Validate scope format if provided
+    if let Some(ref scope_val) = scope {
+        if scope_val.is_empty() {
+            return Err(HttpError::BadRequest("Scope cannot be empty".to_string()));
+        }
+        // Scope must not contain path separators or other unsafe characters
+        if scope_val.contains('/') || scope_val.contains('\\') || scope_val.contains("..") {
+            return Err(HttpError::BadRequest(format!(
+                "Invalid scope format: '{}'. Scope must be a valid organization name without path separators.",
+                scope_val
+            )));
+        }
+        // Scope should be filesystem-safe
+        if !scope_val.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err(HttpError::BadRequest(format!(
+                "Invalid scope format: '{}'. Scope must contain only alphanumeric characters, hyphens, and underscores.",
+                scope_val
+            )));
+        }
+    }
+
+    let all_versions = params.get("all_versions").map(|v| v == "true" || v == "1").unwrap_or(false);
+
+    let include_pre_release = params
+        .get("include_pre_release")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    let options = ListSkillsOptions {
+        scope,
+        all_versions,
+        include_pre_release,
+    };
+
+    // Scan registry index
+    let summaries = scan_registry_index(registry_index_path, &options).await.map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to scan registry index: {}", e))
+    })?;
+
+    Ok(Json(summaries))
 }
 
 /// GET /index/:skill_id - Serve registry index file for a skill (flat layout)

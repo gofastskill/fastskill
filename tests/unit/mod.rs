@@ -8,6 +8,11 @@ pub mod tool_calling;
 pub mod routing;
 
 #[cfg(test)]
+pub mod storage {
+    pub mod git_test;
+}
+
+#[cfg(test)]
 pub mod core {
     pub mod registry {
         pub mod index_manager_test;

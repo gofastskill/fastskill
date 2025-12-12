@@ -7,15 +7,45 @@ use crate::cli::utils::{
 };
 use chrono::Utc;
 use clap::Args;
+use fastskill::core::project::resolve_project_file;
 use fastskill::core::repository::RepositoryManager;
 use fastskill::core::skill_manager::SourceType;
 use fastskill::{FastSkillService, SkillDefinition};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::info;
 
-/// Add a new skill from zip file, folder, git URL, or registry (skill ID)
+/// T028: Helper to update skill-project.toml and skills.lock
+fn update_project_files(
+    skill_def: &SkillDefinition,
+    groups: Vec<String>,
+    editable: bool,
+) -> CliResult<()> {
+    // Update skill-project.toml
+    manifest_utils::add_skill_to_project_toml(skill_def, groups.clone(), editable)
+        .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
+
+    // T033: Lock file at project root
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let project_file_result = resolve_project_file(&current_dir);
+    let lock_path = if let Some(parent) = project_file_result.path.parent() {
+        parent.join("skills.lock")
+    } else {
+        PathBuf::from("skills.lock")
+    };
+    manifest_utils::update_lock_file(&lock_path, skill_def, groups)
+        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+
+    Ok(())
+}
+
+/// Add a new skill and update skill-project.toml [dependencies]
+///
+/// Adds the skill to skill-project.toml [dependencies] section and updates skills.lock.
+/// Supports git URLs, local paths, ZIP files, and registry skill IDs.
 #[derive(Debug, Args)]
 pub struct AddArgs {
     /// Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@1.2.3)
@@ -148,10 +178,7 @@ async fn add_from_zip(
     let skill_def = create_skill_from_path(&skill_path)?;
 
     // Copy skill to skills storage directory
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(skill_def.id.as_str());
+    let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -160,9 +187,7 @@ async fn add_from_zip(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -222,13 +247,8 @@ async fn add_from_zip(
         .await
         .map_err(CliError::Service)?;
 
-    // Update manifest and lock files
-    let manifest_path = PathBuf::from(".claude/skills.toml");
-    let lock_path = PathBuf::from(".claude/skills.lock");
-    manifest_utils::add_skill_to_manifest(&manifest_path, &skill_def, groups.clone(), editable)
-        .map_err(|e| CliError::Config(format!("Failed to update manifest: {}", e)))?;
-    manifest_utils::update_lock_file(&lock_path, &skill_def, groups)
-        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+    // T028: Update skill-project.toml and skills.lock
+    update_project_files(&skill_def, groups.clone(), editable)?;
 
     println!(
         "Successfully added skill: {} (v{})",
@@ -236,7 +256,7 @@ async fn add_from_zip(
     );
     println!(
         "{}",
-        crate::cli::utils::messages::ok("Updated skills.toml and skills.lock")
+        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );
     Ok(())
 }
@@ -258,10 +278,7 @@ async fn add_from_folder(
     let skill_def = create_skill_from_path(folder_path)?;
 
     // Copy skill to skills storage directory (local skills stored at id path, no scope)
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(skill_def.id.as_str());
+    let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -270,9 +287,7 @@ async fn add_from_folder(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -332,13 +347,8 @@ async fn add_from_folder(
         .await
         .map_err(CliError::Service)?;
 
-    // Update manifest and lock files
-    let manifest_path = PathBuf::from(".claude/skills.toml");
-    let lock_path = PathBuf::from(".claude/skills.lock");
-    manifest_utils::add_skill_to_manifest(&manifest_path, &skill_def, groups.clone(), editable)
-        .map_err(|e| CliError::Config(format!("Failed to update manifest: {}", e)))?;
-    manifest_utils::update_lock_file(&lock_path, &skill_def, groups)
-        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+    // T028: Update skill-project.toml and skills.lock
+    update_project_files(&skill_def, groups.clone(), editable)?;
 
     println!(
         "Successfully added skill: {} (v{})",
@@ -346,7 +356,7 @@ async fn add_from_folder(
     );
     println!(
         "{}",
-        crate::cli::utils::messages::ok("Updated skills.toml and skills.lock")
+        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );
     Ok(())
 }
@@ -367,9 +377,7 @@ async fn add_from_git(
     let branch = branch.or(git_info.branch.as_deref());
 
     // Clone repository
-    #[cfg(feature = "git-support")]
     {
-        // Note: git module is only available when feature is enabled
         // Access through the storage module
         use fastskill::storage::git::{clone_repository, validate_cloned_skill};
         let temp_dir = clone_repository(&git_info.repo_url, branch, tag, None)
@@ -402,10 +410,7 @@ async fn add_from_git(
         let skill_def = create_skill_from_path(&skill_path)?;
 
         // Copy skill to skills storage directory (local skills stored at id path, no scope)
-        let skill_storage_dir = service
-            .config()
-            .skill_storage_path
-            .join(skill_def.id.as_str());
+        let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
         if skill_storage_dir.exists() {
             if !force {
                 return Err(CliError::Config(format!(
@@ -414,9 +419,7 @@ async fn add_from_git(
                 )));
             }
             // Remove existing directory
-            tokio::fs::remove_dir_all(&skill_storage_dir)
-                .await
-                .map_err(CliError::Io)?;
+            tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
         }
 
         // Copy skill directory to storage
@@ -483,13 +486,8 @@ async fn add_from_git(
             .await
             .map_err(CliError::Service)?;
 
-        // Update manifest and lock files
-        let manifest_path = PathBuf::from(".claude/skills.toml");
-        let lock_path = PathBuf::from(".claude/skills.lock");
-        manifest_utils::add_skill_to_manifest(&manifest_path, &skill_def, groups.clone(), editable)
-            .map_err(|e| CliError::Config(format!("Failed to update manifest: {}", e)))?;
-        manifest_utils::update_lock_file(&lock_path, &skill_def, groups)
-            .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+        // T028: Update skill-project.toml and skills.lock
+        update_project_files(&skill_def, groups.clone(), editable)?;
 
         println!(
             "Successfully added skill: {} (v{})",
@@ -497,16 +495,9 @@ async fn add_from_git(
         );
         println!(
             "{}",
-            crate::cli::utils::messages::ok("Updated skills.toml and skills.lock")
+            crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
         );
         Ok(())
-    }
-
-    #[cfg(not(feature = "git-support"))]
-    {
-        Err(CliError::Config(
-            "Git support is not enabled. Build with --features git-support".to_string(),
-        ))
     }
 }
 
@@ -669,11 +660,8 @@ async fn add_from_registry(
     }
 
     // Copy skill to skills storage directory at scope/id path
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(&scope)
-        .join(skill_def.id.as_str());
+    let skill_storage_dir =
+        service.config().skill_storage_path.join(&scope).join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -682,9 +670,7 @@ async fn add_from_registry(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -745,14 +731,8 @@ async fn add_from_registry(
         .await
         .map_err(CliError::Service)?;
 
-    // Update manifest and lock files
-    let manifest_path = PathBuf::from(".claude/skills.toml");
-    let lock_path = PathBuf::from(".claude/skills.lock");
-
-    manifest_utils::add_skill_to_manifest(&manifest_path, &skill_def, groups.clone(), editable)
-        .map_err(|e| CliError::Config(format!("Failed to update manifest: {}", e)))?;
-    manifest_utils::update_lock_file(&lock_path, &skill_def, groups)
-        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+    // T028: Update skill-project.toml and skills.lock
+    update_project_files(&skill_def, groups.clone(), editable)?;
 
     println!(
         "Successfully added skill: {} (v{}) from registry",
@@ -760,7 +740,7 @@ async fn add_from_registry(
     );
     println!(
         "{}",
-        crate::cli::utils::messages::ok("Updated skills.toml and skills.lock")
+        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );
     Ok(())
 }
@@ -791,13 +771,11 @@ fn read_skill_id_from_toml(skill_path: &Path) -> CliResult<String> {
         CliError::Validation("skill-project.toml must have a [metadata] section".to_string())
     })?;
 
-    if metadata.id.is_empty() {
-        Err(CliError::Validation(
+    metadata.id.ok_or_else(|| {
+        CliError::Validation(
             "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
-        ))
-    } else {
-        Ok(metadata.id)
-    }
+        )
+    })
 }
 
 /// Find SKILL.md in a directory (could be at root or in subdirectory)
@@ -877,9 +855,7 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
             Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
         } else {
             // Copy file
-            tokio::fs::copy(&src_path, &dst_path)
-                .await
-                .map_err(CliError::Io)?;
+            tokio::fs::copy(&src_path, &dst_path).await.map_err(CliError::Io)?;
         }
     }
 
@@ -887,6 +863,7 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use fastskill::{FastSkillService, ServiceConfig};

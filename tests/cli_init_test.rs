@@ -1,5 +1,7 @@
 //! CLI tests for init command
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use std::fs;
 use std::path::Path;
 use std::process::Command;

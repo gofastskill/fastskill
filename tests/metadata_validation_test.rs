@@ -1,5 +1,7 @@
 //! Unit tests for MetadataSection validation
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use fastskill::core::validation::{validate_identifier, validate_semver};
 
 #[test]

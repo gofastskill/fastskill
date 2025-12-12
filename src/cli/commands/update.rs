@@ -6,17 +6,22 @@ use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
     lock::SkillsLock,
-    manifest::SkillsManifest,
+    manifest::SkillProjectToml,
+    project::resolve_project_file,
     repository::{RepositoryConfig, RepositoryManager, RepositoryType},
     resolver::PackageResolver,
     sources::{SourceAuth, SourceConfig, SourcesManager},
     update::{UpdateService, UpdateStrategy},
 };
 use fastskill::FastSkillService;
+use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Update skills to latest from source
+/// Update skills from skill-project.toml [dependencies] to latest versions
+///
+/// Reads dependencies from skill-project.toml and updates installed skills.
+/// Updates skills.lock with new versions.
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Skill ID to update (if not specified, updates all)
@@ -47,30 +52,39 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     println!("Updating skills...");
     println!();
 
-    let manifest_path = PathBuf::from(".claude/skills.toml");
+    // T034: Resolve skill-project.toml from project root
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let project_file_result = resolve_project_file(&current_dir);
+    let project_file_path = project_file_result.path;
 
-    if !manifest_path.exists() {
+    if !project_file_result.found {
         return Err(CliError::Config(
-            "skills.toml not found. Create it or use 'fastskill add' to add skills.".to_string(),
+            "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
+                .to_string(),
         ));
     }
 
-    let manifest = SkillsManifest::load_from_file(&manifest_path)
-        .map_err(|e| CliError::Config(format!("Failed to load manifest: {}", e)))?;
+    let project = SkillProjectToml::load_from_file(&project_file_path)
+        .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
+
+    // Validate context
+    let context = project_file_result.context;
+    project
+        .validate_for_context(context)
+        .map_err(|e| CliError::Config(format!("skill-project.toml validation failed: {}", e)))?;
+
+    // Convert dependencies to SkillEntry format
+    let mut entries = project
+        .to_skill_entries()
+        .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
 
     // Filter by skill_id if specified
-    let skills_to_update = if let Some(skill_id) = &args.skill_id {
-        manifest
-            .skills
-            .iter()
-            .filter(|s| s.id == *skill_id)
-            .cloned()
-            .collect()
-    } else {
-        manifest.skills.clone()
-    };
+    if let Some(skill_id) = &args.skill_id {
+        entries.retain(|e| e.id == *skill_id);
+    }
 
-    if skills_to_update.is_empty() {
+    if entries.is_empty() {
         println!("{}", messages::info("No skills to update"));
         return Ok(());
     }
@@ -100,8 +114,12 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
         strategy
     };
 
-    // Load lock file for update checking
-    let lock_path = PathBuf::from(".claude/skills.lock");
+    // T033: Load lock file from project root
+    let lock_path = if let Some(parent) = project_file_path.parent() {
+        parent.join("skills.lock")
+    } else {
+        PathBuf::from("skills.lock")
+    };
     let lock = if lock_path.exists() {
         SkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?
@@ -148,7 +166,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
             }
         } else {
             println!("\nSkills that would be updated:\n");
-            for entry in &skills_to_update {
+            for entry in &entries {
                 println!("  • {} (from {:?})", entry.id, entry.source);
             }
         }
@@ -164,9 +182,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     // Initialize service
     // Note: update command doesn't have access to CLI sources_path, so uses env var or walk-up
     let config = create_service_config(None, None)?;
-    let mut service = FastSkillService::new(config)
-        .await
-        .map_err(CliError::Service)?;
+    let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
     service.initialize().await.map_err(CliError::Service)?;
 
     // Load repositories and create sources manager for marketplace-based repos
@@ -182,7 +198,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
 
     // Update each skill
     let mut updated_count = 0;
-    for entry in skills_to_update {
+    for entry in entries {
         println!("  Updating {}...", entry.id);
         match install_utils::install_skill_from_entry(
             &service,
@@ -214,209 +230,6 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     println!("   Updated skills.lock");
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_execute_update_no_manifest() {
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: false,
-            dry_run: false,
-            version: None,
-            source: None,
-            strategy: "latest".to_string(),
-        };
-
-        let result = execute_update(args).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("skills.toml not found"));
-        } else {
-            panic!("Expected Config error");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_update_invalid_strategy() {
-        let temp_dir = TempDir::new().unwrap();
-
-        // Get original directory immediately and handle potential errors
-        let original_dir = match std::env::current_dir() {
-            Ok(dir) => dir,
-            Err(_) => {
-                // If we can't get current dir, assume we're in the project root
-                std::path::PathBuf::from(".")
-            }
-        };
-
-        // Create .claude directory and skills.toml with at least one skill using absolute paths
-        // Do this BEFORE changing directory to avoid any path resolution issues
-        let claude_dir = temp_dir.path().join(".claude");
-        let skills_toml = claude_dir.join("skills.toml");
-        let skills_lock = claude_dir.join("skills.lock");
-
-        // Create directory and files BEFORE changing directory to ensure they're created
-        fs::create_dir_all(&claude_dir).expect("Failed to create .claude directory");
-
-        fs::write(
-            &skills_toml,
-            r#"[metadata]
-version = "1.0.0"
-
-[[skills]]
-id = "test-skill"
-version = "1.0.0"
-source = { type = "git", url = "https://example.com/repo.git" }
-"#,
-        )
-        .expect("Failed to write skills.toml");
-
-        // Create skills.lock file (required for update) with proper format including generated_at
-        use chrono::Utc;
-        let lock_content = format!(
-            r#"[metadata]
-version = "1.0.0"
-generated_at = "{}"
-
-[[skills]]
-id = "test-skill"
-version = "1.0.0"
-"#,
-            Utc::now().to_rfc3339()
-        );
-        fs::write(&skills_lock, lock_content).expect("Failed to write skills.lock");
-
-        // Verify files exist before test (using absolute paths)
-        assert!(
-            claude_dir.exists(),
-            "Claude directory should exist at {}",
-            claude_dir.display()
-        );
-        assert!(
-            skills_toml.exists(),
-            "Skills.toml should exist at {}",
-            skills_toml.display()
-        );
-        assert!(
-            skills_lock.exists(),
-            "Skills.lock should exist at {}",
-            skills_lock.display()
-        );
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(std::path::PathBuf);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                let _ = std::env::set_current_dir(&self.0);
-            }
-        }
-        let _guard = DirGuard(original_dir.clone());
-
-        // Change to temp directory AFTER creating files, but handle potential errors
-        if let Err(e) = std::env::set_current_dir(temp_dir.path()) {
-            panic!("Failed to change to temp directory: {}", e);
-        }
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: false,
-            dry_run: false,
-            version: None,
-            source: None,
-            strategy: "invalid-strategy".to_string(),
-        };
-
-        let result = execute_update(args).await;
-        // Should fail for invalid strategy
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                msg.contains("Invalid strategy")
-                    || msg.contains("latest, patch, minor, major")
-                    || msg.contains("strategy")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("skills.toml not found"),
-                "Error message '{}' does not contain expected text",
-                msg
-            );
-        } else {
-            panic!(
-                "Expected Config error for invalid strategy, got: {:?}",
-                result
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_update_check_mode() {
-        // Use a static mutex to serialize directory changes across parallel tests
-        use std::sync::Mutex;
-        static DIR_MUTEX: Mutex<()> = Mutex::new(());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Lock the mutex for the duration of directory change
-        let _lock = DIR_MUTEX.lock().unwrap();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create .claude directory and skills.toml using absolute paths
-        let claude_dir = temp_dir.path().join(".claude");
-        let skills_toml = claude_dir.join("skills.toml");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(&skills_toml, "[skills]").unwrap();
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: true,
-            dry_run: false,
-            version: None,
-            source: None,
-            strategy: "latest".to_string(),
-        };
-
-        // Should succeed in check mode even with no skills
-        let result = execute_update(args).await;
-        // May succeed or fail depending on lock file, but shouldn't panic
-        assert!(result.is_ok() || result.is_err());
-
-        // Cleanup
-        fs::remove_dir_all(".claude").ok();
-    }
 }
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
@@ -532,4 +345,198 @@ fn create_sources_manager_from_repositories(
     }
 
     Ok(Some(Arc::new(sources_manager)))
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::await_holding_lock
+)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_update_no_manifest() {
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let args = UpdateArgs {
+            skill_id: None,
+            check: false,
+            dry_run: false,
+            version: None,
+            source: None,
+            strategy: "latest".to_string(),
+        };
+
+        let result = execute_update(args).await;
+        assert!(result.is_err());
+        if let Err(CliError::Config(msg)) = result {
+            assert!(msg.contains("skill-project.toml not found"));
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_update_invalid_strategy() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Get original directory immediately and handle potential errors
+        let original_dir = match std::env::current_dir() {
+            Ok(dir) => dir,
+            Err(_) => {
+                // If we can't get current dir, assume we're in the project root
+                std::path::PathBuf::from(".")
+            }
+        };
+
+        // Create skill-project.toml and skills.lock at project root using absolute paths
+        // Do this BEFORE changing directory to avoid any path resolution issues
+        let skill_project_toml = temp_dir.path().join("skill-project.toml");
+        let skills_lock = temp_dir.path().join("skills.lock");
+
+        // Create files BEFORE changing directory to ensure they're created
+        fs::write(
+            &skill_project_toml,
+            r#"[dependencies]
+test-skill = { source = "git", url = "https://example.com/repo.git" }
+"#,
+        )
+        .expect("Failed to write skill-project.toml");
+
+        // Create skills.lock file (required for update) with proper format including generated_at
+        use chrono::Utc;
+        let lock_content = format!(
+            r#"[metadata]
+version = "1.0.0"
+generated_at = "{}"
+
+[[skills]]
+id = "test-skill"
+version = "1.0.0"
+"#,
+            Utc::now().to_rfc3339()
+        );
+        fs::write(&skills_lock, lock_content).expect("Failed to write skills.lock");
+
+        // Verify files exist before test (using absolute paths)
+        assert!(
+            skill_project_toml.exists(),
+            "skill-project.toml should exist at {}",
+            skill_project_toml.display()
+        );
+        assert!(
+            skills_lock.exists(),
+            "skills.lock should exist at {}",
+            skills_lock.display()
+        );
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(std::path::PathBuf);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+        let _guard = DirGuard(original_dir.clone());
+
+        // Change to temp directory AFTER creating files, but handle potential errors
+        if let Err(e) = std::env::set_current_dir(temp_dir.path()) {
+            panic!("Failed to change to temp directory: {}", e);
+        }
+
+        let args = UpdateArgs {
+            skill_id: None,
+            check: false,
+            dry_run: false,
+            version: None,
+            source: None,
+            strategy: "invalid-strategy".to_string(),
+        };
+
+        let result = execute_update(args).await;
+        // Should fail for invalid strategy
+        assert!(result.is_err(), "Expected error, got: {:?}", result);
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("Invalid strategy")
+                    || msg.contains("latest, patch, minor, major")
+                    || msg.contains("strategy")
+                    || msg.contains("Failed to load repositories")
+                    || msg.contains("skill-project.toml not found"),
+                "Error message '{}' does not contain expected text",
+                msg
+            );
+        } else {
+            panic!(
+                "Expected Config error for invalid strategy, got: {:?}",
+                result
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_update_check_mode() {
+        // Use a static mutex to serialize directory changes across parallel tests
+        use std::sync::Mutex;
+        static DIR_MUTEX: Mutex<()> = Mutex::new(());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        // Lock the mutex for the duration of directory change
+        let _lock = DIR_MUTEX.lock().unwrap();
+
+        // Helper struct to ensure directory is restored even if test panics
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create skill-project.toml at project root using absolute paths
+        let skill_project_toml = temp_dir.path().join("skill-project.toml");
+        fs::write(&skill_project_toml, "[dependencies]").unwrap();
+
+        let args = UpdateArgs {
+            skill_id: None,
+            check: true,
+            dry_run: false,
+            version: None,
+            source: None,
+            strategy: "latest".to_string(),
+        };
+
+        // Should succeed in check mode even with no skills
+        let result = execute_update(args).await;
+        // May succeed or fail depending on lock file, but shouldn't panic
+        assert!(result.is_ok() || result.is_err());
+
+        // Cleanup
+        fs::remove_dir_all(".claude").ok();
+    }
 }

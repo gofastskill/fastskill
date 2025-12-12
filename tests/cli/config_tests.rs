@@ -1,4 +1,6 @@
 //! Tests for skills directory resolution
+
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 //!
 //! These tests verify skills directory resolution through CLI execution
 //! since the bin module is internal to the binary.
@@ -63,11 +65,7 @@ fn test_cli_finds_skills_in_current_dir() {
             original_dir.clone()
         } else {
             // Fallback: use temp dir's parent if available
-            temp_dir
-                .path()
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| "/".into())
+            temp_dir.path().parent().map(|p| p.to_path_buf()).unwrap_or_else(|| "/".into())
         }
     });
 
@@ -100,18 +98,12 @@ fn test_cli_directory_walking() {
             original_dir.clone()
         } else {
             // Fallback: use temp dir's parent if available
-            temp_dir
-                .path()
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| "/".into())
+            temp_dir.path().parent().map(|p| p.to_path_buf()).unwrap_or_else(|| "/".into())
         }
     });
 
     // Change to nested directory
-    let nested_dir_abs = nested_dir
-        .canonicalize()
-        .unwrap_or_else(|_| nested_dir.clone());
+    let nested_dir_abs = nested_dir.canonicalize().unwrap_or_else(|_| nested_dir.clone());
 
     // Change directory - use a guard to ensure we restore
     struct DirGuard {
@@ -131,20 +123,15 @@ fn test_cli_directory_walking() {
 
     // Use absolute path for binary to avoid path resolution issues
     let binary_path_str = get_binary_path();
-    let binary_abs = std::path::Path::new(&binary_path_str)
-        .canonicalize()
-        .unwrap_or_else(|_| {
-            // If binary path can't be canonicalized, try resolving from manifest dir
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(&binary_path_str)
-                .canonicalize()
-                .unwrap_or_else(|_| std::path::PathBuf::from(&binary_path_str))
-        });
+    let binary_abs = std::path::Path::new(&binary_path_str).canonicalize().unwrap_or_else(|_| {
+        // If binary path can't be canonicalized, try resolving from manifest dir
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(&binary_path_str)
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(&binary_path_str))
+    });
 
-    let output = Command::new(&binary_abs)
-        .arg("--help")
-        .output()
-        .expect("Failed to execute CLI");
+    let output = Command::new(&binary_abs).arg("--help").output().expect("Failed to execute CLI");
 
     // Guard will restore directory on drop, but we can also do it explicitly
     drop(_guard);

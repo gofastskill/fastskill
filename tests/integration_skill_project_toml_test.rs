@@ -1,6 +1,10 @@
 //! Integration tests for skill-project.toml functionality
 
-use fastskill::core::manifest::{DependencySpec, MetadataSection, SkillProjectToml};
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
+use fastskill::core::manifest::{
+    DependenciesSection, DependencySpec, MetadataSection, SkillProjectToml,
+};
 use std::collections::HashMap;
 use std::fs;
 use tempfile::TempDir;
@@ -19,15 +23,17 @@ fn test_init_creates_skill_project_toml_with_both_sections() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "my-skill".to_string(),
-            version: "1.0.0".to_string(),
+            id: Some("my-skill".to_string()),
+            version: Some("1.0.0".to_string()),
             description: Some("Test skill".to_string()),
             author: None,
             tags: None,
             capabilities: None,
             download_url: None,
+            name: None,
         }),
-        dependencies: Some(deps),
+        dependencies: Some(DependenciesSection { dependencies: deps }),
+        tool: None,
     };
 
     project.save_to_file(&project_path).unwrap();
@@ -50,15 +56,17 @@ fn test_init_without_skill_md() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "test-skill".to_string(),
-            version: "1.0.0".to_string(),
+            id: Some("test-skill".to_string()),
+            version: Some("1.0.0".to_string()),
             description: None,
             author: None,
             tags: None,
             capabilities: None,
             download_url: None,
+            name: None,
         }),
         dependencies: None,
+        tool: None,
     };
 
     project.save_to_file(&project_path).unwrap();
@@ -66,7 +74,10 @@ fn test_init_without_skill_md() {
     // Verify it works without SKILL.md
     assert!(project_path.exists());
     let loaded = SkillProjectToml::load_from_file(&project_path).unwrap();
-    assert_eq!(loaded.metadata.as_ref().unwrap().version, "1.0.0");
+    assert_eq!(
+        loaded.metadata.as_ref().unwrap().version,
+        Some("1.0.0".to_string())
+    );
 }
 
 #[test]
@@ -95,15 +106,17 @@ capabilities: [testing]
     // The actual extraction logic is in init.rs
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "extracted-skill".to_string(),
-            version: "2.0.0".to_string(), // From frontmatter
+            id: Some("extracted-skill".to_string()),
+            version: Some("2.0.0".to_string()), // From frontmatter
             description: Some("Extracted from frontmatter".to_string()),
             author: Some("Test Author".to_string()),
             tags: Some(vec!["test".to_string(), "example".to_string()]),
             capabilities: Some(vec!["testing".to_string()]),
             download_url: None,
+            name: None,
         }),
         dependencies: None,
+        tool: None,
     };
 
     let project_path = temp_dir.path().join("skill-project.toml");
@@ -112,7 +125,7 @@ capabilities: [testing]
     // Verify metadata was extracted correctly
     let loaded = SkillProjectToml::load_from_file(&project_path).unwrap();
     let metadata = loaded.metadata.unwrap();
-    assert_eq!(metadata.version, "2.0.0");
+    assert_eq!(metadata.version, Some("2.0.0".to_string()));
     // name field removed - name comes from SKILL.md frontmatter only
     assert_eq!(metadata.author, Some("Test Author".to_string()));
 }
@@ -124,15 +137,17 @@ fn test_package_command_uses_metadata_section() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "package-test".to_string(),
-            version: "1.2.3".to_string(),
+            id: Some("package-test".to_string()),
+            version: Some("1.2.3".to_string()),
             description: Some("Test for package command".to_string()),
             author: Some("Package Author".to_string()),
             tags: Some(vec!["package".to_string()]),
             capabilities: None,
             download_url: None,
+            name: None,
         }),
         dependencies: None,
+        tool: None,
     };
 
     project.save_to_file(&project_path).unwrap();
@@ -141,7 +156,7 @@ fn test_package_command_uses_metadata_section() {
     let loaded = SkillProjectToml::load_from_file(&project_path).unwrap();
     let metadata = loaded.metadata.unwrap();
 
-    assert_eq!(metadata.version, "1.2.3");
+    assert_eq!(metadata.version, Some("1.2.3".to_string()));
     // name field removed - name comes from SKILL.md frontmatter only
     // Package command should be able to use this metadata
 }
@@ -154,15 +169,17 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
     // Create skill-project.toml with metadata
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "package-test-skill".to_string(),
-            version: "1.2.3".to_string(),
+            id: Some("package-test-skill".to_string()),
+            version: Some("1.2.3".to_string()),
             description: Some("Test skill for package command".to_string()),
             author: Some("Package Author".to_string()),
             tags: Some(vec!["package".to_string(), "test".to_string()]),
             capabilities: Some(vec!["packaging".to_string()]),
             download_url: None,
+            name: None,
         }),
         dependencies: None,
+        tool: None,
     };
 
     project.save_to_file(&project_path).unwrap();
@@ -171,7 +188,7 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
     let loaded = SkillProjectToml::load_from_file(&project_path).unwrap();
     let metadata = loaded.metadata.unwrap();
 
-    assert_eq!(metadata.version, "1.2.3");
+    assert_eq!(metadata.version, Some("1.2.3".to_string()));
     // name field removed - name comes from SKILL.md frontmatter only
     assert_eq!(metadata.author, Some("Package Author".to_string()));
     assert_eq!(

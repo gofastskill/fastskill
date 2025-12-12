@@ -230,6 +230,7 @@ pub fn is_newer(v1: &str, v2: &str) -> Result<bool, VersionError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
