@@ -19,7 +19,7 @@ path = "src/bin/fastskill.rs"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "net", "fs", "io-util", "macros"] }
 async-trait = "0.1"
 futures = "0.3"
 
@@ -34,10 +34,10 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Utilities
-uuid = { version = "1.0", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }  # Updated for JWT support
+uuid = { version = "1.0", default-features = false, features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 once_cell = "1.19"
-regex = "1.10"
+regex = { version = "1.10", default-features = false }
 
 # File system and I/O
 tokio-util = { version = "0.7", features = ["io"] }
@@ -49,7 +49,7 @@ fs2 = "0.4"  # Cross-platform file locking
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 # HTTP client for embedding API (rustls for musl compatibility)
-reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 
 # Multipart form data handling for skill uploads
 multer = "3.1"
@@ -82,8 +82,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 config = "0.14"
 clap = { version = "4.4", features = ["derive"] }
 
-# Git support for CLI (optional)
-git2 = { version = "0.18", default-features = false, features = ["https", "ssh"], optional = true }
+# Git support removed - now uses system git binary
 
 # URL parsing for CLI
 url = "2.5"
@@ -97,21 +96,25 @@ dirs = "5.0"
 # Semantic versioning
 semver = "1.0"
 
-# AWS S3 storage (always enabled - part of core CLI functionality)
-aws-sdk-s3 = { version = "1" }
-aws-config = { version = "1" }
+# AWS S3 storage (optional - only for registry publishing)
+aws-sdk-s3 = { version = "1", optional = true }
+aws-config = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"
+wiremock = "0.5"
 
 
 [features]
-default = ["filesystem-storage", "hot-reload", "git-support"]
+default = ["filesystem-storage", "registry-publish"]
 
 # Storage backends
 filesystem-storage = []
 hot-reload = ["notify"]
-git-support = ["git2"]
+# git-support removed - git operations always available if system git is installed
+
+# Registry publishing (requires AWS SDK)
+registry-publish = ["aws-sdk-s3", "aws-config"]
 
 [lints.clippy]
 # Warn about critical lints that should be avoided in production code
@@ -122,3 +125,17 @@ panic = "warn"
 # Allow some lints in specific contexts
 too_many_arguments = "allow"
 module_name_repetitions = "allow"
+
+[profile.release]
+# Optimize for size
+opt-level = "z"
+# Link-time optimization for better size reduction
+lto = true
+# Single codegen unit for better optimization
+codegen-units = 1
+# Strip symbols to reduce binary size
+strip = true
+# Use abort instead of unwinding (smaller binary)
+panic = "abort"
+# No debug info in release
+debug = false

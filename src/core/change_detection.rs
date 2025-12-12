@@ -6,11 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use tracing::{debug, info};
 
-#[cfg(feature = "git-support")]
-use git2::Repository;
-
 /// Detect changed skills using git diff
-#[cfg(feature = "git-support")]
 pub fn detect_changed_skills_git(
     base_ref: &str,
     head_ref: &str,
@@ -21,86 +17,47 @@ pub fn detect_changed_skills_git(
         base_ref, head_ref
     );
 
-    // Open the repository
-    let repo = Repository::open(".")
-        .map_err(|e| ServiceError::Custom(format!("Failed to open git repository: {}", e)))?;
+    use std::process::Command;
 
-    // Resolve base and head references
-    let base_oid = repo
-        .revparse_single(base_ref)
-        .map_err(|e| {
-            ServiceError::Custom(format!("Failed to resolve base ref '{}': {}", base_ref, e))
-        })?
-        .id();
+    // Use git diff to get changed files
+    let output = Command::new("git")
+        .args(["diff", "--name-only", base_ref, head_ref])
+        .output()
+        .map_err(|e| ServiceError::Custom(format!("Failed to execute git diff: {}", e)))?;
 
-    let head_oid = repo
-        .revparse_single(head_ref)
-        .map_err(|e| {
-            ServiceError::Custom(format!("Failed to resolve head ref '{}': {}", head_ref, e))
-        })?
-        .id();
+    if !output.status.success() {
+        return Err(ServiceError::Custom(format!(
+            "Git diff failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
 
-    // Get the diff between base and head
-    let base_tree = repo
-        .find_tree(base_oid)
-        .map_err(|e| ServiceError::Custom(format!("Failed to find base tree: {}", e)))?;
-
-    let head_tree = repo
-        .find_tree(head_oid)
-        .map_err(|e| ServiceError::Custom(format!("Failed to find head tree: {}", e)))?;
-
-    let diff = repo
-        .diff_tree_to_tree(Some(&base_tree), Some(&head_tree), None)
-        .map_err(|e| ServiceError::Custom(format!("Failed to create diff: {}", e)))?;
-
-    // Collect changed skill directories
+    // Parse output and collect changed skill directories
     let mut changed_skills = HashSet::new();
     let skills_dir_str = skills_dir.to_string_lossy().to_string();
+    let output_str = String::from_utf8_lossy(&output.stdout);
 
-    diff.foreach(
-        &mut |delta, _| {
-            if let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path()) {
-                let path_str = path.to_string_lossy();
+    for line in output_str.lines() {
+        let path_str = line.trim();
+        if path_str.starts_with(&skills_dir_str) {
+            // Extract skill ID from path (e.g., "skills/web-scraper/file.md" -> "web-scraper")
+            let relative_path = path_str
+                .strip_prefix(&skills_dir_str)
+                .and_then(|p| p.strip_prefix('/'))
+                .or_else(|| path_str.strip_prefix(&skills_dir_str))
+                .unwrap_or(path_str);
 
-                // Check if this file is in a skill directory
-                if path_str.starts_with(&skills_dir_str) {
-                    // Extract skill ID from path (e.g., "skills/web-scraper/file.md" -> "web-scraper")
-                    let relative_path = path_str
-                        .strip_prefix(&skills_dir_str)
-                        .and_then(|p| p.strip_prefix('/'))
-                        .or_else(|| path_str.strip_prefix(&skills_dir_str))
-                        .unwrap_or(&path_str);
-
-                    if let Some(skill_id) = relative_path.split('/').next() {
-                        if !skill_id.is_empty() {
-                            changed_skills.insert(skill_id.to_string());
-                        }
-                    }
+            if let Some(skill_id) = relative_path.split('/').next() {
+                if !skill_id.is_empty() {
+                    changed_skills.insert(skill_id.to_string());
                 }
             }
-            true
-        },
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| ServiceError::Custom(format!("Failed to process diff: {}", e)))?;
+        }
+    }
 
     let skills: Vec<String> = changed_skills.into_iter().collect();
     info!("Found {} changed skills via git diff", skills.len());
     Ok(skills)
-}
-
-/// Fallback when git-support is not available
-#[cfg(not(feature = "git-support"))]
-pub fn detect_changed_skills_git(
-    _base_ref: &str,
-    _head_ref: &str,
-    _skills_dir: &Path,
-) -> Result<Vec<String>, ServiceError> {
-    Err(ServiceError::Custom(
-        "Git support is not enabled. Compile with --features git-support".to_string(),
-    ))
 }
 
 /// Detect changed skills using file hash comparison
@@ -132,11 +89,7 @@ pub fn detect_changed_skills_hash(
                     // Check if hash changed
                     let cached_hash = cache.get_cached_hash(skill_id);
 
-                    if cached_hash
-                        .as_ref()
-                        .map(|h| h != &current_hash)
-                        .unwrap_or(true)
-                    {
+                    if cached_hash.as_ref().map(|h| h != &current_hash).unwrap_or(true) {
                         debug!(
                             "Skill '{}' changed (hash: {} -> {})",
                             skill_id,
@@ -181,10 +134,8 @@ pub fn calculate_skill_hash(skill_path: &Path) -> Result<String, ServiceError> {
         let content = fs::read(&file_path).map_err(ServiceError::Io)?;
 
         // Include relative path in hash
-        let relative_path = file_path
-            .strip_prefix(skill_path)
-            .unwrap_or(&file_path)
-            .to_string_lossy();
+        let relative_path =
+            file_path.strip_prefix(skill_path).unwrap_or(&file_path).to_string_lossy();
 
         hasher.update(relative_path.as_bytes());
         hasher.update(&content);

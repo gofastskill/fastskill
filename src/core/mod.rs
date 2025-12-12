@@ -10,6 +10,8 @@ pub mod lock;
 pub mod manifest;
 pub mod metadata;
 pub mod packaging;
+pub mod project;
+pub mod reconciliation;
 pub mod registry;
 pub mod registry_index;
 pub mod repository;

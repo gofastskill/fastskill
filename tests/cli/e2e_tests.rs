@@ -1,4 +1,6 @@
 //! End-to-end tests for CLI functionality
+
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 //!
 //! These tests simulate complete workflows through the CLI binary.
 //! Note: These tests require the CLI binary to be built first.

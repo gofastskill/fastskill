@@ -7,6 +7,7 @@ pub mod registry;
 pub mod registry_publish;
 pub mod reindex;
 pub mod search;
+pub mod skill_storage;
 pub mod skills;
 pub mod status;
 

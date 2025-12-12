@@ -107,6 +107,21 @@ pub enum RegistryCommand {
         /// Repository name to list skills from (defaults to default repository if not specified)
         #[arg(long)]
         repository: Option<String>,
+        /// Filter by scope (organization name)
+        #[arg(long)]
+        scope: Option<String>,
+        /// Show all versions for each skill
+        #[arg(long)]
+        all_versions: bool,
+        /// Include pre-release versions
+        #[arg(long)]
+        include_pre_release: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Output in grid format (default)
+        #[arg(long)]
+        grid: bool,
     },
 
     /// Show skill details
@@ -203,7 +218,24 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
         } => execute_update(name, branch, priority).await,
         RegistryCommand::Test { name } => execute_test(name).await,
         RegistryCommand::Refresh { name } => execute_refresh(name).await,
-        RegistryCommand::ListSkills { repository } => execute_list_skills(repository).await,
+        RegistryCommand::ListSkills {
+            repository,
+            scope,
+            all_versions,
+            include_pre_release,
+            json,
+            grid,
+        } => {
+            execute_list_skills(
+                repository,
+                scope,
+                all_versions,
+                include_pre_release,
+                json,
+                grid,
+            )
+            .await
+        }
         RegistryCommand::ShowSkill {
             skill_id,
             repository,
@@ -241,6 +273,7 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
 // Repository management functions
 
 async fn execute_list() -> CliResult<()> {
+    // T031: Try to load from skill-project.toml first, fall back to repositories.toml
     let repos_path = crate::cli::config::get_repositories_toml_path()
         .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
@@ -380,11 +413,15 @@ async fn execute_add(
     };
 
     repo_manager
-        .add_repository(name.clone(), repo_def)
+        .add_repository(name.clone(), repo_def.clone())
         .map_err(|e| CliError::Config(format!("Failed to add repository: {}", e)))?;
     repo_manager
         .save()
         .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
+
+    // T030: Also write to skill-project.toml [tool.fastskill.repositories]
+    // For now, we keep both files in sync. In the future, we can deprecate repositories.toml
+    // TODO: Implement add_repository_to_project_toml when auth conversion is complete
 
     println!("{}", messages::ok(&format!("Added repository: {}", name)));
     Ok(())
@@ -591,7 +628,51 @@ async fn execute_refresh(name: Option<String>) -> CliResult<()> {
 
 // Skill browsing functions
 
-async fn execute_list_skills(repository: Option<String>) -> CliResult<()> {
+async fn execute_list_skills(
+    repository: Option<String>,
+    scope: Option<String>,
+    all_versions: bool,
+    include_pre_release: bool,
+    json: bool,
+    grid: bool,
+) -> CliResult<()> {
+    use fastskill::core::registry_index::ListSkillsOptions;
+    use fastskill::core::repository::{CratesRegistryClient, RepositoryType};
+
+    // Validate conflicting flags
+    if json && grid {
+        return Err(CliError::Config(
+            "Cannot use both --json and --grid flags. Use only one.".to_string(),
+        ));
+    }
+
+    // Validate scope format (filesystem-safe characters only)
+    if let Some(ref scope) = scope {
+        if scope.is_empty() {
+            return Err(CliError::Config(
+                "Scope cannot be empty. Use a valid organization name.".to_string(),
+            ));
+        }
+        // Scope must not contain path separators or other unsafe characters
+        if scope.contains('/') || scope.contains('\\') || scope.contains("..") {
+            return Err(CliError::Config(
+                format!(
+                    "Invalid scope format: '{}'. Scope must be a valid organization name without path separators.",
+                    scope
+                )
+            ));
+        }
+        // Scope should be filesystem-safe (alphanumeric, hyphens, underscores)
+        if !scope.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err(CliError::Config(
+                format!(
+                    "Invalid scope format: '{}'. Scope must contain only alphanumeric characters, hyphens, and underscores.",
+                    scope
+                )
+            ));
+        }
+    }
+
     let repos_path = crate::cli::config::get_repositories_toml_path()
         .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
     let mut repo_manager = RepositoryManager::new(repos_path);
@@ -602,14 +683,38 @@ async fn execute_list_skills(repository: Option<String>) -> CliResult<()> {
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager
-            .get_default_repository()
-            .map(|r| r.name.clone())
-            .ok_or_else(|| {
-                CliError::Config(
-                    "No repository specified and no default repository configured".to_string(),
-                )
-            })?
+        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
+            CliError::Config(
+                "No repository specified and no default repository configured".to_string(),
+            )
+        })?
+    };
+
+    // Get repository definition
+    let repo_def = repo_manager
+        .get_repository(&repo_name)
+        .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", repo_name)))?;
+
+    // Check if it's an HTTP registry
+    if repo_def.repo_type != RepositoryType::HttpRegistry {
+        return Err(CliError::Config(
+            format!(
+                "Repository '{}' is not an HTTP registry. This command only works with HTTP registries.",
+                repo_name
+            )
+        ));
+    }
+
+    // Check if index_url is configured
+    let _index_url = match &repo_def.config {
+        fastskill::core::repository::RepositoryConfig::HttpRegistry { index_url } => {
+            index_url.clone()
+        }
+        _ => {
+            return Err(CliError::Config(
+                "Repository does not have index_url configured".to_string(),
+            ));
+        }
     };
 
     println!(
@@ -617,39 +722,116 @@ async fn execute_list_skills(repository: Option<String>) -> CliResult<()> {
         messages::info(&format!("Listing skills from repository: {}", repo_name))
     );
 
-    let client = repo_manager
-        .get_client(&repo_name)
+    // Create HTTP registry client
+    let http_client = CratesRegistryClient::new(repo_def)
+        .map_err(|e| CliError::Config(format!("Failed to create HTTP registry client: {}", e)))?;
+
+    // Build options
+    let options = ListSkillsOptions {
+        scope,
+        all_versions,
+        include_pre_release,
+    };
+
+    // Fetch skills from HTTP endpoint
+    let summaries = http_client
+        .fetch_skills(&options)
         .await
-        .map_err(|e| CliError::Config(format!("Failed to get repository client: {}", e)))?;
+        .map_err(|e| CliError::Config(format!("Failed to fetch skills from registry: {}", e)))?;
 
-    match client.list_skills().await {
-        Ok(skills) => {
-            if skills.is_empty() {
-                println!("{}", messages::warning("No skills found in repository"));
-                return Ok(());
-            }
-
-            println!("\nFound {} skill(s):\n", skills.len());
-            for skill in skills {
-                println!("  • {} (v{})", skill.name, skill.version);
-                if !skill.description.is_empty() {
-                    println!("    Description: {}", skill.description);
-                }
-                println!();
-            }
-            Ok(())
-        }
-        Err(e) => {
-            println!(
-                "{}",
-                messages::warning(&format!(
-                    "List command not fully implemented for this repository type: {}",
-                    e
-                ))
-            );
-            Ok(())
-        }
+    if summaries.is_empty() {
+        println!("{}", messages::warning("No skills found in repository"));
+        return Ok(());
     }
+
+    // Format output
+    let output_format = if json { "json" } else { "grid" };
+    match output_format {
+        "json" => {
+            let json_output = serde_json::to_string_pretty(&summaries)
+                .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
+            println!("{}", json_output);
+        }
+        "grid" => {
+            format_grid_output(&summaries, all_versions)?;
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(())
+}
+
+/// Format skill summaries as a grid table
+fn format_grid_output(
+    summaries: &[fastskill::core::registry_index::SkillSummary],
+    all_versions: bool,
+) -> CliResult<()> {
+    // When all_versions is true, each summary represents a specific version
+    // The grid should show "Version" instead of "Latest Version"
+    // Simple table formatting without external dependencies
+    let headers = if all_versions {
+        vec!["Scope", "Name", "Description", "Version", "Published"]
+    } else {
+        vec![
+            "Scope",
+            "Name",
+            "Description",
+            "Latest Version",
+            "Published",
+        ]
+    };
+
+    // Calculate column widths
+    let mut col_widths = vec![0; headers.len()];
+    for (i, header) in headers.iter().enumerate() {
+        col_widths[i] = header.len();
+    }
+
+    for summary in summaries {
+        col_widths[0] = col_widths[0].max(summary.scope.len());
+        col_widths[1] = col_widths[1].max(summary.name.len());
+        let desc_len = summary.description.len().min(50);
+        col_widths[2] = col_widths[2].max(desc_len);
+        col_widths[3] = col_widths[3].max(summary.latest_version.len());
+        col_widths[4] = col_widths[4].max(10); // Date format "YYYY-MM-DD"
+    }
+
+    // Print header
+    let header_row: Vec<String> = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{:width$}", h, width = col_widths[i]))
+        .collect();
+    println!("\n{}", header_row.join("  "));
+    println!("{}", "-".repeat(header_row.join("  ").len()));
+
+    // Print rows
+    for summary in summaries {
+        // Truncate description to 50 characters
+        let description = if summary.description.len() > 50 {
+            format!("{}...", &summary.description[..47])
+        } else {
+            summary.description.clone()
+        };
+
+        // Format published date
+        let published = summary
+            .published_at
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+
+        let row = [
+            format!("{:width$}", summary.scope, width = col_widths[0]),
+            format!("{:width$}", summary.name, width = col_widths[1]),
+            format!("{:width$}", description, width = col_widths[2]),
+            format!("{:width$}", summary.latest_version, width = col_widths[3]),
+            format!("{:width$}", published, width = col_widths[4]),
+        ];
+        println!("{}", row.join("  "));
+    }
+
+    println!();
+    Ok(())
 }
 
 async fn execute_show_skill(skill_id: String, repository: Option<String>) -> CliResult<()> {
@@ -663,14 +845,11 @@ async fn execute_show_skill(skill_id: String, repository: Option<String>) -> Cli
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager
-            .get_default_repository()
-            .map(|r| r.name.clone())
-            .ok_or_else(|| {
-                CliError::Config(
-                    "No repository specified and no default repository configured".to_string(),
-                )
-            })?
+        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
+            CliError::Config(
+                "No repository specified and no default repository configured".to_string(),
+            )
+        })?
     };
 
     println!(
@@ -725,14 +904,11 @@ async fn execute_versions(skill_id: String, repository: Option<String>) -> CliRe
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager
-            .get_default_repository()
-            .map(|r| r.name.clone())
-            .ok_or_else(|| {
-                CliError::Config(
-                    "No repository specified and no default repository configured".to_string(),
-                )
-            })?
+        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
+            CliError::Config(
+                "No repository specified and no default repository configured".to_string(),
+            )
+        })?
     };
 
     println!(
@@ -851,11 +1027,7 @@ async fn execute_create(
 
     // Validate required fields
     let repo_name = name
-        .or_else(|| {
-            skill_dir
-                .file_name()
-                .and_then(|n| n.to_str().map(|s| s.to_string()))
-        })
+        .or_else(|| skill_dir.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
         .ok_or_else(|| {
             CliError::Validation(
                 "Repository name is required. Use --name or ensure directory has a name."
@@ -864,10 +1036,7 @@ async fn execute_create(
         })?;
 
     // Group skills into a single plugin (simple approach)
-    let skill_paths: Vec<String> = skills
-        .iter()
-        .map(|skill| format!("./{}", skill.id))
-        .collect();
+    let skill_paths: Vec<String> = skills.iter().map(|skill| format!("./{}", skill.id)).collect();
 
     let plugin = ClaudeCodePlugin {
         name: repo_name.clone(),
@@ -997,13 +1166,13 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
             ))
         })?
         .id
-        .clone();
-
-    if id.is_empty() {
-        return Err(CliError::Validation(
-            "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
-        ));
-    }
+        .clone()
+        .ok_or_else(|| {
+            CliError::Validation(
+                "skill-project.toml [metadata] section must have a non-empty 'id' field"
+                    .to_string(),
+            )
+        })?;
 
     // Read name from SKILL.md frontmatter only (for display purposes)
     let name = frontmatter.name.clone();
@@ -1015,7 +1184,7 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
         .unwrap_or_else(|| frontmatter.description.clone());
 
     let version = if let Some(metadata) = skill_metadata.as_ref() {
-        metadata.version.clone()
+        metadata.version.clone().unwrap_or_else(|| frontmatter.version.clone())
     } else {
         frontmatter.version.clone()
     };
@@ -1056,6 +1225,7 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::fs;

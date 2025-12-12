@@ -95,8 +95,7 @@ impl ValidationWorker {
 
     /// Stop the validation worker
     pub fn stop(&self) {
-        self.running
-            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// Process all pending packages
@@ -305,9 +304,8 @@ impl ValidationWorker {
         let blob_url = if let Some(ref blob_config) = config.blob_storage_config {
             info!("Uploading package {} to blob storage...", job_id);
 
-            let storage = create_blob_storage(&blob_config.storage_type, blob_config)
-                .await
-                .map_err(|e| {
+            let storage =
+                create_blob_storage(&blob_config.storage_type, blob_config).await.map_err(|e| {
                     error!("Failed to create blob storage for job {}: {}", job_id, e);
                     ServiceError::Custom(format!("Failed to create blob storage: {}", e))
                 })?;
@@ -322,19 +320,16 @@ impl ValidationWorker {
             let package_data = std::fs::read(&package_path).map_err(ServiceError::Io)?;
 
             // CRITICAL: Upload must succeed before proceeding to index update
-            storage
-                .upload(&storage_path, &package_data)
-                .await
-                .map_err(|e| {
-                    error!(
-                        "Blob storage upload failed for job {}: {}. Aborting index update.",
-                        job_id, e
-                    );
-                    ServiceError::Custom(format!(
-                        "Failed to upload to blob storage: {}. Index update aborted.",
-                        e
-                    ))
-                })?;
+            storage.upload(&storage_path, &package_data).await.map_err(|e| {
+                error!(
+                    "Blob storage upload failed for job {}: {}. Aborting index update.",
+                    job_id, e
+                );
+                ServiceError::Custom(format!(
+                    "Failed to upload to blob storage: {}. Index update aborted.",
+                    e
+                ))
+            })?;
 
             // Construct download URL
             let blob_url = if let Some(base_url) = storage.base_url() {
@@ -358,9 +353,8 @@ impl ValidationWorker {
         // STEP 2: Update registry index ONLY if blob upload succeeded (or blob storage not configured)
         // If blob storage was configured and upload failed, we would have returned error above
         if let Some(ref registry_index_path) = config.registry_index_path {
-            let download_url = blob_url
-                .as_deref()
-                .unwrap_or_else(|| package_path.to_str().unwrap_or(""));
+            let download_url =
+                blob_url.as_deref().unwrap_or_else(|| package_path.to_str().unwrap_or(""));
 
             // Extract metadata from package
             let skill_content = Self::extract_skill_md(&package_path)?;

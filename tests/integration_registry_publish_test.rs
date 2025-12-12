@@ -1,6 +1,8 @@
 //! Integration tests for publishing skills to production registry
 //!
 //! **IMPORTANT**: These tests are disabled by default and should only be run manually.
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+//!
 //! They require:
 //! - Access to production registry at https://api.fastskill.io
 //! - Valid JWT token for authentication
@@ -29,10 +31,7 @@ const TEST_SKILL_VERSION: &str = "1.0.0";
 /// Get the path to the test skill fixture
 fn get_test_skill_path() -> PathBuf {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    PathBuf::from(manifest_dir)
-        .join("tests")
-        .join("fixtures")
-        .join(TEST_SKILL_NAME)
+    PathBuf::from(manifest_dir).join("tests").join("fixtures").join(TEST_SKILL_NAME)
 }
 
 /// Get the fastskill binary path
@@ -43,10 +42,7 @@ fn get_fastskill_binary() -> PathBuf {
     } else {
         "release"
     };
-    PathBuf::from(manifest_dir)
-        .join("target")
-        .join(target_dir)
-        .join("fastskill")
+    PathBuf::from(manifest_dir).join("target").join(target_dir).join("fastskill")
 }
 
 /// Validate that a ZIP package contains the expected version in skill-project.toml
@@ -260,11 +256,7 @@ async fn test_verify_skill_in_registry() {
     let client = reqwest::Client::new();
     let url = format!("{}/api/registry/skills", PRODUCTION_REGISTRY_URL);
 
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to query registry API");
+    let response = client.get(&url).send().await.expect("Failed to query registry API");
 
     assert!(
         response.status().is_success(),
@@ -272,10 +264,8 @@ async fn test_verify_skill_in_registry() {
         response.status()
     );
 
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse registry API response");
+    let json: serde_json::Value =
+        response.json().await.expect("Failed to parse registry API response");
 
     println!(
         "Registry API response: {}",
@@ -441,11 +431,7 @@ async fn test_complete_publish_workflow() {
     let client = reqwest::Client::new();
     let url = format!("{}/api/registry/skills", PRODUCTION_REGISTRY_URL);
 
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to query registry API");
+    let response = client.get(&url).send().await.expect("Failed to query registry API");
 
     assert!(
         response.status().is_success(),
@@ -453,10 +439,8 @@ async fn test_complete_publish_workflow() {
         response.status()
     );
 
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse registry API response");
+    let json: serde_json::Value =
+        response.json().await.expect("Failed to parse registry API response");
 
     println!(
         "Registry contains {} skills",

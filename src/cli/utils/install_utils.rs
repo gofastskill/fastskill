@@ -57,7 +57,6 @@ async fn install_from_git(
     tag: Option<&str>,
     subdir: Option<&PathBuf>,
 ) -> CliResult<SkillDefinition> {
-    #[cfg(feature = "git-support")]
     {
         use crate::cli::commands::add::{copy_dir_recursive, create_skill_from_path};
         use crate::cli::utils::parse_git_url;
@@ -86,15 +85,10 @@ async fn install_from_git(
             .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
 
         let mut skill_def = create_skill_from_path(&skill_path)?;
-        let skill_storage_dir = service
-            .config()
-            .skill_storage_path
-            .join(skill_def.id.as_str());
+        let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
 
         // Copy to storage
-        tokio::fs::create_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
+        tokio::fs::create_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
         copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
 
         skill_def.skill_file = skill_storage_dir.join("SKILL.md");
@@ -133,11 +127,6 @@ async fn install_from_git(
 
         Ok(skill_def)
     }
-
-    #[cfg(not(feature = "git-support"))]
-    {
-        Err(CliError::Config("Git support is not enabled".to_string()))
-    }
 }
 
 async fn install_from_local(
@@ -161,17 +150,12 @@ async fn install_from_local(
     }
 
     let mut skill_def = create_skill_from_path(&skill_path)?;
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(skill_def.id.as_str());
+    let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
 
     if editable {
         // Create symlink for editable installs
         if skill_storage_dir.exists() {
-            tokio::fs::remove_dir_all(&skill_storage_dir)
-                .await
-                .map_err(CliError::Io)?;
+            tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
         }
         #[cfg(unix)]
         {
@@ -188,9 +172,7 @@ async fn install_from_local(
     } else {
         // Copy to storage
         if skill_storage_dir.exists() {
-            tokio::fs::remove_dir_all(&skill_storage_dir)
-                .await
-                .map_err(CliError::Io)?;
+            tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
         }
         copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
         skill_def.skill_file = skill_storage_dir.join("SKILL.md");

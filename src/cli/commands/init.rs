@@ -3,7 +3,9 @@
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
 use clap::Args;
-use fastskill::core::manifest::{DependencySpec, MetadataSection, SkillProjectToml};
+use fastskill::core::manifest::{
+    DependenciesSection, DependencySpec, MetadataSection, SkillProjectToml,
+};
 use fastskill::core::metadata::parse_yaml_frontmatter;
 use fastskill::core::validation::{
     validate_identifier, validate_project_structure, validate_semver,
@@ -60,6 +62,9 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
             "skill-project.toml already exists. Use --force to overwrite.".to_string(),
         ));
     }
+
+    // Detect context: skill-level if SKILL.md exists, otherwise project-level (T040)
+    let _context = fastskill::core::project::detect_context(skill_project_path);
 
     // SKILL.md is optional - check if it exists
     let skill_md_exists = Path::new("SKILL.md").exists();
@@ -164,12 +169,9 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     // Extract skill ID from current directory name
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-    let skill_id = current_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| {
-            CliError::Config("Cannot determine skill ID from current directory name".to_string())
-        })?;
+    let skill_id = current_dir.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        CliError::Config("Cannot determine skill ID from current directory name".to_string())
+    })?;
 
     // Validate skill ID format
     validate_identifier(skill_id)
@@ -181,17 +183,20 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
 
     // Build metadata section (required - must have at least id and version)
     let metadata = Some(MetadataSection {
-        id: skill_id,
-        version,
+        id: Some(skill_id),
+        version: Some(version),
         description,
         author,
         tags,
         capabilities,
         download_url,
+        name: None,
     });
 
     // Create empty dependencies section (optional, but we'll create it for consistency)
-    let dependencies = Some(HashMap::<String, DependencySpec>::new());
+    let dependencies = Some(DependenciesSection {
+        dependencies: HashMap::<String, DependencySpec>::new(),
+    });
 
     // Metadata is now always required (must have id and version)
     // Validate that at least one section exists
@@ -201,11 +206,21 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     let skill_project = SkillProjectToml {
         metadata,
         dependencies,
+        tool: None,
     };
 
     skill_project
         .save_to_file(skill_project_path)
         .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+
+    // T058: Validate context after creation
+    let context = fastskill::core::project::detect_context(skill_project_path);
+    skill_project.validate_for_context(context).map_err(|e| {
+        CliError::Config(format!(
+            "skill-project.toml validation failed after creation: {}",
+            e
+        ))
+    })?;
 
     println!(
         "{}",
@@ -384,6 +399,12 @@ fn prompt_for_capabilities() -> CliResult<Option<Vec<String>>> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::collapsible_if
+)]
 mod tests {
     use super::*;
     use std::fs;

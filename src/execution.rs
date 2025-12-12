@@ -316,11 +316,7 @@ impl ExecutionSandbox {
 
         // Execute with timeout
         let result = timeout(timeout_duration, async {
-            let output = cmd
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
-                .await?;
+            let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await?;
 
             Ok::<_, std::io::Error>(output)
         })
@@ -347,11 +343,7 @@ impl ExecutionSandbox {
         // Check if command is allowed
         if !self.config.allowed_commands.is_empty() {
             let command_name = command.split('/').next_back().unwrap_or(&command);
-            if !self
-                .config
-                .allowed_commands
-                .contains(&command_name.to_string())
-            {
+            if !self.config.allowed_commands.contains(&command_name.to_string()) {
                 return Err(ExecutionError::SecurityViolation(format!(
                     "Command '{}' is not in allowed commands list",
                     command_name
@@ -362,9 +354,7 @@ impl ExecutionSandbox {
         let start_time = std::time::Instant::now();
 
         // Execute command in user's environment
-        let result = self
-            .execute_command_in_user_environment(command, args, context)
-            .await?;
+        let result = self.execute_command_in_user_environment(command, args, context).await?;
 
         let execution_time = start_time.elapsed();
 
@@ -397,11 +387,7 @@ impl ExecutionSandbox {
         let timeout_duration = self.config.default_timeout;
 
         let result = timeout(timeout_duration, async {
-            let output = cmd
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
-                .await?;
+            let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await?;
 
             Ok::<_, std::io::Error>(output)
         })

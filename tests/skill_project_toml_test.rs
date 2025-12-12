@@ -1,21 +1,28 @@
 //! Unit tests for SkillProjectToml serialization and deserialization
 
-use fastskill::core::manifest::{DependencySpec, MetadataSection, SkillProjectToml};
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
+use fastskill::core::manifest::{
+    DependenciesSection, DependencySource, DependencySpec, MetadataSection, SkillProjectToml,
+    SourceSpecificFields,
+};
 use std::collections::HashMap;
 
 #[test]
 fn test_skill_project_toml_serialization_with_metadata_only() {
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "my-skill".to_string(),
-            version: "1.0.0".to_string(),
+            id: Some("my-skill".to_string()),
+            version: Some("1.0.0".to_string()),
             description: Some("A test skill".to_string()),
             author: Some("Test Author".to_string()),
             tags: Some(vec!["test".to_string(), "example".to_string()]),
             capabilities: Some(vec!["text-processing".to_string()]),
             download_url: None,
+            name: None,
         }),
         dependencies: None,
+        tool: None,
     };
 
     let toml_string = toml::to_string_pretty(&project).unwrap();
@@ -35,15 +42,26 @@ fn test_skill_project_toml_serialization_with_dependencies_only() {
     );
     deps.insert(
         "skill2".to_string(),
-        DependencySpec::InlineTable {
-            source: Some("enterprise".to_string()),
-            version: "2.0.0".to_string(),
+        DependencySpec::Inline {
+            source: DependencySource::Source,
+            source_specific: SourceSpecificFields {
+                name: Some("enterprise".to_string()),
+                version: Some("2.0.0".to_string()),
+                url: None,
+                branch: None,
+                path: None,
+                skill: None,
+                zip_url: None,
+            },
+            groups: None,
+            editable: None,
         },
     );
 
     let project = SkillProjectToml {
         metadata: None,
-        dependencies: Some(deps),
+        dependencies: Some(DependenciesSection { dependencies: deps }),
+        tool: None,
     };
 
     let toml_string = toml::to_string_pretty(&project).unwrap();
@@ -52,7 +70,8 @@ fn test_skill_project_toml_serialization_with_dependencies_only() {
     assert!(toml_string.contains("skill1 = \"1.0.0\""));
     // TOML serializer uses table format for inline tables: [dependencies.skill2]
     assert!(toml_string.contains("[dependencies.skill2]"));
-    assert!(toml_string.contains("source = \"enterprise\""));
+    assert!(toml_string.contains("source = \"source\""));
+    assert!(toml_string.contains("name = \"enterprise\""));
     assert!(toml_string.contains("version = \"2.0.0\""));
 }
 
@@ -66,15 +85,17 @@ fn test_skill_project_toml_serialization_with_both_sections() {
 
     let project = SkillProjectToml {
         metadata: Some(MetadataSection {
-            id: "my-skill".to_string(),
-            version: "1.0.0".to_string(),
+            id: Some("my-skill".to_string()),
+            version: Some("1.0.0".to_string()),
             description: None,
             author: None,
             tags: None,
             capabilities: None,
             download_url: None,
+            name: None,
         }),
-        dependencies: Some(deps),
+        dependencies: Some(DependenciesSection { dependencies: deps }),
+        tool: None,
     };
 
     let toml_string = toml::to_string_pretty(&project).unwrap();
@@ -95,19 +116,19 @@ description = "Test description"
 
 [dependencies]
 skill1 = "1.0.0"
-skill2 = { source = "enterprise", version = "2.0.0" }
+skill2 = { source = "source", name = "enterprise", version = "2.0.0" }
 "#;
 
     let project: SkillProjectToml = toml::from_str(toml_content).unwrap();
 
     assert!(project.metadata.is_some());
     let metadata = project.metadata.unwrap();
-    assert_eq!(metadata.version, "1.0.0");
+    assert_eq!(metadata.version, Some("1.0.0".to_string()));
     // name field removed - name comes from SKILL.md frontmatter only
 
     assert!(project.dependencies.is_some());
     let deps = project.dependencies.unwrap();
-    assert_eq!(deps.len(), 2);
-    assert!(deps.contains_key("skill1"));
-    assert!(deps.contains_key("skill2"));
+    assert_eq!(deps.dependencies.len(), 2);
+    assert!(deps.dependencies.contains_key("skill1"));
+    assert!(deps.dependencies.contains_key("skill2"));
 }

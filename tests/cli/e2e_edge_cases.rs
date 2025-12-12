@@ -1,5 +1,7 @@
 //! End-to-end tests for CLI edge cases and error handling
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use std::process::Command;
 use std::env;
 use std::fs;

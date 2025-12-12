@@ -1,5 +1,7 @@
 //! Tests for repository command
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -45,6 +47,64 @@ async fn test_scan_directory_for_skills() {
     // For now, just verify the directory structure
     assert!(skills_dir.join("skill1").join("SKILL.md").exists());
     assert!(skills_dir.join("skill2").join("SKILL.md").exists());
+}
+
+/// T026: Integration test for fastskill registry add updating repositories in skill-project.toml
+#[test]
+fn test_registry_add_updates_repositories_in_skill_project_toml() {
+    use fastskill::core::manifest::SkillProjectToml;
+    use fastskill::core::manifest::{
+        FastSkillToolConfig, RepositoryDefinition, RepositoryType, ToolSection,
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+
+    // Create initial skill-project.toml
+    let project_toml = project_root.join("skill-project.toml");
+    fs::write(
+        &project_toml,
+        r#"
+[dependencies]
+web-scraper = "1.0.0"
+"#,
+    )
+    .unwrap();
+
+    // Load project
+    let mut project = SkillProjectToml::load_from_file(&project_toml).unwrap();
+
+    // Simulate adding a repository (what registry add command would do)
+    let tool = project.tool.get_or_insert_with(|| ToolSection { fastskill: None });
+    let fastskill_config = tool.fastskill.get_or_insert_with(|| FastSkillToolConfig {
+        skills_directory: None,
+        repositories: Some(Vec::new()),
+    });
+    let repos = fastskill_config.repositories.get_or_insert_with(Vec::new);
+
+    repos.push(RepositoryDefinition {
+        name: "test-registry".to_string(),
+        r#type: RepositoryType::HttpRegistry,
+        priority: 1,
+        connection: fastskill::core::manifest::RepositoryConnection::HttpRegistry {
+            index_url: "https://registry.example.com".to_string(),
+        },
+        auth: None,
+    });
+
+    // Save updated project
+    project.save_to_file(&project_toml).unwrap();
+
+    // Verify the update was saved
+    let updated_project = SkillProjectToml::load_from_file(&project_toml).unwrap();
+    assert!(updated_project.tool.is_some());
+    let tool = updated_project.tool.as_ref().unwrap();
+    assert!(tool.fastskill.is_some());
+    let fastskill_config = tool.fastskill.as_ref().unwrap();
+    assert!(fastskill_config.repositories.is_some());
+    let repos = fastskill_config.repositories.as_ref().unwrap();
+    assert_eq!(repos.len(), 1);
+    assert_eq!(repos[0].name, "test-registry");
 }
 
 #[test]
@@ -152,13 +212,7 @@ fn test_claude_code_marketplace_json_parsing() {
     );
     assert!(marketplace.metadata.is_some());
     assert_eq!(
-        marketplace
-            .metadata
-            .as_ref()
-            .unwrap()
-            .description
-            .as_ref()
-            .unwrap(),
+        marketplace.metadata.as_ref().unwrap().description.as_ref().unwrap(),
         "Test repository"
     );
     assert_eq!(marketplace.plugins.len(), 1);

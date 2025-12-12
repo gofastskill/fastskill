@@ -86,10 +86,8 @@ impl PackageResolver {
         // Group skills by ID
         for skill_info in all_skills {
             // Get source config for this skill
-            let source_def = self
-                .sources_manager
-                .get_source(&skill_info.source_name)
-                .ok_or_else(|| {
+            let source_def =
+                self.sources_manager.get_source(&skill_info.source_name).ok_or_else(|| {
                     ResolverError::SourceError(format!(
                         "Source '{}' not found",
                         skill_info.source_name
@@ -107,10 +105,7 @@ impl PackageResolver {
                 commit_hash: None,
             };
 
-            self.skill_index
-                .entry(skill_info.id)
-                .or_default()
-                .push(candidate);
+            self.skill_index.entry(skill_info.id).or_default().push(candidate);
         }
 
         // Sort candidates by source priority (lower priority number = higher priority)
@@ -148,10 +143,7 @@ impl PackageResolver {
 
         // Filter by source if specified
         let filtered_candidates: Vec<&SkillCandidate> = if let Some(source) = source_name {
-            candidates
-                .iter()
-                .filter(|c| c.source_name == source)
-                .collect()
+            candidates.iter().filter(|c| c.source_name == source).collect()
         } else {
             candidates.iter().collect()
         };
@@ -301,6 +293,7 @@ impl PackageResolver {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::core::sources::{SourceConfig, SourcesManager};

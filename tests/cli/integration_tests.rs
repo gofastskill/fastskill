@@ -1,5 +1,7 @@
 //! Integration tests for CLI commands
 
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
 use fastskill::{FastSkillService, ServiceConfig};
 use tempfile::TempDir;
 use tokio;
@@ -60,6 +62,43 @@ async fn test_search_command() {
     assert!(results.is_ok());
     // Should return empty results when no skills exist
     assert_eq!(results.unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_read_command_execution() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join("skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+
+    // Create a test skill
+    let skill_dir = skills_dir.join("read-test");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+
+    let skill_md = skill_dir.join("SKILL.md");
+    std::fs::write(
+        &skill_md,
+        r#"---
+name: read-test
+description: Test skill for read command
+version: 1.0.0
+---
+# Read Test Skill
+"#,
+    )
+    .unwrap();
+
+    let config = ServiceConfig {
+        skill_storage_path: skills_dir.clone(),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await.unwrap();
+    service.initialize().await.unwrap();
+
+    // Test read through service
+    let skill_id = fastskill::SkillId::new("read-test".to_string()).unwrap();
+    let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
+    assert!(skill.is_some());
 }
 
 #[tokio::test]
@@ -128,11 +167,7 @@ This is a test skill for auto-indexing.
     assert_eq!(all_skills.len(), skill_names.len());
 
     // Check that skills can be found via search
-    let search_results = service
-        .metadata_service()
-        .discover_skills("test")
-        .await
-        .unwrap();
+    let search_results = service.metadata_service().discover_skills("test").await.unwrap();
     assert!(!search_results.is_empty());
 
     // Verify specific skills exist

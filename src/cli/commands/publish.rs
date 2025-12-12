@@ -184,10 +184,7 @@ async fn publish_to_api(
     );
 
     for package in packages {
-        let package_name = package
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+        let package_name = package.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
 
         println!(
             "{}",
@@ -301,10 +298,7 @@ async fn publish_to_local_folder(target: &str, packages: &[PathBuf]) -> CliResul
     );
 
     for package in packages {
-        let package_name = package
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+        let package_name = package.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
 
         let dest_path = target_path.join(package_name);
 
@@ -378,6 +372,7 @@ fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<Str
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::fs;

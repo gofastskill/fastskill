@@ -7,7 +7,6 @@ pub mod auth;
 pub mod errors;
 pub mod handlers;
 pub mod models;
-pub mod proxy;
 pub mod server;
 
 pub use auth::middleware::AuthMiddleware;
