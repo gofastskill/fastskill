@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.9.1)'
-        required: true
-        type: string
 
 env:
   CARGO_TERM_COLOR: always
