@@ -4,8 +4,9 @@ use crate::core::service::ServiceError;
 use async_trait::async_trait;
 #[allow(unused_imports)] // StreamExt is used in download() method
 use futures::StreamExt;
-use std::sync::Arc;
+#[cfg(feature = "registry-publish")]
 use tracing::info;
+use std::sync::Arc;
 
 /// Trait for blob storage backends
 #[async_trait]
@@ -85,12 +86,14 @@ impl BlobStorage for LocalBlobStorage {
 }
 
 /// S3 blob storage (supports AWS S3 and S3-compatible services via endpoint)
+#[cfg(feature = "registry-publish")]
 pub struct S3BlobStorage {
     client: aws_sdk_s3::Client,
     bucket: String,
     base_url: Option<String>,
 }
 
+#[cfg(feature = "registry-publish")]
 impl S3BlobStorage {
     pub async fn new(
         bucket: String,
@@ -134,6 +137,7 @@ impl S3BlobStorage {
     }
 }
 
+#[cfg(feature = "registry-publish")]
 #[async_trait]
 impl BlobStorage for S3BlobStorage {
     async fn upload(&self, path: &str, data: &[u8]) -> Result<String, ServiceError> {
@@ -236,6 +240,7 @@ impl BlobStorage for S3BlobStorage {
 }
 
 /// Map AWS SDK errors to user-friendly error messages
+#[cfg(feature = "registry-publish")]
 fn map_s3_error(err: &dyn std::error::Error) -> String {
     let err_str = err.to_string();
 
@@ -266,6 +271,7 @@ pub async fn create_blob_storage(
                 config.base_url.clone(),
             )))
         }
+        #[cfg(feature = "registry-publish")]
         "s3" => {
             // S3 storage supports both AWS S3 and S3-compatible services
             // When endpoint is set, it points to an S3-compatible service
@@ -288,6 +294,12 @@ pub async fn create_blob_storage(
             )
             .await?;
             Ok(Arc::new(storage))
+        }
+        #[cfg(not(feature = "registry-publish"))]
+        "s3" => {
+            Err(ServiceError::Custom(
+                "S3 storage requires the 'registry-publish' feature to be enabled".to_string(),
+            ))
         }
         _ => Err(ServiceError::Custom(format!(
             "Unsupported storage type: {}",
