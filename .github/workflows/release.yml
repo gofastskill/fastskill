@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.9.1)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,12 +25,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Extract version from tag or input
         id: extract-version
         run: |
-          TAG_VERSION="${{ github.ref_name }}"
-          # Strip 'v' prefix
-          VERSION="${TAG_VERSION#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG_VERSION="v$VERSION"
+          else
+            TAG_VERSION="${{ github.ref_name }}"
+            # Strip 'v' prefix
+            VERSION="${TAG_VERSION#v}"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag version: $TAG_VERSION"
           echo "Extracted version: $VERSION"
