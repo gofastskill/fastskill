@@ -255,9 +255,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.112.0"
+version = "1.113.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eee73a27721035c46da0572b390a69fbdb333d0177c24f3d8f7ff952eeb96690"
+checksum = "85b6f2da36f0e3ca98031dfa4fc6f075c0887b864f01397161c67e07401f438d"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1313,7 +1313,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "fastskill"
-version = "0.9.0"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "async-trait",
