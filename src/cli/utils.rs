@@ -139,20 +139,67 @@ pub fn parse_git_url(git_url: &str) -> CliResult<GitUrlInfo> {
 
 /// Validate skill structure follows Claude Code standard
 pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
-    // Check if SKILL.md exists
-    let skill_file = skill_path.join("SKILL.md");
-    if !skill_file.exists() {
-        return Err(CliError::Validation(format!(
-            "SKILL.md not found in: {}",
-            skill_path.display()
-        )));
+    use fastskill::validation::standard_validator::{StandardValidator, ValidationError};
+
+    // Use StandardValidator for comprehensive AI Skill standard validation
+    let result = StandardValidator::validate_skill_directory(skill_path);
+
+    match result {
+        Ok(validation_result) => {
+            if !validation_result.is_valid {
+                // Format validation errors for CLI display
+                let error_messages: Vec<String> = validation_result
+                    .errors
+                    .iter()
+                    .map(|e| match e {
+                        ValidationError::InvalidNameFormat(msg) => {
+                            format!("✗ Name format invalid: {}", msg)
+                        }
+                        ValidationError::NameMismatch { expected, actual } => format!(
+                            "✗ Name mismatch: Directory '{}' doesn't match skill name '{}'",
+                            actual, expected
+                        ),
+                        ValidationError::InvalidDescriptionLength(len) => format!(
+                            "✗ Description length invalid: {} characters (must be 1-1024)",
+                            len
+                        ),
+                        ValidationError::InvalidCompatibilityLength(len) => format!(
+                            "✗ Compatibility field too long: {} characters (max 500)",
+                            len
+                        ),
+                        ValidationError::MissingRequiredField(field) => {
+                            format!("✗ Missing required field: {}", field)
+                        }
+                        ValidationError::InvalidFileReference(msg) => {
+                            format!("✗ Invalid file reference: {}", msg)
+                        }
+                        ValidationError::InvalidDirectoryStructure(msg) => {
+                            format!("✗ Invalid directory structure: {}", msg)
+                        }
+                        ValidationError::YamlParseError(msg) => {
+                            format!("✗ YAML parsing error: {}", msg)
+                        }
+                    })
+                    .collect();
+
+                let warning_messages: Vec<String> =
+                    validation_result.warnings.iter().map(|w| format!("⚠ {}", w)).collect();
+
+                let mut all_messages = error_messages;
+                all_messages.extend(warning_messages);
+
+                return Err(CliError::Validation(all_messages.join("\n")));
+            }
+
+            // Log warnings even if validation passes
+            for warning in &validation_result.warnings {
+                eprintln!("⚠ {}", warning);
+            }
+
+            Ok(())
+        }
+        Err(e) => Err(CliError::Validation(format!("Validation failed: {:?}", e))),
     }
-
-    // Basic validation - file exists and is readable
-    std::fs::metadata(&skill_file)
-        .map_err(|e| CliError::Validation(format!("Cannot read SKILL.md: {}", e)))?;
-
-    Ok(())
 }
 
 /// Format skill output for display
