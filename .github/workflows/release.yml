@@ -398,7 +398,7 @@ jobs:
       - name: Create Release (as draft to allow asset uploads)
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: v${{ needs.verify-version.outputs.version }}
           name: Release ${{ needs.verify-version.outputs.version }}
           body_path: release_notes.md
           files: ${{ steps.prepare-files.outputs.files }}
