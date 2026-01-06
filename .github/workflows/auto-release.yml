@@ -117,7 +117,7 @@ jobs:
           
           git add Cargo.toml
           git commit -m "chore: bump version to $VERSION [skip ci]"
-          git push origin main
+          git push origin refs/heads/main:refs/heads/main
 
       - name: Create and push tag
         if: steps.check-label.outputs.skip != 'true'
