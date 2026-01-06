@@ -409,7 +409,7 @@ jobs:
 
       - name: Publish release (remove draft status)
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="v${{ needs.verify-version.outputs.version }}"
           echo "Publishing release $TAG..."
           gh release edit "$TAG" --draft=false
           echo "Release $TAG is now published!"
