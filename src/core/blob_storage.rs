@@ -4,9 +4,9 @@ use crate::core::service::ServiceError;
 use async_trait::async_trait;
 #[allow(unused_imports)] // StreamExt is used in download() method
 use futures::StreamExt;
+use std::sync::Arc;
 #[cfg(feature = "registry-publish")]
 use tracing::info;
-use std::sync::Arc;
 
 /// Trait for blob storage backends
 #[async_trait]
@@ -296,11 +296,9 @@ pub async fn create_blob_storage(
             Ok(Arc::new(storage))
         }
         #[cfg(not(feature = "registry-publish"))]
-        "s3" => {
-            Err(ServiceError::Custom(
-                "S3 storage requires the 'registry-publish' feature to be enabled".to_string(),
-            ))
-        }
+        "s3" => Err(ServiceError::Custom(
+            "S3 storage requires the 'registry-publish' feature to be enabled".to_string(),
+        )),
         _ => Err(ServiceError::Custom(format!(
             "Unsupported storage type: {}",
             storage_type

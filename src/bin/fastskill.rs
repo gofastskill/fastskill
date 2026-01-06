@@ -3,7 +3,7 @@
 #[path = "../cli/mod.rs"]
 mod cli;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::Cli;
 
 #[tokio::main]
@@ -19,7 +19,10 @@ async fn main() {
                 let _ = e.print();
                 std::process::exit(0);
             } else {
+                // Print error message for invalid commands
                 eprintln!("Error: {}", e);
+                // Print help after error message
+                let _ = Cli::command().print_help();
                 std::process::exit(1);
             }
         }
@@ -31,7 +34,10 @@ async fn main() {
             std::process::exit(0);
         }
         Err(e) => {
-            // Error message already printed by command
+            // Print error message
+            eprintln!("Error: {}", e);
+            // Print help after error message
+            let _ = Cli::command().print_help();
             std::process::exit(e.exit_code());
         }
     }

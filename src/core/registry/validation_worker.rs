@@ -185,6 +185,8 @@ impl ValidationWorker {
         _skill_validator: &Arc<SkillValidator>,
         zip_validator: &Arc<ZipValidator>,
     ) -> Result<(), ServiceError> {
+        use crate::validation::standard_validator::StandardValidator;
+
         // Get package path
         let package_path = staging_manager
             .get_package_path(job_id)?
@@ -193,38 +195,113 @@ impl ValidationWorker {
         // Validate ZIP structure
         zip_validator.validate_zip_package(&package_path).await?;
 
-        // Extract and validate SKILL.md
-        let skill_content = Self::extract_skill_md(&package_path)?;
-
-        // Parse frontmatter
-        let _frontmatter = parse_yaml_frontmatter(&skill_content).map_err(|e| {
-            ServiceError::Validation(format!("Invalid SKILL.md frontmatter: {}", e))
+        // Extract ZIP to temporary directory for comprehensive validation
+        let temp_dir = tempfile::TempDir::new().map_err(|e| {
+            ServiceError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to create temp dir: {}", e),
+            ))
         })?;
 
-        // Basic validation: check ZIP integrity
-        let file = std::fs::File::open(&package_path).map_err(ServiceError::Io)?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| ServiceError::Validation(format!("Invalid ZIP file: {}", e)))?;
+        Self::extract_zip_to_temp(&package_path, temp_dir.path())?;
 
-        // Check for SKILL.md
-        let mut found_skill_md = false;
-        for i in 0..archive.len() {
-            let file = archive.by_index(i).map_err(|e| {
-                ServiceError::Validation(format!("Failed to read ZIP entry: {}", e))
-            })?;
-            if file.name().ends_with("SKILL.md") {
-                found_skill_md = true;
-                break;
-            }
+        // Find the skill directory (should be the root or a subdirectory)
+        let skill_dir = Self::find_skill_directory(temp_dir.path())?;
+
+        // Use StandardValidator for comprehensive AI Skill standard validation
+        let validation_result = StandardValidator::validate_skill_directory(&skill_dir)?;
+
+        if !validation_result.is_valid {
+            let error_messages: Vec<String> = validation_result.errors.iter().map(|e| {
+                match e {
+                    crate::validation::standard_validator::ValidationError::InvalidNameFormat(msg) =>
+                        format!("✗ Name format invalid: {}", msg),
+                    crate::validation::standard_validator::ValidationError::NameMismatch { expected, actual } =>
+                        format!("✗ Name mismatch: Directory '{}' doesn't match skill name '{}'", actual, expected),
+                    crate::validation::standard_validator::ValidationError::InvalidDescriptionLength(len) =>
+                        format!("✗ Description length invalid: {} characters (must be 1-1024)", len),
+                    crate::validation::standard_validator::ValidationError::InvalidCompatibilityLength(len) =>
+                        format!("✗ Compatibility field too long: {} characters (max 500)", len),
+                    crate::validation::standard_validator::ValidationError::MissingRequiredField(field) =>
+                        format!("✗ Missing required field: {}", field),
+                    crate::validation::standard_validator::ValidationError::InvalidFileReference(msg) =>
+                        format!("✗ Invalid file reference: {}", msg),
+                    crate::validation::standard_validator::ValidationError::InvalidDirectoryStructure(msg) =>
+                        format!("✗ Invalid directory structure: {}", msg),
+                    crate::validation::standard_validator::ValidationError::YamlParseError(msg) =>
+                        format!("✗ YAML parsing error: {}", msg),
+                }
+            }).collect();
+
+            return Err(ServiceError::Validation(error_messages.join("\n")));
         }
 
-        if !found_skill_md {
-            return Err(ServiceError::Validation(
-                "SKILL.md not found in package".to_string(),
-            ));
+        // Log warnings even if validation passes
+        for warning in &validation_result.warnings {
+            warn!("Package validation warning for {}: {}", job_id, warning);
         }
 
         Ok(())
+    }
+
+    /// Extract ZIP to temporary directory
+    fn extract_zip_to_temp(
+        package_path: &PathBuf,
+        temp_dir: &std::path::Path,
+    ) -> Result<(), ServiceError> {
+        let file = std::fs::File::open(package_path).map_err(ServiceError::Io)?;
+        let mut archive = ZipArchive::new(file)
+            .map_err(|e| ServiceError::Validation(format!("Invalid ZIP file: {}", e)))?;
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| {
+                ServiceError::Validation(format!("Failed to read ZIP entry: {}", e))
+            })?;
+
+            let outpath = temp_dir.join(file.name());
+
+            if file.name().ends_with('/') {
+                std::fs::create_dir_all(&outpath).map_err(ServiceError::Io)?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(p).map_err(ServiceError::Io)?;
+                    }
+                }
+                let mut outfile = std::fs::File::create(&outpath).map_err(ServiceError::Io)?;
+                std::io::copy(&mut file, &mut outfile).map_err(ServiceError::Io)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Find skill directory in extracted ZIP
+    fn find_skill_directory(
+        temp_dir: &std::path::Path,
+    ) -> Result<std::path::PathBuf, ServiceError> {
+        // Look for SKILL.md at the root level first
+        let skill_md_path = temp_dir.join("SKILL.md");
+        if skill_md_path.exists() {
+            return Ok(temp_dir.to_path_buf());
+        }
+
+        // Look for SKILL.md in subdirectories (in case ZIP has a containing folder)
+        for entry in std::fs::read_dir(temp_dir).map_err(ServiceError::Io)? {
+            let entry = entry.map_err(ServiceError::Io)?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                let skill_md_in_subdir = path.join("SKILL.md");
+                if skill_md_in_subdir.exists() {
+                    return Ok(path);
+                }
+            }
+        }
+
+        Err(ServiceError::Validation(
+            "Could not find SKILL.md in extracted package".to_string(),
+        ))
     }
 
     /// Extract SKILL.md from ZIP

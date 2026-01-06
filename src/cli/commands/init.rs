@@ -87,6 +87,10 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
                 author: None,
                 tags: Vec::new(),
                 capabilities: Vec::new(),
+                license: None,
+                compatibility: None,
+                metadata: None,
+                allowed_tools: None,
                 extra: std::collections::HashMap::new(),
             },
         )

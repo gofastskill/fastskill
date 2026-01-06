@@ -46,6 +46,10 @@ pub struct SkillFrontmatter {
     pub author: Option<String>,
     pub tags: Vec<String>,
     pub capabilities: Vec<String>,
+    pub license: Option<String>,
+    pub compatibility: Option<String>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+    pub allowed_tools: Option<String>,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_yaml::Value>,
 }
@@ -215,6 +219,14 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         author,
         tags,
         capabilities,
+        license: frontmatter.remove("license").and_then(|v| serde_yaml::from_value(v).ok()),
+        compatibility: frontmatter
+            .remove("compatibility")
+            .and_then(|v| serde_yaml::from_value(v).ok()),
+        metadata: frontmatter.remove("metadata").and_then(|v| serde_yaml::from_value(v).ok()),
+        allowed_tools: frontmatter
+            .remove("allowed_tools")
+            .and_then(|v| serde_yaml::from_value(v).ok()),
         extra: frontmatter,
     })
 }

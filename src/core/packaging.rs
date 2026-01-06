@@ -49,6 +49,34 @@ pub fn package_skill_with_id(
         )));
     }
 
+    // Validate skill against AI Skill standard
+    use crate::validation::standard_validator::StandardValidator;
+    let validation_result = StandardValidator::validate_skill_directory(skill_path)?;
+    if !validation_result.is_valid {
+        let error_messages: Vec<String> = validation_result.errors.iter().map(|e| {
+            match e {
+                crate::validation::standard_validator::ValidationError::InvalidNameFormat(msg) =>
+                    format!("✗ Name format invalid: {}", msg),
+                crate::validation::standard_validator::ValidationError::NameMismatch { expected, actual } =>
+                    format!("✗ Name mismatch: Directory '{}' doesn't match skill name '{}'", actual, expected),
+                crate::validation::standard_validator::ValidationError::InvalidDescriptionLength(len) =>
+                    format!("✗ Description length invalid: {} characters (must be 1-1024)", len),
+                crate::validation::standard_validator::ValidationError::InvalidCompatibilityLength(len) =>
+                    format!("✗ Compatibility field too long: {} characters (max 500)", len),
+                crate::validation::standard_validator::ValidationError::MissingRequiredField(field) =>
+                    format!("✗ Missing required field: {}", field),
+                crate::validation::standard_validator::ValidationError::InvalidFileReference(msg) =>
+                    format!("✗ Invalid file reference: {}", msg),
+                crate::validation::standard_validator::ValidationError::InvalidDirectoryStructure(msg) =>
+                    format!("✗ Invalid directory structure: {}", msg),
+                crate::validation::standard_validator::ValidationError::YamlParseError(msg) =>
+                    format!("✗ YAML parsing error: {}", msg),
+            }
+        }).collect();
+
+        return Err(ServiceError::Validation(error_messages.join("\n")));
+    }
+
     // Try to read metadata from skill-project.toml if it exists (T042, T043)
     let skill_project_toml_path = skill_path.join("skill-project.toml");
     let (skill_id, package_version) = if skill_project_toml_path.exists() {
