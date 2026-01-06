@@ -416,3 +416,77 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  update-package-managers:
+    name: Update Package Managers
+    needs: [verify-version, create-release]
+    runs-on: ubuntu-latest
+    if: always() && needs.create-release.result == 'success'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Checkout homebrew-cli repo
+        uses: actions/checkout@v4
+        with:
+          repository: gofastskill/homebrew-cli
+          path: homebrew-cli
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula
+        run: |
+          cd homebrew-cli
+          chmod +x generate_formula.sh
+          ./generate_formula.sh --version ${{ needs.verify-version.outputs.version }}
+
+      - name: Commit and push Homebrew changes
+        run: |
+          cd homebrew-cli
+          VERSION="${{ needs.verify-version.outputs.version }}"
+
+          # Check if there are changes
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit for Homebrew formula"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "chore: update fastskill to v${VERSION}"
+            git push origin main
+            echo "✅ Homebrew formula updated to v${VERSION}"
+          fi
+
+      - name: Checkout scoop-bucket repo
+        uses: actions/checkout@v4
+        with:
+          repository: gofastskill/scoop-bucket
+          path: scoop-bucket
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Scoop manifest
+        run: |
+          cd scoop-bucket
+          chmod +x generate_manifest.sh
+          ./generate_manifest.sh --version ${{ needs.verify-version.outputs.version }}
+
+      - name: Commit and push Scoop changes
+        run: |
+          cd scoop-bucket
+          VERSION="${{ needs.verify-version.outputs.version }}"
+
+          # Check if there are changes
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit for Scoop manifest"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "chore: update fastskill to v${VERSION}"
+            git push origin main
+            echo "✅ Scoop manifest updated to v${VERSION}"
+          fi
+
