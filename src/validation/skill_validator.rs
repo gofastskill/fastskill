@@ -290,28 +290,6 @@ impl SkillValidator {
             );
         }
 
-        // Validate tags are not empty
-        for (i, tag) in skill.tags.iter().enumerate() {
-            if tag.trim().is_empty() {
-                result = result.with_error(
-                    &format!("tags[{}]", i),
-                    "Tag cannot be empty",
-                    ErrorSeverity::Error,
-                );
-            }
-        }
-
-        // Validate capabilities are not empty
-        for (i, capability) in skill.capabilities.iter().enumerate() {
-            if capability.trim().is_empty() {
-                result = result.with_error(
-                    &format!("capabilities[{}]", i),
-                    "Capability cannot be empty",
-                    ErrorSeverity::Error,
-                );
-            }
-        }
-
         result
     }
 
@@ -913,34 +891,6 @@ mod tests {
         let result = validator.validate_skill(&skill).await.unwrap();
         // Should have warnings for invalid formats
         assert!(!result.warnings.is_empty() || !result.errors.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_validate_skill_empty_tags() {
-        let temp_dir = TempDir::new().unwrap();
-        let validator = SkillValidator::new();
-
-        let mut skill =
-            create_test_skill_definition(&temp_dir, "test-skill", "Description", "1.0.0");
-        skill.tags = vec!["".to_string(), "valid-tag".to_string()];
-
-        let result = validator.validate_skill(&skill).await.unwrap();
-        assert!(!result.errors.is_empty());
-        assert!(result.errors.iter().any(|e| e.field.starts_with("tags[")));
-    }
-
-    #[tokio::test]
-    async fn test_validate_skill_empty_capabilities() {
-        let temp_dir = TempDir::new().unwrap();
-        let validator = SkillValidator::new();
-
-        let mut skill =
-            create_test_skill_definition(&temp_dir, "test-skill", "Description", "1.0.0");
-        skill.capabilities = vec!["".to_string(), "valid-capability".to_string()];
-
-        let result = validator.validate_skill(&skill).await.unwrap();
-        assert!(!result.errors.is_empty());
-        assert!(result.errors.iter().any(|e| e.field.starts_with("capabilities[")));
     }
 
     // Tests for validate_file_structure (tested through validate_skill)

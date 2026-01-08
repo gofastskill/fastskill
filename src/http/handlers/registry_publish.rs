@@ -410,8 +410,12 @@ fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, Strin
             // Try to get version from SKILL.md frontmatter as fallback
             let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
             if let Some(ref f) = frontmatter {
-                if !f.version.is_empty() {
-                    f.version.clone()
+                if let Some(ref v) = f.version {
+                    if !v.is_empty() {
+                        v.clone()
+                    } else {
+                        "1.0.0".to_string()
+                    }
                 } else {
                     "1.0.0".to_string()
                 }
@@ -425,8 +429,12 @@ fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, Strin
         // Try to get version from SKILL.md frontmatter as fallback
         let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
         if let Some(ref f) = frontmatter {
-            if !f.version.is_empty() {
-                f.version.clone()
+            if let Some(ref v) = f.version {
+                if !v.is_empty() {
+                    v.clone()
+                } else {
+                    "1.0.0".to_string()
+                }
             } else {
                 "1.0.0".to_string()
             }

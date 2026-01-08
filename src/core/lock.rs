@@ -306,8 +306,6 @@ mod tests {
             description: "A test skill".to_string(),
             version: "1.0.0".to_string(),
             author: None,
-            tags: Vec::new(),
-            capabilities: Vec::new(),
             enabled: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),

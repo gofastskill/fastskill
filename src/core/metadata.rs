@@ -13,8 +13,6 @@ pub struct SkillMetadata {
     pub description: String,
     pub version: String,
     pub author: Option<String>,
-    pub tags: Vec<String>,
-    pub capabilities: Vec<String>,
     pub enabled: bool,
     pub token_estimate: usize,
     pub last_updated: chrono::DateTime<chrono::Utc>,
@@ -28,8 +26,6 @@ impl From<&SkillDefinition> for SkillMetadata {
             description: skill.description.clone(),
             version: skill.version.clone(),
             author: skill.author.clone(),
-            tags: skill.tags.clone(),
-            capabilities: skill.capabilities.clone(),
             enabled: skill.enabled,
             token_estimate: skill.description.len() / 4, // Rough estimate
             last_updated: skill.updated_at,
@@ -42,10 +38,9 @@ impl From<&SkillDefinition> for SkillMetadata {
 pub struct SkillFrontmatter {
     pub name: String,
     pub description: String,
-    pub version: String,
+    #[serde(default)]
+    pub version: Option<String>,
     pub author: Option<String>,
-    pub tags: Vec<String>,
-    pub capabilities: Vec<String>,
     pub license: Option<String>,
     pub compatibility: Option<String>,
     pub metadata: Option<std::collections::HashMap<String, String>>,
@@ -57,13 +52,7 @@ pub struct SkillFrontmatter {
 #[async_trait]
 pub trait MetadataService: Send + Sync {
     async fn discover_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError>;
-    async fn find_skills_by_capability(
-        &self,
-        capability: &str,
-    ) -> Result<Vec<SkillMetadata>, ServiceError>;
-    async fn find_skills_by_tag(&self, tag: &str) -> Result<Vec<SkillMetadata>, ServiceError>;
     async fn search_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError>;
-    async fn get_available_capabilities(&self) -> Result<Vec<String>, ServiceError>;
     async fn get_skill_frontmatter(&self, skill_id: &str)
         -> Result<SkillFrontmatter, ServiceError>;
 }
@@ -95,8 +84,6 @@ impl MetadataServiceImpl {
                 // Only match words longer than 2 characters
                 if skill.name.to_lowercase().contains(word)
                     || skill.description.to_lowercase().contains(word)
-                    || skill.tags.iter().any(|tag| tag.to_lowercase().contains(word))
-                    || skill.capabilities.iter().any(|cap| cap.to_lowercase().contains(word))
                 {
                     return true;
                 }
@@ -121,20 +108,6 @@ impl MetadataServiceImpl {
         // Description match
         if skill.description.to_lowercase().contains(&query_lower) {
             score += 0.6;
-        }
-
-        // Tag match
-        for tag in &skill.tags {
-            if tag.to_lowercase().contains(&query_lower) {
-                score += 0.4;
-            }
-        }
-
-        // Capability match
-        for cap in &skill.capabilities {
-            if cap.to_lowercase().contains(&query_lower) {
-                score += 0.5;
-            }
         }
 
         score
@@ -195,30 +168,15 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         .and_then(|v| serde_yaml::from_value(v).ok())
         .unwrap_or_else(|| "No description".to_string());
 
-    let version = frontmatter
-        .remove("version")
-        .and_then(|v| serde_yaml::from_value(v).ok())
-        .unwrap_or_else(|| "1.0.0".to_string());
+    let version = frontmatter.remove("version").and_then(|v| serde_yaml::from_value(v).ok());
 
     let author = frontmatter.remove("author").and_then(|v| serde_yaml::from_value(v).ok());
-
-    let tags = frontmatter
-        .remove("tags")
-        .and_then(|v| serde_yaml::from_value(v).ok())
-        .unwrap_or_default();
-
-    let capabilities = frontmatter
-        .remove("capabilities")
-        .and_then(|v| serde_yaml::from_value(v).ok())
-        .unwrap_or_default();
 
     Ok(SkillFrontmatter {
         name,
         description,
         version,
         author,
-        tags,
-        capabilities,
         license: frontmatter.remove("license").and_then(|v| serde_yaml::from_value(v).ok()),
         compatibility: frontmatter
             .remove("compatibility")
@@ -257,50 +215,9 @@ impl MetadataService for MetadataServiceImpl {
         Ok(results)
     }
 
-    async fn find_skills_by_capability(
-        &self,
-        capability: &str,
-    ) -> Result<Vec<SkillMetadata>, ServiceError> {
-        let all_skills = self.skill_manager.list_skills(None).await?;
-
-        let results: Vec<SkillMetadata> = all_skills
-            .iter()
-            .filter(|skill| skill.capabilities.iter().any(|cap| cap == capability))
-            .map(SkillMetadata::from)
-            .collect();
-
-        Ok(results)
-    }
-
-    async fn find_skills_by_tag(&self, tag: &str) -> Result<Vec<SkillMetadata>, ServiceError> {
-        let all_skills = self.skill_manager.list_skills(None).await?;
-
-        let results: Vec<SkillMetadata> = all_skills
-            .iter()
-            .filter(|skill| skill.tags.iter().any(|t| t == tag))
-            .map(SkillMetadata::from)
-            .collect();
-
-        Ok(results)
-    }
-
     async fn search_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError> {
         // For now, use the same logic as discover_skills
         self.discover_skills(query).await
-    }
-
-    async fn get_available_capabilities(&self) -> Result<Vec<String>, ServiceError> {
-        let all_skills = self.skill_manager.list_skills(None).await?;
-
-        let mut capabilities: Vec<String> = all_skills
-            .iter()
-            .flat_map(|skill| skill.capabilities.iter().cloned())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        capabilities.sort();
-        Ok(capabilities)
     }
 
     async fn get_skill_frontmatter(

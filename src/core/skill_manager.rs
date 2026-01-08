@@ -27,8 +27,6 @@ pub struct SkillDefinition {
     pub description: String,
     pub version: String,
     pub author: Option<String>,
-    pub tags: Vec<String>,
-    pub capabilities: Vec<String>,
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -65,8 +63,6 @@ impl SkillDefinition {
             description,
             version,
             author: None,
-            tags: Vec::new(),
-            capabilities: Vec::new(),
             enabled: true,
             created_at: now,
             updated_at: now,
@@ -133,8 +129,6 @@ impl SkillManager {
 #[derive(Debug, Clone)]
 pub struct SkillFilters {
     pub enabled: Option<bool>,
-    pub tags: Option<Vec<String>>,
-    pub capabilities: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -143,8 +137,6 @@ pub struct SkillUpdate {
     pub description: Option<String>,
     pub version: Option<String>,
     pub author: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub capabilities: Option<Vec<String>>,
     pub enabled: Option<bool>,
     pub source_url: Option<String>,
     pub source_type: Option<SourceType>,
@@ -208,12 +200,6 @@ impl SkillManagementService for SkillManager {
             if let Some(author) = updates.author {
                 skill.author = Some(author);
             }
-            if let Some(tags) = updates.tags {
-                skill.tags = tags;
-            }
-            if let Some(capabilities) = updates.capabilities {
-                skill.capabilities = capabilities;
-            }
             if let Some(enabled) = updates.enabled {
                 skill.enabled = enabled;
             }
@@ -272,18 +258,6 @@ impl SkillManagementService for SkillManager {
             // Filter by enabled status
             if let Some(enabled) = filters.enabled {
                 filtered_skills.retain(|skill| skill.enabled == enabled);
-            }
-
-            // Filter by tags
-            if let Some(tags) = filters.tags {
-                filtered_skills.retain(|skill| skill.tags.iter().any(|tag| tags.contains(tag)));
-            }
-
-            // Filter by capabilities
-            if let Some(capabilities) = filters.capabilities {
-                filtered_skills.retain(|skill| {
-                    skill.capabilities.iter().any(|cap| capabilities.contains(cap))
-                });
             }
         }
 

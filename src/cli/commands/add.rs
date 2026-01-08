@@ -824,15 +824,13 @@ pub fn create_skill_from_path(skill_path: &Path) -> CliResult<SkillDefinition> {
         skill_id,
         frontmatter.name,
         frontmatter.description,
-        frontmatter.version,
+        frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()),
     );
 
     // Set skill file path
     skill.skill_file = skill_file.clone();
 
-    // Set optional fields from frontmatter
-    skill.tags = frontmatter.tags;
-    skill.capabilities = frontmatter.capabilities;
+    // No optional fields to set from frontmatter
     skill.author = frontmatter.author;
 
     Ok(skill)

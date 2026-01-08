@@ -175,12 +175,6 @@ pub struct MetadataSection {
     /// Optional: Author name
     #[serde(default)]
     pub author: Option<String>,
-    /// Optional: Tags array
-    #[serde(default)]
-    pub tags: Option<Vec<String>>,
-    /// Optional: Capabilities array
-    #[serde(default)]
-    pub capabilities: Option<Vec<String>>,
     /// Optional: Download URL
     #[serde(default)]
     pub download_url: Option<String>,

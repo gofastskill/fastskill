@@ -106,10 +106,6 @@ pub struct MarketplaceSkill {
     #[serde(default)]
     pub author: Option<String>,
     #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    #[serde(default)]
     pub download_url: Option<String>,
 }
 
@@ -402,8 +398,6 @@ impl SourcesManager {
                     description,
                     version: metadata_version.clone().unwrap_or_else(|| "1.0.0".to_string()),
                     author: owner_name.clone(),
-                    tags: vec![plugin.name.clone()], // Use plugin name as tag
-                    capabilities: Vec::new(),
                     download_url,
                 });
             }

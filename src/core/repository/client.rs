@@ -174,8 +174,6 @@ impl RepositoryClient for MarketplaceRepositoryClient {
                 description: info.description,
                 version: info.version.unwrap_or_else(|| "1.0.0".to_string()),
                 author: None,
-                tags: Vec::new(),
-                capabilities: Vec::new(),
                 enabled: true,
                 token_estimate: 0,
                 last_updated: Utc::now(),
@@ -426,9 +424,7 @@ impl RepositoryClient for CratesRegistryClient {
                     name: s.name.clone(),
                     description: s.description.clone(),
                     version: s.latest_version.clone(),
-                    author: None,             // Not available in SkillSummary
-                    tags: Vec::new(),         // Not available in SkillSummary
-                    capabilities: Vec::new(), // Not available in SkillSummary
+                    author: None, // Not available in SkillSummary
                     enabled: true,
                     token_estimate: s.description.len() / 4, // Rough estimate
                     last_updated: s.published_at.unwrap_or_else(chrono::Utc::now),
@@ -475,16 +471,6 @@ impl RepositoryClient for CratesRegistryClient {
                 .unwrap_or_else(|| "".to_string()),
             version: e.vers,
             author: e.metadata.as_ref().and_then(|m| m.author.clone()),
-            tags: e
-                .metadata
-                .as_ref()
-                .map(|m| m.tags.clone().unwrap_or_default())
-                .unwrap_or_default(),
-            capabilities: e
-                .metadata
-                .as_ref()
-                .map(|m| m.capabilities.clone().unwrap_or_default())
-                .unwrap_or_default(),
             enabled: true,
             token_estimate: 0,
             last_updated: Utc::now(),

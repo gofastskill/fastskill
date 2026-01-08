@@ -459,8 +459,6 @@ impl ValidationWorker {
                 metadata: Some(IndexMetadata {
                     description: Some(frontmatter.description),
                     author: frontmatter.author,
-                    tags: Some(frontmatter.tags),
-                    capabilities: Some(frontmatter.capabilities),
                     license: None,
                     repository: None,
                 }),

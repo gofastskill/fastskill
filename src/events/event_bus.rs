@@ -68,8 +68,6 @@ pub struct SkillUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub capabilities: Option<Vec<String>>,
     pub enabled: Option<bool>,
 }
 

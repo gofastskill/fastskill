@@ -196,8 +196,6 @@ pub struct VersionMetadata {
 pub struct IndexMetadata {
     pub description: Option<String>,
     pub author: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub capabilities: Option<Vec<String>>,
     pub license: Option<String>,
     pub repository: Option<String>,
 }

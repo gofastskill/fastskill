@@ -872,12 +872,6 @@ async fn execute_show_skill(skill_id: String, repository: Option<String>) -> Cli
             if let Some(author) = &skill.author {
                 println!("Author: {}", author);
             }
-            if !skill.tags.is_empty() {
-                println!("Tags: {}", skill.tags.join(", "));
-            }
-            if !skill.capabilities.is_empty() {
-                println!("Capabilities: {}", skill.capabilities.join(", "));
-            }
         }
         Ok(None) => {
             println!(
@@ -1184,27 +1178,18 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
         .unwrap_or_else(|| frontmatter.description.clone());
 
     let version = if let Some(metadata) = skill_metadata.as_ref() {
-        metadata.version.clone().unwrap_or_else(|| frontmatter.version.clone())
+        metadata
+            .version
+            .clone()
+            .unwrap_or_else(|| frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()))
     } else {
-        frontmatter.version.clone()
+        frontmatter.version.unwrap_or_else(|| "1.0.0".to_string())
     };
 
     let author = skill_metadata
         .as_ref()
         .and_then(|m| m.author.clone())
         .or_else(|| frontmatter.author.clone());
-
-    let tags = skill_metadata
-        .as_ref()
-        .and_then(|m| m.tags.clone())
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| frontmatter.tags.clone());
-
-    let capabilities = skill_metadata
-        .as_ref()
-        .and_then(|m| m.capabilities.clone())
-        .filter(|c| !c.is_empty())
-        .unwrap_or_else(|| frontmatter.capabilities.clone());
 
     let download_url = skill_metadata.as_ref().and_then(|m| m.download_url.clone());
 
@@ -1218,8 +1203,6 @@ fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<Mark
         description,
         version,
         author,
-        tags,
-        capabilities,
         download_url,
     })
 }
