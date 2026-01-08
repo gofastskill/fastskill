@@ -206,13 +206,8 @@ async fn process_skill_file(
     let frontmatter_json = serde_json::to_value(&frontmatter)
         .map_err(|e| CliError::Validation(format!("Failed to serialize frontmatter: {}", e)))?;
 
-    // Generate text for embedding (combine name, description, and capabilities)
-    let embedding_text = format!(
-        "{}\n{}\n{}",
-        frontmatter.name,
-        frontmatter.description,
-        frontmatter.capabilities.join(" ")
-    );
+    // Generate text for embedding (combine name and description)
+    let embedding_text = format!("{}\n{}", frontmatter.name, frontmatter.description);
 
     // Generate embedding
     let embedding = embedding_service.embed_text(&embedding_text).await.map_err(|e| {

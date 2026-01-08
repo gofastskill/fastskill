@@ -84,20 +84,6 @@ impl RoutingServiceImpl {
             score += 0.6;
         }
 
-        // Tag matches
-        for tag in &skill.tags {
-            if tag.to_lowercase().contains(&query_lower) {
-                score += 0.4;
-            }
-        }
-
-        // Capability matches
-        for capability in &skill.capabilities {
-            if capability.to_lowercase().contains(&query_lower) {
-                score += 0.5;
-            }
-        }
-
         // Token efficiency bonus (prefer skills with fewer tokens when context is limited)
         if let Some(context) = context {
             if let Some(available_tokens) = context.available_tokens {

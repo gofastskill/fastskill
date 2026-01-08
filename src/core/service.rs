@@ -551,13 +551,11 @@ impl FastSkillService {
             skill_id.clone(),
             frontmatter.name,
             frontmatter.description,
-            frontmatter.version,
+            frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()),
         );
 
         // Set additional fields
         skill.author = frontmatter.author;
-        skill.tags = frontmatter.tags;
-        skill.capabilities = frontmatter.capabilities;
         skill.skill_file = skill_file.to_path_buf();
 
         // Set timestamps
