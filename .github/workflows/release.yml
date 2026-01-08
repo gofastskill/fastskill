@@ -441,8 +441,16 @@ jobs:
         run: |
           # Persist token for subsequent steps/scripts (step-level env does not carry over)
           echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
-          echo "${{ steps.app-token.outputs.token }}" | gh auth login --with-token
-          gh auth status
+          # Set GH_TOKEN directly and verify it works
+          export GH_TOKEN="${{ steps.app-token.outputs.token }}"
+          echo "Token length: ${#GH_TOKEN}"
+          # Test that gh can access the API with the token
+          if gh auth status; then
+            echo "✅ GitHub CLI authentication successful"
+          else
+            echo "❌ GitHub CLI authentication failed"
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -458,6 +466,8 @@ jobs:
           cd homebrew-cli
           chmod +x generate_formula.sh
           ./generate_formula.sh --version ${{ needs.verify-version.outputs.version }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Commit and push Homebrew changes
         run: |
@@ -488,6 +498,8 @@ jobs:
           cd scoop-bucket
           chmod +x generate_manifest.sh
           ./generate_manifest.sh --version ${{ needs.verify-version.outputs.version }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Commit and push Scoop changes
         run: |
