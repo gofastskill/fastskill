@@ -68,8 +68,6 @@ pub struct SkillResponse {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub tags: Vec<String>,
-    pub capabilities: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -93,12 +91,6 @@ pub struct SkillRequest {
 
     #[validate(length(min = 1, max = 1000))]
     pub description: String,
-
-    #[validate(length(max = 10))]
-    pub tags: Vec<String>,
-
-    #[validate(length(max = 20))]
-    pub capabilities: Vec<String>,
 
     pub metadata: serde_json::Value,
 }
@@ -223,8 +215,6 @@ pub struct MarketplaceSkillResponse {
     pub description: String,
     pub version: String,
     pub author: Option<String>,
-    pub tags: Vec<String>,
-    pub capabilities: Vec<String>,
     pub download_url: Option<String>,
     pub source_name: String,
     pub installed: bool,

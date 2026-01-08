@@ -304,8 +304,6 @@ impl ProgressiveLoadingServiceImpl {
             description,
             version: "1.0.0".to_string(),
             author: None,
-            tags: vec!["general".to_string()],
-            capabilities: vec!["basic".to_string()],
             enabled: true,
             token_estimate: content.len() / 4, // Rough estimate
             last_updated: std::time::SystemTime::now().into(),

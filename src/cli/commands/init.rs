@@ -38,14 +38,6 @@ pub struct InitArgs {
     #[arg(long)]
     author: Option<String>,
 
-    /// Set tags (comma-separated)
-    #[arg(long)]
-    tags: Option<String>,
-
-    /// Set capabilities (comma-separated)
-    #[arg(long)]
-    capabilities: Option<String>,
-
     /// Set download URL
     #[arg(long)]
     download_url: Option<String>,
@@ -83,10 +75,8 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
             fastskill::core::metadata::SkillFrontmatter {
                 name: String::new(),
                 description: String::new(),
-                version: String::new(),
+                version: None,
                 author: None,
-                tags: Vec::new(),
-                capabilities: Vec::new(),
                 license: None,
                 compatibility: None,
                 metadata: None,
@@ -102,10 +92,17 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         validate_semver(&version_arg)
             .map_err(|e| CliError::InvalidSemver(format!("{}: {}", version_arg, e)))?;
         version_arg
-    } else if !frontmatter.version.is_empty() {
-        validate_semver(&frontmatter.version)
-            .map_err(|e| CliError::InvalidSemver(format!("{}: {}", frontmatter.version, e)))?;
-        frontmatter.version.clone()
+    } else if let Some(ref version) = frontmatter.version {
+        if !version.is_empty() {
+            validate_semver(version)
+                .map_err(|e| CliError::InvalidSemver(format!("{}: {}", version, e)))?;
+            version.clone()
+        } else {
+            extract_version_from_skill_md(
+                skill_md_content.as_ref().unwrap_or(&String::new()),
+                args.yes,
+            )?
+        }
     } else if let Some(ref content) = skill_md_content {
         extract_version_from_skill_md(content, args.yes)?
     } else {
@@ -135,28 +132,6 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         Some(frontmatter_author)
     } else if !args.yes {
         prompt_for_field("Author", None).ok().flatten()
-    } else {
-        None
-    };
-
-    // Extract tags (priority: CLI arg > frontmatter > prompt/default)
-    let tags = if let Some(tags_arg) = args.tags {
-        parse_comma_separated(&tags_arg)
-    } else if !frontmatter.tags.is_empty() {
-        Some(frontmatter.tags.clone())
-    } else if !args.yes {
-        prompt_for_tags()?
-    } else {
-        None
-    };
-
-    // Extract capabilities (priority: CLI arg > frontmatter > prompt/default)
-    let capabilities = if let Some(caps_arg) = args.capabilities {
-        parse_comma_separated(&caps_arg)
-    } else if !frontmatter.capabilities.is_empty() {
-        Some(frontmatter.capabilities.clone())
-    } else if !args.yes {
-        prompt_for_capabilities()?
     } else {
         None
     };
@@ -191,8 +166,6 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         version: Some(version),
         description,
         author,
-        tags,
-        capabilities,
         download_url,
         name: None,
     });
@@ -363,45 +336,6 @@ fn prompt_for_field(field_name: &str, default: Option<&str>) -> CliResult<Option
     }
 }
 
-fn parse_comma_separated(input: &str) -> Option<Vec<String>> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let items: Vec<String> = trimmed
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if items.is_empty() {
-        None
-    } else {
-        Some(items)
-    }
-}
-
-fn prompt_for_tags() -> CliResult<Option<Vec<String>>> {
-    print!("Tags (comma-separated, optional, press Enter to skip): ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim();
-
-    Ok(parse_comma_separated(input))
-}
-
-fn prompt_for_capabilities() -> CliResult<Option<Vec<String>>> {
-    print!("Capabilities (comma-separated, optional, press Enter to skip): ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim();
-
-    Ok(parse_comma_separated(input))
-}
-
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -426,8 +360,6 @@ mod tests {
             version: Some("1.0.0".to_string()),
             description: Some("Test description".to_string()),
             author: Some("Test Author".to_string()),
-            tags: Some("test,tag".to_string()),
-            capabilities: Some("test-capability".to_string()),
             download_url: Some("https://example.com".to_string()),
         };
 
@@ -452,8 +384,6 @@ mod tests {
             version: Some("invalid-version".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
         };
 
@@ -480,8 +410,6 @@ mod tests {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
         };
 
