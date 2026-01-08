@@ -430,12 +430,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
+      - name: Generate GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ secrets.GH_APP_ID }}
+          private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      - name: Authenticate GitHub CLI
+        run: |
+          # Persist token for subsequent steps/scripts (step-level env does not carry over)
+          echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
+          echo "${{ steps.app-token.outputs.token }}" | gh auth login --with-token
+          gh auth status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Checkout homebrew-cli repo
         uses: actions/checkout@v4
         with:
           repository: gofastskill/homebrew-cli
           path: homebrew-cli
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update Homebrew formula
         run: |
@@ -456,7 +472,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add .
             git commit -m "chore: update fastskill to v${VERSION}"
-            git push origin main
+            git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" main
             echo "✅ Homebrew formula updated to v${VERSION}"
           fi
 
@@ -465,7 +481,7 @@ jobs:
         with:
           repository: gofastskill/scoop-bucket
           path: scoop-bucket
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update Scoop manifest
         run: |
@@ -486,7 +502,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add .
             git commit -m "chore: update fastskill to v${VERSION}"
-            git push origin main
+            git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/scoop-bucket.git" main
             echo "✅ Scoop manifest updated to v${VERSION}"
           fi
 
