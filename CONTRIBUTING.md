@@ -83,6 +83,18 @@ This quickstart reduces contributor drop-off by getting you productive in under 
 
 fastskill uses pure Rust dependencies and does not require a C compiler for building. The SQLite dependency (rusqlite) uses the `bundled` feature, which compiles SQLite from source using the Rust compiler.
 
+### Testing Tools
+
+To run tests effectively, install the recommended testing tools:
+
+```shell
+# Install nextest for fast, parallel test execution
+cargo install cargo-nextest
+
+# Install insta for snapshot testing
+cargo install cargo-insta
+```
+
 ## Testing
 
 For running tests, we recommend [nextest](https://nexte.st/), a fast, parallel test runner with excellent output and caching.
@@ -122,16 +134,16 @@ fastskill uses [insta](https://insta.rs/) for snapshot testing CLI output. This 
 - Clear diff visualization when outputs change
 - Supports content normalization (paths, timestamps, etc.)
 
-**Helper utilities are available** in `tests/snapshot_helpers.rs` for consistent snapshot testing:
+**Helper utilities are available** in `tests/cli/snapshot_helpers.rs` for consistent snapshot testing:
 
 ```rust
-use super::super::snapshot_helpers::{
+use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
 
 #[test]
 fn test_command_output() {
-    let result = run_fastskill_command(&["--help"]);
+    let result = run_fastskill_command(&["--help"], None);
     assert_snapshot_with_settings("help_output", &result.stdout, &cli_snapshot_settings());
 }
 ```
@@ -139,7 +151,7 @@ fn test_command_output() {
 **Snapshot workflow:**
 - Run `cargo insta review` to review and accept changes
 - Use `cargo insta accept` to accept all pending changes
-- Snapshots are stored in `.snapshots/` directory and committed to git
+- Snapshots are stored in `tests/cli/snapshots/` directory and committed to git
 
 ### Feature flags and test matrix
 
