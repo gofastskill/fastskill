@@ -2,7 +2,9 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use std::process::Command;
+use crate::snapshot_helpers::{
+    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
+};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -50,30 +52,18 @@ fn test_e2e_invalid_skill_handling() {
     create_invalid_skill(&skills_dir, "invalid-skill");
 
     // Try to add invalid skill
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg(skills_dir.join("invalid-skill").to_string_lossy().to_string())
-        .output()
-        .expect("Failed to execute add command with invalid skill");
+    let result = run_fastskill_command(&["add", &skills_dir.join("invalid-skill").to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail gracefully
-    assert!(output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_invalid_skill", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
 
     // Create skill without SKILL.md
     create_skill_without_md(&skills_dir, "no-md-skill");
 
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg(skills_dir.join("no-md-skill").to_string_lossy().to_string())
-        .output()
-        .expect("Failed to execute add command for skill without SKILL.md");
+    let result = run_fastskill_command(&["add", &skills_dir.join("no-md-skill").to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail gracefully
-    assert!(output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_skill_without_md", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
 }
 
 #[test]
@@ -86,37 +76,19 @@ fn test_e2e_duplicate_skill_handling() {
     create_test_skill(&skills_dir, skill_name);
 
     // Add first time
-    let _output1 = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg(skills_dir.join(skill_name).to_string_lossy().to_string())
-        .output();
+    let _result1 = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Try to add again without force
-    let output2 = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg(skills_dir.join(skill_name).to_string_lossy().to_string())
-        .output()
-        .expect("Failed to execute duplicate add command");
+    let result2 = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail (skill already exists)
-    assert!(output2.status.code().is_some());
+    assert_snapshot_with_settings("e2e_duplicate_skill_no_force", &format!("{}{}", result2.stdout, result2.stderr), &cli_snapshot_settings());
 
     // Try to add again with force
-    let output3 = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg("--force")
-        .arg(skills_dir.join(skill_name).to_string_lossy().to_string())
-        .output()
-        .expect("Failed to execute forced duplicate add command");
+    let result3 = run_fastskill_command(&["add", "--force", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should succeed with force
-    if !output3.status.success() {
+    assert_snapshot_with_settings("e2e_duplicate_skill_with_force", &format!("{}{}", result3.stdout, result3.stderr), &cli_snapshot_settings());
         let stderr = String::from_utf8_lossy(&output3.stderr);
         println!("Force add failed: {}", stderr);
         // Continue test - might fail due to compilation issues
@@ -130,24 +102,16 @@ fn test_e2e_nonexistent_commands() {
 
     // Test various invalid operations
     let invalid_commands = vec![
-        vec!["disable", "nonexistent-skill"],
-        vec!["remove", "nonexistent-skill"],
-        vec!["add", "/nonexistent/path"],
+        (vec!["disable", "nonexistent-skill"], "e2e_disable_nonexistent"),
+        (vec!["remove", "nonexistent-skill"], "e2e_remove_nonexistent"),
+        (vec!["add", "/nonexistent/path"], "e2e_add_nonexistent_path"),
     ];
 
-    for cmd_args in invalid_commands {
-        let mut command = Command::new(get_binary_path());
-        command.arg("--skills-dir").arg(skills_dir.to_string_lossy().to_string());
-
-        for arg in &cmd_args {
-            command.arg(arg);
-        }
-
-        let output = command.output()
-            .expect(&format!("Failed to execute command: {:?}", cmd_args));
+    for (cmd_args, snapshot_name) in invalid_commands {
+        let result = run_fastskill_command(&cmd_args, Some(&skills_dir));
 
         // Should fail gracefully (non-zero exit code expected)
-        assert!(output.status.code().is_some());
+        assert_snapshot_with_settings(snapshot_name, &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
     }
 }
 
@@ -159,16 +123,10 @@ fn test_e2e_permission_issues() {
     // Try to use a directory we can't write to
     let readonly_dir = "/etc"; // Should be read-only for regular users
 
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(readonly_dir)
-        .arg("search")
-        .arg("test")
-        .output()
-        .expect("Failed to execute command with readonly skills dir");
+    let result = run_fastskill_command(&["search", "test"], Some(std::path::Path::new(readonly_dir)));
 
     // Should handle gracefully (might succeed if /etc has no skills)
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_permission_issues", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
@@ -177,28 +135,16 @@ fn test_e2e_empty_and_whitespace_handling() {
     let skills_dir = temp_dir.path().join("skills");
 
     // Test search with empty query
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("search")
-        .arg("")
-        .output()
-        .expect("Failed to execute search with empty query");
+    let result1 = run_fastskill_command(&["search", ""], Some(&skills_dir));
 
     // Should succeed (empty search might return all results)
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_empty_query", &result1.stdout, &cli_snapshot_settings());
 
     // Test search with whitespace query
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("search")
-        .arg("   ")
-        .output()
-        .expect("Failed to execute search with whitespace query");
+    let result2 = run_fastskill_command(&["search", "   "], Some(&skills_dir));
 
     // Should succeed
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_whitespace_query", &result2.stdout, &cli_snapshot_settings());
 }
 
 /// Create a test skill with valid SKILL.md in the given directory

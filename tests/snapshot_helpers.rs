@@ -37,15 +37,21 @@ pub fn get_binary_path() -> String {
 }
 
 /// Run a fastskill command and return the result
-pub fn run_fastskill_command(args: &[&str]) -> CommandResult {
+pub fn run_fastskill_command(args: &[&str], working_dir: Option<&std::path::Path>) -> CommandResult {
     let binary = get_binary_path();
     let mut cmd = if binary == "cargo" {
         let mut cmd = Command::new("cargo");
         cmd.args(&["run", "--bin", "fastskill", "--"]).args(args);
+        if let Some(dir) = working_dir {
+            cmd.current_dir(dir);
+        }
         cmd
     } else {
         let mut cmd = Command::new(&binary);
         cmd.args(args);
+        if let Some(dir) = working_dir {
+            cmd.current_dir(dir);
+        }
         cmd
     };
 

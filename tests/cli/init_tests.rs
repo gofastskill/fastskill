@@ -4,12 +4,10 @@
 
 use fastskill::core::manifest::SkillProjectToml;
 use std::fs;
-use std::process::Command;
 use tempfile::TempDir;
-
-fn get_binary_path() -> String {
-    format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"))
-}
+use crate::snapshot_helpers::{
+    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
+};
 
 /// T037: Test fastskill init creating skill-project.toml with metadata
 #[test]
@@ -37,24 +35,19 @@ capabilities:
     .unwrap();
 
     // Run init command with --yes flag to skip prompts
-    let output = Command::new(get_binary_path())
-        .arg("init")
-        .arg("--yes")
-        .arg("--version")
-        .arg("1.0.0")
-        .arg("--description")
-        .arg("A test skill")
-        .arg("--author")
-        .arg("Test Author")
-        .current_dir(&skill_dir)
-        .output()
-        .expect("Failed to execute init command");
+    let result = run_fastskill_command(&[
+        "init",
+        "--yes",
+        "--version",
+        "1.0.0",
+        "--description",
+        "A test skill",
+        "--author",
+        "Test Author",
+    ], Some(&skill_dir));
 
-    assert!(
-        output.status.success(),
-        "init should succeed. stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(result.success, "init should succeed");
+    assert_snapshot_with_settings("init_with_metadata", &result.stdout, &cli_snapshot_settings());
 
     // Verify skill-project.toml was created
     let project_file = skill_dir.join("skill-project.toml");
