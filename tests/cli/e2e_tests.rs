@@ -9,7 +9,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
-use crate::snapshot_helpers::{
+use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
 

@@ -7,7 +7,7 @@
 
 use std::env;
 use tempfile::TempDir;
-use crate::snapshot_helpers::{
+use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
 

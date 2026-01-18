@@ -5,7 +5,7 @@
 use fastskill::core::manifest::SkillProjectToml;
 use std::fs;
 use tempfile::TempDir;
-use crate::snapshot_helpers::{
+use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
 

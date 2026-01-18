@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use crate::snapshot_helpers::{
+use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
 use std::env;
