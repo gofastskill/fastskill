@@ -1,0 +1,11 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+FastSkill Skill Initialization
+
+[OK] Created skill-project.toml with version: [VERSION]
+
+[INFO] This file contains author-provided metadata for your skill.
+   It will be used by fastskill for version management.
