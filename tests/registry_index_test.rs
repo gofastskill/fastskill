@@ -208,8 +208,6 @@ async fn test_all_versions_aggregation_logic() {
             metadata: Some(fastskill::core::registry_index::IndexMetadata {
                 description: Some(format!("Version {} of multi-version skill", version)),
                 author: None,
-                tags: None,
-                capabilities: None,
                 license: None,
                 repository: None,
             }),
@@ -272,8 +270,6 @@ async fn test_duplicate_version_deduplication() {
         metadata: Some(fastskill::core::registry_index::IndexMetadata {
             description: Some("First entry".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             license: None,
             repository: None,
         }),
@@ -292,8 +288,6 @@ async fn test_duplicate_version_deduplication() {
         metadata: Some(fastskill::core::registry_index::IndexMetadata {
             description: Some("Second entry (duplicate)".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             license: None,
             repository: None,
         }),

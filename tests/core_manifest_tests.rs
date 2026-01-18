@@ -48,8 +48,6 @@ fn test_toml_serialization() {
             version: Some("1.0.0".to_string()),
             description: Some("A test skill".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -71,8 +69,6 @@ fn test_context_detection_skill_level() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -122,8 +118,6 @@ fn test_validation_skill_level() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -143,8 +137,6 @@ fn test_validation_skill_level_missing_id() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -288,14 +280,6 @@ download_url = "https://example.com/skill.zip"
     assert_eq!(metadata.description, Some("A test skill".to_string()));
     assert_eq!(metadata.author, Some("Test Author".to_string()));
     assert_eq!(
-        metadata.tags,
-        Some(vec!["test".to_string(), "example".to_string()])
-    );
-    assert_eq!(
-        metadata.capabilities,
-        Some(vec!["capability1".to_string(), "capability2".to_string()])
-    );
-    assert_eq!(
         metadata.download_url,
         Some("https://example.com/skill.zip".to_string())
     );
@@ -354,8 +338,6 @@ fn test_ambiguous_context_detection() {
             version: None,
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -383,8 +365,6 @@ fn test_content_based_context_resolution() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -422,8 +402,6 @@ fn test_content_based_context_resolution() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),

@@ -5,7 +5,18 @@
 use std::process::Command;
 
 fn get_binary_path() -> String {
-    format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"))
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let debug_path = format!("{}/target/debug/fastskill", manifest_dir);
+    let release_path = format!("{}/target/release/fastskill", manifest_dir);
+
+    if std::path::Path::new(&debug_path).exists() {
+        debug_path
+    } else if std::path::Path::new(&release_path).exists() {
+        release_path
+    } else {
+        // Fallback to cargo run
+        "cargo".to_string()
+    }
 }
 
 #[test]

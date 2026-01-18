@@ -14,8 +14,6 @@ fn test_marketplace_json_structure() {
             description: "A test skill".to_string(),
             version: "1.0.0".to_string(),
             author: Some("Test Author".to_string()),
-            tags: vec!["test".to_string(), "example".to_string()],
-            capabilities: vec!["testing".to_string()],
             download_url: Some("https://example.com/skill.zip".to_string()),
         };
 
@@ -42,8 +40,6 @@ fn test_marketplace_json_validation() {
             description: "Valid description".to_string(),
             version: "1.0.0".to_string(),
             author: None,
-            tags: vec![],
-            capabilities: vec![],
             download_url: None,
         };
 
