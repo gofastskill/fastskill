@@ -5,11 +5,13 @@
 //! These tests simulate complete workflows through the CLI binary.
 //! Note: These tests require the CLI binary to be built first.
 
-use std::process::Command;
 use std::env;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
+use super::snapshot_helpers::{
+    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
+};
 
 fn get_binary_path() -> String {
     format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"))
@@ -46,67 +48,33 @@ fn test_e2e_add_search_remove_workflow() {
     create_test_skill(&skills_dir, skill_name);
 
     // Test 1: Add skill from folder
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("add")
-        .arg(skills_dir.join(skill_name).to_string_lossy().to_string())
-        .output()
-        .expect("Failed to execute add command");
+    let result = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
-    // Add command should succeed
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("Add command failed: {}", stderr);
-        // Continue with test even if add fails (might be due to compilation issues)
-    }
+    assert_snapshot_with_settings("e2e_add_skill", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
 
     // Test 2: Search for the skill
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg(skill_name)
-        .output()
-        .expect("Failed to execute search command");
+    let result = run_fastskill_command(&[skill_name], Some(&skills_dir));
 
-    // Search should succeed (even if no results found)
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_search_skill", &result.stdout, &cli_snapshot_settings());
 
     // Test 3: Try to remove the skill (with force to avoid confirmation)
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(skills_dir.to_string_lossy().to_string())
-        .arg("remove")
-        .arg("--force")
-        .arg(skill_name)
-        .output()
-        .expect("Failed to execute remove command");
+    let result = run_fastskill_command(&["remove", "--force", skill_name], Some(&skills_dir));
 
-    // Remove command should succeed (even if skill doesn't exist)
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_remove_skill", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
 fn test_e2e_help_and_validation() {
     // Test help output
-    let output = Command::new(get_binary_path())
-        .arg("--help")
-        .output()
-        .expect("Failed to execute help command");
+    let result = run_fastskill_command(&["--help"], None);
 
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("FastSkill"));
-    assert!(stdout.contains("Commands:"));
+    assert!(result.success);
+    assert_snapshot_with_settings("e2e_help_output", &result.stdout, &cli_snapshot_settings());
 
     // Test invalid command
-    let output = Command::new(get_binary_path())
-        .arg("invalid-command")
-        .output()
-        .expect("Failed to execute invalid command");
+    let result = run_fastskill_command(&["invalid-command"], None);
 
-    // Should show error/help (non-zero exit code expected)
-    assert!(output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_invalid_command", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
 }
 
 #[test]
@@ -115,22 +83,11 @@ fn test_e2e_directory_resolution() {
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
-    // Change to temp directory
-    let original_dir = env::current_dir().unwrap();
-    env::set_current_dir(temp_dir.path()).unwrap();
-
     // Test that CLI can be invoked from directory with .skills
-    let output = Command::new(get_binary_path())
-        .arg("--help")
-        .output()
-        .expect("Failed to execute command from temp directory");
+    let result = run_fastskill_command(&["--help"], Some(temp_dir.path()));
 
-    // Restore original directory
-    env::set_current_dir(&original_dir).unwrap();
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("FastSkill"));
+    assert!(result.success);
+    assert_snapshot_with_settings("e2e_directory_resolution", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
@@ -139,18 +96,11 @@ fn test_e2e_command_help() {
     let commands = vec!["add", "search", "disable", "remove"];
 
     for cmd in commands {
-        let output = Command::new(get_binary_path())
-            .arg(cmd)
-            .arg("--help")
-            .output()
-            .expect(&format!("Failed to get help for {} command", cmd));
+        let result = run_fastskill_command(&[cmd, "--help"], None);
 
-        assert!(output.status.success(),
-                "Help for {} command failed", cmd);
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(!stdout.is_empty(),
-                "Help for {} command was empty", cmd);
+        assert!(result.success, "Help for {} command failed", cmd);
+        assert!(!result.stdout.is_empty(), "Help for {} command was empty", cmd);
+        assert_snapshot_with_settings(&format!("e2e_{}_help", cmd), &result.stdout, &cli_snapshot_settings());
     }
 }
 
@@ -159,15 +109,10 @@ fn test_e2e_invalid_skills_dir() {
     let invalid_dir = "/definitely/does/not/exist/skills";
 
     // Test that CLI handles invalid skills directory gracefully
-    let output = Command::new(get_binary_path())
-        .arg("--skills-dir")
-        .arg(invalid_dir)
-        .arg("--help")
-        .output()
-        .expect("Failed to execute with invalid skills dir");
+    let result = run_fastskill_command(&["--skills-dir", invalid_dir, "--help"], None);
 
     // Should still show help even with invalid directory
-    assert!(output.status.success() || output.status.code().is_some());
+    assert_snapshot_with_settings("e2e_invalid_skills_dir", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
@@ -179,17 +124,9 @@ fn test_e2e_search_with_format_options() {
     let formats = vec!["table", "json"];
 
     for format in formats {
-        let output = Command::new(get_binary_path())
-            .arg("--skills-dir")
-            .arg(skills_dir.to_string_lossy().to_string())
-            .arg("search")
-            .arg("nonexistent")
-            .arg("--format")
-            .arg(format)
-            .output()
-            .expect(&format!("Failed to search with format {}", format));
+        let result = run_fastskill_command(&["search", "nonexistent", "--format", format], Some(&skills_dir));
 
         // Should succeed (even if no results found)
-        assert!(output.status.success() || output.status.code().is_some());
+        assert_snapshot_with_settings(&format!("e2e_search_format_{}", format), &result.stdout, &cli_snapshot_settings());
     }
 }

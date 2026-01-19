@@ -27,8 +27,6 @@ fn test_init_creates_skill_project_toml_with_both_sections() {
             version: Some("1.0.0".to_string()),
             description: Some("Test skill".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -60,8 +58,6 @@ fn test_init_without_skill_md() {
             version: Some("1.0.0".to_string()),
             description: None,
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -110,8 +106,6 @@ capabilities: [testing]
             version: Some("2.0.0".to_string()), // From frontmatter
             description: Some("Extracted from frontmatter".to_string()),
             author: Some("Test Author".to_string()),
-            tags: Some(vec!["test".to_string(), "example".to_string()]),
-            capabilities: Some(vec!["testing".to_string()]),
             download_url: None,
             name: None,
         }),
@@ -141,8 +135,6 @@ fn test_package_command_uses_metadata_section() {
             version: Some("1.2.3".to_string()),
             description: Some("Test for package command".to_string()),
             author: Some("Package Author".to_string()),
-            tags: Some(vec!["package".to_string()]),
-            capabilities: None,
             download_url: None,
             name: None,
         }),
@@ -173,8 +165,6 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
             version: Some("1.2.3".to_string()),
             description: Some("Test skill for package command".to_string()),
             author: Some("Package Author".to_string()),
-            tags: Some(vec!["package".to_string(), "test".to_string()]),
-            capabilities: Some(vec!["packaging".to_string()]),
             download_url: None,
             name: None,
         }),
@@ -191,10 +181,6 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
     assert_eq!(metadata.version, Some("1.2.3".to_string()));
     // name field removed - name comes from SKILL.md frontmatter only
     assert_eq!(metadata.author, Some("Package Author".to_string()));
-    assert_eq!(
-        metadata.tags,
-        Some(vec!["package".to_string(), "test".to_string()])
-    );
 
     // Package command should be able to extract version for version bumping
     // and use name/description for package metadata

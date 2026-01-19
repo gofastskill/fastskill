@@ -1,0 +1,15 @@
+---
+source: tests/snapshot_helpers.rs
+expression: normalized
+---
+Search for skills by query
+
+Usage: fastskill search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>  Search query string
+
+Options:
+  -l, --limit <LIMIT>    Maximum number of results (default: 10) [default: 10]
+  -f, --format <FORMAT>  Output format (table, json, xml) [default: table]
+  -h, --help             Print help
