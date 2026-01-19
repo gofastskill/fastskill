@@ -454,8 +454,6 @@ async fn test_scope_filtering_exact_match() {
             metadata: Some(fastskill::core::registry_index::IndexMetadata {
                 description: Some(format!("Description for {}", skill_id)),
                 author: None,
-                tags: None,
-                capabilities: None,
                 license: None,
                 repository: None,
             }),
@@ -505,8 +503,6 @@ async fn test_scope_filtering_nonexistent_scope() {
         metadata: Some(fastskill::core::registry_index::IndexMetadata {
             description: Some("Test skill".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             license: None,
             repository: None,
         }),
@@ -556,8 +552,6 @@ async fn test_performance_scope_filtering_1000_skills() {
             metadata: Some(fastskill::core::registry_index::IndexMetadata {
                 description: Some(format!("Description for skill {}", i)),
                 author: None,
-                tags: None,
-                capabilities: None,
                 license: None,
                 repository: None,
             }),
@@ -899,8 +893,6 @@ async fn test_fastskill_list_grid_output() {
         description: "First tool".to_string(),
         version: "1.0.0".to_string(),
         author: None,
-        tags: vec![],
-        capabilities: vec![],
         enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -1031,8 +1023,6 @@ async fn test_extraneous_packages_reconciliation() {
         description: "Not in project".to_string(),
         version: "1.0.0".to_string(),
         author: None,
-        tags: vec![],
-        capabilities: vec![],
         enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -1091,8 +1081,6 @@ async fn test_version_mismatches_reconciliation() {
         description: "A tool".to_string(),
         version: "1.0.0".to_string(), // Installed version
         author: None,
-        tags: vec![],
-        capabilities: vec![],
         enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),

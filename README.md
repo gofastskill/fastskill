@@ -131,11 +131,11 @@ fastskill --version
 cargo install fastskill
 # Or build from source
 git clone https://github.com/gofastskill/fastskill.git
-cd fastskill/tools/fastskill/rust
+cd fastskill
 cargo install --path .
 ```
 
-**Requirements**: Rust 1.70+ (for source builds), OpenAI API key for embedding features
+**Requirements**: Rust nightly (for source builds), OpenAI API key for embedding features
 
 ### Kubernetes Deployment (Production)
 

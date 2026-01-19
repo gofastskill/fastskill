@@ -1,0 +1,13 @@
+---
+source: tests/snapshot_helpers.rs
+expression: normalized
+---
+Disable skills by ID
+
+Usage: fastskill disable [SKILL_IDS]...
+
+Arguments:
+  [SKILL_IDS]...  Skill IDs to disable
+
+Options:
+  -h, --help  Print help

@@ -148,8 +148,6 @@ fn test_marketplace_json_generation() {
             description: "Description 1".to_string(),
             version: "1.0.0".to_string(),
             author: None,
-            tags: vec![],
-            capabilities: vec![],
             download_url: None,
         },
         MarketplaceSkill {
@@ -158,8 +156,6 @@ fn test_marketplace_json_generation() {
             description: "Description 2".to_string(),
             version: "2.0.0".to_string(),
             author: Some("Author".to_string()),
-            tags: vec!["test".to_string()],
-            capabilities: vec!["capability".to_string()],
             download_url: Some("https://example.com/skill2.zip".to_string()),
         },
     ];

@@ -11,5 +11,6 @@ pub mod integration_tests;
 pub mod package_tests;
 pub mod read_tests;
 pub mod repository_tests;
+pub mod snapshot_helpers;
 pub mod test_helpers;
 pub mod unit_tests;

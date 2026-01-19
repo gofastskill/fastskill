@@ -273,8 +273,6 @@ test-skill = "1.0.0"
             version: None,
             description: Some("Test project".to_string()),
             author: None,
-            tags: None,
-            capabilities: None,
             download_url: None,
             name: Some("test-project".to_string()),
         }),

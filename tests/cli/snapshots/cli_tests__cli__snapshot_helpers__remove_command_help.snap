@@ -1,0 +1,14 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Remove skills from the skills database
+
+Usage: fastskill remove [OPTIONS] [SKILL_IDS]...
+
+Arguments:
+  [SKILL_IDS]...  Skill IDs to remove
+
+Options:
+  -f, --force  Force removal without confirmation
+  -h, --help   Print help

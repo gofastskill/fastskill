@@ -14,8 +14,27 @@ fn test_package_reads_metadata_from_skill_project_toml() {
     let skill_dir = temp_dir.path().join("test-skill");
     fs::create_dir_all(&skill_dir).unwrap();
 
-    // Create SKILL.md (required for packaging)
-    fs::write(skill_dir.join("SKILL.md"), "# Test Skill\n").unwrap();
+    // Create SKILL.md (required for packaging) with proper YAML frontmatter
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        r#"---
+name: test-skill
+description: A test skill for packaging
+version: 1.0.0
+author: Test Author
+tags:
+  - test
+  - packaging
+capabilities:
+  - testing
+---
+
+# Test Skill
+
+This is a test skill for packaging tests.
+"#,
+    )
+    .unwrap();
 
     // Create skill-project.toml with metadata
     fs::write(

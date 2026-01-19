@@ -1,0 +1,37 @@
+[store]
+# Directory for nextest's cache
+dir = "target/nextest"
+
+[profile.default]
+# Number of retries for flaky tests
+retries = 2
+
+# Slow test threshold in seconds
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# Fail-fast behavior
+fail-fast = false
+
+# Test output settings
+status-level = "pass"
+final-status-level = "slow"
+
+# Test thread pool configuration
+test-threads = "num-cpus"
+
+# Override nextest's default settings
+[profile.default.overrides]
+# Disable retries for integration tests
+"tests/" = { retries = 0 }
+
+# CI-specific profile with different settings
+[profile.ci]
+# More aggressive retry for CI environment
+retries = 3
+fail-fast = true
+test-threads = 2
+
+# Override settings for specific test patterns
+[profile.ci.overrides]
+# No retries for unit tests in CI (they should be deterministic)
+"src/" = { retries = 0 }
