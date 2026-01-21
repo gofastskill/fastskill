@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Commit Message Hook for Rust Project
+# Validate commit messages follow conventional commit format
+
+set -e
+
+# Read the commit message
+commit_msg_file="$1"
+commit_msg=$(cat "$commit_msg_file")
+
+echo "📝 Checking commit message format..."
+echo "==================================="
+
+# Check conventional commit pattern
+# Pattern: type(scope): description
+if ! echo "$commit_msg" | grep -qE "^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .{1,}"; then
+    echo "❌ Commit message doesn't follow conventional commit format"
+    echo ""
+    echo "Expected format: type(scope): description"
+    echo "Valid types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+    echo ""
+    echo "Examples:"
+    echo "  feat(cli): add new command option"
+    echo "  fix(auth): resolve login timeout issue"
+    echo "  docs(readme): update installation instructions"
+    echo ""
+    echo "Current message: $commit_msg"
+    echo ""
+    echo "❌ Commit rejected. Please use conventional commit format."
+    exit 1
+else
+    echo "✅ Commit message follows conventional format"
+fi
+
+echo ""
+echo "🔍 Checking commit type matches file changes..."
+echo "==============================================="
+
+# Call the validation script
+REPO_ROOT=$(git rev-parse --show-toplevel)
+VALIDATION_SCRIPT="$REPO_ROOT/.githooks/validate-commit-type.sh"
+
+if [ -x "$VALIDATION_SCRIPT" ]; then
+    "$VALIDATION_SCRIPT" "$commit_msg" || exit 1
+else
+    echo "⚠️  Validation script not found or not executable: $VALIDATION_SCRIPT"
+    echo "✅ Skipping file change validation..."
+fi
+
+echo ""
+exit 0
