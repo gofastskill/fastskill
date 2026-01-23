@@ -148,9 +148,12 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     // Extract skill ID from current directory name
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-    let skill_id = current_dir.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
-        CliError::Config("Cannot determine skill ID from current directory name".to_string())
-    })?;
+    let skill_id = current_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| {
+            CliError::Config("Cannot determine skill ID from current directory name".to_string())
+        })?;
 
     // Validate skill ID format
     validate_identifier(skill_id)

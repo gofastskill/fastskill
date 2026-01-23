@@ -273,7 +273,9 @@ impl VectorIndexService for VectorIndexServiceImpl {
         // Sort by similarity (highest first)
         // Handle potential NaN values gracefully
         matches.sort_by(|a, b| {
-            b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
+            b.similarity
+                .partial_cmp(&a.similarity)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Take top results

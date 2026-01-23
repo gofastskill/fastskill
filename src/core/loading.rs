@@ -296,7 +296,11 @@ impl ProgressiveLoadingServiceImpl {
         // For now, create basic metadata from filename and content
         // In a real implementation, this would parse YAML frontmatter
         let name = skill_id.replace("-", " ").to_string();
-        let description = content.lines().next().unwrap_or("No description").to_string();
+        let description = content
+            .lines()
+            .next()
+            .unwrap_or("No description")
+            .to_string();
 
         Ok(SkillMetadata {
             id: crate::core::service::SkillId::new(skill_id.to_string())?,
@@ -517,7 +521,11 @@ impl ProgressiveLoadingService for ProgressiveLoadingServiceImpl {
         skill_id: &str,
         reference_path: &str,
     ) -> Result<String, ServiceError> {
-        let ref_path = self.skills_base_path.join(skill_id).join("references").join(reference_path);
+        let ref_path = self
+            .skills_base_path
+            .join(skill_id)
+            .join("references")
+            .join(reference_path);
 
         if !ref_path.exists() {
             return Err(ServiceError::Custom(format!(
@@ -557,7 +565,9 @@ impl ProgressiveLoadingService for ProgressiveLoadingServiceImpl {
         };
 
         // For now, just set default strategy
-        strategy.load_levels.insert("default".to_string(), LoadLevel::Metadata);
+        strategy
+            .load_levels
+            .insert("default".to_string(), LoadLevel::Metadata);
         strategy.estimated_tokens = context.available_tokens / 2; // Use half available tokens
 
         Ok(strategy)
@@ -682,7 +692,9 @@ impl ProgressiveLoadingService for LoadingService {
         skill_id: &str,
         reference_path: &str,
     ) -> Result<String, ServiceError> {
-        self.0.load_reference_content(skill_id, reference_path).await
+        self.0
+            .load_reference_content(skill_id, reference_path)
+            .await
     }
 
     async fn preload_relevant_skills(

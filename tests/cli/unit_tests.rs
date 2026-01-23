@@ -52,7 +52,12 @@ fn test_path_extension_detection() {
     // Folder might not have extension or might be a directory
     assert!(
         folder_path.extension().is_none()
-            || !folder_path.extension().unwrap().to_str().unwrap().contains(".")
+            || !folder_path
+                .extension()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains(".")
     );
 }
 

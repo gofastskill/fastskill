@@ -83,8 +83,16 @@ pub fn package_skill_with_id(
         match crate::core::manifest::SkillProjectToml::load_from_file(&skill_project_toml_path) {
             Ok(project) => {
                 // Extract skill ID and version from metadata
-                let id = project.metadata.as_ref().and_then(|m| m.id.as_ref()).cloned();
-                let ver = project.metadata.as_ref().and_then(|m| m.version.as_ref()).cloned();
+                let id = project
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.id.as_ref())
+                    .cloned();
+                let ver = project
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.version.as_ref())
+                    .cloned();
                 // Dependencies are available in project.dependencies if needed (T043, T044)
                 (id, ver)
             }
@@ -152,7 +160,8 @@ pub fn package_skill_with_id(
         // Read file content
         let mut file_content = Vec::new();
         let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
-        file.read_to_end(&mut file_content).map_err(ServiceError::Io)?;
+        file.read_to_end(&mut file_content)
+            .map_err(ServiceError::Io)?;
 
         // Add file to ZIP
         zip.start_file(relative_path_str.as_ref(), options)
@@ -172,7 +181,8 @@ pub fn package_skill_with_id(
 
     zip.start_file("BUILD_INFO.json", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add BUILD_INFO.json: {}", e)))?;
-    zip.write_all(build_info_json.as_bytes()).map_err(ServiceError::Io)?;
+    zip.write_all(build_info_json.as_bytes())
+        .map_err(ServiceError::Io)?;
 
     // Finish ZIP first (without checksum) to calculate checksum
     zip.finish()
@@ -211,7 +221,8 @@ pub fn package_skill_with_id(
 
         let mut file_content = Vec::new();
         let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
-        file.read_to_end(&mut file_content).map_err(ServiceError::Io)?;
+        file.read_to_end(&mut file_content)
+            .map_err(ServiceError::Io)?;
 
         zip.start_file(relative_path_str.as_ref(), options)
             .map_err(|e| ServiceError::Custom(format!("Failed to add file to ZIP: {}", e)))?;
@@ -226,12 +237,14 @@ pub fn package_skill_with_id(
 
     zip.start_file("BUILD_INFO.json", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add BUILD_INFO.json: {}", e)))?;
-    zip.write_all(build_info_json.as_bytes()).map_err(ServiceError::Io)?;
+    zip.write_all(build_info_json.as_bytes())
+        .map_err(ServiceError::Io)?;
 
     // Add CHECKSUM.sha256 (checksum of ZIP before this file was added)
     zip.start_file("CHECKSUM.sha256", options)
         .map_err(|e| ServiceError::Custom(format!("Failed to add CHECKSUM.sha256: {}", e)))?;
-    zip.write_all(checksum.as_bytes()).map_err(ServiceError::Io)?;
+    zip.write_all(checksum.as_bytes())
+        .map_err(ServiceError::Io)?;
 
     zip.finish().map_err(|e| {
         ServiceError::Custom(format!("Failed to finalize ZIP with checksum: {}", e))

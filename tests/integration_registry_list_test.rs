@@ -113,8 +113,10 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     // Test with scope filter - create a new mock server to avoid conflicts
     let mock_server2 = MockServer::start().await;
     let all_summaries = create_sample_skill_summaries();
-    let filtered_summaries: Vec<SkillSummary> =
-        all_summaries.into_iter().filter(|s| s.scope == "acme").collect();
+    let filtered_summaries: Vec<SkillSummary> = all_summaries
+        .into_iter()
+        .filter(|s| s.scope == "acme")
+        .collect();
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
@@ -395,8 +397,11 @@ async fn test_list_skills_scope_flag() {
     ];
 
     // Test filtering by scope "acme"
-    let filtered_summaries: Vec<SkillSummary> =
-        all_summaries.iter().filter(|s| s.scope == "acme").cloned().collect();
+    let filtered_summaries: Vec<SkillSummary> = all_summaries
+        .iter()
+        .filter(|s| s.scope == "acme")
+        .cloned()
+        .collect();
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
@@ -633,8 +638,11 @@ async fn test_list_skills_json_scope_flag() {
     let mock_server = MockServer::start().await;
 
     let all_summaries = create_sample_skill_summaries();
-    let filtered_summaries: Vec<SkillSummary> =
-        all_summaries.iter().filter(|s| s.scope == "acme").cloned().collect();
+    let filtered_summaries: Vec<SkillSummary> = all_summaries
+        .iter()
+        .filter(|s| s.scope == "acme")
+        .cloned()
+        .collect();
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))

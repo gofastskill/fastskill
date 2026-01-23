@@ -217,7 +217,11 @@ impl RepositoryClient for MarketplaceRepositoryClient {
         use crate::core::service::SkillId;
         let skill_id = SkillId::from(id.to_string());
         let skills = self.list_skills().await?;
-        Ok(skills.into_iter().filter(|s| s.id == skill_id).map(|s| s.version).collect())
+        Ok(skills
+            .into_iter()
+            .filter(|s| s.id == skill_id)
+            .map(|s| s.version)
+            .collect())
     }
 }
 
@@ -286,14 +290,17 @@ impl CratesRegistryClient {
             registry_type: "git".to_string(),
             index_url,
             auth,
-            storage: repo.storage.clone().map(|s| crate::core::registry::config::StorageConfig {
-                storage_type: s.storage_type,
-                repository: s.repository,
-                bucket: s.bucket,
-                region: s.region,
-                endpoint: s.endpoint,
-                base_url: s.base_url,
-            }),
+            storage: repo
+                .storage
+                .clone()
+                .map(|s| crate::core::registry::config::StorageConfig {
+                    storage_type: s.storage_type,
+                    repository: s.repository,
+                    bucket: s.bucket,
+                    region: s.region,
+                    endpoint: s.endpoint,
+                    base_url: s.base_url,
+                }),
         };
 
         let registry_client = RegistryClient::new(registry_config.clone())?;
@@ -338,9 +345,12 @@ impl CratesRegistryClient {
         }
 
         // Create HTTP client
-        let client = Client::builder().user_agent("fastskill/0.8.6").build().map_err(|e| {
-            RepositoryClientError::Client(format!("Failed to create HTTP client: {}", e))
-        })?;
+        let client = Client::builder()
+            .user_agent("fastskill/0.8.6")
+            .build()
+            .map_err(|e| {
+                RepositoryClientError::Client(format!("Failed to create HTTP client: {}", e))
+            })?;
 
         // Build request
         let mut request = client.get(&url);

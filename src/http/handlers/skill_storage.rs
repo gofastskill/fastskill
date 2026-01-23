@@ -70,7 +70,10 @@ impl SkillStorage {
             .get("SKILL.md")
             .or_else(|| {
                 // Look for files with SKILL.md in the path
-                files.keys().find(|k| k.ends_with("SKILL.md")).and_then(|k| files.get(k))
+                files
+                    .keys()
+                    .find(|k| k.ends_with("SKILL.md"))
+                    .and_then(|k| files.get(k))
             })
             .ok_or_else(|| {
                 crate::http::errors::HttpError::BadRequest(
@@ -235,15 +238,17 @@ impl SkillStorage {
         };
 
         // Update or create skill metadata
-        let skill_meta = metadata.entry(skill_id.to_string()).or_insert(SkillMetadata {
-            id: skill_id.to_string(),
-            name: version.name.clone(),
-            description: version.description.clone(),
-            directory: version.directory.clone(),
-            created_at: version.created_at,
-            updated_at: version.created_at,
-            latest_version: version.version.clone(),
-        });
+        let skill_meta = metadata
+            .entry(skill_id.to_string())
+            .or_insert(SkillMetadata {
+                id: skill_id.to_string(),
+                name: version.name.clone(),
+                description: version.description.clone(),
+                directory: version.directory.clone(),
+                created_at: version.created_at,
+                updated_at: version.created_at,
+                latest_version: version.version.clone(),
+            });
 
         skill_meta.updated_at = version.created_at;
         skill_meta.latest_version = version.version.clone();
@@ -361,12 +366,14 @@ impl SkillStorage {
                     e
                 ))
             })?;
-            fs::write(metadata_path, updated_content).await.map_err(|e| {
-                crate::http::errors::HttpError::InternalServerError(format!(
-                    "Failed to write metadata: {}",
-                    e
-                ))
-            })?;
+            fs::write(metadata_path, updated_content)
+                .await
+                .map_err(|e| {
+                    crate::http::errors::HttpError::InternalServerError(format!(
+                        "Failed to write metadata: {}",
+                        e
+                    ))
+                })?;
         }
 
         Ok(())

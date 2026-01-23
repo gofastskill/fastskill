@@ -65,7 +65,9 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     // Initialize service
     // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
     let config = create_service_config(None, None)?;
-    let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
+    let mut service = FastSkillService::new(config)
+        .await
+        .map_err(CliError::Service)?;
     service.initialize().await.map_err(CliError::Service)?;
 
     // Load repositories from skill-project.toml [tool.fastskill.repositories] if available
@@ -146,13 +148,19 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
         if let Some(exclude) = exclude_groups {
             entries.retain(|entry| {
-                !entry.groups.iter().any(|g| exclude.iter().any(|ex| ex == g.as_str()))
+                !entry
+                    .groups
+                    .iter()
+                    .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
             });
         }
 
         if let Some(only) = only_groups {
             entries.retain(|entry| {
-                entry.groups.iter().any(|g| only.iter().any(|on| on == g.as_str()))
+                entry
+                    .groups
+                    .iter()
+                    .any(|g| only.iter().any(|on| on == g.as_str()))
                     || entry.groups.is_empty()
             });
         }

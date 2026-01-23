@@ -75,7 +75,9 @@ web-scraper = "1.0.0"
     let mut project = SkillProjectToml::load_from_file(&project_toml).unwrap();
 
     // Simulate adding a repository (what registry add command would do)
-    let tool = project.tool.get_or_insert_with(|| ToolSection { fastskill: None });
+    let tool = project
+        .tool
+        .get_or_insert_with(|| ToolSection { fastskill: None });
     let fastskill_config = tool.fastskill.get_or_insert_with(|| FastSkillToolConfig {
         skills_directory: None,
         repositories: Some(Vec::new()),
@@ -208,7 +210,13 @@ fn test_claude_code_marketplace_json_parsing() {
     );
     assert!(marketplace.metadata.is_some());
     assert_eq!(
-        marketplace.metadata.as_ref().unwrap().description.as_ref().unwrap(),
+        marketplace
+            .metadata
+            .as_ref()
+            .unwrap()
+            .description
+            .as_ref()
+            .unwrap(),
         "Test repository"
     );
     assert_eq!(marketplace.plugins.len(), 1);
