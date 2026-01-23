@@ -167,7 +167,11 @@ This is a test skill for auto-indexing.
     assert_eq!(all_skills.len(), skill_names.len());
 
     // Check that skills can be found via search
-    let search_results = service.metadata_service().discover_skills("test").await.unwrap();
+    let search_results = service
+        .metadata_service()
+        .discover_skills("test")
+        .await
+        .unwrap();
     assert!(!search_results.is_empty());
 
     // Verify specific skills exist

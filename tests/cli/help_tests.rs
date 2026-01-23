@@ -3,7 +3,7 @@
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 use super::snapshot_helpers::{
-    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
+    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
 };
 
 #[test]
@@ -11,7 +11,11 @@ fn test_help_with_no_args() {
     let result = run_fastskill_command(&[], None);
 
     // CLI requires arguments, so it shows help (exit code 1, but help is shown)
-    assert_snapshot_with_settings("help_no_args", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "help_no_args",
+        &format!("{}{}", result.stdout, result.stderr),
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -43,7 +47,11 @@ fn test_search_command_help() {
     let result = run_fastskill_command(&["search", "--help"], None);
 
     assert!(result.success);
-    assert_snapshot_with_settings("search_command_help", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "search_command_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -51,7 +59,11 @@ fn test_disable_command_help() {
     let result = run_fastskill_command(&["disable", "--help"], None);
 
     assert!(result.success);
-    assert_snapshot_with_settings("disable_command_help", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "disable_command_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -59,7 +71,11 @@ fn test_remove_command_help() {
     let result = run_fastskill_command(&["remove", "--help"], None);
 
     assert!(result.success);
-    assert_snapshot_with_settings("remove_command_help", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "remove_command_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]

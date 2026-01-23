@@ -171,14 +171,15 @@ impl UpdateService {
                     })
                     .ok_or_else(|| UpdateError::NoUpdateAvailable(locked_skill.id.clone()))?
             }
-            UpdateStrategy::Exact(version) => {
-                candidates.iter().find(|c| c.version == *version).ok_or_else(|| {
+            UpdateStrategy::Exact(version) => candidates
+                .iter()
+                .find(|c| c.version == *version)
+                .ok_or_else(|| {
                     UpdateError::StrategyNotApplicable(format!(
                         "Exact version {} not available for {}",
                         version, locked_skill.id
                     ))
-                })?
-            }
+                })?,
         };
 
         // Check if update is actually newer

@@ -182,8 +182,11 @@ pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
                     })
                     .collect();
 
-                let warning_messages: Vec<String> =
-                    validation_result.warnings.iter().map(|w| format!("⚠ {}", w)).collect();
+                let warning_messages: Vec<String> = validation_result
+                    .warnings
+                    .iter()
+                    .map(|w| format!("⚠ {}", w))
+                    .collect();
 
                 let mut all_messages = error_messages;
                 all_messages.extend(warning_messages);

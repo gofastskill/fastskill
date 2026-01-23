@@ -178,7 +178,10 @@ async fn add_from_zip(
     let skill_def = create_skill_from_path(&skill_path)?;
 
     // Copy skill to skills storage directory
-    let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
+    let skill_storage_dir = service
+        .config()
+        .skill_storage_path
+        .join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -187,7 +190,9 @@ async fn add_from_zip(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir)
+            .await
+            .map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -278,7 +283,10 @@ async fn add_from_folder(
     let skill_def = create_skill_from_path(folder_path)?;
 
     // Copy skill to skills storage directory (local skills stored at id path, no scope)
-    let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
+    let skill_storage_dir = service
+        .config()
+        .skill_storage_path
+        .join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -287,7 +295,9 @@ async fn add_from_folder(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir)
+            .await
+            .map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -410,7 +420,10 @@ async fn add_from_git(
         let skill_def = create_skill_from_path(&skill_path)?;
 
         // Copy skill to skills storage directory (local skills stored at id path, no scope)
-        let skill_storage_dir = service.config().skill_storage_path.join(skill_def.id.as_str());
+        let skill_storage_dir = service
+            .config()
+            .skill_storage_path
+            .join(skill_def.id.as_str());
         if skill_storage_dir.exists() {
             if !force {
                 return Err(CliError::Config(format!(
@@ -419,7 +432,9 @@ async fn add_from_git(
                 )));
             }
             // Remove existing directory
-            tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
+            tokio::fs::remove_dir_all(&skill_storage_dir)
+                .await
+                .map_err(CliError::Io)?;
         }
 
         // Copy skill directory to storage
@@ -660,8 +675,11 @@ async fn add_from_registry(
     }
 
     // Copy skill to skills storage directory at scope/id path
-    let skill_storage_dir =
-        service.config().skill_storage_path.join(&scope).join(skill_def.id.as_str());
+    let skill_storage_dir = service
+        .config()
+        .skill_storage_path
+        .join(&scope)
+        .join(skill_def.id.as_str());
     if skill_storage_dir.exists() {
         if !force {
             return Err(CliError::Config(format!(
@@ -670,7 +688,9 @@ async fn add_from_registry(
             )));
         }
         // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir).await.map_err(CliError::Io)?;
+        tokio::fs::remove_dir_all(&skill_storage_dir)
+            .await
+            .map_err(CliError::Io)?;
     }
 
     // Copy skill directory to storage
@@ -853,7 +873,9 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
             Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
         } else {
             // Copy file
-            tokio::fs::copy(&src_path, &dst_path).await.map_err(CliError::Io)?;
+            tokio::fs::copy(&src_path, &dst_path)
+                .await
+                .map_err(CliError::Io)?;
         }
     }
 

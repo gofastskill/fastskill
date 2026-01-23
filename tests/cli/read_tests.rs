@@ -75,7 +75,12 @@ version: 1.0.0
     service.initialize().await.unwrap();
 
     let skill_id = SkillId::new("format-test".to_string()).unwrap();
-    let skill = service.skill_manager().get_skill(&skill_id).await.unwrap().unwrap();
+    let skill = service
+        .skill_manager()
+        .get_skill(&skill_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Verify base directory can be extracted
     let base_dir = skill.skill_file.parent().unwrap();
@@ -179,7 +184,12 @@ version: 1.0.0
     service.initialize().await.unwrap();
 
     let skill_id = SkillId::new("path-test".to_string()).unwrap();
-    let skill = service.skill_manager().get_skill(&skill_id).await.unwrap().unwrap();
+    let skill = service
+        .skill_manager()
+        .get_skill(&skill_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Verify base directory is absolute and canonicalized
     let base_dir = skill.skill_file.parent().unwrap();

@@ -663,7 +663,10 @@ async fn execute_list_skills(
             ));
         }
         // Scope should be filesystem-safe (alphanumeric, hyphens, underscores)
-        if !scope.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !scope
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(CliError::Config(
                 format!(
                     "Invalid scope format: '{}'. Scope must contain only alphanumeric characters, hyphens, and underscores.",
@@ -683,11 +686,14 @@ async fn execute_list_skills(
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
-            CliError::Config(
-                "No repository specified and no default repository configured".to_string(),
-            )
-        })?
+        repo_manager
+            .get_default_repository()
+            .map(|r| r.name.clone())
+            .ok_or_else(|| {
+                CliError::Config(
+                    "No repository specified and no default repository configured".to_string(),
+                )
+            })?
     };
 
     // Get repository definition
@@ -845,11 +851,14 @@ async fn execute_show_skill(skill_id: String, repository: Option<String>) -> Cli
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
-            CliError::Config(
-                "No repository specified and no default repository configured".to_string(),
-            )
-        })?
+        repo_manager
+            .get_default_repository()
+            .map(|r| r.name.clone())
+            .ok_or_else(|| {
+                CliError::Config(
+                    "No repository specified and no default repository configured".to_string(),
+                )
+            })?
     };
 
     println!(
@@ -898,11 +907,14 @@ async fn execute_versions(skill_id: String, repository: Option<String>) -> CliRe
     let repo_name = if let Some(repo_name) = repository {
         repo_name
     } else {
-        repo_manager.get_default_repository().map(|r| r.name.clone()).ok_or_else(|| {
-            CliError::Config(
-                "No repository specified and no default repository configured".to_string(),
-            )
-        })?
+        repo_manager
+            .get_default_repository()
+            .map(|r| r.name.clone())
+            .ok_or_else(|| {
+                CliError::Config(
+                    "No repository specified and no default repository configured".to_string(),
+                )
+            })?
     };
 
     println!(
@@ -1021,7 +1033,11 @@ async fn execute_create(
 
     // Validate required fields
     let repo_name = name
-        .or_else(|| skill_dir.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+        .or_else(|| {
+            skill_dir
+                .file_name()
+                .and_then(|n| n.to_str().map(|s| s.to_string()))
+        })
         .ok_or_else(|| {
             CliError::Validation(
                 "Repository name is required. Use --name or ensure directory has a name."
@@ -1030,7 +1046,10 @@ async fn execute_create(
         })?;
 
     // Group skills into a single plugin (simple approach)
-    let skill_paths: Vec<String> = skills.iter().map(|skill| format!("./{}", skill.id)).collect();
+    let skill_paths: Vec<String> = skills
+        .iter()
+        .map(|skill| format!("./{}", skill.id))
+        .collect();
 
     let plugin = ClaudeCodePlugin {
         name: repo_name.clone(),

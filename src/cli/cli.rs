@@ -106,7 +106,9 @@ impl Cli {
         }
 
         // Initialize service
-        let mut service = FastSkillService::new(config).await.map_err(CliError::Service)?;
+        let mut service = FastSkillService::new(config)
+            .await
+            .map_err(CliError::Service)?;
         service.initialize().await.map_err(CliError::Service)?;
 
         // Handle commands

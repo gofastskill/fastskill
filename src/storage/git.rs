@@ -96,13 +96,17 @@ pub(crate) async fn check_git_version() -> Result<(), ServiceError> {
     }
 
     // Execute git --version
-    let output = Command::new("git").arg("--version").output().await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            GitError::GitNotInstalled.into()
-        } else {
-            ServiceError::Custom(format!("Failed to execute git --version: {}", e))
-        }
-    })?;
+    let output = Command::new("git")
+        .arg("--version")
+        .output()
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                GitError::GitNotInstalled.into()
+            } else {
+                ServiceError::Custom(format!("Failed to execute git --version: {}", e))
+            }
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -144,7 +148,11 @@ pub(crate) fn parse_git_version(version_str: &str) -> Result<GitVersion, Service
 
     let version_part = parts[2];
     // Remove any trailing parentheses or extra info
-    let version_part = version_part.split('(').next().unwrap_or(version_part).trim();
+    let version_part = version_part
+        .split('(')
+        .next()
+        .unwrap_or(version_part)
+        .trim();
     let version_numbers: Vec<&str> = version_part.split('.').collect();
 
     if version_numbers.len() < 2 {
@@ -160,7 +168,10 @@ pub(crate) fn parse_git_version(version_str: &str) -> Result<GitVersion, Service
     let minor = version_numbers[1]
         .parse::<u32>()
         .map_err(|e| ServiceError::Custom(format!("Failed to parse git minor version: {}", e)))?;
-    let patch = version_numbers.get(2).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let patch = version_numbers
+        .get(2)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
 
     Ok(GitVersion::new(major, minor, patch))
 }

@@ -114,7 +114,10 @@ fn resolve_lock_file(skills_dir: &Path) -> PathBuf {
     }
 
     // Default to .claude/skills-lock.toml
-    skills_dir.parent().unwrap_or_else(|| Path::new(".")).join("skills-lock.toml")
+    skills_dir
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("skills-lock.toml")
 }
 
 /// Load dependencies from skills-project.toml

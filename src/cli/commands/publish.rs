@@ -184,7 +184,10 @@ async fn publish_to_api(
     );
 
     for package in packages {
-        let package_name = package.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+        let package_name = package
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
 
         println!(
             "{}",
@@ -298,7 +301,10 @@ async fn publish_to_local_folder(target: &str, packages: &[PathBuf]) -> CliResul
     );
 
     for package in packages {
-        let package_name = package.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+        let package_name = package
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
 
         let dest_path = target_path.join(package_name);
 

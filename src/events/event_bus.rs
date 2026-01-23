@@ -383,7 +383,8 @@ impl EventBus {
         skill_id: String,
         changes: SkillUpdate,
     ) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillUpdated { skill_id, changes }).await
+        self.publish_event(SkillEvent::SkillUpdated { skill_id, changes })
+            .await
     }
 
     /// Publish skill unregistered event
@@ -391,7 +392,8 @@ impl EventBus {
         &self,
         skill_id: String,
     ) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillUnregistered { skill_id }).await
+        self.publish_event(SkillEvent::SkillUnregistered { skill_id })
+            .await
     }
 
     /// Publish skill reloaded event
@@ -415,7 +417,8 @@ impl EventBus {
         skill_id: String,
         errors: Vec<String>,
     ) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillValidationFailed { skill_id, errors }).await
+        self.publish_event(SkillEvent::SkillValidationFailed { skill_id, errors })
+            .await
     }
 
     /// Publish hot reload enabled event
@@ -423,7 +426,8 @@ impl EventBus {
         &self,
         config: HotReloadConfig,
     ) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::HotReloadEnabled { config }).await
+        self.publish_event(SkillEvent::HotReloadEnabled { config })
+            .await
     }
 
     /// Publish hot reload disabled event
@@ -433,11 +437,13 @@ impl EventBus {
 
     /// Publish skill enabled event
     pub async fn publish_skill_enabled(&self, skill_id: String) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillEnabled { skill_id }).await
+        self.publish_event(SkillEvent::SkillEnabled { skill_id })
+            .await
     }
 
     /// Publish skill disabled event
     pub async fn publish_skill_disabled(&self, skill_id: String) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillDisabled { skill_id }).await
+        self.publish_event(SkillEvent::SkillDisabled { skill_id })
+            .await
     }
 }

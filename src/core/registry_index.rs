@@ -340,7 +340,10 @@ pub fn migrate_index_format(
                     let content = fs::read_to_string(path).map_err(ServiceError::Io)?;
 
                     if let Ok(entry) = serde_json::from_str::<VersionEntry>(&content) {
-                        skill_versions.entry(skill_id).or_default().push((version, entry));
+                        skill_versions
+                            .entry(skill_id)
+                            .or_default()
+                            .push((version, entry));
                     }
                 }
             }
@@ -395,7 +398,9 @@ fn extract_scope(skill_id: &str) -> Option<(String, String)> {
 
 /// Determine if a version is a pre-release
 fn is_pre_release(version: &str) -> bool {
-    semver::Version::parse(version).map(|v| !v.pre.is_empty()).unwrap_or(false)
+    semver::Version::parse(version)
+        .map(|v| !v.pre.is_empty())
+        .unwrap_or(false)
 }
 
 /// Determine latest version from a list of version entries
@@ -469,8 +474,10 @@ pub async fn scan_registry_index(
             ))
         })?;
 
-        let parts: Vec<&str> =
-            relative_path.components().filter_map(|c| c.as_os_str().to_str()).collect();
+        let parts: Vec<&str> = relative_path
+            .components()
+            .filter_map(|c| c.as_os_str().to_str())
+            .collect();
 
         // Must have at least 2 parts (scope/name)
         if parts.len() < 2 {
@@ -547,8 +554,11 @@ pub async fn scan_registry_index(
                 let published_at = entry.published_at.parse::<DateTime<Utc>>().ok();
 
                 // Extract description from metadata
-                let description =
-                    entry.metadata.as_ref().and_then(|m| m.description.clone()).unwrap_or_default();
+                let description = entry
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.description.clone())
+                    .unwrap_or_default();
 
                 summaries.push(SkillSummary {
                     id: skill_id.clone(),
@@ -577,7 +587,13 @@ pub async fn scan_registry_index(
 
                 // Collect all versions if needed
                 let versions = if options.include_pre_release {
-                    Some(entries.iter().filter(|e| !e.yanked).map(|e| e.vers.clone()).collect())
+                    Some(
+                        entries
+                            .iter()
+                            .filter(|e| !e.yanked)
+                            .map(|e| e.vers.clone())
+                            .collect(),
+                    )
                 } else {
                     Some(
                         entries

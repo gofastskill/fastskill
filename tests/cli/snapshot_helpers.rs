@@ -37,7 +37,10 @@ pub fn get_binary_path() -> String {
 }
 
 /// Run a fastskill command and return the result
-pub fn run_fastskill_command(args: &[&str], working_dir: Option<&std::path::Path>) -> CommandResult {
+pub fn run_fastskill_command(
+    args: &[&str],
+    working_dir: Option<&std::path::Path>,
+) -> CommandResult {
     let binary = get_binary_path();
     let mut cmd = if binary == "cargo" {
         let mut cmd = Command::new("cargo");
@@ -124,10 +127,11 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
 
     if settings.normalize_timestamps {
         // Normalize ISO 8601 timestamps
-        result = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
-            .unwrap()
-            .replace_all(&result, "[TIMESTAMP]")
-            .to_string();
+        result =
+            regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
+                .unwrap()
+                .replace_all(&result, "[TIMESTAMP]")
+                .to_string();
 
         // Normalize Unix timestamps
         result = regex::Regex::new(r"\d{10,}")
@@ -140,11 +144,7 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
 }
 
 /// Helper to assert a snapshot with normalization
-pub fn assert_snapshot_with_settings(
-    name: &str,
-    content: &str,
-    settings: &SnapshotSettings,
-) {
+pub fn assert_snapshot_with_settings(name: &str, content: &str, settings: &SnapshotSettings) {
     let normalized = normalize_snapshot_output(content, settings);
     insta::assert_snapshot!(name, normalized);
 }

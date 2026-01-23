@@ -5,11 +5,11 @@
 //! These tests verify skills directory resolution through CLI execution
 //! since the bin module is internal to the binary.
 
+use super::snapshot_helpers::{
+    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
+};
 use std::env;
 use tempfile::TempDir;
-use super::snapshot_helpers::{
-    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
-};
 
 #[test]
 fn test_cli_repositories_path_argument() {
@@ -18,11 +18,22 @@ fn test_cli_repositories_path_argument() {
     std::fs::write(&repos_path, "# Test repositories file").unwrap();
 
     // Test that --repositories-path argument is accepted
-    let result = run_fastskill_command(&["--repositories-path", &repos_path.to_string_lossy(), "--help"], None);
+    let result = run_fastskill_command(
+        &[
+            "--repositories-path",
+            &repos_path.to_string_lossy(),
+            "--help",
+        ],
+        None,
+    );
 
     // Should succeed (even with --help, --repositories-path should be parsed)
     assert!(result.success);
-    assert_snapshot_with_settings("cli_repositories_path_argument", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "cli_repositories_path_argument",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -57,7 +68,11 @@ fn test_cli_finds_skills_in_current_dir() {
             original_dir.clone()
         } else {
             // Fallback: use temp dir's parent if available
-            temp_dir.path().parent().map(|p| p.to_path_buf()).unwrap_or_else(|| "/".into())
+            temp_dir
+                .path()
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| "/".into())
         }
     });
 
@@ -70,7 +85,11 @@ fn test_cli_finds_skills_in_current_dir() {
 
     // Should succeed (CLI should find .skills directory)
     assert!(result.success);
-    assert_snapshot_with_settings("cli_finds_skills_in_current_dir", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "cli_finds_skills_in_current_dir",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -85,7 +104,11 @@ fn test_cli_directory_walking() {
 
     // Should succeed regardless of directory level
     assert!(result.success);
-    assert_snapshot_with_settings("cli_directory_walking", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "cli_directory_walking",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
@@ -98,5 +121,9 @@ fn test_cli_invalid_repositories_path() {
     // CLI should still show help even with invalid path
     // (the path validation happens later in actual commands)
     assert!(result.success);
-    assert_snapshot_with_settings("cli_invalid_repositories_path", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "cli_invalid_repositories_path",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }

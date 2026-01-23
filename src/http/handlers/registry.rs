@@ -186,9 +186,11 @@ pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-    })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+        })?;
     let skill_manager = state.service.skill_manager();
 
     // Get all installed skills
@@ -271,9 +273,11 @@ pub async fn list_source_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SourceSkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-    })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+        })?;
     let skill_manager = state.service.skill_manager();
 
     // Get source definition
@@ -289,9 +293,12 @@ pub async fn list_source_skills(
     }
 
     // Get marketplace.json
-    let marketplace = sources_manager.get_marketplace_json(&source_name).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
-    })?;
+    let marketplace = sources_manager
+        .get_marketplace_json(&source_name)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
+        })?;
 
     // Get installed skills to check installation status
     let installed_skills = skill_manager
@@ -332,9 +339,11 @@ pub async fn get_marketplace(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<MarketplaceJson>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-    })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+        })?;
 
     // Get source definition
     let source_def = sources_manager
@@ -349,9 +358,12 @@ pub async fn get_marketplace(
     }
 
     // Get marketplace.json
-    let marketplace = sources_manager.get_marketplace_json(&source_name).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
-    })?;
+    let marketplace = sources_manager
+        .get_marketplace_json(&source_name)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to load marketplace: {}", e))
+        })?;
 
     Ok(Json(ApiResponse::success(marketplace)))
 }
@@ -361,9 +373,11 @@ pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-    })?;
+    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+        })?;
 
     // Clear the cache
     sources_manager.clear_cache().await;
@@ -416,7 +430,10 @@ pub async fn list_index_skills(
             )));
         }
         // Scope should be filesystem-safe
-        if !scope_val.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !scope_val
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(HttpError::BadRequest(format!(
                 "Invalid scope format: '{}'. Scope must contain only alphanumeric characters, hyphens, and underscores.",
                 scope_val
@@ -424,7 +441,10 @@ pub async fn list_index_skills(
         }
     }
 
-    let all_versions = params.get("all_versions").map(|v| v == "true" || v == "1").unwrap_or(false);
+    let all_versions = params
+        .get("all_versions")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
 
     let include_pre_release = params
         .get("include_pre_release")
@@ -438,9 +458,11 @@ pub async fn list_index_skills(
     };
 
     // Scan registry index
-    let summaries = scan_registry_index(registry_index_path, &options).await.map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to scan registry index: {}", e))
-    })?;
+    let summaries = scan_registry_index(registry_index_path, &options)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to scan registry index: {}", e))
+        })?;
 
     Ok(Json(summaries))
 }

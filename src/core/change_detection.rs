@@ -89,7 +89,11 @@ pub fn detect_changed_skills_hash(
                     // Check if hash changed
                     let cached_hash = cache.get_cached_hash(skill_id);
 
-                    if cached_hash.as_ref().map(|h| h != &current_hash).unwrap_or(true) {
+                    if cached_hash
+                        .as_ref()
+                        .map(|h| h != &current_hash)
+                        .unwrap_or(true)
+                    {
                         debug!(
                             "Skill '{}' changed (hash: {} -> {})",
                             skill_id,
@@ -134,8 +138,10 @@ pub fn calculate_skill_hash(skill_path: &Path) -> Result<String, ServiceError> {
         let content = fs::read(&file_path).map_err(ServiceError::Io)?;
 
         // Include relative path in hash
-        let relative_path =
-            file_path.strip_prefix(skill_path).unwrap_or(&file_path).to_string_lossy();
+        let relative_path = file_path
+            .strip_prefix(skill_path)
+            .unwrap_or(&file_path)
+            .to_string_lossy();
 
         hasher.update(relative_path.as_bytes());
         hasher.update(&content);

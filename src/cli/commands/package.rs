@@ -275,10 +275,15 @@ fn get_all_skills_recursive(skills_dir: &Path) -> CliResult<Vec<String>> {
     let mut skills = Vec::new();
     let skills_dir_canonical = skills_dir.canonicalize().map_err(CliError::Io)?;
 
-    for entry in WalkDir::new(skills_dir).min_depth(1).max_depth(usize::MAX).follow_links(false) {
+    for entry in WalkDir::new(skills_dir)
+        .min_depth(1)
+        .max_depth(usize::MAX)
+        .follow_links(false)
+    {
         let entry = entry.map_err(|e| {
             CliError::Io(
-                e.into_io_error().unwrap_or_else(|| std::io::Error::other("WalkDir error")),
+                e.into_io_error()
+                    .unwrap_or_else(|| std::io::Error::other("WalkDir error")),
             )
         })?;
         let path = entry.path();
@@ -288,12 +293,14 @@ fn get_all_skills_recursive(skills_dir: &Path) -> CliResult<Vec<String>> {
             // Compute relative path from skills_dir to this skill directory
             let path_canonical = path.canonicalize().map_err(CliError::Io)?;
             let relative_path =
-                path_canonical.strip_prefix(&skills_dir_canonical).map_err(|_| {
-                    CliError::Validation(format!(
-                        "Failed to compute relative path for: {}",
-                        path.display()
-                    ))
-                })?;
+                path_canonical
+                    .strip_prefix(&skills_dir_canonical)
+                    .map_err(|_| {
+                        CliError::Validation(format!(
+                            "Failed to compute relative path for: {}",
+                            path.display()
+                        ))
+                    })?;
 
             // Skip hidden directories and tooling directories (check relative path components)
             let should_skip = relative_path.components().any(|c| {

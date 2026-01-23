@@ -28,63 +28,70 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
     // T011, T021: Implement skill resolution via skill_manager().get_skill()
     // Try exact match first
-    let skill =
-        match service.skill_manager().get_skill(&skill_id).await.map_err(CliError::Service)? {
-            Some(skill) => skill,
-            None => {
-                // T024: If no exact match, check for multiple partial matches
-                let all_skills =
-                    service.skill_manager().list_skills(None).await.map_err(CliError::Service)?;
+    let skill = match service
+        .skill_manager()
+        .get_skill(&skill_id)
+        .await
+        .map_err(CliError::Service)?
+    {
+        Some(skill) => skill,
+        None => {
+            // T024: If no exact match, check for multiple partial matches
+            let all_skills = service
+                .skill_manager()
+                .list_skills(None)
+                .await
+                .map_err(CliError::Service)?;
 
-                let matching_skills: Vec<_> = all_skills
-                    .iter()
-                    .filter(|s| {
-                        let skill_id_str = s.id.to_string();
-                        skill_id_str.ends_with(&format!("/{}", args.skill_id))
-                            || skill_id_str == args.skill_id
-                            || s.name == args.skill_id
-                    })
-                    .collect();
+            let matching_skills: Vec<_> = all_skills
+                .iter()
+                .filter(|s| {
+                    let skill_id_str = s.id.to_string();
+                    skill_id_str.ends_with(&format!("/{}", args.skill_id))
+                        || skill_id_str == args.skill_id
+                        || s.name == args.skill_id
+                })
+                .collect();
 
-                // T024: If multiple matches found, return error with disambiguation instructions
-                if matching_skills.len() > 1 {
-                    eprintln!("Error: Multiple skills match '{}':", args.skill_id);
-                    eprintln!();
-                    for skill in &matching_skills {
-                        eprintln!("  - {} ({})", skill.id, skill.version);
-                    }
-                    eprintln!();
-                    eprintln!("To disambiguate, use:");
-                    eprintln!("  - Version qualifier: <skill-id>@<version>");
-                    eprintln!("  - Full identifier: <scope>/<id>");
-                    return Err(CliError::Validation(format!(
-                        "Multiple skills match '{}'",
-                        args.skill_id
-                    )));
+            // T024: If multiple matches found, return error with disambiguation instructions
+            if matching_skills.len() > 1 {
+                eprintln!("Error: Multiple skills match '{}':", args.skill_id);
+                eprintln!();
+                for skill in &matching_skills {
+                    eprintln!("  - {} ({})", skill.id, skill.version);
                 }
-
-                // If single match found, use it; otherwise return not found error
-                if matching_skills.is_empty() {
-                    // T023: Implement error message formatting with "Searched:" and "Try:" sections
-                    eprintln!("Error: Skill '{}' not found", args.skill_id);
-                    eprintln!();
-                    eprintln!("Searched:");
-                    eprintln!("  {}", service.config().skill_storage_path.display());
-                    eprintln!();
-                    eprintln!("Try:");
-                    eprintln!("  fastskill list");
-                    eprintln!("  fastskill add <source>");
-                    eprintln!("  fastskill install");
-                    return Err(CliError::Validation(format!(
-                        "Skill '{}' not found",
-                        args.skill_id
-                    )));
-                }
-
-                // We know there's exactly one match at this point
-                matching_skills[0].clone()
+                eprintln!();
+                eprintln!("To disambiguate, use:");
+                eprintln!("  - Version qualifier: <skill-id>@<version>");
+                eprintln!("  - Full identifier: <scope>/<id>");
+                return Err(CliError::Validation(format!(
+                    "Multiple skills match '{}'",
+                    args.skill_id
+                )));
             }
-        };
+
+            // If single match found, use it; otherwise return not found error
+            if matching_skills.is_empty() {
+                // T023: Implement error message formatting with "Searched:" and "Try:" sections
+                eprintln!("Error: Skill '{}' not found", args.skill_id);
+                eprintln!();
+                eprintln!("Searched:");
+                eprintln!("  {}", service.config().skill_storage_path.display());
+                eprintln!();
+                eprintln!("Try:");
+                eprintln!("  fastskill list");
+                eprintln!("  fastskill add <source>");
+                eprintln!("  fastskill install");
+                return Err(CliError::Validation(format!(
+                    "Skill '{}' not found",
+                    args.skill_id
+                )));
+            }
+
+            // We know there's exactly one match at this point
+            matching_skills[0].clone()
+        }
+    };
 
     // T012: Implement base directory extraction from skill_file.parent()
     let base_dir = skill

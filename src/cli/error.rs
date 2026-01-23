@@ -127,7 +127,9 @@ fn extract_line_number(error_msg: &str) -> Option<usize> {
     // Try to find "line X" pattern
     if let Some(line_start) = error_msg.find("line ") {
         let after_line = &error_msg[line_start + 5..];
-        let line_end = after_line.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_line.len());
+        let line_end = after_line
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_line.len());
         if let Ok(line) = after_line[..line_end].parse::<usize>() {
             return Some(line);
         }
@@ -136,7 +138,9 @@ fn extract_line_number(error_msg: &str) -> Option<usize> {
     // Try to find "at line X" pattern
     if let Some(line_start) = error_msg.find("at line ") {
         let after_line = &error_msg[line_start + 8..];
-        let line_end = after_line.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_line.len());
+        let line_end = after_line
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_line.len());
         if let Ok(line) = after_line[..line_end].parse::<usize>() {
             return Some(line);
         }

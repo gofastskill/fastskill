@@ -174,7 +174,10 @@ impl SkillId {
             ));
         }
         // Basic validation for allowed characters (alphanumeric, dash, underscore)
-        if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !id
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(ServiceError::Validation("Skill ID contains invalid characters (only alphanumeric, dash, underscore allowed)".to_string()));
         }
         Ok(Self(id))
@@ -483,15 +486,21 @@ impl FastSkillService {
         let mut indexed_count = 0;
 
         // Walk the skills directory recursively
-        for entry in WalkDir::new(&self.config.skill_storage_path).into_iter().filter_entry(|e| {
-            // Skip hidden directories and common system directories
-            !e.file_name()
-                .to_str()
-                .map(|s| {
-                    s.starts_with('.') || s == "node_modules" || s == "target" || s == "__pycache__"
-                })
-                .unwrap_or(false)
-        }) {
+        for entry in WalkDir::new(&self.config.skill_storage_path)
+            .into_iter()
+            .filter_entry(|e| {
+                // Skip hidden directories and common system directories
+                !e.file_name()
+                    .to_str()
+                    .map(|s| {
+                        s.starts_with('.')
+                            || s == "node_modules"
+                            || s == "target"
+                            || s == "__pycache__"
+                    })
+                    .unwrap_or(false)
+            })
+        {
             let entry = entry.map_err(|e| {
                 ServiceError::Custom(format!("Failed to read directory entry: {}", e))
             })?;

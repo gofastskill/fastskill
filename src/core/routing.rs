@@ -108,8 +108,9 @@ impl RoutingService for RoutingServiceImpl {
         let all_metadata = self.metadata_service.discover_skills("").await?;
 
         // Score and rank skills
-        let scored_skills =
-            self.score_skills_for_query(&all_metadata, query, context.as_ref()).await;
+        let scored_skills = self
+            .score_skills_for_query(&all_metadata, query, context.as_ref())
+            .await;
 
         // Convert to routed skills and limit results
         let routed_skills: Vec<RoutedSkill> = scored_skills
