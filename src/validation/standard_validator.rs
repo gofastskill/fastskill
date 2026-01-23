@@ -113,7 +113,9 @@ impl StandardValidator {
         // Validate compatibility
         if let Some(compatibility) = &frontmatter.compatibility {
             if compatibility.len() > 256 {
-                errors.push(ValidationError::InvalidCompatibilityLength(compatibility.len()));
+                errors.push(ValidationError::InvalidCompatibilityLength(
+                    compatibility.len(),
+                ));
             }
         } else {
             warnings.push("No compatibility field specified".to_string());

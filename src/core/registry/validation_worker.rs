@@ -197,8 +197,12 @@ impl ValidationWorker {
         zip_validator.validate_zip_package(&package_path).await?;
 
         // Extract ZIP to temporary directory for comprehensive validation
-        let temp_dir = tempfile::TempDir::new()
-            .map_err(|e| ServiceError::Io(std::io::Error::other(format!("Failed to create temp dir: {}", e))))?;
+        let temp_dir = tempfile::TempDir::new().map_err(|e| {
+            ServiceError::Io(std::io::Error::other(format!(
+                "Failed to create temp dir: {}",
+                e
+            )))
+        })?;
 
         Self::extract_zip_to_temp(&package_path, temp_dir.path())?;
 

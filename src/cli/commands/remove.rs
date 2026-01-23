@@ -145,15 +145,13 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
         }
 
         if skill_dir.exists() {
-            fs::remove_dir_all(&skill_dir)
-                .await
-                .map_err(|e| {
-                    CliError::Io(std::io::Error::other(format!(
-                        "Failed to delete skill directory {}: {}",
-                        skill_dir.display(),
-                        e
-                    )))
-                })?;
+            fs::remove_dir_all(&skill_dir).await.map_err(|e| {
+                CliError::Io(std::io::Error::other(format!(
+                    "Failed to delete skill directory {}: {}",
+                    skill_dir.display(),
+                    e
+                )))
+            })?;
         }
 
         // T029: Remove from skill-project.toml
