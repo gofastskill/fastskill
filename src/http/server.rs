@@ -535,8 +535,10 @@ impl FastSkillServer {
                 return Err(err_msg.into());
             }
 
-            let staging_dir =
-                config.staging_dir.clone().unwrap_or_else(|| PathBuf::from(".staging"));
+            let staging_dir = config
+                .staging_dir
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(".staging"));
 
             let staging_manager = StagingManager::new(staging_dir);
             staging_manager

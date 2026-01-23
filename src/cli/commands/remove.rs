@@ -107,7 +107,11 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
         let skill_id_parsed = fastskill::SkillId::new(skill_id.clone())
             .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
         // Try to unregister skill (don't fail if not found)
-        match service.skill_manager().unregister_skill(&skill_id_parsed).await {
+        match service
+            .skill_manager()
+            .unregister_skill(&skill_id_parsed)
+            .await
+        {
             Ok(_) => {}
             Err(fastskill::ServiceError::SkillNotFound(_)) => {
                 // Skill not in registry, but that's okay - we still want to clean up files
@@ -142,14 +146,11 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
 
         if skill_dir.exists() {
             fs::remove_dir_all(&skill_dir).await.map_err(|e| {
-                CliError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!(
-                        "Failed to delete skill directory {}: {}",
-                        skill_dir.display(),
-                        e
-                    ),
-                ))
+                CliError::Io(std::io::Error::other(format!(
+                    "Failed to delete skill directory {}: {}",
+                    skill_dir.display(),
+                    e
+                )))
             })?;
         }
 

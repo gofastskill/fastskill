@@ -57,7 +57,9 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
     ));
 
     // Determine skills directory
-    let skills_dir = args.skills_dir.unwrap_or_else(|| service.config().skill_storage_path.clone());
+    let skills_dir = args
+        .skills_dir
+        .unwrap_or_else(|| service.config().skill_storage_path.clone());
 
     info!(
         "Reindexing vector index for skills directory: {}",
@@ -166,12 +168,15 @@ async fn process_skill_file(
     let skill_dir = skill_file
         .parent()
         .ok_or_else(|| CliError::Config("Skill file has no parent directory".to_string()))?;
-    let skill_id = skill_dir.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
-        CliError::Validation(format!(
-            "Invalid skill directory name: {}",
-            skill_dir.display()
-        ))
-    })?;
+    let skill_id = skill_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| {
+            CliError::Validation(format!(
+                "Invalid skill directory name: {}",
+                skill_dir.display()
+            ))
+        })?;
 
     // Calculate file hash
     let file_hash = calculate_file_hash(&skill_file)?;
@@ -210,12 +215,15 @@ async fn process_skill_file(
     let embedding_text = format!("{}\n{}", frontmatter.name, frontmatter.description);
 
     // Generate embedding
-    let embedding = embedding_service.embed_text(&embedding_text).await.map_err(|e| {
-        CliError::Validation(format!(
-            "Failed to generate embedding for {}: {}",
-            skill_id, e
-        ))
-    })?;
+    let embedding = embedding_service
+        .embed_text(&embedding_text)
+        .await
+        .map_err(|e| {
+            CliError::Validation(format!(
+                "Failed to generate embedding for {}: {}",
+                skill_id, e
+            ))
+        })?;
 
     // Add/update in vector index
     vector_index_service

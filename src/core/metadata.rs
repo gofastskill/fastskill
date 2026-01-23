@@ -168,20 +168,28 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         .and_then(|v| serde_yaml::from_value(v).ok())
         .unwrap_or_else(|| "No description".to_string());
 
-    let version = frontmatter.remove("version").and_then(|v| serde_yaml::from_value(v).ok());
+    let version = frontmatter
+        .remove("version")
+        .and_then(|v| serde_yaml::from_value(v).ok());
 
-    let author = frontmatter.remove("author").and_then(|v| serde_yaml::from_value(v).ok());
+    let author = frontmatter
+        .remove("author")
+        .and_then(|v| serde_yaml::from_value(v).ok());
 
     Ok(SkillFrontmatter {
         name,
         description,
         version,
         author,
-        license: frontmatter.remove("license").and_then(|v| serde_yaml::from_value(v).ok()),
+        license: frontmatter
+            .remove("license")
+            .and_then(|v| serde_yaml::from_value(v).ok()),
         compatibility: frontmatter
             .remove("compatibility")
             .and_then(|v| serde_yaml::from_value(v).ok()),
-        metadata: frontmatter.remove("metadata").and_then(|v| serde_yaml::from_value(v).ok()),
+        metadata: frontmatter
+            .remove("metadata")
+            .and_then(|v| serde_yaml::from_value(v).ok()),
         allowed_tools: frontmatter
             .remove("allowed_tools")
             .and_then(|v| serde_yaml::from_value(v).ok()),

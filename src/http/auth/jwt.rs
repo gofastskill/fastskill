@@ -81,7 +81,10 @@ impl JwtService {
 
     /// Generate a development token (for local testing)
     pub fn generate_dev_token(&self, request: &TokenRequest) -> HttpResult<TokenResponse> {
-        let subject = request.username.clone().unwrap_or_else(|| "dev-user".to_string());
+        let subject = request
+            .username
+            .clone()
+            .unwrap_or_else(|| "dev-user".to_string());
         self.generate_token(&subject, &request.role)
     }
 }

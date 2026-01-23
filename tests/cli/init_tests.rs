@@ -2,12 +2,12 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
+use super::snapshot_helpers::{
+    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
+};
 use fastskill::core::manifest::SkillProjectToml;
 use std::fs;
 use tempfile::TempDir;
-use super::snapshot_helpers::{
-    run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
-};
 
 /// T037: Test fastskill init creating skill-project.toml with metadata
 #[test]
@@ -35,19 +35,26 @@ capabilities:
     .unwrap();
 
     // Run init command with --yes flag to skip prompts
-    let result = run_fastskill_command(&[
-        "init",
-        "--yes",
-        "--version",
-        "1.0.0",
-        "--description",
-        "A test skill",
-        "--author",
-        "Test Author",
-    ], Some(&skill_dir));
+    let result = run_fastskill_command(
+        &[
+            "init",
+            "--yes",
+            "--version",
+            "1.0.0",
+            "--description",
+            "A test skill",
+            "--author",
+            "Test Author",
+        ],
+        Some(&skill_dir),
+    );
 
     assert!(result.success, "init should succeed");
-    assert_snapshot_with_settings("init_with_metadata", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings(
+        "init_with_metadata",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 
     // Verify skill-project.toml was created
     let project_file = skill_dir.join("skill-project.toml");
