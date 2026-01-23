@@ -214,6 +214,7 @@ skills/
 *.zip
 temp_skills/
 extracted_skills/
+.fastskill/
 
 # Performance and profiling
 *.prof
