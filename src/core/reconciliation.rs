@@ -70,8 +70,10 @@ pub fn build_reconciliation_report(
     let mut version_mismatches = Vec::new();
 
     // Build map of installed skills by ID
-    let installed_map: HashMap<String, &SkillDefinition> =
-        installed_skills.iter().map(|s| (s.id.to_string(), s)).collect();
+    let installed_map: HashMap<String, &SkillDefinition> = installed_skills
+        .iter()
+        .map(|s| (s.id.to_string(), s))
+        .collect();
 
     // Check for missing dependencies (in project but not installed)
     for id in project_deps.keys() {

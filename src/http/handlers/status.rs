@@ -37,7 +37,10 @@ impl AppState {
     }
 
     pub fn uptime_seconds(&self) -> u64 {
-        SystemTime::now().duration_since(self.start_time).unwrap_or_default().as_secs()
+        SystemTime::now()
+            .duration_since(self.start_time)
+            .unwrap_or_default()
+            .as_secs()
     }
 }
 

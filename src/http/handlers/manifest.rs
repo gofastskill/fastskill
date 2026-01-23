@@ -99,9 +99,11 @@ pub async fn add_skill_to_manifest(
             })?;
 
     // Get source definition
-    let source_def = sources_manager.get_source(&request.source_name).ok_or_else(|| {
-        HttpError::NotFound(format!("Source '{}' not found", request.source_name))
-    })?;
+    let source_def = sources_manager
+        .get_source(&request.source_name)
+        .ok_or_else(|| {
+            HttpError::NotFound(format!("Source '{}' not found", request.source_name))
+        })?;
 
     // Create SkillSource from source definition and marketplace skill
     let skill_source = match &source_def.source {
@@ -244,9 +246,13 @@ pub async fn update_skill_in_manifest(
         .map_err(|e| HttpError::InternalServerError(format!("Failed to load manifest: {}", e)))?;
 
     // Find existing entry and update fields
-    let entry_data = manifest.skills.iter_mut().find(|s| s.id == skill_id).ok_or_else(|| {
-        HttpError::NotFound(format!("Skill '{}' not found in manifest", skill_id))
-    })?;
+    let entry_data = manifest
+        .skills
+        .iter_mut()
+        .find(|s| s.id == skill_id)
+        .ok_or_else(|| {
+            HttpError::NotFound(format!("Skill '{}' not found in manifest", skill_id))
+        })?;
 
     // Update fields
     if let Some(groups) = request.groups {
@@ -306,7 +312,10 @@ async fn find_skill_in_sources(
     skill_id: &str,
     source_name: &str,
 ) -> Option<MarketplaceSkill> {
-    let marketplace = sources_manager.get_marketplace_json(source_name).await.ok()?;
+    let marketplace = sources_manager
+        .get_marketplace_json(source_name)
+        .await
+        .ok()?;
     marketplace.skills.into_iter().find(|s| s.id == skill_id)
 }
 
@@ -321,7 +330,10 @@ async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error:
         .and_then(|p| p.parent())
         .unwrap_or_else(|| std::path::Path::new("."));
 
-    let output_file = workspace_root.join(".cursor").join("rules").join("skills.mdc");
+    let output_file = workspace_root
+        .join(".cursor")
+        .join("rules")
+        .join("skills.mdc");
 
     // Ensure output directory exists
     if let Some(parent) = output_file.parent() {

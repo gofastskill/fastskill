@@ -160,7 +160,11 @@ pub async fn list_skills(
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(50);
     let total = skills.len();
-    let paginated_skills = skills.into_iter().skip(offset).take(limit).collect::<Vec<_>>();
+    let paginated_skills = skills
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
     let count = paginated_skills.len();
 
     // Convert to response format

@@ -188,8 +188,9 @@ impl IndexManager {
             if let Some(prev_metadata) = file_metadata.get(&index_path) {
                 match std::fs::metadata(&index_path) {
                     Ok(current_metadata) => {
-                        let current_mtime =
-                            current_metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                        let current_mtime = current_metadata
+                            .modified()
+                            .unwrap_or(SystemTime::UNIX_EPOCH);
                         let current_size = current_metadata.len();
 
                         if current_mtime != prev_metadata.mtime
