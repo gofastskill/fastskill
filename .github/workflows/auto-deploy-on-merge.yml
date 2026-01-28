@@ -1,0 +1,20 @@
+name: Auto Deploy on Merge
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  trigger-deploy:
+    name: Trigger Deployment on Merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Trigger Release
+        run: |
+          echo "Pull request merged to main - triggering deployment..."
+          gh workflow run release.yml -f version=latest
