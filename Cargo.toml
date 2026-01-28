@@ -91,7 +91,7 @@ url = "2.5"
 tempfile = "3.0"
 
 # Directory utilities
-dirs = "5.0"
+dirs = "6.0"
 
 # Semantic versioning
 semver = "1.0"
