@@ -5,13 +5,8 @@ use fastskill::core::repository::{
 use std::path::PathBuf;
 
 pub async fn load_repo_manager() -> CliResult<RepositoryManager> {
-    let repos_path = crate::cli::config::get_repositories_toml_path()
-        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-    let mut repo_manager = RepositoryManager::new(repos_path);
-    repo_manager
-        .load()
-        .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
-    Ok(repo_manager)
+    let repositories = crate::cli::config::load_repositories_from_project()?;
+    Ok(RepositoryManager::from_definitions(repositories))
 }
 
 pub fn resolve_repository_name(

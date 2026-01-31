@@ -1,6 +1,9 @@
-//! Manifest (skills.toml) endpoint handlers
+//! Manifest (skill-project.toml) endpoint handlers
 
-use crate::core::manifest::{SkillEntry, SkillSource, SkillsManifest};
+use crate::core::manifest::{
+    DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
+};
+use crate::core::repository::RepositoryManager;
 use crate::core::sources::{MarketplaceSkill, SourcesManager};
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
@@ -9,160 +12,220 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Get sources manager from service config
-fn get_sources_manager(service: &crate::core::service::FastSkillService) -> SourcesManager {
-    let config = service.config();
-    // Sources config is typically in the parent directory of skills directory
-    let sources_config_path = config
-        .skill_storage_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join(".claude")
-        .join("repositories.toml");
+/// Get repositories from skill-project.toml
+fn get_repositories(
+    project: &SkillProjectToml,
+) -> Vec<crate::core::repository::RepositoryDefinition> {
+    use crate::core::repository::{
+        RepositoryAuth, RepositoryConfig, RepositoryDefinition, RepositoryType,
+    };
 
-    let mut manager = SourcesManager::new(sources_config_path);
-    let _ = manager.load(); // Try to load, ignore errors
-    manager
+    if let Some(tool) = &project.tool {
+        if let Some(fastskill_config) = &tool.fastskill {
+            if let Some(repos) = &fastskill_config.repositories {
+                return repos
+                    .iter()
+                    .map(|r| {
+                        let repo_type = match r.r#type {
+                            crate::core::manifest::RepositoryType::HttpRegistry => {
+                                RepositoryType::HttpRegistry
+                            }
+                            crate::core::manifest::RepositoryType::GitMarketplace => {
+                                RepositoryType::GitMarketplace
+                            }
+                            crate::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
+                            crate::core::manifest::RepositoryType::Local => RepositoryType::Local,
+                        };
+
+                        let config = match &r.connection {
+                            crate::core::manifest::RepositoryConnection::HttpRegistry {
+                                index_url,
+                            } => RepositoryConfig::HttpRegistry {
+                                index_url: index_url.clone(),
+                            },
+                            crate::core::manifest::RepositoryConnection::GitMarketplace {
+                                url,
+                                branch,
+                            } => RepositoryConfig::GitMarketplace {
+                                url: url.clone(),
+                                branch: branch.clone(),
+                                tag: None,
+                            },
+                            crate::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
+                                RepositoryConfig::ZipUrl {
+                                    base_url: zip_url.clone(),
+                                }
+                            }
+                            crate::core::manifest::RepositoryConnection::Local { path } => {
+                                RepositoryConfig::Local {
+                                    path: std::path::PathBuf::from(path),
+                                }
+                            }
+                        };
+
+                        let auth = r.auth.as_ref().map(|a| match a.r#type {
+                            crate::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
+                                env_var: a
+                                    .env_var
+                                    .clone()
+                                    .unwrap_or_else(|| "PAT_TOKEN".to_string()),
+                            },
+                        });
+
+                        RepositoryDefinition {
+                            name: r.name.clone(),
+                            repo_type,
+                            priority: r.priority,
+                            config,
+                            auth,
+                            storage: None,
+                        }
+                    })
+                    .collect();
+            }
+        }
+    }
+    Vec::new()
 }
 
-/// Get lock file path from manifest path
-fn get_lock_path(manifest_path: &std::path::Path) -> PathBuf {
-    if let Some(parent) = manifest_path.parent() {
+/// Get lock file path from project path
+fn get_lock_path(project_path: &std::path::Path) -> PathBuf {
+    if let Some(parent) = project_path.parent() {
         parent.join("skills.lock")
     } else {
         PathBuf::from("skills.lock")
     }
 }
 
-/// GET /api/manifest/skills - List all skills from skills.toml
+/// GET /api/manifest/skills - List all skills from skill-project.toml
 pub async fn list_manifest_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<Vec<ManifestSkillResponse>>>> {
-    let manifest_path = &state.skills_toml_path;
+    let project_path = &state.project_file_path;
 
-    // Load manifest
-    let manifest = if manifest_path.exists() {
-        SkillsManifest::load_from_file(manifest_path).map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load manifest: {}", e))
+    // Load project
+    let project = if project_path.exists() {
+        SkillProjectToml::load_from_file(project_path).map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
         })?
     } else {
-        // Return empty list if manifest doesn't exist
+        // Return empty list if project doesn't exist
         return Ok(Json(ApiResponse::success(Vec::new())));
     };
 
-    let skills: Vec<ManifestSkillResponse> = manifest
-        .get_all_skills()
-        .iter()
-        .map(|entry| {
-            let source_type = match &entry.source {
-                SkillSource::Git { .. } => "git",
-                SkillSource::Source { .. } => "source",
-                SkillSource::Local { .. } => "local",
-                SkillSource::ZipUrl { .. } => "zip-url",
-            };
+    let skills: Vec<ManifestSkillResponse> = project
+        .dependencies
+        .map(|deps| {
+            deps.dependencies
+                .iter()
+                .map(|(id, spec)| {
+                    let (version, source_type) = match spec {
+                        DependencySpec::Version(v) => (Some(v.clone()), "source"),
+                        DependencySpec::Inline {
+                            source,
+                            source_specific,
+                            ..
+                        } => {
+                            let stype = match source {
+                                DependencySource::Git => "git",
+                                DependencySource::Local => "local",
+                                DependencySource::ZipUrl => "zip-url",
+                                DependencySource::Source => "source",
+                            };
+                            (source_specific.version.clone(), stype)
+                        }
+                    };
 
-            ManifestSkillResponse {
-                id: entry.id.clone(),
-                version: entry.version.clone(),
-                groups: entry.groups.clone(),
-                editable: entry.editable,
-                source_type: source_type.to_string(),
-            }
+                    ManifestSkillResponse {
+                        id: id.clone(),
+                        version,
+                        groups: Vec::new(), // TODO: extract from inline spec
+                        editable: false,    // TODO: extract from inline spec
+                        source_type: source_type.to_string(),
+                    }
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
 
     Ok(Json(ApiResponse::success(skills)))
 }
 
-/// POST /api/manifest/skills - Add skill to skills.toml
+/// POST /api/manifest/skills - Add skill to skill-project.toml
 pub async fn add_skill_to_manifest(
     State(state): State<AppState>,
     Json(request): Json<AddSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
-    let manifest_path = &state.skills_toml_path;
-    let _lock_path = get_lock_path(manifest_path);
+    let project_path = &state.project_file_path;
+    let _lock_path = get_lock_path(project_path);
 
-    // Get sources manager to find skill information
-    let sources_manager = get_sources_manager(&state.service);
+    // Load project or create new
+    let mut project = if project_path.exists() {
+        SkillProjectToml::load_from_file(project_path).map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+        })?
+    } else {
+        // Ensure parent directory exists
+        if let Some(parent) = project_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                HttpError::InternalServerError(format!("Failed to create directory: {}", e))
+            })?;
+        }
+
+        SkillProjectToml {
+            metadata: None,
+            dependencies: Some(DependenciesSection {
+                dependencies: HashMap::new(),
+            }),
+            tool: None,
+        }
+    };
+
+    // Ensure dependencies section exists
+    if project.dependencies.is_none() {
+        project.dependencies = Some(DependenciesSection {
+            dependencies: HashMap::new(),
+        });
+    }
+
+    // Get repositories and create manager
+    let repositories = get_repositories(&project);
+    let repo_manager = RepositoryManager::from_definitions(repositories);
+
+    // Get sources manager for marketplace-based repositories
+    let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;
 
     // Find the skill in sources
-    let marketplace_skill =
-        find_skill_in_sources(&sources_manager, &request.skill_id, &request.source_name)
+    let marketplace_skill = if let Some(sources_mgr) = &sources_manager {
+        find_skill_in_sources(sources_mgr, &request.skill_id, &request.source_name)
             .await
             .ok_or_else(|| {
                 HttpError::NotFound(format!(
                     "Skill '{}' not found in source '{}'",
                     request.skill_id, request.source_name
                 ))
-            })?;
-
-    // Get source definition
-    let source_def = sources_manager
-        .get_source(&request.source_name)
-        .ok_or_else(|| {
-            HttpError::NotFound(format!("Source '{}' not found", request.source_name))
-        })?;
-
-    // Create SkillSource from source definition and marketplace skill
-    let skill_source = match &source_def.source {
-        crate::core::sources::SourceConfig::Git {
-            url, branch, tag, ..
-        } => SkillSource::Git {
-            url: url.clone(),
-            branch: branch.clone(),
-            tag: tag.clone(),
-            subdir: None,
-        },
-        crate::core::sources::SourceConfig::ZipUrl { base_url, .. } => SkillSource::ZipUrl {
-            base_url: base_url.clone(),
-            version: Some(marketplace_skill.version.clone()),
-        },
-        crate::core::sources::SourceConfig::Local { path } => SkillSource::Local {
-            path: path.clone(),
-            editable: request.editable.unwrap_or(false),
-        },
-    };
-
-    // Create skill entry
-    let skill_entry = SkillEntry {
-        id: request.skill_id.clone(),
-        source: skill_source,
-        version: Some(marketplace_skill.version.clone()),
-        groups: request.groups.unwrap_or_default(),
-        editable: request.editable.unwrap_or(false),
-    };
-
-    // Load or create manifest
-    let mut manifest = if manifest_path.exists() {
-        SkillsManifest::load_from_file(manifest_path).map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load manifest: {}", e))
-        })?
+            })?
     } else {
-        // Ensure parent directory exists
-        if let Some(parent) = manifest_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                HttpError::InternalServerError(format!("Failed to create directory: {}", e))
-            })?;
-        }
-
-        SkillsManifest {
-            metadata: crate::core::manifest::ManifestMetadata {
-                version: "1.0.0".to_string(),
-            },
-            skills: Vec::new(),
-        }
+        return Err(HttpError::NotFound(
+            "No marketplace sources configured".to_string(),
+        ));
     };
 
-    // Remove existing entry if present
-    manifest.remove_skill(&request.skill_id);
-    manifest.add_skill(skill_entry.clone());
+    // Create dependency spec - simple version for now
+    let dep_spec = DependencySpec::Version(marketplace_skill.version.clone());
 
-    // Save manifest
-    manifest
-        .save_to_file(manifest_path)
-        .map_err(|e| HttpError::InternalServerError(format!("Failed to save manifest: {}", e)))?;
+    // Add to dependencies
+    if let Some(ref mut deps) = project.dependencies {
+        deps.dependencies.insert(request.skill_id.clone(), dep_spec);
+    }
+
+    // Save project
+    project.save_to_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
+    })?;
 
     // Generate skills.mdc if enabled
     if state.auto_generate_mdc {
@@ -172,41 +235,42 @@ pub async fn add_skill_to_manifest(
     }
 
     let response = ManifestSkillResponse {
-        id: skill_entry.id,
-        version: skill_entry.version,
-        groups: skill_entry.groups,
-        editable: skill_entry.editable,
-        source_type: match skill_entry.source {
-            SkillSource::Git { .. } => "git",
-            SkillSource::Source { .. } => "source",
-            SkillSource::Local { .. } => "local",
-            SkillSource::ZipUrl { .. } => "zip-url",
-        }
-        .to_string(),
+        id: request.skill_id.clone(),
+        version: Some(marketplace_skill.version),
+        groups: request.groups.unwrap_or_default(),
+        editable: request.editable.unwrap_or(false),
+        source_type: "source".to_string(),
     };
 
     Ok(Json(ApiResponse::success(response)))
 }
 
-/// DELETE /api/manifest/skills/:id - Remove skill from skills.toml
+/// DELETE /api/manifest/skills/:id - Remove skill from skill-project.toml
 pub async fn remove_skill_from_manifest(
     Path(skill_id): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<()>>> {
-    let manifest_path = &state.skills_toml_path;
-    let lock_path = get_lock_path(manifest_path);
+    let project_path = &state.project_file_path;
+    let lock_path = get_lock_path(project_path);
 
-    if !manifest_path.exists() {
-        return Err(HttpError::NotFound("skills.toml not found".to_string()));
+    if !project_path.exists() {
+        return Err(HttpError::NotFound(
+            "skill-project.toml not found".to_string(),
+        ));
     }
 
-    // Remove from manifest
-    let mut manifest = SkillsManifest::load_from_file(manifest_path)
-        .map_err(|e| HttpError::InternalServerError(format!("Failed to load manifest: {}", e)))?;
-    manifest.remove_skill(&skill_id);
-    manifest
-        .save_to_file(manifest_path)
-        .map_err(|e| HttpError::InternalServerError(format!("Failed to save manifest: {}", e)))?;
+    // Remove from project
+    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    })?;
+
+    if let Some(ref mut deps) = project.dependencies {
+        deps.dependencies.remove(&skill_id);
+    }
+
+    project.save_to_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
+    })?;
 
     // Remove from lock file if it exists
     if lock_path.exists() {
@@ -230,60 +294,52 @@ pub async fn remove_skill_from_manifest(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// PUT /api/manifest/skills/:id - Update skill in skills.toml
+/// PUT /api/manifest/skills/:id - Update skill in skill-project.toml
 pub async fn update_skill_in_manifest(
     Path(skill_id): Path<String>,
     State(state): State<AppState>,
     Json(request): Json<UpdateSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
-    let manifest_path = &state.skills_toml_path;
+    let project_path = &state.project_file_path;
 
-    if !manifest_path.exists() {
-        return Err(HttpError::NotFound("skills.toml not found".to_string()));
+    if !project_path.exists() {
+        return Err(HttpError::NotFound(
+            "skill-project.toml not found".to_string(),
+        ));
     }
 
-    let mut manifest = SkillsManifest::load_from_file(manifest_path)
-        .map_err(|e| HttpError::InternalServerError(format!("Failed to load manifest: {}", e)))?;
+    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    })?;
 
-    // Find existing entry and update fields
-    let entry_data = manifest
-        .skills
-        .iter_mut()
-        .find(|s| s.id == skill_id)
-        .ok_or_else(|| {
-            HttpError::NotFound(format!("Skill '{}' not found in manifest", skill_id))
-        })?;
-
-    // Update fields
-    if let Some(groups) = request.groups {
-        entry_data.groups = groups;
-    }
-    if let Some(editable) = request.editable {
-        entry_data.editable = editable;
-    }
-    if let Some(version) = request.version {
-        entry_data.version = Some(version);
-    }
-
-    // Clone entry data before saving (to avoid borrow checker issues)
-    let response = ManifestSkillResponse {
-        id: entry_data.id.clone(),
-        version: entry_data.version.clone(),
-        groups: entry_data.groups.clone(),
-        editable: entry_data.editable,
-        source_type: match &entry_data.source {
-            SkillSource::Git { .. } => "git",
-            SkillSource::Source { .. } => "source",
-            SkillSource::Local { .. } => "local",
-            SkillSource::ZipUrl { .. } => "zip-url",
+    // Find and update dependency
+    let updated_version = if let Some(ref mut deps) = project.dependencies {
+        if let Some(dep_spec) = deps.dependencies.get_mut(&skill_id) {
+            // Update version if provided
+            if let Some(ref version) = request.version {
+                *dep_spec = DependencySpec::Version(version.clone());
+            }
+            match dep_spec {
+                DependencySpec::Version(v) => Some(v.clone()),
+                _ => None,
+            }
+        } else {
+            return Err(HttpError::NotFound(format!(
+                "Skill '{}' not found in project",
+                skill_id
+            )));
         }
-        .to_string(),
+    } else {
+        return Err(HttpError::NotFound(format!(
+            "Skill '{}' not found in project",
+            skill_id
+        )));
     };
 
-    // Save manifest
-    manifest
-        .save_to_file(manifest_path)
-        .map_err(|e| HttpError::InternalServerError(format!("Failed to save manifest: {}", e)))?;
+    // Save project
+    project.save_to_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
+    })?;
 
     // Generate skills.mdc if enabled
     if state.auto_generate_mdc {
@@ -291,6 +347,14 @@ pub async fn update_skill_in_manifest(
             tracing::warn!("Failed to generate skills.mdc: {}", e);
         }
     }
+
+    let response = ManifestSkillResponse {
+        id: skill_id,
+        version: request.version.or(updated_version),
+        groups: request.groups.unwrap_or_default(),
+        editable: request.editable.unwrap_or(false),
+        source_type: "source".to_string(),
+    };
 
     Ok(Json(ApiResponse::success(response)))
 }
@@ -304,6 +368,15 @@ pub async fn generate_mdc(
     })?;
 
     Ok(Json(ApiResponse::success(())))
+}
+
+/// Helper function to create sources manager from repository manager
+fn create_sources_manager_from_repositories(
+    _repo_manager: &RepositoryManager,
+) -> Result<Option<SourcesManager>, HttpError> {
+    // For now, create an empty sources manager - in future can be enhanced to convert repositories
+    // This is a simplified implementation
+    Ok(None)
 }
 
 /// Helper function to find skill in sources
@@ -323,9 +396,9 @@ async fn find_skill_in_sources(
 async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
     let skills_dir = state.service.config().skill_storage_path.clone();
 
-    // Find workspace root by walking up from skills.toml path
-    let manifest_path = &state.skills_toml_path;
-    let workspace_root = manifest_path
+    // Find workspace root by walking up from skill-project.toml path
+    let project_path = &state.project_file_path;
+    let workspace_root = project_path
         .parent()
         .and_then(|p| p.parent())
         .unwrap_or_else(|| std::path::Path::new("."));
