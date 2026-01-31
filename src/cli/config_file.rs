@@ -1,11 +1,12 @@
 //! Configuration file parsing for FastSkill CLI
 
 use crate::cli::error::{CliError, CliResult};
+use fastskill::core::manifest::SkillProjectToml;
+use fastskill::core::project;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// Embedding configuration from .fastskill.yaml
+/// Embedding configuration (runtime version)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingConfig {
     /// OpenAI API base URL
@@ -17,7 +18,7 @@ pub struct EmbeddingConfig {
     pub index_path: Option<PathBuf>,
 }
 
-/// Main configuration structure for .fastskill.yaml
+/// Main configuration structure loaded from skill-project.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FastSkillConfig {
     /// Embedding service configuration
@@ -28,98 +29,50 @@ pub struct FastSkillConfig {
     pub skills_directory: Option<PathBuf>,
 }
 
-/// Load configuration from .fastskill/config.yaml file
-/// T069: Updated to use .fastskill/config.yaml as primary location
-/// Priority: .fastskill/config.yaml (walk up) -> .fastskill.yaml (walk up) -> user home config directory
+/// Load configuration from skill-project.toml [tool.fastskill] section
 pub fn load_config() -> CliResult<Option<FastSkillConfig>> {
-    // T069: Try .fastskill/config.yaml first (walking up directory tree)
-    if let Some(found_config) = walk_up_for_config_dir() {
-        if let Ok(config) = load_config_from_path(&found_config) {
-            return Ok(Some(config));
-        }
-    }
+    let current_dir = std::env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Fallback: Try .fastskill.yaml (walking up directory tree) for backward compatibility
-    if let Some(found_config) = walk_up_for_config() {
-        if let Ok(config) = load_config_from_path(&found_config) {
-            return Ok(Some(config));
-        }
-    }
-
-    // Try user home config directory
-    if let Some(home_dir) = dirs::home_dir() {
-        let home_config = home_dir.join(".fastskill").join("config.yaml");
-        if let Ok(config) = load_config_from_path(&home_config) {
-            return Ok(Some(config));
-        }
-    }
-
-    // No configuration found
-    Ok(None)
+    load_config_from_skill_project(&current_dir)
 }
 
-/// Walk up the directory tree searching for `.fastskill/config.yaml` file
-/// T069: Primary location for configuration
-fn walk_up_for_config_dir() -> Option<PathBuf> {
-    let current_dir = std::env::current_dir().ok()?;
-    let mut current = current_dir;
-
-    loop {
-        let config_file = current.join(".fastskill").join("config.yaml");
-        if config_file.is_file() {
-            return Some(config_file);
-        }
-
-        // Check if we've reached the filesystem root
-        if !current.pop() {
-            break;
-        }
+/// Load configuration from skill-project.toml in current directory or parent directories
+pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<FastSkillConfig>> {
+    // Try to find skill-project.toml walking up the directory tree
+    let project_file = project::resolve_project_file(current_dir);
+    if !project_file.found {
+        return Ok(None); // No skill-project.toml found
     }
 
-    None
-}
-
-/// Walk up the directory tree searching for `.fastskill.yaml` file
-/// Kept for backward compatibility
-fn walk_up_for_config() -> Option<PathBuf> {
-    let current_dir = std::env::current_dir().ok()?;
-    let mut current = current_dir;
-
-    loop {
-        let config_file = current.join(".fastskill.yaml");
-        if config_file.is_file() {
-            return Some(config_file);
-        }
-
-        // Check if we've reached the filesystem root
-        if !current.pop() {
-            break;
-        }
-    }
-
-    None
-}
-
-/// Load configuration from a specific file path
-fn load_config_from_path<P: AsRef<std::path::Path>>(path: P) -> CliResult<FastSkillConfig> {
-    let path = path.as_ref();
-    let contents = fs::read_to_string(path).map_err(|e| {
+    let project_path = project_file.path;
+    let project = SkillProjectToml::load_from_file(&project_path).map_err(|e| {
         CliError::Config(format!(
-            "Failed to read config file {}: {}",
-            path.display(),
+            "Failed to load skill-project.toml from {}: {}",
+            project_path.display(),
             e
         ))
     })?;
 
-    let config: FastSkillConfig = serde_yaml::from_str(&contents).map_err(|e| {
-        CliError::Config(format!(
-            "Failed to parse config file {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    // Extract [tool.fastskill] configuration
+    let tool_config = project.tool.and_then(|t| t.fastskill);
 
-    Ok(config)
+    if let Some(config) = tool_config {
+        // Convert EmbeddingConfigToml to EmbeddingConfig
+        let embedding = config.embedding.map(|e| EmbeddingConfig {
+            openai_base_url: e.openai_base_url,
+            embedding_model: e.embedding_model,
+            index_path: e.index_path,
+        });
+
+        Ok(Some(FastSkillConfig {
+            embedding,
+            skills_directory: config.skills_directory,
+        }))
+    } else {
+        // skill-project.toml exists but no [tool.fastskill] section
+        Ok(None)
+    }
 }
 
 /// Get OpenAI API key from environment
@@ -129,42 +82,20 @@ pub fn get_openai_api_key() -> CliResult<String> {
 }
 
 /// Get all searched configuration paths for error reporting
-/// T069: Updated to include .fastskill/config.yaml paths
 pub fn get_config_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
-    // T069: Walk up directory tree for .fastskill/config.yaml (primary location)
+    // Walk up directory tree for skill-project.toml
     if let Ok(current_dir) = std::env::current_dir() {
         let mut current = current_dir;
         loop {
-            let config_file = current.join(".fastskill").join("config.yaml");
-            paths.push(config_file);
+            let project_file = current.join("skill-project.toml");
+            paths.push(project_file);
 
             if !current.pop() {
                 break;
             }
         }
-    }
-
-    // Walk up directory tree for .fastskill.yaml (backward compatibility)
-    if let Ok(current_dir) = std::env::current_dir() {
-        let mut current = current_dir;
-        loop {
-            let config_file = current.join(".fastskill.yaml");
-            if config_file.as_path() != std::path::Path::new(".fastskill.yaml") {
-                paths.push(config_file);
-            }
-
-            if !current.pop() {
-                break;
-            }
-        }
-    }
-
-    // User home config directory
-    if let Some(home_dir) = dirs::home_dir() {
-        let home_config = home_dir.join(".fastskill").join("config.yaml");
-        paths.push(home_config);
     }
 
     paths
