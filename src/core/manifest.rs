@@ -259,9 +259,21 @@ pub struct FastSkillToolConfig {
     /// Optional skills storage directory override
     #[serde(default)]
     pub skills_directory: Option<PathBuf>,
+    /// Optional embedding configuration
+    #[serde(default)]
+    pub embedding: Option<EmbeddingConfigToml>,
     /// Optional repository configuration
     #[serde(default)]
     pub repositories: Option<Vec<RepositoryDefinition>>,
+}
+
+/// Embedding configuration in TOML format
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfigToml {
+    pub openai_base_url: String,
+    pub embedding_model: String,
+    #[serde(default)]
+    pub index_path: Option<PathBuf>,
 }
 
 /// Repository definition with name, type, priority, authentication, and connection details

@@ -12,7 +12,7 @@ use std::time::SystemTime;
 pub struct AppState {
     pub service: Arc<FastSkillService>,
     pub start_time: SystemTime,
-    pub skills_toml_path: std::path::PathBuf,
+    pub project_file_path: std::path::PathBuf,
     pub auto_generate_mdc: bool,
 }
 
@@ -21,13 +21,13 @@ impl AppState {
         Self {
             service,
             start_time: SystemTime::now(),
-            skills_toml_path: std::path::PathBuf::from(".claude/skills.toml"),
+            project_file_path: std::path::PathBuf::from("skill-project.toml"),
             auto_generate_mdc: false,
         }
     }
 
-    pub fn with_skills_toml_path(mut self, path: std::path::PathBuf) -> Self {
-        self.skills_toml_path = path;
+    pub fn with_project_file_path(mut self, path: std::path::PathBuf) -> Self {
+        self.project_file_path = path;
         self
     }
 

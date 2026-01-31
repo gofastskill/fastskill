@@ -21,30 +21,18 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::{compression::CompressionLayer, services::ServeDir, trace::TraceLayer};
 use tracing::{info, warn};
 
-/// Resolve skills.toml path (similar to CLI config resolution)
-fn resolve_skills_toml_path() -> PathBuf {
-    // Priority 1: Environment variable
-    if let Ok(env_path) = env::var("FASTSKILL_SKILLS_TOML_PATH") {
-        return PathBuf::from(env_path);
-    }
-
-    // Priority 2: Walk up directory tree to find .claude/skills.toml
+/// Resolve skill-project.toml path (similar to CLI config resolution)
+fn resolve_project_file_path() -> PathBuf {
+    // Walk up directory tree to find skill-project.toml
     if let Ok(current_dir) = env::current_dir() {
-        let mut current = current_dir.clone();
-        loop {
-            let skills_toml = current.join(".claude/skills.toml");
-            if skills_toml.is_file() {
-                return skills_toml.canonicalize().unwrap_or(skills_toml);
-            }
-
-            if !current.pop() {
-                break;
-            }
+        let project_file = crate::core::project::resolve_project_file(&current_dir);
+        if project_file.found {
+            return project_file.path;
         }
     }
 
-    // Priority 3: Default to current directory
-    PathBuf::from(".claude/skills.toml")
+    // Default to current directory
+    PathBuf::from("skill-project.toml")
 }
 
 /// Validate registry configuration and return detailed error message if invalid
@@ -344,12 +332,11 @@ impl FastSkillServer {
 
     /// Create the Axum router with all routes
     fn create_router(&self) -> Result<Router, Box<dyn std::error::Error>> {
-        // Resolve skills.toml path
-        // Try to use the config module if available, otherwise default
-        let skills_toml_path = resolve_skills_toml_path();
+        // Resolve skill-project.toml path
+        let project_file_path = resolve_project_file_path();
 
         let state = AppState::new(self.service.clone())
-            .with_skills_toml_path(skills_toml_path)
+            .with_project_file_path(project_file_path)
             .with_auto_generate_mdc(self.auto_generate_mdc);
 
         let mut router = Router::new()

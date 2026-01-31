@@ -130,12 +130,8 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     };
 
     // Load repositories and create sources manager for marketplace-based repos
-    let repos_path = crate::cli::config::get_repositories_toml_path()
-        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-    let mut repo_manager = RepositoryManager::new(repos_path);
-    repo_manager
-        .load()
-        .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+    let repositories = crate::cli::config::load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver
     let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;
@@ -188,12 +184,8 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     service.initialize().await.map_err(CliError::Service)?;
 
     // Load repositories and create sources manager for marketplace-based repos
-    let repos_path = crate::cli::config::get_repositories_toml_path()
-        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-    let mut repo_manager = RepositoryManager::new(repos_path);
-    repo_manager
-        .load()
-        .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+    let repositories = crate::cli::config::load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver
     let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;

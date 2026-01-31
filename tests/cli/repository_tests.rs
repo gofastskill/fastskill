@@ -80,6 +80,7 @@ web-scraper = "1.0.0"
         .get_or_insert_with(|| ToolSection { fastskill: None });
     let fastskill_config = tool.fastskill.get_or_insert_with(|| FastSkillToolConfig {
         skills_directory: None,
+        embedding: None,
         repositories: Some(Vec::new()),
     });
     let repos = fastskill_config.repositories.get_or_insert_with(Vec::new);

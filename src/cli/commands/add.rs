@@ -543,13 +543,9 @@ async fn add_from_registry(
         )));
     };
 
-    // Load repository configuration from repositories.toml (searches up directory tree)
-    let repos_path = crate::cli::config::get_repositories_toml_path()
-        .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-    let mut repo_manager = RepositoryManager::new(repos_path);
-    repo_manager
-        .load()
-        .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+    // Load repository configuration from skill-project.toml [tool.fastskill.repositories]
+    let repositories = crate::cli::config::load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Get default repository (prefer http-registry type, fallback to any)
     let default_repo = repo_manager.get_default_repository().ok_or_else(|| {

@@ -87,21 +87,13 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
             }
         }
 
-        // Fall back to old repositories.toml path
-        let repos_path = crate::cli::config::get_repositories_toml_path()
-            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-        let mut rm = RepositoryManager::new(repos_path);
-        rm.load()
-            .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
-        rm
+        // Load from skill-project.toml [tool.fastskill.repositories]
+        let repositories = crate::cli::config::load_repositories_from_project()?;
+        RepositoryManager::from_definitions(repositories)
     } else {
-        // No skill-project.toml, use old repositories.toml
-        let repos_path = crate::cli::config::get_repositories_toml_path()
-            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-        let mut rm = RepositoryManager::new(repos_path);
-        rm.load()
-            .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
-        rm
+        // No skill-project.toml, load from skill-project.toml if available
+        let repositories = crate::cli::config::load_repositories_from_project()?;
+        RepositoryManager::from_definitions(repositories)
     };
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver

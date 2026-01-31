@@ -186,11 +186,37 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     let skill_project = SkillProjectToml {
         metadata,
         dependencies,
-        tool: None,
+        tool: None, // Will be added as comments below
     };
 
+    // Save to file first with basic structure
     skill_project
         .save_to_file(skill_project_path)
+        .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+
+    // Append commented [tool.fastskill] section as examples
+    let tool_section_comment = r#"
+# Optional: FastSkill configuration
+# Uncomment and configure as needed
+
+# [tool.fastskill]
+# skills_directory = ".claude/skills"
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
+"#;
+
+    let mut content = fs::read_to_string(skill_project_path)
+        .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
+    content.push_str(tool_section_comment);
+    fs::write(skill_project_path, content)
         .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
 
     // T058: Validate context after creation

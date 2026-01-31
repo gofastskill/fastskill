@@ -52,13 +52,9 @@ pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
 
     // Determine target (API URL or local path)
     let target = if let Some(registry_name) = &args.registry {
-        // Load from repositories.toml (searches up directory tree)
-        let repos_path = crate::cli::config::get_repositories_toml_path()
-            .map_err(|e| CliError::Config(format!("Failed to find repositories.toml: {}", e)))?;
-        let mut repo_manager = RepositoryManager::new(repos_path);
-        repo_manager
-            .load()
-            .map_err(|e| CliError::Config(format!("Failed to load repositories: {}", e)))?;
+        // Load from skill-project.toml [tool.fastskill.repositories]
+        let repositories = crate::cli::config::load_repositories_from_project()?;
+        let repo_manager = RepositoryManager::from_definitions(repositories);
 
         let repo = repo_manager.get_repository(registry_name).ok_or_else(|| {
             CliError::Config(format!(

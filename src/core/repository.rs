@@ -128,6 +128,24 @@ impl RepositoryManager {
         }
     }
 
+    /// Create a repository manager from a list of repository definitions
+    /// Used when loading from skill-project.toml instead of repositories.toml
+    pub fn from_definitions(definitions: Vec<RepositoryDefinition>) -> Self {
+        let mut repo_map: HashMap<String, RepositoryDefinition> = HashMap::new();
+        let mut sorted_repos = definitions;
+        sorted_repos.sort_by_key(|r| r.priority);
+
+        for repo in sorted_repos {
+            repo_map.entry(repo.name.clone()).or_insert(repo);
+        }
+
+        Self {
+            config_path: PathBuf::new(), // Not used when loading from definitions
+            repositories: repo_map,
+            clients: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
     /// Load repositories from TOML file
     /// Loads from repositories.toml only
     pub fn load(&mut self) -> Result<(), ServiceError> {
