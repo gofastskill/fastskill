@@ -1,57 +1,13 @@
 //! Configuration and skills directory resolution for CLI
 
 use crate::cli::error::{CliError, CliResult};
+use fastskill::core::manifest::SkillProjectToml;
+use fastskill::core::project;
+use fastskill::core::repository::RepositoryDefinition;
 use fastskill::{core::BlobStorageConfig, ServiceConfig};
 use std::env;
 use std::path::{Path, PathBuf};
 use tracing::debug;
-
-/// Get skills.toml path with priority:
-/// 1. FASTSKILL_SKILLS_TOML_PATH environment variable
-/// 2. Walk up directory tree to find .claude/skills.toml
-/// 3. Default to .claude/skills.toml in current directory
-#[allow(dead_code)]
-pub fn get_skills_toml_path() -> CliResult<PathBuf> {
-    // Priority 1: Environment variable
-    if let Ok(env_path) = env::var("FASTSKILL_SKILLS_TOML_PATH") {
-        return Ok(PathBuf::from(env_path));
-    }
-
-    // Priority 2: Walk up directory tree to find .claude/skills.toml
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-
-    if let Some(found_path) = walk_up_for_skills_toml(current_dir.as_path()) {
-        debug!(
-            "Found .claude/skills.toml by walking up: {}",
-            found_path.display()
-        );
-        return Ok(found_path);
-    }
-
-    // Priority 3: Default to current directory (but don't create it)
-    Ok(PathBuf::from(".claude/skills.toml"))
-}
-
-/// Walk up the directory tree searching for existing .claude/skills.toml file
-#[allow(dead_code)]
-fn walk_up_for_skills_toml(start_path: &Path) -> Option<PathBuf> {
-    let mut current = start_path.to_path_buf();
-
-    loop {
-        let skills_toml = current.join(".claude/skills.toml");
-        if skills_toml.is_file() {
-            return Some(skills_toml.canonicalize().unwrap_or(skills_toml));
-        }
-
-        // Check if we've reached the filesystem root
-        if !current.pop() {
-            break;
-        }
-    }
-
-    None
-}
 
 /// Walk up the directory tree searching for existing .claude/skills/ folder
 fn walk_up_for_skills_dir(start_path: &Path) -> Option<PathBuf> {
@@ -72,95 +28,143 @@ fn walk_up_for_skills_dir(start_path: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Get repositories.toml path with priority:
-/// 1. Walk up directory tree to find .claude/repositories.toml
-/// 2. Default to .claude/repositories.toml in current directory
-pub fn get_repositories_toml_path() -> CliResult<PathBuf> {
-    // Priority 1: Walk up directory tree to find .claude/repositories.toml
+/// Load repositories from skill-project.toml [tool.fastskill.repositories]
+/// Returns empty vector if skill-project.toml not found or no repositories configured
+pub fn load_repositories_from_project() -> CliResult<Vec<RepositoryDefinition>> {
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    if let Some(found_path) = walk_up_for_repositories_toml(current_dir.as_path()) {
-        debug!(
-            "Found .claude/repositories.toml by walking up: {}",
-            found_path.display()
-        );
-        return Ok(found_path);
+    // Try to find skill-project.toml
+    let project_file = project::resolve_project_file(&current_dir);
+    if !project_file.found {
+        return Ok(Vec::new()); // No skill-project.toml found
     }
+    let project_path = project_file.path;
 
-    // Priority 2: Default to current directory (but don't create it)
-    Ok(PathBuf::from(".claude/repositories.toml"))
+    let project = SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+        CliError::Config(format!(
+            "Failed to load skill-project.toml from {}: {}",
+            project_path.display(),
+            e
+        ))
+    })?;
+
+    // Extract repositories from [tool.fastskill]
+    let repositories = project
+        .tool
+        .and_then(|t| t.fastskill)
+        .and_then(|f| f.repositories)
+        .unwrap_or_default();
+
+    // Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
+    let converted_repos = repositories
+        .into_iter()
+        .map(convert_repository_definition)
+        .collect();
+    Ok(converted_repos)
 }
 
-/// Walk up the directory tree searching for existing .claude/repositories.toml file
-fn walk_up_for_repositories_toml(start_path: &Path) -> Option<PathBuf> {
-    let mut current = start_path.to_path_buf();
+/// Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
+/// These are different types because they're in different modules with slightly different structures
+pub fn convert_repository_definition(
+    manifest_repo: fastskill::core::manifest::RepositoryDefinition,
+) -> RepositoryDefinition {
+    use fastskill::core::repository::{RepositoryAuth, RepositoryConfig, RepositoryType};
 
-    loop {
-        let repositories_toml = current.join(".claude/repositories.toml");
-        if repositories_toml.is_file() {
-            return Some(
-                repositories_toml
-                    .canonicalize()
-                    .unwrap_or(repositories_toml),
-            );
-        }
+    // Convert repository type
+    let repo_type = match manifest_repo.r#type {
+        fastskill::core::manifest::RepositoryType::HttpRegistry => RepositoryType::HttpRegistry,
+        fastskill::core::manifest::RepositoryType::GitMarketplace => RepositoryType::GitMarketplace,
+        fastskill::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
+        fastskill::core::manifest::RepositoryType::Local => RepositoryType::Local,
+    };
 
-        // Check if we've reached the filesystem root
-        if !current.pop() {
-            break;
+    // Convert connection to config
+    let config = match manifest_repo.connection {
+        fastskill::core::manifest::RepositoryConnection::HttpRegistry { index_url } => {
+            RepositoryConfig::HttpRegistry { index_url }
         }
+        fastskill::core::manifest::RepositoryConnection::GitMarketplace { url, branch } => {
+            RepositoryConfig::GitMarketplace {
+                url,
+                branch,
+                tag: None,
+            }
+        }
+        fastskill::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
+            RepositoryConfig::ZipUrl { base_url: zip_url }
+        }
+        fastskill::core::manifest::RepositoryConnection::Local { path } => {
+            RepositoryConfig::Local {
+                path: PathBuf::from(path),
+            }
+        }
+    };
+
+    // Convert auth
+    let auth = manifest_repo.auth.map(|a| match a.r#type {
+        fastskill::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
+            env_var: a.env_var.unwrap_or_else(|| "PAT_TOKEN".to_string()),
+        },
+    });
+
+    RepositoryDefinition {
+        name: manifest_repo.name,
+        repo_type,
+        priority: manifest_repo.priority,
+        config,
+        auth,
+        storage: None, // Not used in manifest format
     }
-
-    None
 }
 
 /// Resolve skills storage directory
 /// Priority:
-/// 1. skills_directory from .fastskill.yaml (if exists)
+/// 1. skills_directory from skill-project.toml [tool.fastskill] (if exists)
 /// 2. Walk up directory tree to find existing .claude/skills/
-/// 3. Default to .claude/skills/ in current directory (but don't auto-create)
+/// 3. Default to .claude/skills/ in current directory
 pub fn resolve_skills_storage_directory() -> CliResult<PathBuf> {
-    // Load configuration from file if available
-    let config_file = crate::cli::config_file::load_config()?;
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Priority 1: Check if skills_directory is configured in .fastskill.yaml
-    if let Some(config) = &config_file {
-        if let Some(skills_dir) = &config.skills_directory {
-            let path = if skills_dir.is_absolute() {
-                skills_dir.clone()
-            } else {
-                // Resolve relative to current directory
-                env::current_dir()
-                    .map_err(|e| {
-                        CliError::Config(format!("Failed to get current directory: {}", e))
-                    })?
-                    .join(skills_dir)
-            };
+    // Priority 1: Check if skills_directory is configured in skill-project.toml [tool.fastskill]
+    let project_file = project::resolve_project_file(&current_dir);
+    if project_file.found {
+        let project_path = project_file.path;
+        if let Ok(project) = SkillProjectToml::load_from_file(&project_path) {
+            if let Some(tool_config) = project.tool.and_then(|t| t.fastskill) {
+                if let Some(skills_dir) = tool_config.skills_directory {
+                    let path = if skills_dir.is_absolute() {
+                        skills_dir.clone()
+                    } else {
+                        // Resolve relative to skill-project.toml location
+                        project_path
+                            .parent()
+                            .unwrap_or(&current_dir)
+                            .join(&skills_dir)
+                    };
 
-            // If the directory exists, use it
-            if path.is_dir() {
-                debug!(
-                    "Using skills_directory from .fastskill.yaml: {}",
-                    path.display()
-                );
-                return Ok(path.canonicalize().unwrap_or(path));
+                    // If the directory exists, use it
+                    if path.is_dir() {
+                        debug!(
+                            "Using skills_directory from skill-project.toml: {}",
+                            path.display()
+                        );
+                        return Ok(path.canonicalize().unwrap_or(path));
+                    }
+
+                    // If it doesn't exist but is explicitly configured, still return it
+                    debug!(
+                        "Using configured skills_directory (may not exist yet): {}",
+                        path.display()
+                    );
+                    return Ok(path);
+                }
             }
-
-            // If it doesn't exist but is explicitly configured, still return it
-            // (caller will handle creation if needed)
-            debug!(
-                "Using configured skills_directory (may not exist yet): {}",
-                path.display()
-            );
-            return Ok(path);
         }
     }
 
     // Priority 2: Walk up directory tree to find existing .claude/skills/
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-
     if let Some(found_dir) = walk_up_for_skills_dir(current_dir.as_path()) {
         debug!(
             "Found .claude/skills by walking up: {}",
@@ -169,7 +173,7 @@ pub fn resolve_skills_storage_directory() -> CliResult<PathBuf> {
         return Ok(found_dir);
     }
 
-    // Priority 3: Default to .claude/skills/ in current directory (but don't auto-create)
+    // Priority 3: Default to .claude/skills/ in current directory
     let default_dir = current_dir.join(".claude/skills");
     debug!("Using default skills directory: {}", default_dir.display());
     Ok(default_dir)
@@ -180,7 +184,7 @@ pub fn create_service_config(
     _skills_dir_override: Option<PathBuf>,
     _sources_path_override: Option<PathBuf>,
 ) -> CliResult<ServiceConfig> {
-    // Resolve skills storage directory from .fastskill.yaml or default location
+    // Resolve skills storage directory from skill-project.toml or default location
     let resolved_dir = resolve_skills_storage_directory()?;
 
     // Load configuration from file if available
