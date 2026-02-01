@@ -78,53 +78,53 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
     Ok(())
 }
 
-/// Resolve skills-project.toml path
+/// Resolve skill-project.toml path
 fn resolve_project_file(skills_dir: &Path) -> PathBuf {
-    // Try .claude/skills-project.toml first (common location)
+    // Try .claude/skill-project.toml first (common location)
     if let Some(parent) = skills_dir.parent() {
-        let project_file = parent.join("skills-project.toml");
+        let project_file = parent.join("skill-project.toml");
         if project_file.exists() {
             return project_file;
         }
     }
 
     // Try current directory
-    let project_file = PathBuf::from("skills-project.toml");
+    let project_file = PathBuf::from("skill-project.toml");
     if project_file.exists() {
         return project_file;
     }
 
-    // Default to .claude/skills-project.toml
+    // Default to .claude/skill-project.toml
     skills_dir
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join("skills-project.toml")
+        .join("skill-project.toml")
 }
 
-/// Resolve skills-lock.toml path
+/// Resolve skills.lock path
 fn resolve_lock_file(skills_dir: &Path) -> PathBuf {
-    // Try .claude/skills-lock.toml first (common location)
+    // Try .claude/skills.lock first (common location)
     if let Some(parent) = skills_dir.parent() {
-        let lock_file = parent.join("skills-lock.toml");
+        let lock_file = parent.join("skills.lock");
         if lock_file.exists() {
             return lock_file;
         }
     }
 
     // Try current directory
-    let lock_file = PathBuf::from("skills-lock.toml");
+    let lock_file = PathBuf::from("skills.lock");
     if lock_file.exists() {
         return lock_file;
     }
 
-    // Default to .claude/skills-lock.toml
+    // Default to .claude/skills.lock
     skills_dir
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join("skills-lock.toml")
+        .join("skills.lock")
 }
 
-/// Load dependencies from skills-project.toml
+/// Load dependencies from skill-project.toml
 fn load_project_file(path: &Path) -> Result<HashMap<String, Option<String>>, CliError> {
     if !path.exists() {
         return Ok(HashMap::new());
@@ -149,7 +149,7 @@ fn load_project_file(path: &Path) -> Result<HashMap<String, Option<String>>, Cli
     Ok(deps)
 }
 
-/// Load locked versions from skills-lock.toml
+/// Load locked versions from skills.lock
 fn load_lock_file(path: &Path) -> Result<HashMap<String, String>, CliError> {
     if !path.exists() {
         return Ok(HashMap::new());
@@ -241,7 +241,7 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
     if !report.missing.is_empty() {
         println!(
             "\n{}",
-            messages::warning("Missing Dependencies (in skills-project.toml but not installed):")
+            messages::warning("Missing Dependencies (in skill-project.toml but not installed):")
         );
         for entry in &report.missing {
             println!("  • {} (not installed)", entry.id);
@@ -252,7 +252,7 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
     if !report.extraneous.is_empty() {
         println!(
             "\n{}",
-            messages::warning("Extraneous Packages (installed but not in skills-project.toml):")
+            messages::warning("Extraneous Packages (installed but not in skill-project.toml):")
         );
         for skill in &report.extraneous {
             println!("  • {} v{}", skill.id, skill.version);
@@ -263,9 +263,7 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
     if !report.version_mismatches.is_empty() {
         println!(
             "\n{}",
-            messages::warning(
-                "Version Mismatches (installed version differs from skills-lock.toml):"
-            )
+            messages::warning("Version Mismatches (installed version differs from skills.lock):")
         );
         for mismatch in &report.version_mismatches {
             println!(
