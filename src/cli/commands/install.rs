@@ -30,7 +30,7 @@ pub struct InstallArgs {
     #[arg(long)]
     only: Option<Vec<String>>,
 
-    /// Use skills-lock.toml instead of skills.toml
+    /// Install from skills.lock (exact versions) instead of resolving from skill-project.toml
     #[arg(long)]
     lock: bool,
 }

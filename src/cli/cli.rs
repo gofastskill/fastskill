@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::cli::commands::{
     add, auth, disable, init, install, list, package, publish, read, registry, reindex, remove,
-    search, serve, show, update, version, Commands,
+    search, serve, show, sources, update, version, Commands,
 };
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -87,6 +87,10 @@ impl Cli {
             return registry::execute_registry(args).await;
         }
 
+        if let Some(Commands::Sources(args)) = self.command {
+            return sources::execute_sources(args).await;
+        }
+
         if let Some(Commands::Auth(args)) = self.command {
             return auth::execute_auth(args).await;
         }
@@ -128,6 +132,7 @@ impl Cli {
             | Some(Commands::Package(_))
             | Some(Commands::Publish(_))
             | Some(Commands::Registry(_))
+            | Some(Commands::Sources(_))
             | Some(Commands::Auth(_))
             | Some(Commands::Version(_)) => unreachable!("Handled above"),
             None => {
