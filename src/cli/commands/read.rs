@@ -1,4 +1,7 @@
 //! Read command - streams skill documentation to stdout
+//!
+//! Reads and outputs the full SKILL.md content. For metadata only (name, version, description),
+//! use `show`.
 
 use crate::cli::error::{CliError, CliResult};
 use clap::Args;

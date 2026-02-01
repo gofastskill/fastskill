@@ -190,6 +190,7 @@ pub async fn execute_versions(skill_id: String, repository: Option<String>) -> C
     }
 }
 
+/// Search skills in registry catalog (remote repository metadata search)
 pub async fn execute_search(query: String, repository: Option<String>) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
 

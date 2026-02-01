@@ -2,10 +2,22 @@ use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
 use std::path::PathBuf;
 
+#[allow(dead_code)] // Used by legacy registry command paths if needed
 pub async fn execute_list() -> CliResult<()> {
+    execute_list_with_json(false).await
+}
+
+pub async fn execute_list_with_json(json: bool) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
     let repos = repo_manager.list_repositories();
-    println!("{}", super::formatters::format_repository_list(&repos));
+
+    if json {
+        let json_output = serde_json::to_string_pretty(&repos)
+            .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
+        println!("{}", json_output);
+    } else {
+        println!("{}", super::formatters::format_repository_list(&repos));
+    }
     Ok(())
 }
 
@@ -63,14 +75,25 @@ pub async fn execute_remove(name: String) -> CliResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)] // Used by legacy registry command paths if needed
 pub async fn execute_show(name: String) -> CliResult<()> {
+    execute_show_with_json(name, false).await
+}
+
+pub async fn execute_show_with_json(name: String, json: bool) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
 
     let repo = repo_manager
         .get_repository(&name)
         .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?;
 
-    println!("{}", super::formatters::format_repository_details(repo));
+    if json {
+        let json_output = serde_json::to_string_pretty(&repo)
+            .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
+        println!("{}", json_output);
+    } else {
+        println!("{}", super::formatters::format_repository_details(repo));
+    }
 
     Ok(())
 }

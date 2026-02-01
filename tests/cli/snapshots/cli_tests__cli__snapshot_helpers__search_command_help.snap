@@ -2,12 +2,12 @@
 source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-Search for skills by query
+Search installed skills by query (local semantic search)
 
 Usage: fastskill search [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  Search query string
+  <QUERY>  Search query over installed skills (local semantic search)
 
 Options:
   -l, --limit <LIMIT>    Maximum number of results (default: 10) [default: 10]

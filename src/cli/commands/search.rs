@@ -1,4 +1,7 @@
 //! Search command implementation
+//!
+//! Search installed skills using semantic search (local embeddings-based search).
+//! For searching the remote registry catalog, use `registry search`.
 
 use crate::cli::error::{CliError, CliResult};
 use clap::Args;
@@ -7,7 +10,7 @@ use fastskill::{EmbeddingService, FastSkillService};
 /// Search for skills by query string
 #[derive(Debug, Args)]
 pub struct SearchArgs {
-    /// Search query string
+    /// Search query over installed skills (local semantic search)
     pub query: String,
 
     /// Maximum number of results (default: 10)

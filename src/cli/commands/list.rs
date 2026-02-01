@@ -1,7 +1,11 @@
 //! List locally installed skills command
 //!
 //! Similar to `pip list` or `uv list`, this command lists all locally installed skills
-//! and reconciles them against skill-project.toml and skills.lock
+//! and reconciles them against skill-project.toml and skills.lock.
+//!
+//! `list` shows a reconciliation report (project + lock + files on disk); `show` displays
+//! skill metadata only. Use `list` for dependency/reconciliation checks, `show` for inspecting
+//! skill details.
 
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;

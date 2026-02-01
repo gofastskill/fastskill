@@ -1,4 +1,10 @@
 //! Show command - displays skill details and dependency tree
+//!
+//! `show` displays skill metadata (name, version, description, source) not full content.
+//! For full SKILL.md content, use `read`.
+//!
+//! With no skill_id argument, lists all installed skills with minimal details.
+//! With a skill_id, shows detailed metadata for that specific skill.
 
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};

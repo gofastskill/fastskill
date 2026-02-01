@@ -11,17 +11,18 @@ Commands:
   auth      Manage authentication for registries
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
-  install   Install skills from skills.toml to registry
-  list      List locally installed skills (similar to pip list)
+  install   Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+  list      List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
   reindex   Reindex the vector index for semantic search
   remove    Remove skills from the skills database
   package   Package skills into ZIP artifacts with versioning
   publish   Publish artifacts to S3 blob storage
-  read      Read skill documentation and output to stdout
-  registry  Manage repositories and browse skills
-  search    Search for skills by query
+  read      Stream skill documentation (SKILL.md content) to stdout
+  registry  Manage repositories and browse/search the registry catalog (remote)
+  search    Search installed skills by query (local semantic search)
   serve     Start the FastSkill HTTP API server
-  show      Show skill information and dependencies
+  show      Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+  sources   Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace [aliases: source]
   update    Update skills to latest versions
   version   Display FastSkill version
   help      Print this message or the help of the given subcommand(s)
@@ -43,17 +44,18 @@ Commands:
   auth      Manage authentication for registries
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
-  install   Install skills from skills.toml to registry
-  list      List locally installed skills (similar to pip list)
+  install   Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+  list      List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
   reindex   Reindex the vector index for semantic search
   remove    Remove skills from the skills database
   package   Package skills into ZIP artifacts with versioning
   publish   Publish artifacts to S3 blob storage
-  read      Read skill documentation and output to stdout
-  registry  Manage repositories and browse skills
-  search    Search for skills by query
+  read      Stream skill documentation (SKILL.md content) to stdout
+  registry  Manage repositories and browse/search the registry catalog (remote)
+  search    Search installed skills by query (local semantic search)
   serve     Start the FastSkill HTTP API server
-  show      Show skill information and dependencies
+  show      Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+  sources   Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace [aliases: source]
   update    Update skills to latest versions
   version   Display FastSkill version
   help      Print this message or the help of the given subcommand(s)
