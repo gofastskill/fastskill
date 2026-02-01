@@ -15,6 +15,7 @@ pub mod remove;
 pub mod search;
 pub mod serve;
 pub mod show;
+pub mod sources;
 pub mod update;
 pub mod version;
 
@@ -39,12 +40,16 @@ pub enum Commands {
     #[command(about = "Initialize skill-project.toml in current skill directory")]
     Init(init::InitArgs),
 
-    /// Install skills from skills.toml to .claude/skills/ registry
-    #[command(about = "Install skills from skills.toml to registry")]
+    /// Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+    #[command(
+        about = "Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock"
+    )]
     Install(install::InstallArgs),
 
-    /// List locally installed skills
-    #[command(about = "List locally installed skills (similar to pip list)")]
+    /// List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
+    #[command(
+        about = "List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)"
+    )]
     List(list::ListArgs),
 
     /// Reindex the vector index by scanning skills directory
@@ -63,25 +68,31 @@ pub enum Commands {
     #[command(about = "Publish artifacts to S3 blob storage")]
     Publish(publish::PublishArgs),
 
-    /// Read skill documentation
-    #[command(about = "Read skill documentation and output to stdout")]
+    /// Stream skill documentation (SKILL.md content) to stdout
+    #[command(about = "Stream skill documentation (SKILL.md content) to stdout")]
     Read(read::ReadArgs),
 
-    /// Registry management commands
-    #[command(about = "Manage repositories and browse skills")]
+    /// Manage repositories and browse/search the registry catalog (remote)
+    #[command(about = "Manage repositories and browse/search the registry catalog (remote)")]
     Registry(registry::RegistryArgs),
 
-    /// Search for skills
-    #[command(about = "Search for skills by query")]
+    /// Search installed skills by query (local semantic search)
+    #[command(about = "Search installed skills by query (local semantic search)")]
     Search(search::SearchArgs),
 
     /// Start the FastSkill HTTP server
     #[command(about = "Start the FastSkill HTTP API server")]
     Serve(serve::ServeArgs),
 
-    /// Show skill details and dependency tree
-    #[command(about = "Show skill information and dependencies")]
+    /// Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+    #[command(
+        about = "Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree"
+    )]
     Show(show::ShowArgs),
+
+    /// Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace
+    #[command(visible_alias = "source")]
+    Sources(sources::SourcesArgs),
 
     /// Update skills to latest from source
     #[command(about = "Update skills to latest versions")]
