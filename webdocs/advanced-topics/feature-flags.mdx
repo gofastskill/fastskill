@@ -1,0 +1,504 @@
+---
+title: "Feature Flags"
+description: "Understanding FastSkill's compile-time feature flags for customizing builds."
+---
+
+## Overview
+
+FastSkill uses Rust's conditional compilation feature flags to allow users to customize which functionality is included in the binary. This enables:
+
+- **Smaller binaries** - Exclude unused features to reduce binary size
+- **Faster compilation** - Skip compiling unnecessary dependencies
+- **Optional dependencies** - Only include dependencies needed for specific use cases
+- **Reduced attack surface** - Disable features not needed for production
+
+<Info>
+Feature flags are compile-time configuration, not runtime configuration. To change features, you must recompile FastSkill.
+</Info>
+
+## Available Features
+
+| Feature | Default | Description | Dependencies | When to Use |
+|----------|---------|-------------|-------------|-------------|
+| `filesystem-storage` | **yes** | Filesystem-based skill storage | None | Default, includes base skill storage |
+| `registry-publish` | **yes** | Publishing skills to blob storage with AWS S3 | `aws-sdk-s3`, `aws-config` | When publishing to registries |
+| `hot-reload` | **no** | Automatic skill reloading on file changes | `notify` | Development with hot-reload |
+
+### filesystem-storage
+
+**Default:** `yes` (always enabled)
+
+This feature provides the core skill storage implementation using the local filesystem:
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["filesystem-storage"] }
+```
+
+**Included functionality:**
+- File-based skill installation and removal
+- Skill metadata caching on disk
+- Directory-based skill organization
+- Standard file operations (read, write, delete, list)
+
+**Use cases:**
+- **Default installations** - Most common use case
+- **Production deployments** - Reliable file-based storage
+- **Development** - Direct file access for debugging
+
+**Location:** Skills are stored in `.claude/skills/` by default (configurable via `skills_directory` in `.fastskill/config.yaml`)
+
+**Note:** This is a required feature and cannot be disabled. It's included in the default feature set.
+
+### registry-publish
+
+**Default:** `yes` (always enabled)
+
+This feature enables publishing skills to external blob storage (e.g., AWS S3):
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["registry-publish"] }
+```
+
+**Included functionality:**
+- Skill packaging into ZIP artifacts
+- Publishing to S3-compatible blob storage
+- Registry index updates
+- Publish job tracking and status checking
+- Async validation workflows
+
+**Dependencies:**
+- `aws-sdk-s3` - AWS SDK for S3 operations
+- `aws-config` - AWS configuration loader
+
+**Use cases:**
+- **Running a registry** - When you host a public skill registry
+- **Team registries** - Private skill sharing within teams
+- **Organization publishing** - Publishing skills to S3 for distribution
+- **CI/CD publishing** - Automated skill publishing in pipelines
+
+**Configuration:**
+
+Publishing requires blob storage configuration:
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["registry-publish"] }
+```
+
+```yaml
+# Environment variables
+AWS_ACCESS_KEY_ID: your-access-key-id
+AWS_SECRET_ACCESS_KEY: your-secret-key
+AWS_REGION: us-east-1
+AWS_ENDPOINT: https://s3.example.com
+```
+
+**Publishing workflow:**
+
+```mermaid
+graph LR
+    A[Package Skill] --> B[Create ZIP Artifact]
+    B --> C[Upload to Blob Storage]
+    C --> D[Update Registry Index]
+    D --> E[Trigger Validation]
+    E --> F[Publish to Registry]
+```
+
+**When to disable:**
+- Lightweight deployments without publishing
+- Environments without AWS access
+- Reduced binary size for local-only use
+
+### hot-reload
+
+**Default:** `no` (opt-in)
+
+This feature enables automatic skill reloading when files change:
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["hot-reload"] }
+```
+
+**Included functionality:**
+- File system watching for skill directories
+- Automatic reload on file changes
+- Debouncing to prevent excessive reloads
+- Event-driven skill updates
+- Configurable watch paths
+
+**Dependencies:**
+- `notify` - Cross-platform file system notification library
+
+**Use cases:**
+- **Development** - Instant feedback when editing skill files
+- **Testing** - Quick iterations without manual reindexing
+- **Skill debugging** - See changes reflected immediately
+
+**Configuration:**
+
+Hot-reload behavior is configured:
+
+```yaml
+# .fastskill/config.yaml
+hot_reload:
+  enabled: true
+  watch_paths:
+    - .claude/skills
+    - ./custom-skills
+  debounce_ms: 500
+  auto_reload: true
+  max_concurrent_reloads: 5
+```
+
+**When to enable:**
+- Active development of skills
+- Testing skill changes
+- Debugging skill behavior
+
+**When to disable:**
+- Production deployments (unnecessary overhead)
+- Resource-constrained environments
+- Reduced attack surface
+
+**Note:** Hot-reload can be controlled at runtime via configuration even when compiled in.
+
+## Feature Combinations
+
+### Default (Recommended for Most Users)
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16" }  # All default features
+```
+
+**Includes:** `filesystem-storage`, `registry-publish`  
+**Excludes:** `hot-reload`
+
+**Best for:** General use, production deployments, registry operations
+
+### Lightweight (Minimal Binary)
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", default-features = false, features = ["filesystem-storage"] }
+```
+
+**Includes:** `filesystem-storage`  
+**Excludes:** `registry-publish`, `hot-reload`
+
+**Best for:** Local skill management only, no publishing, minimal binary size
+
+### Development (with Hot Reload)
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["filesystem-storage", "hot-reload"] }
+```
+
+**Includes:** `filesystem-storage`, `hot-reload`  
+**Excludes:** `registry-publish`
+
+**Best for:** Active development, local testing with hot-reload
+
+### Full Feature Set
+
+```toml
+[dependencies]
+fastskill = { version = "0.9.16", features = ["filesystem-storage", "registry-publish", "hot-reload"] }
+```
+
+**Includes:** All features  
+**Excludes:** None
+
+**Best for:** Development with hot-reload and registry publishing, complete functionality
+
+## Building with Features
+
+### Using Cargo
+
+```bash
+# Build with default features
+cargo build --bin fastskill
+
+# Build with specific features
+cargo build --bin fastskill --features "hot-reload"
+
+# Build with no default features
+cargo build --bin fastskill --no-default-features --features "filesystem-storage"
+
+# Build with all features
+cargo build --bin fastskill --all-features
+
+# Build with multiple specific features
+cargo build --bin fastskill --features "hot-reload,registry-publish"
+```
+
+### Installing from Crates.io (when published)
+
+```bash
+# Install with default features
+cargo install fastskill
+
+# Install with specific features
+cargo install fastskill --features "hot-reload"
+```
+
+### Installing from Source
+
+```bash
+# Clone repository
+git clone https://github.com/gofastskill/fastskill.git
+cd fastskill
+
+# Install with features
+cargo install --path . --bin fastskill --features "hot-reload"
+```
+
+## Feature Interaction Matrix
+
+| Feature Combination | Binary Size | Skills Storage | Publishing | Hot Reload |
+|--------------------|-------------|----------------|------------|-------------|
+| Default | Medium | ✅ Filesystem | ✅ AWS S3 | ❌ |
+| Lightweight | Small | ✅ Filesystem | ❌ | ❌ |
+| Development | Medium | ✅ Filesystem | ❌ | ✅ |
+| Full | Large | ✅ Filesystem | ✅ AWS S3 | ✅ |
+
+## Runtime Detection
+
+FastSkill can detect which features were compiled in:
+
+```rust
+use fastskill::service::FastSkillService;
+
+let service = FastSkillService::new(config).await?;
+
+// Check features at runtime
+#[cfg(feature = "hot-reload")]
+{
+    println!("Hot reload enabled");
+}
+
+#[cfg(not(feature = "hot-reload"))]
+{
+    println!("Hot reload not available");
+}
+
+#[cfg(feature = "registry-publish")]
+{
+    println!("Registry publishing available");
+}
+```
+
+## Performance Impact
+
+### Binary Size Comparison
+
+| Feature Set | Binary Size (x86_64-linux) | Size Reduction |
+|-------------|-------------------------------|----------------|
+| Full (all features) | ~12 MB | 0% (baseline) |
+| Default | ~10 MB | 17% smaller |
+| Lightweight | ~6 MB | 50% smaller |
+
+### Compilation Time Comparison
+
+| Feature Set | Clean Build Time | Incremental Build Time |
+|-------------|-------------------|----------------------|
+| Full | ~5 minutes | ~30 seconds |
+| Default | ~4 minutes | ~20 seconds |
+| Lightweight | ~3 minutes | ~15 seconds |
+
+### Runtime Impact
+
+| Feature | Runtime Overhead |
+|---------|----------------|
+| `filesystem-storage` | Negligible (required) |
+| `registry-publish` | Only when publishing (AWS SDK initialization) |
+| `hot-reload` | File system watcher thread (~1-2 MB memory, minimal CPU) |
+
+## Use Case Examples
+
+### Production Deployment
+
+```toml
+# Production: Use default features
+[dependencies]
+fastskill = { version = "0.9.16" }
+```
+
+```bash
+# Build
+cargo build --release --bin fastskill
+
+# Deploy
+./target/release/fastskill serve --host 0.0.0.0 --port 8080
+```
+
+### Development with Hot Reload
+
+```toml
+# Development: Enable hot-reload
+[dependencies]
+fastskill = { version = "0.9.16", features = ["hot-reload"] }
+```
+
+```bash
+# Build
+cargo build --bin fastskill --features "hot-reload"
+
+# Run with hot-reload
+./target/debug/fastskill serve --enable-hot-reload
+
+# Edit skill files and see them reload automatically
+```
+
+### Local-Only Deployment
+
+```toml
+# Local: No publishing, smaller binary
+[dependencies]
+fastskill = { version = "0.9.16", default-features = false, features = ["filesystem-storage"] }
+```
+
+```bash
+# Build
+cargo build --release --bin fastskill --no-default-features --features "filesystem-storage"
+
+# Deploy (smaller binary, no publishing)
+./target/release/fastskill install
+```
+
+### Registry Publisher
+
+```toml
+# Registry: All features for registry server
+[dependencies]
+fastskill = { version = "0.9.16", features = ["filesystem-storage", "registry-publish"] }
+```
+
+```bash
+# Build
+cargo build --release --bin fastskill --features "registry-publish"
+
+# Run registry with publishing
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+./target/release/fastskill serve --enable-registry
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Feature not available at runtime">
+  <Warning>
+  **Feature not compiled**: You're trying to use functionality that wasn't included in the build.
+  </Warning>
+
+  <Tip>
+  **Resolution**: Rebuild with the required feature.
+  ```bash
+  cargo build --bin fastskill --features "hot-reload"
+  ```
+  </Tip>
+</Accordion>
+
+<Accordion title="Build fails with missing dependencies">
+  <Warning>
+  **Dependency error**: A required dependency for a feature is not available.
+  </Warning>
+
+  <Tip>
+  **Resolution**: Ensure all required dependencies are installed.
+  ```bash
+  cargo install --features "registry-publish"
+  # This will install aws-sdk-s3 and aws-config
+  ```
+  </Tip>
+</Accordion>
+
+<Accordion title="Binary too large">
+  <Warning>
+  **Unwanted features**: Binary includes features you don't need.
+  </Warning>
+
+  <Tip>
+  **Resolution**: Build with `--no-default-features` and only include what you need.
+  ```toml
+  # In your project or Cargo.toml
+  fastskill = { version = "0.9.16", default-features = false, features = ["filesystem-storage"] }
+  ```
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+<Step title="Use default features for production">
+  Default features provide complete functionality and are well-tested. Only customize features for specific needs.
+</Step>
+
+<Step title="Enable hot-reload only for development">
+  Hot-reload adds runtime overhead and is unnecessary in production. Disable it for deployments.
+</Step>
+
+<Step title="Test feature combinations before committing">
+  Verify that your chosen feature set includes all necessary functionality for your use case.
+</Step>
+
+<Step title="Document feature requirements in deployment guides">
+  When deploying FastSkill, document which features were used so others know what to expect.
+</Step>
+
+<Step title="Consider binary size for edge deployments">
+  For edge devices or containers, use `--no-default-features` to build smaller binaries.
+</Step>
+
+<Step title="Use feature flags for optimization">
+  Don't include features you don't need. This reduces compilation time, binary size, and runtime overhead.
+</Step>
+</Steps>
+
+## Feature Flag Reference
+
+### Complete Feature List
+
+```toml
+[features]
+default = ["filesystem-storage", "registry-publish"]
+
+# Storage backends
+filesystem-storage = []
+
+# Optional features
+hot-reload = ["notify"]
+
+# Registry publishing (requires AWS SDK)
+registry-publish = ["aws-sdk-s3", "aws-config"]
+```
+
+### Enabling/Disabling Features
+
+```bash
+# Enable specific feature
+cargo build --features "hot-reload"
+
+# Disable all default features
+cargo build --no-default-features
+
+# Enable multiple features
+cargo build --features "hot-reload,registry-publish"
+
+# Use with cargo install
+cargo install --features "hot-reload"
+```
+
+## See Also
+
+- [Hot Reload](/skill-management/hot-reloading) - File watching and automatic reloading
+- [Package Command](/cli-reference/package-command) - Creating skill packages
+- [Publish Command](/cli-reference/publish-command) - Publishing skills to registries
+- [Service Configuration](/configuration/service-config) - Runtime configuration options
+- [Building from Source](/installation#building-from-source) - Installation and build instructions
