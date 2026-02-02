@@ -184,7 +184,7 @@ fn test_install_missing_project_file_error() {
     assert!(result.stderr.contains("skill-project.toml"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
-        "install_missing_project",
+        "install_missing_project_cli",
         &result.stderr,
         &cli::snapshot_helpers::cli_snapshot_settings(),
     );
@@ -205,7 +205,7 @@ fn test_show_nonexistent_skill_error() {
     assert!(result.stderr.contains("not found"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
-        "show_nonexistent_skill",
+        "show_nonexistent_skill_cli",
         &result.stderr,
         &cli::snapshot_helpers::cli_snapshot_settings(),
     );
@@ -226,7 +226,7 @@ fn test_show_invalid_skill_id_format() {
     assert!(result.stderr.contains("Invalid skill ID"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
-        "show_invalid_id_format",
+        "show_invalid_id_format_cli",
         &result.stderr,
         &cli::snapshot_helpers::cli_snapshot_settings(),
     );
@@ -247,7 +247,7 @@ fn test_read_nonexistent_skill_error() {
     assert!(result.stderr.contains("not found"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
-        "read_nonexistent_skill",
+        "read_nonexistent_skill_cli",
         &result.stderr,
         &cli::snapshot_helpers::cli_snapshot_settings(),
     );
@@ -285,7 +285,7 @@ fn test_auth_login_unreachable_registry_error() {
     assert!(result.stderr.contains("Failed to connect") || result.stderr.contains("error"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
-        "auth_login_unreachable",
+        "auth_login_invalid_port",
         &result.stderr,
         &cli::snapshot_helpers::cli_snapshot_settings(),
     );
