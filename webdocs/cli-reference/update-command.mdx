@@ -1,0 +1,526 @@
+---
+title: update
+api: "update"
+---
+
+# update Command
+
+Update installed skills to the latest versions from their sources. Updates `skills.lock` with new versions.
+
+## Usage
+
+```bash
+fastskill update [SKILL_ID] [OPTIONS]
+```
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<SKILL_ID>` | Skill ID to update (if not specified, updates all) | None |
+| `--check` | Check for updates without installing | `false` |
+| `--dry-run` | Show what would be updated without actually updating | `false` |
+| `--version <VERSION>` | Update to specific version | None |
+| `--source <SOURCE>` | Update from specific source | None |
+| `--strategy <STRATEGY>` | Update strategy: latest, patch, minor, major | `latest` |
+
+## Examples
+
+### Update All Skills
+
+Update all installed skills to latest compatible versions:
+
+```bash
+fastskill update
+```
+
+This:
+- Reads all skills from `skill-project.toml` dependencies
+- Resolves latest versions from configured repositories
+- Updates skills in `.claude/skills/`
+- Updates `skills.lock` with new versions
+
+### Update Specific Skill
+
+Update only a specific skill:
+
+```bash
+fastskill update web-scraper
+```
+
+### Check for Updates
+
+Check which skills have updates available without installing:
+
+```bash
+fastskill update --check
+```
+
+<Info>
+Use `--check` to see what's available before updating. Useful for reviewing changes before applying them.
+</Info>
+
+### Dry Run
+
+Preview what would be updated without making changes:
+
+```bash
+fastskill update --dry-run
+```
+
+### Update to Specific Version
+
+Update a skill to a specific version:
+
+```bash
+fastskill update web-scraper --version "2.0.0"
+```
+
+### Update with Patch Strategy
+
+Update skills to latest patch version only (no minor or major changes):
+
+```bash
+# Update web-scraper from 1.2.3 to 1.2.4 (patch)
+fastskill update web-scraper --strategy patch
+
+# Update all skills to latest patch
+fastskill update --strategy patch
+```
+
+### Update with Minor Strategy
+
+Update skills to latest minor version (allows minor features, no breaking changes):
+
+```bash
+# Update web-scraper from 1.2.3 to 1.3.0 (minor)
+fastskill update web-scraper --strategy minor
+
+# Update all skills to latest minor
+fastskill update --strategy minor
+```
+
+### Update with Major Strategy
+
+Update skills to latest major version (allows breaking changes):
+
+```bash
+# Update web-scraper from 1.2.3 to 2.0.0 (major)
+fastskill update web-scraper --strategy major
+
+# Update all skills to latest major
+fastskill update --strategy major
+```
+
+## Update Strategies
+
+Update strategies determine which versions are considered for updates:
+
+| Strategy | Behavior | Example |
+|----------|----------|---------|
+| `latest` | Update to absolute latest version available | `1.2.3` → `2.5.1` (any version) |
+| `patch` | Update to latest patch version within current minor | `1.2.3` → `1.2.4` (1.2.x only) |
+| `minor` | Update to latest minor version within current major | `1.2.3` → `1.3.0` (1.x.x only) |
+| `major` | Update to latest major version (allows breaking changes) | `1.2.3` → `2.0.0` (any version) |
+
+### Strategy Examples
+
+```bash
+# Current version: 1.2.3
+
+# Update to latest (any version)
+fastskill update --strategy latest
+# Result: Could update to 2.5.1 (latest available)
+
+# Update to patch only
+fastskill update --strategy patch
+# Result: Updates to 1.2.4 (or 1.2.5, 1.2.6, etc., but stays in 1.2.x)
+
+# Update to minor only
+fastskill update --strategy minor
+# Result: Updates to 1.3.0 (or 1.4.0, 1.5.0, etc., but stays in 1.x.x)
+
+# Update to major (allows breaking)
+fastskill update --strategy major
+# Result: Updates to 2.0.0 (or 3.0.0, etc.)
+```
+
+## Behavior
+
+The `update` command:
+
+1. **Locates Project File**: Finds `skill-project.toml` at project root
+2. **Loads Dependencies**: Reads `[dependencies]` section
+3. **Filters Skills**: If skill_id is specified, only updates that skill
+4. **Resolves Updates**: For each skill:
+   - If `--version` is set: Resolves specific version
+   - Otherwise: Resolves version based on strategy (latest/patch/minor/major)
+   - If `--source` is set: Uses specific source
+   - Otherwise: Uses source from dependency definition
+5. **Updates Skills**: Downloads and installs updated versions into `.claude/skills/`
+6. **Updates Lockfile**: Writes new versions to `skills.lock`
+
+## Update Modes
+
+### Update Mode (default)
+
+Updates skills and modifies lockfile:
+
+```bash
+fastskill update
+```
+
+**Output:**
+```
+Updating skills...
+
+Updating web-scraper...
+✓ Updated web-scraper from 1.2.3 to 2.0.0
+  Source: git
+  Changes: Breaking changes in version 2.0.0
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+  Source: registry
+
+Updated skills.lock with 2 skill(s)
+
+✓ Update complete
+Run 'fastskill reindex' to update search index
+```
+
+### Check Mode
+
+Shows available updates without installing:
+
+```bash
+fastskill update --check
+```
+
+**Output:**
+```
+Checking for updates...
+
+Skills with updates available:
+
+web-scraper: 1.2.3 → 2.0.0 (major update)
+  - Breaking changes in version 2.0.0
+  - New features: X, Y, Z
+
+data-processor: 2.1.0 → 2.2.0 (patch update)
+  - Bug fixes and improvements
+
+demo-skill: Already up to date (0.1.0)
+
+Run 'fastskill update' to apply updates
+```
+
+### Dry Run Mode
+
+Shows what would be updated without making changes:
+
+```bash
+fastskill update --dry-run
+```
+
+**Output:**
+```
+Dry run: Showing what would be updated...
+
+Would update web-scraper from 1.2.3 to 2.0.0
+  Source: git
+  Strategy: latest
+
+Would update data-processor from 2.1.0 to 2.2.0
+  Source: registry
+  Strategy: latest
+
+Would keep demo-skill at 0.1.0 (already up to date)
+
+Dry run complete. No changes were made.
+```
+
+## Output Examples
+
+### Update All Skills
+
+```bash
+$ fastskill update
+Updating skills...
+
+Updating web-scraper...
+✓ Updated web-scraper from 1.2.3 to 2.0.0
+  Source: https://github.com/user/web-scraper.git
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+  Source: public-registry
+
+demo-skill: Already up to date (0.1.0)
+
+Updated skills.lock with 2 skill(s)
+
+✓ Update complete
+```
+
+### Update Single Skill
+
+```bash
+$ fastskill update web-scraper
+Updating skills...
+
+Updating web-scraper...
+✓ Updated web-scraper from 1.2.3 to 2.0.0
+  Source: https://github.com/user/web-scraper.git
+
+Updated skills.lock with 1 skill(s)
+
+✓ Update complete
+```
+
+### Update with Strategy
+
+```bash
+$ fastskill update --strategy minor
+Updating skills...
+
+Updating web-scraper...
+✓ Updated web-scraper from 1.2.3 to 1.3.0
+  Strategy: minor (updates within 1.x.x only)
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+  Strategy: minor (updates within 2.x.x only)
+
+demo-skill: Already up to date (0.1.0)
+
+Updated skills.lock with 2 skill(s)
+
+✓ Update complete
+```
+
+### Check for Updates
+
+```bash
+$ fastskill update --check
+Checking for updates...
+
+Skills with updates available:
+
+web-scraper: 1.2.3 → 2.0.0 (major update available)
+  Source: https://github.com/user/web-scraper.git
+
+data-processor: 2.1.0 → 2.2.0 (patch update available)
+  Source: public-registry
+
+demo-skill: Already up to date (0.1.0)
+
+Run 'fastskill update' to apply updates
+```
+
+## Update Workflow
+
+### Standard Update Workflow
+
+```bash
+# 1. Check for updates
+fastskill update --check
+
+# 2. Review updates and decide
+# (e.g., skip major updates if breaking changes are concerning)
+
+# 3. Apply updates
+fastskill update --strategy minor
+
+# 4. Reindex for search
+fastskill reindex
+
+# 5. Commit lockfile
+git add skills.lock
+git commit -m "Update dependencies"
+```
+
+### Controlled Production Update
+
+```bash
+# 1. Check what's available
+fastskill update --check
+
+# 2. Dry run to preview
+fastskill update --strategy minor --dry-run
+
+# 3. Apply selective updates
+fastskill update web-scraper --version "1.3.0"
+fastskill update data-processor --strategy patch
+
+# 4. Reindex
+fastskill reindex
+```
+
+### Automated Update (CI/CD)
+
+```bash
+# Update all dependencies in CI/CD
+fastskill update --strategy patch
+
+# Or update only specific skills
+fastskill update web-scraper data-processor
+```
+
+## Version Constraint Examples
+
+### Update to Specific Version
+
+```bash
+# Update to exact version
+fastskill update web-scraper --version "2.0.0"
+
+# Output:
+# ✓ Updated web-scraper from 1.2.3 to 2.0.0
+#   Version constraint: 2.0.0
+```
+
+### Update from Specific Source
+
+```bash
+# Update from a different repository
+fastskill update web-scraper --source team-registry
+
+# Useful when skill is available in multiple repositories
+```
+
+### Combined with Strategy
+
+```bash
+# Update with strategy, then override version
+fastskill update --strategy patch --version "1.2.5"
+
+# Note: --version takes precedence over --strategy
+```
+
+## Dependency Management
+
+### Update Order
+
+Skills are updated alphabetically for deterministic output:
+
+```bash
+$ fastskill update
+Updating skills...
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+
+Updating demo-skill...
+✓ Updated demo-skill from 0.1.0 to 0.2.0
+
+Updating web-scraper...
+✓ Updated web-scraper from 1.2.3 to 1.3.0
+
+Updated skills.lock with 3 skill(s)
+```
+
+### Update Failures
+
+If one skill fails to update, the command continues with remaining skills:
+
+```bash
+$ fastskill update
+Updating skills...
+
+Updating web-scraper...
+✗ Failed to update web-scraper: Network error
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+
+demo-skill: Already up to date (0.1.0)
+
+Updated skills.lock with 1 skill(s)
+
+✓ Update complete with errors (1 failed)
+```
+
+## Error Handling
+
+### Skill Not Found
+
+```bash
+$ fastskill update unknown-skill
+error: Skill 'unknown-skill' not found in skill-project.toml dependencies
+```
+
+**Solution**: Check skill ID in `skill-project.toml` or add it first with `fastskill add`.
+
+### Version Not Found
+
+```bash
+$ fastskill update web-scraper --version "99.9.9"
+error: Version '99.9.9' not found for skill 'web-scraper'
+```
+
+**Solution**: Check available versions with `fastskill registry show-skill web-scraper`.
+
+### No Updates Available
+
+```bash
+$ fastskill update
+Updating skills...
+
+web-scraper: Already up to date (1.2.3)
+data-processor: Already up to date (2.1.0)
+demo-skill: Already up to date (0.1.0)
+
+✓ All skills are up to date
+```
+
+### Network Errors
+
+```bash
+$ fastskill update
+Updating skills...
+
+Updating web-scraper...
+✗ Failed to update web-scraper: Connection timeout
+
+Updating data-processor...
+✓ Updated data-processor from 2.1.0 to 2.2.0
+
+✓ Update complete with errors (1 failed)
+```
+
+**Solution**: Check network connection and retry failed skills individually.
+
+## Best Practices
+
+<Steps>
+<Step title="Check before updating">
+  Use `fastskill update --check` to see what's available before applying updates. Review changes, especially for major version bumps.
+</Step>
+
+<Step title="Use appropriate strategies">
+  - Use `--strategy patch` for bug fixes only
+  - Use `--strategy minor` for new features without breaking changes
+  - Use `--strategy major` when you're ready for breaking changes
+  - Use `--strategy latest` for bleeding edge (not recommended for production)
+</Step>
+
+<Step title="Reindex after updates">
+  Always run `fastskill reindex` after updating skills to keep search index current.
+</Step>
+
+<Step title="Commit lockfile after updates">
+  Commit `skills.lock` after successful updates to track version changes in version control.
+</Step>
+
+<Step title="Test updates in development first">
+  Test skill updates in development environment before deploying to production, especially for major version updates.
+</Step>
+</Steps>
+
+## See Also
+
+- [Install Command](/cli-reference/install-command) - Install skills from skill-project.toml
+- [Add Command](/cli-reference/skill-commands#add) - Add skills to project
+- [List Command](/cli-reference/skill-commands#list) - List installed skills and versions
+- [Package Command](/cli-reference/package-command) - Package skills with versioning

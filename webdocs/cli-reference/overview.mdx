@@ -71,16 +71,19 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill init" icon="play">
-    Create `skill-project.toml` for a skill (authors).
+    Create `skill-project.toml` for a skill (authors). See [init Command](/cli-reference/init-command).
   </Card>
   <Card title="fastskill install" icon="download">
-    Install skills from `skill-project.toml` (supports groups and `--lock`).
+    Install skills from `skill-project.toml` (supports groups and `--lock`). See [install Command](/cli-reference/install-command).
+  </Card>
+  <Card title="fastskill update" icon="edit">
+    Update skills to latest from source with version strategies. See [update Command](/cli-reference/update-command).
   </Card>
   <Card title="fastskill reindex" icon="refresh-cw">
-    Rebuild the search index for semantic discovery.
+    Rebuild the search index for semantic discovery. See [reindex Command](/cli-reference/reindex-command).
   </Card>
   <Card title="fastskill serve" icon="server">
-    Start the HTTP server (use `--enable-registry` for the web UI).
+    Start the HTTP server (use `--enable-registry` for the web UI). See [serve Command](/cli-reference/serve-command).
   </Card>
 </CardGroup>
 
@@ -88,25 +91,22 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill add" icon="plus">
-    Add skills from registry ID, git, zip, or local folder (supports `--branch`, `--tag`, `-e`, `--group`).
+    Add skills from registry ID, git, zip, or local folder (supports `--branch`, `--tag`, `-e`, `--group`). See [skill commands](/cli-reference/skill-commands#add).
   </Card>
   <Card title="fastskill read" icon="book-open">
-    Retrieve skill documentation and base directory path in agent-optimized format.
+    Retrieve skill documentation and base directory path in agent-optimized format. See [skill commands](/cli-reference/skill-commands#fastskill-read).
   </Card>
   <Card title="fastskill list" icon="list">
-    List locally installed skills with reconciliation status (supports `--json`, `--grid`).
+    List locally installed skills with reconciliation status (supports `--json`, `--grid`). See [skill commands](/cli-reference/skill-commands#list).
   </Card>
   <Card title="fastskill disable" icon="toggle">
-    Disable skills by ID.
+    Disable skills by ID. See [skill commands](/cli-reference/skill-commands#fastskill-disable).
   </Card>
   <Card title="fastskill remove" icon="trash">
-    Remove skills by ID.
+    Remove skills by ID. See [skill commands](/cli-reference/skill-commands#fastskill-remove).
   </Card>
   <Card title="fastskill show" icon="list">
-    Show skill details and dependency tree.
-  </Card>
-  <Card title="fastskill update" icon="edit">
-    Update skills to the latest from source.
+    Show skill details and dependency tree. See [skill commands](/cli-reference/skill-commands#fastskill-show).
   </Card>
 </CardGroup>
 
@@ -114,16 +114,13 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill search" icon="search">
-    Semantic search across installed/available skills (supports `--format xml`).
+    Semantic search across installed skills (supports `--format xml`, `--format json`). See [search Command](/cli-reference/search-command).
   </Card>
   <Card title="fastskill sources" icon="book">
-    Manage repositories (list/add/remove/show/update/test/refresh/create) with authentication and priority.
+    Manage repositories (list/add/remove/show/update/test/refresh/create) with authentication and priority. See [sources Command](/cli-reference/sources-command).
   </Card>
   <Card title="fastskill auth" icon="key">
-    Manage authentication (login/logout/whoami) with JWT tokens and RBAC.
-  </Card>
-  <Card title="fastskill registry" icon="book">
-    Legacy alias for sources command (add/list/remove/show/update/test/refresh/list-skills/show-skill/versions/search).
+    Manage authentication (login/logout/whoami) with JWT tokens and RBAC. See [auth Command](/cli-reference/auth-command).
   </Card>
 </CardGroup>
 
@@ -131,10 +128,10 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill package" icon="archive">
-    Package skills into ZIP artifacts (supports change detection and version bumps).
+    Package skills into ZIP artifacts with change detection and version bumps. See [package Command](/cli-reference/package-command).
   </Card>
   <Card title="fastskill publish" icon="upload">
-    Publish packaged artifacts to blob storage.
+    Publish packaged artifacts to blob storage with job tracking. See [publish Command](/cli-reference/publish-command).
   </Card>
 </CardGroup>
 
