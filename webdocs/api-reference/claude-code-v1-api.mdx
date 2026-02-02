@@ -1,0 +1,564 @@
+---
+title: "Claude Code v1 API"
+description: "FastSkill implementation of Claude Code v1 API specification for skill management."
+---
+
+## Overview
+
+FastSkill implements the Claude Code v1 API specification, providing a standardized interface for skill management compatible with Claude Code clients. The v1 API endpoints are prefixed with `/api/code/v1/` and provide CRUD operations for skills and skill versions.
+
+<Info>
+The Claude Code v1 API is designed for Claude Code clients and provides a standardized skill management interface.
+</Info>
+
+## Base URL
+
+All Claude Code v1 API endpoints use the base path:
+
+```
+http://localhost:8080/api/code/v1
+```
+
+## Authentication
+
+All v1 API endpoints require authentication via JWT bearer token:
+
+```bash
+# Get token
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"role": "manager"}'
+
+# Use token in requests
+curl -X GET http://localhost:8080/api/code/v1/skills \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+<Warning>
+The token must have at least `user` role. For creating/updating skills, use `manager` or `admin` role.
+</Warning>
+
+## Endpoints
+
+### List Skills
+
+List all skills available in the system.
+
+**Endpoint**: `GET /api/code/v1/skills`
+
+**Authentication**: Required (user, manager, or admin)
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `enabled` | boolean | No | Filter by enabled status |
+| `limit` | integer | No | Maximum number of results |
+| `offset` | integer | No | Pagination offset |
+
+**Example**:
+```bash
+# List all skills
+curl -X GET http://localhost:8080/api/code/v1/skills \
+  -H "Authorization: Bearer <token>"
+
+# List enabled skills with pagination
+curl -X GET "http://localhost:8080/api/code/v1/skills?enabled=true&limit=10&offset=0" \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "pptx",
+      "name": "PowerPoint Skill",
+      "description": "Create professional presentations",
+      "version": "1.2.3",
+      "author": "FastSkill Team",
+      "enabled": true,
+      "created_at": "2025-01-15T10:30:00Z",
+      "updated_at": "2025-01-20T14:45:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "limit": 10,
+    "offset": 0
+  }
+}
+```
+
+### Get Skill
+
+Retrieve details of a specific skill.
+
+**Endpoint**: `GET /api/code/v1/skills/:skill_id`
+
+**Authentication**: Required (user, manager, or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Unique skill identifier |
+
+**Example**:
+```bash
+# Get skill details
+curl -X GET http://localhost:8080/api/code/v1/skills/pptx \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "pptx",
+    "name": "PowerPoint Skill",
+    "description": "Create professional presentations from text content",
+    "version": "1.2.3",
+    "author": "FastSkill Team",
+    "tags": ["presentation", "powerpoint", "office"],
+    "capabilities": ["create_pptx", "text_to_slides"],
+    "enabled": true,
+    "skill_file": "/home/user/.claude/skills/pptx/SKILL.md",
+    "source_url": "https://github.com/gofastskill/pptx.git",
+    "source_type": "git",
+    "source_branch": "main",
+    "editable": false,
+    "created_at": "2025-01-15T10:30:00Z",
+    "updated_at": "2025-01-20T14:45:00Z",
+    "execution_environment": null,
+    "dependencies": [],
+    "timeout": 300
+  }
+}
+```
+
+**Error Response** (skill not found):
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SKILL_NOT_FOUND",
+    "message": "Skill 'pptx' not found"
+  }
+}
+```
+
+### Create Skill
+
+Create a new skill in the system.
+
+**Endpoint**: `POST /api/code/v1/skills`
+
+**Authentication**: Required (manager or admin)
+
+**Request Body**:
+
+```json
+{
+  "id": "my-skill",
+  "name": "My Custom Skill",
+  "description": "Description of what the skill does",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "tags": ["category1", "category2"],
+  "capabilities": ["capability1", "capability2"],
+  "enabled": true,
+  "source_url": "https://github.com/username/skill.git",
+  "source_type": "git",
+  "source_branch": "main"
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|--------|-----------|-------------|
+| `id` | string | Yes | Unique skill identifier (lowercase, no spaces) |
+| `name` | string | Yes | Human-readable skill name |
+| `description` | string | Yes | Skill description |
+| `version` | string | Yes | Semantic version (e.g., "1.0.0") |
+| `author` | string | No | Skill author name |
+| `tags` | array of strings | No | Skill tags for categorization |
+| `capabilities` | array of strings | No | List of skill capabilities |
+| `enabled` | boolean | No | Whether skill is enabled (default: true) |
+| `source_url` | string | No | Source URL for the skill |
+| `source_type` | string | No | Source type (git, local, http, zip) |
+| `source_branch` | string | No | Git branch (if source_type is git) |
+| `editable` | boolean | No | Whether skill is in editable mode (default: false) |
+
+**Example**:
+```bash
+curl -X POST http://localhost:8080/api/code/v1/skills \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "web-scraper",
+    "name": "Web Scraper",
+    "description": "Extract data from websites",
+    "version": "1.0.0",
+    "author": "Dev Team",
+    "tags": ["scraping", "data"],
+    "capabilities": ["extract_html", "parse_content"],
+    "enabled": true
+  }'
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "web-scraper",
+    "name": "Web Scraper",
+    "description": "Extract data from websites",
+    "version": "1.0.0",
+    "enabled": true,
+    "created_at": "2025-02-02T15:30:00Z",
+    "updated_at": "2025-02-02T15:30:00Z"
+  }
+}
+```
+
+**Error Response** (validation failed):
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Skill validation failed",
+    "details": [
+      {
+        "field": "version",
+        "message": "Invalid semantic version format"
+      }
+    ]
+  }
+}
+```
+
+### Update Skill
+
+Update an existing skill.
+
+**Endpoint**: `PUT /api/code/v1/skills/:skill_id`
+
+**Authentication**: Required (manager or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Unique skill identifier |
+
+**Request Body**: Same as create skill (all fields optional)
+
+**Example**:
+```bash
+curl -X PUT http://localhost:8080/api/code/v1/skills/web-scraper \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description",
+    "version": "1.1.0",
+    "enabled": false
+  }'
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "web-scraper",
+    "description": "Updated description",
+    "version": "1.1.0",
+    "enabled": false,
+    "updated_at": "2025-02-02T16:00:00Z"
+  }
+}
+```
+
+### Delete Skill
+
+Delete a skill from the system.
+
+**Endpoint**: `DELETE /api/code/v1/skills/:skill_id`
+
+**Authentication**: Required (manager or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Unique skill identifier |
+
+**Example**:
+```bash
+curl -X DELETE http://localhost:8080/api/code/v1/skills/web-scraper \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "data": {
+    "id": "web-scraper",
+    "message": "Skill deleted successfully"
+  }
+}
+```
+
+**Error Response** (skill not found):
+```json
+{
+  "success": false,
+  "error": {
+    "code": "SKILL_NOT_FOUND",
+    "message": "Skill 'web-scraper' not found"
+  }
+}
+```
+
+### Create Skill Version
+
+Create a new version for an existing skill.
+
+**Endpoint**: `POST /api/code/v1/skills/:skill_id/versions`
+
+**Authentication**: Required (manager or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Parent skill identifier |
+
+**Request Body**:
+
+```json
+{
+  "version": "1.2.0",
+  "description": "Changes in this version",
+  "changes": [
+    "Added feature X",
+    "Fixed bug Y"
+  ]
+}
+```
+
+**Field Descriptions**:
+
+| Field | Type | Required | Description |
+|-------|--------|-----------|-------------|
+| `version` | string | Yes | Semantic version for this version |
+| `description` | string | No | Description of changes |
+| `changes` | array of strings | No | List of changes in this version |
+
+**Example**:
+```bash
+curl -X POST http://localhost:8080/api/code/v1/skills/web-scraper/versions \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "version": "1.2.0",
+    "description": "Performance improvements",
+    "changes": [
+      "Improved scraping speed",
+      "Added retry logic"
+    ]
+  }'
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "data": {
+    "skill_id": "web-scraper",
+    "version": "1.2.0",
+    "description": "Performance improvements",
+    "changes": [
+      "Improved scraping speed",
+      "Added retry logic"
+    ],
+    "created_at": "2025-02-02T16:15:00Z"
+  }
+}
+```
+
+### List Skill Versions
+
+List all versions of a skill.
+
+**Endpoint**: `GET /api/code/v1/skills/:skill_id/versions`
+
+**Authentication**: Required (user, manager, or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Parent skill identifier |
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `limit` | integer | No | Maximum number of results |
+| `offset` | integer | No | Pagination offset |
+
+**Example**:
+```bash
+curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "skill_id": "web-scraper",
+      "version": "1.2.0",
+      "description": "Performance improvements",
+      "created_at": "2025-02-02T16:15:00Z"
+    },
+    {
+      "skill_id": "web-scraper",
+      "version": "1.1.0",
+      "description": "Bug fixes",
+      "created_at": "2025-01-20T10:00:00Z"
+    },
+    {
+      "skill_id": "web-scraper",
+      "version": "1.0.0",
+      "description": "Initial release",
+      "created_at": "2025-01-10T15:30:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 3,
+    "limit": 10,
+    "offset": 0
+  }
+}
+```
+
+### Get Skill Version
+
+Get details of a specific skill version.
+
+**Endpoint**: `GET /api/code/v1/skills/:skill_id/versions/:version`
+
+**Authentication**: Required (user, manager, or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Parent skill identifier |
+| `version` | string | Yes | Version identifier |
+
+**Example**:
+```bash
+curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions/1.2.0 \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "skill_id": "web-scraper",
+    "version": "1.2.0",
+    "description": "Performance improvements",
+    "changes": [
+      "Improved scraping speed",
+      "Added retry logic"
+    ],
+    "created_at": "2025-02-02T16:15:00Z"
+  }
+}
+```
+
+### Delete Skill Version
+
+Delete a specific version of a skill.
+
+**Endpoint**: `DELETE /api/code/v1/skills/:skill_id/versions/:version`
+
+**Authentication**: Required (manager or admin)
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|--------|-----------|-------------|
+| `skill_id` | string | Yes | Parent skill identifier |
+| `version` | string | Yes | Version identifier |
+
+**Example**:
+```bash
+curl -X DELETE http://localhost:8080/api/code/v1/skills/web-scraper/versions/1.0.0 \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "data": {
+    "skill_id": "web-scraper",
+    "version": "1.0.0",
+    "message": "Skill version deleted successfully"
+  }
+}
+```
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `SKILL_NOT_FOUND` | Requested skill or version not found |
+| `VALIDATION_ERROR` | Request validation failed |
+| `UNAUTHORIZED` | Missing or invalid authentication token |
+| `FORBIDDEN` | Insufficient permissions for requested operation |
+| `CONFLICT` | Skill ID already exists (on create) |
+| `INTERNAL_ERROR` | Server-side error |
+
+## Best Practices
+
+### Creating Skills
+
+- Use descriptive names and IDs
+- Follow semantic versioning for version numbers
+- Include relevant tags for categorization
+- Specify capabilities for tool discovery
+
+### Updating Skills
+
+- Increment version numbers appropriately (major.minor.patch)
+- Document changes in version descriptions
+- Test updates before applying to production
+
+### Managing Versions
+
+- Keep version history for traceability
+- Use changelogs to document improvements
+- Maintain backward compatibility when possible
+
+## See Also
+
+- [API Reference Overview](/api-reference/overview) - General API information
+- [Authentication](/api-reference/authentication) - Authentication details
+- [Skills API](/api-reference/overview#skills-management-endpoints) - Core skills endpoints
+- [Registry API](/api-reference/overview#registry-endpoints) - Registry management

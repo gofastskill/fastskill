@@ -1,0 +1,480 @@
+---
+title: "Sources Command"
+description: "FastSkill CLI command for managing skill repositories and sources."
+---
+
+## Overview
+
+The `sources` command manages skill repositories (sources) where skills can be discovered and installed. Sources include Git marketplaces, HTTP registries, ZIP URLs, and local directories. Each source can have priority-based conflict resolution and authentication support.
+
+<Info>
+The `sources` command is an alias for `registry` operations focused on repository management. For browsing registry catalogs, use `registry list-skills` or `registry search`.
+</Info>
+
+## Subcommands
+
+### sources list
+
+List all configured repositories.
+
+```bash
+# List repositories in table format
+fastskill sources list
+
+# List in JSON format
+fastskill sources list --json
+```
+
+**Output Format**:
+- Default: Human-readable table with name, type, URL/path, priority
+- JSON: Machine-readable array with full repository details
+
+**Example Output**:
+```
+Name             Type              URL/Path                     Priority
+---------------- ---------------- ---------------------------- ---------
+public-registry  http-registry    https://api.fastskill.io    0
+team-skills      git-marketplace  https://github.com/team/skills.git 1
+local-dev        local             ./skills                    2
+```
+
+### sources add
+
+Add a new repository to your skill sources.
+
+```bash
+# Add HTTP registry
+fastskill sources add public --type http-registry https://api.fastskill.io --priority 0
+
+# Add Git marketplace
+fastskill sources add team-skills --type git-marketplace https://github.com/team/skills.git --priority 1
+
+# Add ZIP URL source
+fastskill sources add custom --type zip-url https://cdn.example.com/skills/ --priority 2
+
+# Add local directory
+fastskill sources add local-dev --type local ./skills --priority 3
+
+# Add with authentication (PAT)
+fastskill sources add private-repo --type git-marketplace https://github.com/team/private.git \
+  --auth-type pat --auth-env GITHUB_TOKEN
+
+# Add with SSH key
+fastskill sources add private-repo --type git-marketplace https://github.com/team/private.git \
+  --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
+
+# Add with basic auth
+fastskill sources add registry --type http-registry https://api.example.com \
+  --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
+
+# Add with API key
+fastskill sources add registry --type http-registry https://api.example.com \
+  --auth-type api-key --auth-env API_KEY
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--type` | - | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local` |
+| `--priority` | - | number | 0 | Lower number = higher priority (used for conflict resolution) |
+| `--branch` | - | string | none | Git branch to checkout (for git-marketplace) |
+| `--tag` | - | string | none | Git tag to checkout (for git-marketplace) |
+| `--auth-type` | - | string | none | Authentication type: `pat`, `ssh-key`, `ssh`, `basic`, or `api-key` |
+| `--auth-env` | - | string | none | Environment variable for PAT, password, or API key |
+| `--auth-key-path` | - | path | none | SSH key path for ssh-key or ssh auth |
+| `--auth-username` | - | string | none | Username for basic auth |
+
+**Repository Types**:
+
+1. **git-marketplace**: Git repository with `marketplace.json` for skill discovery
+   - Supports PAT, SSH Key, SSH, Basic Auth
+   - Can specify branch or tag
+   - Scans for skills across repository structure
+
+2. **http-registry**: HTTP-based registry with flat skill index
+   - Supports Basic Auth, API Key
+   - Fast skill lookup via API
+   - Best for production registries
+
+3. **zip-url**: Base URL for ZIP file downloads
+   - Supports PAT, Basic Auth
+   - Downloads skills from `{base_url}/{skill-id}-{version}.zip`
+
+4. **local**: Local filesystem path
+   - No authentication needed
+   - Best for development workflows
+
+**Priority-Based Conflict Resolution**:
+- When multiple sources provide the same skill ID, the source with lower priority number wins
+- Priority 0 is highest
+- Example: If `public-registry` (priority 0) and `team-skills` (priority 1) both have `pptx`, `public-registry`'s version is used
+
+### sources remove
+
+Remove a repository from your sources.
+
+```bash
+# Remove a repository
+fastskill sources remove team-skills
+
+# Remove multiple repositories
+fastskill sources remove team-skills local-dev
+```
+
+**Behavior**:
+- Removes repository from configuration file
+- Does not uninstall skills that were installed from this repository
+- Skills remain in skills directory until explicitly removed
+
+### sources show
+
+Display detailed information about a specific repository.
+
+```bash
+# Show repository details
+fastskill sources show public-registry
+
+# Show in JSON format
+fastskill sources show team-skills --json
+```
+
+**Example Output**:
+```
+Name: team-skills
+Type: git-marketplace
+URL: https://github.com/team/skills.git
+Branch: main
+Priority: 1
+Auth: pat (GITHUB_TOKEN)
+```
+
+### sources update
+
+Update repository metadata.
+
+```bash
+# Update branch
+fastskill sources update team-skills --branch develop
+
+# Update priority
+fastskill sources update public-registry --priority 0
+
+# Update both
+fastskill sources update team-skills --branch main --priority 2
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--branch` | - | string | none | New branch for git-marketplace repositories |
+| `--priority` | - | number | none | New priority value |
+
+### sources test
+
+Test repository connectivity and accessibility.
+
+```bash
+# Test a repository
+fastskill sources test public-registry
+
+# Test git marketplace
+fastskill sources test team-skills
+```
+
+**What it tests**:
+- HTTP registries: Connectivity to API endpoint
+- Git marketplaces: Clone/access to repository
+- ZIP URLs: Accessibility of base URL
+- Local: Directory exists and is readable
+
+**Exit codes**:
+- 0: Repository is accessible
+- 1: Cannot connect or access repository
+- 2: Invalid configuration
+
+### sources refresh
+
+Refresh repository cache (re-fetch from source).
+
+```bash
+# Refresh specific repository
+fastskill sources refresh team-skills
+
+# Refresh all repositories
+fastskill sources refresh
+```
+
+**When to use**:
+- After repository has been updated with new skills
+- To get latest skill versions
+- If cache is stale or corrupted
+
+**What it does**:
+- Re-fetches repository metadata
+- Updates local cache
+- Invalidates stale skill information
+
+### sources create
+
+Create `marketplace.json` from a directory containing skills. This is useful for setting up a Git marketplace repository.
+
+```bash
+# Create marketplace.json from current directory
+fastskill sources create
+
+# Create from specific directory
+fastskill sources create --path ./skills
+
+# Specify output location
+fastskill sources create --output .claude-plugin/marketplace.json
+
+# Set base URL for download links
+fastskill sources create --base-url https://cdn.example.com/skills/
+
+# Set repository metadata
+fastskill sources create \
+  --name "My Skills" \
+  --owner-name "Developer" \
+  --owner-email "dev@example.com" \
+  --description "Collection of useful skills" \
+  --version "1.0.0"
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--path` | -p | path | `.` | Directory containing skills to scan |
+| `--output` | -o | path | `.claude-plugin/marketplace.json` in specified directory | Output file path |
+| `--base-url` | - | string | none | Base URL for download links (optional) |
+| `--name` | - | string | none | Repository name (required) |
+| `--owner-name` | - | string | none | Owner name (optional) |
+| `--owner-email` | - | string | none | Owner email (optional) |
+| `--description` | - | string | none | Repository description (optional) |
+| `--version` | - | string | none | Repository version (optional) |
+
+**What it does**:
+- Scans directory for skills (subdirectories with `SKILL.md`)
+- Extracts metadata from each skill's `SKILL.md` and `skill-project.toml`
+- Creates `marketplace.json` with skill listings
+- Validates skill structure and required fields
+
+**Generated `marketplace.json` structure**:
+```json
+{
+  "name": "My Skills",
+  "owner": {
+    "name": "Developer",
+    "email": "dev@example.com"
+  },
+  "description": "Collection of useful skills",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "pptx",
+      "version": "1.2.3",
+      "name": "PowerPoint Skill",
+      "description": "Presentation creation and editing",
+      "author": "FastSkill Team",
+      "tags": ["presentation", "office"],
+      "path": "pptx"
+    }
+  ]
+}
+```
+
+## Configuration File Location
+
+Sources are stored in `skill-project.toml` at project root:
+
+```toml skill-project.toml
+[tool.fastskill.repositories]
+
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"
+priority = 0
+
+[[tool.fastskill.repositories]]
+name = "team-skills"
+type = "git-marketplace"
+url = "https://github.com/team/skills.git"
+branch = "main"
+priority = 1
+
+[[tool.fastskill.repositories.repositories.auth]]
+type = "pat"
+env_var = "GITHUB_TOKEN"
+```
+
+## Authentication Types
+
+### PAT (Personal Access Token)
+- Use for Git repositories and private registries
+- Token stored in environment variable
+- Example:
+  ```bash
+  fastskill sources add private-repo --type git-marketplace https://github.com/team/repo.git \
+    --auth-type pat --auth-env GITHUB_TOKEN
+  ```
+  ```bash
+  export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+  ```
+
+### SSH Key
+- Use for Git repositories with SSH access
+- Key path points to private key file
+- Example:
+  ```bash
+  fastskill sources add private-repo --type git-marketplace git@github.com:team/repo.git \
+    --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
+  ```
+
+### SSH
+- Use for Git repositories with SSH protocol
+- Similar to SSH Key but may use system SSH agent
+- Example:
+  ```bash
+  fastskill sources add private-repo --type git-marketplace git@github.com:team/repo.git \
+    --auth-type ssh --auth-key-path ~/.ssh/id_rsa
+  ```
+
+### Basic Auth
+- Use for HTTP registries with username/password
+- Password stored in environment variable
+- Example:
+  ```bash
+  fastskill sources add registry --type http-registry https://api.example.com \
+    --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
+  ```
+
+### API Key
+- Use for HTTP registries with API key authentication
+- API key stored in environment variable
+- Example:
+  ```bash
+  fastskill sources add registry --type http-registry https://api.example.com \
+    --auth-type api-key --auth-env API_KEY
+  ```
+
+## Multi-Source Skill Resolution
+
+FastSkill supports multiple sources with priority-based resolution:
+
+```bash
+# Add multiple sources
+fastskill sources add public-registry --type http-registry https://api.fastskill.io --priority 0
+fastskill sources add team-skills --type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill sources add local-dev --type local ./skills --priority 2
+```
+
+**Resolution process**:
+1. Skills are searched in priority order (0, 1, 2, ...)
+2. First match wins
+3. Higher priority sources override lower priority sources
+4. Useful for overriding public skills with custom versions
+
+**Example**:
+- `public-registry` (priority 0): `pptx v1.0.0`
+- `team-skills` (priority 1): `pptx v1.2.0`
+- Result: `pptx v1.0.0` is used (from higher priority source)
+
+## Examples
+
+### Setting up a development environment
+
+```bash
+# Add public registry
+fastskill sources add public --type http-registry https://api.fastskill.io --priority 0
+
+# Add team repository
+fastskill sources add team --type git-marketplace https://github.com/team/skills.git \
+  --auth-type pat --auth-env GITHUB_TOKEN --priority 1
+
+# Add local development directory
+fastskill sources add local-dev --type local ./skills --priority 2
+
+# Test all sources
+fastskill sources test public
+fastskill sources test team
+fastskill sources test local-dev
+```
+
+### Creating a Git marketplace
+
+```bash
+# 1. Create a directory for your marketplace
+mkdir my-marketplace
+cd my-marketplace
+
+# 2. Add skills (each in its own subdirectory)
+git clone https://github.com/org/pptx.git skills/pptx
+git clone https://github.com/org/web-scraper.git skills/web-scraper
+
+# 3. Create marketplace.json
+fastskill sources create \
+  --name "My Marketplace" \
+  --owner-name "Your Name" \
+  --description "Collection of skills" \
+  --base-url https://cdn.example.com/marketplace/
+
+# 4. Commit and push
+git init
+git add .
+git commit -m "Initial marketplace"
+git remote add origin https://github.com/username/marketplace.git
+git push -u origin main
+```
+
+### Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Repository not found">
+  <Warning>
+  **Check name**: Ensure the repository name matches what you added.
+  ```bash
+  fastskill sources list
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Authentication failed">
+  <Warning>
+  **Verify credentials**:
+  ```bash
+  # Check environment variable
+  echo $GITHUB_TOKEN
+
+  # Test SSH key
+  ssh -T git@github.com
+
+  # Test basic auth credentials
+  curl -u username:password https://api.example.com/health
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Priority not working">
+  <Tip>
+  **Verify priority values**: Lower numbers have higher priority.
+  ```bash
+  fastskill sources list
+  ```
+  Priority 0 is highest, priority 10 is lower.
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Sources configuration is stored in `skill-project.toml` and should be committed to version control. Authentication credentials (environment variables) should never be committed.
+</Note>
+
+## See Also
+
+- [Registry Overview](/registry/overview) - Understanding registries and repositories
+- [Init Command](/cli-reference/skill-commands#fastskill-init) - Creating skill-project.toml
+- [Install Command](/cli-reference/skill-commands#fastskill-install) - Installing skills from sources
+- [Search Command](/cli-reference/discovery-commands#fastskill-search) - Searching across sources

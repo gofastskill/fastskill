@@ -1,0 +1,567 @@
+---
+title: "Auth Command"
+description: "FastSkill CLI command for authentication and authorization management."
+---
+
+## Overview
+
+The `auth` command manages authentication for FastSkill registries. It supports JWT-based authentication with role-based access control (RBAC). Authentication tokens are stored locally and used automatically when making API requests.
+
+<Info>
+Authentication is required for:
+- Publishing skills to registries
+- Accessing private repositories
+- Performing admin operations on registries
+</Info>
+
+## Subcommands
+
+### auth login
+
+Authenticate with a registry and store the authentication token.
+
+```bash
+# Login to default registry (http://localhost:8080)
+fastskill auth login
+
+# Login to specific registry
+fastskill auth login --registry https://registry.example.com
+
+# Login with specific role
+fastskill auth login --registry https://registry.example.com --role admin
+
+# Login using environment variable
+export FASTSKILL_API_URL=https://registry.example.com
+fastskill auth login --role manager
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--registry` | - | string | `FASTSKILL_API_URL` env var or `http://localhost:8080` | Registry URL to authenticate with |
+| `--role` | - | string | `manager` | Role for the token (`user`, `manager`, or `admin`) |
+
+**What happens during login**:
+1. CLI sends POST request to `{registry}/auth/token` with specified role
+2. Registry validates the request and generates a JWT token
+3. Token is returned and stored in configuration
+4. Subsequent API requests use the token automatically
+
+**Token storage location**:
+- Stored in `~/.fastskill/auth.toml` (or platform-specific config directory)
+- Tokens are stored per-registry
+- Encrypted or stored securely based on platform
+
+**Roles**:
+
+| Role | Permissions | Use Case |
+|------|-------------|-----------|
+| `user` | Read skills, search registry | General users |
+| `manager` | User permissions + publish skills, manage skills | Skill authors and maintainers |
+| `admin` | Manager permissions + manage users, configure registry | Registry administrators |
+
+**Example workflow**:
+
+```bash
+# 1. Login as manager (default)
+fastskill auth login --registry https://registry.example.com
+# Prompts for credentials (if needed)
+# Token stored and ready to use
+
+# 2. Publish a skill
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --registry https://registry.example.com
+
+# 3. Token is used automatically
+```
+
+### auth logout
+
+Remove stored authentication token for a registry.
+
+```bash
+# Logout from default registry
+fastskill auth logout
+
+# Logout from specific registry
+fastskill auth logout --registry https://registry.example.com
+
+# Logout using environment variable
+export FASTSKILL_API_URL=https://registry.example.com
+fastskill auth logout
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--registry` | - | string | `FASTSKILL_API_URL` env var or `http://localhost:8080` | Registry URL to logout from |
+
+**What happens during logout**:
+1. Token for specified registry is removed from local storage
+2. No API call is made to registry
+3. Existing sessions (if any) are not terminated server-side
+4. Future API requests will fail until re-authentication
+
+**Example**:
+
+```bash
+# 1. Login
+fastskill auth login --registry https://registry.example.com --role manager
+# Output: Successfully logged in to https://registry.example.com
+
+# 2. Logout
+fastskill auth logout --registry https://registry.example.com
+# Output: Successfully logged out from https://registry.example.com
+
+# 3. Try to publish (will fail)
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --registry https://registry.example.com
+# Error: No authentication token found for registry: https://registry.example.com
+```
+
+### auth whoami
+
+Display current authentication status and information.
+
+```bash
+# Check auth status for default registry
+fastskill auth whoami
+
+# Check auth status for specific registry
+fastskill auth whoami --registry https://registry.example.com
+
+# Check auth status using environment variable
+export FASTSKILL_API_URL=https://registry.example.com
+fastskill auth whoami
+```
+
+**Options**:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--registry` | - | string | `FASTSKILL_API_URL` env var or `http://localhost:8080` | Registry URL to check |
+
+**What it displays**:
+- Registry URL
+- Username (if available)
+- Role
+- Token expiration (if available)
+- Last refresh timestamp (if available)
+
+**Example output**:
+
+```
+Registry: https://registry.example.com
+Username: dev-user
+Role: manager
+Token expires: 2025-02-15T10:30:00Z
+Last refresh: 2025-01-15T10:30:00Z
+```
+
+**Not logged in**:
+
+```
+Not logged in to registry: https://registry.example.com
+Run `fastskill auth login` to authenticate
+```
+
+**Using environment variable token**:
+
+```
+Using token from FASTSKILL_API_TOKEN environment variable
+Registry: https://registry.example.com
+Note: Environment variable tokens don't store user info
+```
+
+## Environment Variables
+
+### FASTSKILL_API_URL
+
+Default registry URL for all auth commands.
+
+```bash
+# Set default registry
+export FASTSKILL_API_URL=https://registry.example.com
+
+# Now can omit --registry flag
+fastskill auth login --role admin
+fastskill auth whoami
+fastskill auth logout
+```
+
+### FASTSKILL_API_TOKEN
+
+Directly provide authentication token (bypasses storage).
+
+```bash
+# Set token directly (e.g., from CI/CD)
+export FASTSKILL_API_TOKEN=eyJhbGc...
+
+# Token is used automatically for all API requests
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip
+
+# whoami shows token is from environment variable
+fastskill auth whoami
+# Output: Using token from FASTSKILL_API_TOKEN environment variable
+```
+
+<Warning>
+**Security note**: Environment variables may be visible in process lists and logs. Avoid setting sensitive tokens in environment variables for long-running processes.
+</Warning>
+
+## Per-Registry Authentication
+
+FastSkill supports authenticating with multiple registries simultaneously.
+
+```bash
+# Login to production registry
+fastskill auth login --registry https://prod-registry.example.com --role manager
+
+# Login to staging registry
+fastskill auth login --registry https://staging-registry.example.com --role user
+
+# Check status for each
+fastskill auth whoami --registry https://prod-registry.example.com
+fastskill auth whoami --registry https://staging-registry.example.com
+```
+
+**Token storage**:
+- Each registry has its own stored token
+- Tokens are isolated and don't interfere
+- CLI automatically selects the correct token based on target registry
+
+**Usage**:
+
+```bash
+# Publish to production
+fastskill publish --registry https://prod-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+
+# Publish to staging
+fastskill publish --registry https://staging-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+```
+
+## Role-Based Access Control (RBAC)
+
+FastSkill implements a role hierarchy for authentication.
+
+### Role Hierarchy
+
+```
+admin
+  └─ manager
+       └─ user
+```
+
+- **admin** has all permissions of manager and user
+- **manager** has all permissions of user
+- **user** has basic read permissions
+
+### Permissions Matrix
+
+| Operation | user | manager | admin |
+|-----------|-------|---------|--------|
+| List skills | ✓ | ✓ | ✓ |
+| Search skills | ✓ | ✓ | ✓ |
+| Download skills | ✓ | ✓ | ✓ |
+| Publish skills | ✗ | ✓ | ✓ |
+| Update skills | ✗ | ✓ | ✓ |
+| Delete skills | ✗ | ✓ | ✓ |
+| Manage users | ✗ | ✗ | ✓ |
+| Configure registry | ✗ | ✗ | ✓ |
+| View metrics | ✗ | ✓ | ✓ |
+
+### Choosing the Right Role
+
+<Steps>
+<Step title="user">
+Use for:
+- Skill consumers who only need to download and use skills
+- Read-only access to registry
+- Public skill browsing
+</Step>
+
+<Step title="manager">
+Use for:
+- Skill authors and maintainers
+- Publishing and updating skills
+- Managing skill metadata
+- Viewing registry metrics
+</Step>
+
+<Step title="admin">
+Use for:
+- Registry administrators
+- Managing user accounts
+- Configuring registry settings
+- Full control over registry operations
+</Step>
+</Steps>
+
+## Authentication Flow
+
+### 1. Token Generation
+
+```
+Client                        Server
+  |                              |
+  |-- POST /auth/token --------->|
+  |  { "role": "manager" }      |
+  |                              |
+  |<-- JWT Token ---------------|
+  |  { "token": "eyJhb...",      |
+  |    "expires_at": "..." }      |
+  |                              |
+  |-- Store token locally --------->|
+```
+
+### 2. Token Usage
+
+```
+Client                        Server
+  |                              |
+  |-- POST /api/skills ------>|
+  |  Authorization: Bearer        |
+  |  eyJhb...                    |
+  |                              |
+  |<-- Response ---------------|
+  |  { "data": [...] }           |
+  |                              |
+```
+
+### 3. Token Refresh
+
+FastSkill automatically refreshes tokens when needed (if supported by registry).
+
+```bash
+# Token is stored with expiration
+# CLI checks expiration before each request
+# If expired, CLI attempts to refresh (if refresh token available)
+
+# Manual refresh (logout then login)
+fastskill auth logout
+fastskill auth login
+```
+
+## Configuration File
+
+Authentication tokens are stored in `~/.fastskill/auth.toml` (Unix) or `%USERPROFILE%\.fastskill\auth.toml` (Windows).
+
+**Example `auth.toml`**:
+
+```toml
+[[registries]]
+registry_url = "https://prod-registry.example.com"
+username = "dev-user"
+role = "manager"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+expires_at = "2025-02-15T10:30:00Z"
+last_refresh = "2025-01-15T10:30:00Z"
+
+[[registries]]
+registry_url = "https://staging-registry.example.com"
+username = "dev-user"
+role = "user"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+expires_at = "2025-02-20T10:30:00Z"
+last_refresh = "2025-01-20T10:30:00Z"
+```
+
+<Warning>
+**Security**: Never commit `auth.toml` to version control. It contains sensitive authentication tokens.
+</Warning>
+
+## Examples
+
+### Typical Development Workflow
+
+```bash
+# 1. Set registry URL
+export FASTSKILL_API_URL=https://registry.example.com
+
+# 2. Login as manager (skill author)
+fastskill auth login --role manager
+
+# 3. Verify login
+fastskill auth whoami
+
+# 4. Publish skill
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip
+
+# 5. Check status
+fastskill auth whoami
+```
+
+### CI/CD Integration
+
+```bash
+#!/bin/bash
+# ci-publish.sh
+
+# 1. Get token from CI/CD secrets
+TOKEN=${FASTSKILL_API_TOKEN}
+
+# 2. Set environment variable
+export FASTSKILL_API_TOKEN=$TOKEN
+export FASTSKILL_API_URL=https://registry.example.com
+
+# 3. Package skill
+fastskill package --skills pptx --bump patch --output ./artifacts
+
+# 4. Publish (token is used automatically)
+fastskill publish --artifacts ./artifacts --registry https://registry.example.com
+
+# 5. Verify
+echo "Published successfully!"
+```
+
+### Multi-Registry Workflow
+
+```bash
+# 1. Login to production as admin
+fastskill auth login --registry https://prod.example.com --role admin
+
+# 2. Login to staging as manager
+fastskill auth login --registry https://staging.example.com --role manager
+
+# 3. Publish to staging
+fastskill publish --registry https://staging.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+
+# 4. Promote to production
+fastskill publish --registry https://prod.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Login failed">
+  <Warning>
+  **Check registry URL**: Ensure registry is accessible.
+  ```bash
+  curl https://registry.example.com/health
+  ```
+  </Warning>
+
+  <Warning>
+  **Check role**: Ensure role is valid (`user`, `manager`, or `admin`).
+  ```bash
+  fastskill auth login --role manager
+  ```
+  </Warning>
+
+  <Warning>
+  **Check network**: Ensure network allows HTTPS requests.
+  ```bash
+  # Test connectivity
+  ping registry.example.com
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Token expired">
+  <Tip>
+  **Refresh token**: Logout and login again.
+  ```bash
+  fastskill auth logout
+  fastskill auth login --role manager
+  ```
+  </Tip>
+
+  <Tip>
+  **Check expiration**:
+  ```bash
+  fastskill auth whoami
+  # Look for "Token expires: ..." field
+  ```
+  </Tip>
+</Accordion>
+
+<Accordion title="Permission denied">
+  <Warning>
+  **Check role**: Ensure your role has required permissions.
+  - Publishing requires `manager` or `admin`
+  - Admin operations require `admin`
+  </Warning>
+
+  <Warning>
+  **Check registry configuration**: Some registries may have custom permissions.
+  ```bash
+  fastskill auth whoami
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Multiple registries confused">
+  <Tip>
+  **Specify registry explicitly**: Use `--registry` flag to avoid confusion.
+  ```bash
+  fastskill publish --registry https://prod.example.com --artifacts ./artifacts/pptx.zip
+  ```
+  </Tip>
+
+  <Tip>
+  **Check auth status**:
+  ```bash
+  fastskill auth whoami --registry https://prod.example.com
+  fastskill auth whoami --registry https://staging.example.com
+  ```
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<Steps>
+<Step title="Use role-based access">
+Assign minimal required role:
+- Use `user` for read-only access
+- Use `manager` for publishing
+- Use `admin` only for registry administration
+</Step>
+
+<Step title="Rotate tokens regularly">
+Logout and login periodically:
+```bash
+fastskill auth logout
+fastskill auth login --role manager
+```
+</Step>
+
+<Step title="Secure token storage">
+- Never commit `auth.toml` to version control
+- Use environment variables for CI/CD
+- Restrict file permissions on `~/.fastskill/`
+```bash
+chmod 700 ~/.fastskill
+chmod 600 ~/.fastskill/auth.toml
+```
+</Step>
+
+<Step title="Use HTTPS">
+Always use HTTPS for registry URLs:
+```bash
+# Good
+fastskill auth login --registry https://registry.example.com
+
+# Bad - insecure
+fastskill auth login --registry http://registry.example.com
+```
+</Step>
+
+<Step title="Monitor token usage">
+Regularly check `fastskill auth whoami` and review:
+- Last login times
+- Token expiration
+- Unusual activity
+</Step>
+</Steps>
+
+<Note>
+Authentication tokens are valuable credentials. Treat them like passwords and follow security best practices.
+</Note>
+
+## See Also
+
+- [API Authentication](/api-reference/authentication) - HTTP API authentication details
+- [Registry Overview](/registry/overview) - Understanding registries
+- [Publish Command](/cli-reference/publish-command) - Publishing skills
+- [Sources Command](/cli-reference/sources-command) - Managing repositories

@@ -5,13 +5,21 @@ description: "FastSkill CLI commands for skill management including registration
 
 ## Overview
 
-Skill commands provide comprehensive management of FastSkill skills through the command line interface.
+Skill commands provide comprehensive management of FastSkill skills through command line interface. These commands allow you to register, install, update, remove, and manage skills in your FastSkill ecosystem.
+
+<Note>
+For detailed documentation on specific commands, see the dedicated command pages linked below.
+</Note>
 
 ## Command Reference
 
 ### fastskill init
 
-Initialize `skill-project.toml` for skill authors in the current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
+Initialize `skill-project.toml` for skill authors in current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
+
+<Info>
+See [init Command](/cli-reference/init-command) for complete documentation with all flags and examples.
+</Info>
 
 ```bash
 # Create skill-project.toml interactively
@@ -33,24 +41,13 @@ fastskill init --force
 - Prompts interactively for missing fields (when not using `--yes`)
 - Creates `skill-project.toml` with all metadata fields including required `id` and `version`
 
-**Example `skill-project.toml` structure** (note: `id` field is required):
-
-```toml
-[metadata]
-id = "my-skill"  # Required: Skill ID (must not contain slashes or scope)
-version = "1.0.0"  # Required: Semantic version
-description = "Skill description"  # Optional
-author = "Author Name"  # Optional
-tags = ["tag1", "tag2"]  # Optional
-capabilities = ["cap1", "cap2"]  # Optional
-download_url = "https://example.com/skill.zip"  # Optional
-```
-
-**Important Notes**:
-- The `id` field must not contain forward slashes or scope information (e.g., use "my-skill" not "dev-user/my-skill")
-- Scope is applied separately during publishing (from JWT token), resulting in final package name like "dev-user/my-skill"
-- Skill name for display comes from `SKILL.md` frontmatter, not from `skill-project.toml`
-- This command is for skill authors working on individual skills. Run it from within a skill directory that contains `SKILL.md`
+**Options**:
+- `--yes`: Skip interactive prompts and use defaults
+- `--force`: Force reinitialization even if skill-project.toml exists
+- `--version <VERSION>`: Set version directly
+- `--description <DESC>`: Set skill description
+- `--author <AUTHOR>`: Set skill author
+- `--download-url <URL>`: Set download URL
 
 ### fastskill read
 
@@ -154,7 +151,11 @@ Skill read: pptx
 
 ### fastskill install
 
-Install skills from `skill-project.toml` to the skills storage directory (like `poetry install`). The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+
+<Info>
+See [install Command](/cli-reference/install-command) for complete documentation with groups, lockfile, and reconciliation features.
+</Info>
 
 ```bash
 # Install all skills from skill-project.toml
@@ -169,6 +170,41 @@ fastskill install --only prod
 # Install from lock file (reproducible)
 fastskill install --lock
 ```
+
+**Options**:
+- `--without <GROUPS...>`: Exclude skills from these groups
+- `--only <GROUPS...>`: Only install skills from these groups
+- `--lock`: Install from skills.lock (exact versions) instead of resolving from skill-project.toml
+
+### fastskill update
+
+Update skills in skills storage directory to their latest versions from source. The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+
+<Info>
+See [update Command](/cli-reference/update-command) for complete documentation with strategies and version constraints.
+</Info>
+
+```bash
+# Update all skills
+fastskill update
+
+# Update specific skill
+fastskill update my-skill-id
+
+# Check for updates without installing
+fastskill update --check
+
+# Show what would be updated
+fastskill update --dry-run
+```
+
+**Options**:
+- `<SKILL_ID>`: Skill ID to update (if not specified, updates all)
+- `--check`: Check for updates without installing
+- `--dry-run`: Show what would be updated without actually updating
+- `--version <VERSION>`: Update to specific version
+- `--source <SOURCE>`: Update from specific source
+- `--strategy <STRATEGY>`: Update strategy: latest, patch, minor, major (default: latest)
 
 ### fastskill update
 
@@ -318,21 +354,6 @@ fastskill list --grid
 
 **Note**: This command reads installed skill manifests from the skills directory as the source of truth and cross-references `skill-project.toml` (desired) and `skills.lock` (pinned) to report reconciliation status.
 
-### fastskill update
-
-Update existing skill definitions.
-
-```bash
-# Update skill from file
-fastskill update skill.json
-
-# Update specific fields
-fastskill update skill-id --version 1.1.0 --description "New description"
-
-# Update with validation
-fastskill update skill.json --validate
-```
-
 ### fastskill disable
 
 Disable skills to prevent them from being used.
@@ -347,23 +368,21 @@ fastskill disable skill1 skill2 skill3
 
 ### fastskill remove
 
-Remove skills from the service.
+Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`.
 
 ```bash
-# Remove single skill
-fastskill remove text-processor
+# Remove skill (with confirmation)
+fastskill remove my-skill-id
 
-# Remove with confirmation
-fastskill remove text-processor --confirm
+# Force removal without confirmation
+fastskill remove my-skill-id --force
 
-# Batch removal
-fastskill remove skill1 skill2 skill3 --batch
+# Remove multiple skills
+fastskill remove skill1 skill2 skill3
 ```
 
-**Options:**
-- `--confirm`: Skip confirmation prompt
-- `--batch`: Batch mode for multiple skills
-- `--force`: Force removal without validation
+**Options**:
+- `--force`: Force removal without confirmation prompt
 
 ## Examples
 
@@ -392,19 +411,26 @@ fastskill remove my-skill --confirm
 ### Batch Operations
 
 ```bash
-# Register all skills in directory
-fastskill register ./skills/ --recursive --validate
-
-# List skills by category
-fastskill list --tags data,analysis --format table
-
-# Validate all skills
-fastskill validate ./skills/**/*.json --batch --report validation-report.json
-
-# Update all skills to new version
-for skill in $(fastskill list --format json | jq -r '.data[].id'); do
-  fastskill update $skill --version 2.0.0
+# Install multiple local skills (editable) and install
+for dir in ./skills/*; do
+  fastskill add "$dir" -e --group dev
 done
+
+fastskill install
+fastskill reindex
+```
+
+### CI/CD Integration
+
+```bash
+# Install with locked versions for reproducible builds
+fastskill install --lock --without dev
+
+# Reindex for search
+fastskill reindex
+
+# Verify installation
+fastskill list
 ```
 
 <Note>
