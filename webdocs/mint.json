@@ -118,6 +118,7 @@
             "group": "Registry",
             "pages": [
                 "registry/overview",
+                "registry/repository-architecture",
                 "registry/sources",
                 "registry/marketplace-json",
                 "registry/web-ui"
@@ -137,6 +138,10 @@
             "pages": [
                 "security/model",
                 "security/best-practices",
+                "skill-management/reconciliation",
+                "advanced-topics/event-system",
+                "advanced-topics/build-systems",
+                "advanced-topics/feature-flags",
                 "testing/framework",
                 "testing/debugging"
             ]
