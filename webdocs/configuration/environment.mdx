@@ -1,0 +1,410 @@
+---
+title: "Environment Variables"
+description: "Complete reference for all FastSkill environment variables including usage examples and priority order."
+---
+
+## Overview
+
+Environment variables provide a convenient way to configure FastSkill without modifying code. They are especially useful for containerized deployments, CI/CD pipelines, and when configuration needs to be changed without code modifications.
+
+<Info>
+Environment variables have lower priority than programmatic configuration. Use them for deployment-specific settings rather than core application behavior.
+</Info>
+
+## Configuration Variables
+
+### Core Configuration
+
+<ParamField path="FASTSKILL_LOG_LEVEL" type="string" enum={["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]}>
+Sets the minimum logging level for FastSkill operations. More verbose levels (DEBUG, TRACE) are useful for troubleshooting but may impact performance.
+</ParamField>
+
+<ParamField path="FASTSKILL_CONFIG_FILE" type="string">
+Path to a JSON configuration file that overrides default settings. Useful for complex configurations that are easier to manage in files.
+</ParamField>
+
+<ParamField path="FASTSKILL_STORAGE_PATH" type="string">
+Directory path where FastSkill looks for skill files and stores skill data. Can be absolute or relative to the working directory.
+</ParamField>
+
+### Execution Configuration
+
+<ParamField path="FASTSKILL_EXECUTION_TIMEOUT" type="integer">
+Default timeout in seconds for skill execution. Skills that take longer than this will be terminated.
+</ParamField>
+
+<ParamField path="FASTSKILL_MAX_MEMORY_MB" type="integer">
+Maximum memory in megabytes that a single skill execution can use. Helps prevent memory exhaustion.
+</ParamField>
+
+<ParamField path="FASTSKILL_MAX_CPU_PERCENT" type="integer">
+Maximum CPU usage percentage allowed for skill execution. Useful for preventing resource starvation in shared environments.
+</ParamField>
+
+<ParamField path="FASTSKILL_ENABLE_NETWORKING" type="boolean">
+Whether skills are allowed to make network requests. Set to `false` for enhanced security in production environments.
+</ParamField>
+
+<ParamField path="FASTSKILL_SANDBOX_LEVEL" type="string" enum={["none", "basic", "strict"]}>
+Level of sandboxing for skill execution. `strict` provides maximum security but may limit functionality.
+</ParamField>
+
+### Performance Configuration
+
+<ParamField path="FASTSKILL_CACHE_SIZE" type="integer">
+Size of the metadata cache in number of entries. Larger values improve performance but use more memory.
+</ParamField>
+
+<ParamField path="FASTSKILL_CACHE_TTL" type="integer">
+Time-to-live for cache entries in seconds. Set to 0 to disable cache expiration.
+</ParamField>
+
+<ParamField path="FASTSKILL_ENABLE_CACHE_PERSISTENCE" type="boolean">
+Whether to persist cache to disk for faster startup times. Useful for production deployments.
+</ParamField>
+
+<ParamField path="FASTSKILL_CACHE_DIRECTORY" type="string">
+Directory path for persistent cache storage. If not set, uses system temporary directory.
+</ParamField>
+
+### Service Configuration
+
+<ParamField path="FASTSKILL_ENABLE_HOT_RELOAD" type="boolean">
+Enable automatic reloading of skills when files change. Useful during development but should be disabled in production.
+</ParamField>
+
+<ParamField path="FASTSKILL_WATCH_PATHS" type="string">
+Comma-separated list of directories to watch for skill changes. Only used when hot reload is enabled.
+</ParamField>
+
+<ParamField path="FASTSKILL_MAX_CONCURRENT_EXECUTIONS" type="integer">
+Maximum number of skill executions that can run simultaneously. Helps prevent resource exhaustion.
+</ParamField>
+
+<ParamField path="FASTSKILL_ENABLE_AUDIT_LOGGING" type="boolean">
+Enable detailed logging of all skill operations for security auditing and debugging.
+</ParamField>
+
+### Monitoring Configuration
+
+<ParamField path="FASTSKILL_ENABLE_METRICS" type="boolean">
+Enable collection of performance metrics for monitoring and optimization.
+</ParamField>
+
+<ParamField path="FASTSKILL_METRICS_RETENTION_HOURS" type="integer">
+Number of hours to retain performance metrics before automatic cleanup.
+</ParamField>
+
+<ParamField path="FASTSKILL_ENABLE_HEALTH_CHECKS" type="boolean">
+Enable health check endpoints for load balancers and monitoring systems.
+</ParamField>
+
+<ParamField path="FASTSKILL_HEALTH_CHECK_INTERVAL" type="integer">
+Interval in seconds between health checks when health checks are enabled.
+</ParamField>
+
+## Usage Examples
+
+### Development Setup
+
+```bash
+# Development environment variables
+export FASTSKILL_LOG_LEVEL=DEBUG
+export FASTSKILL_ENABLE_HOT_RELOAD=true
+export FASTSKILL_WATCH_PATHS="./skills,./custom-skills"
+export FASTSKILL_ENABLE_AUDIT_LOGGING=true
+export FASTSKILL_CACHE_TTL=60
+```
+
+### Production Setup
+
+```bash
+# Production environment variables
+export FASTSKILL_LOG_LEVEL=INFO
+export FASTSKILL_ENABLE_HOT_RELOAD=false
+export FASTSKILL_EXECUTION_TIMEOUT=30
+export FASTSKILL_MAX_MEMORY_MB=512
+export FASTSKILL_ENABLE_NETWORKING=false
+export FASTSKILL_SANDBOX_LEVEL=strict
+export FASTSKILL_ENABLE_METRICS=true
+export FASTSKILL_ENABLE_AUDIT_LOGGING=true
+```
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile
+FROM fastskill:latest
+
+# Set production configuration
+ENV FASTSKILL_LOG_LEVEL=WARN
+ENV FASTSKILL_STORAGE_PATH=/app/skills
+ENV FASTSKILL_EXECUTION_TIMEOUT=60
+ENV FASTSKILL_MAX_MEMORY_MB=1024
+ENV FASTSKILL_ENABLE_HOT_RELOAD=false
+
+# Run the application
+CMD ["fastskill", "serve", "--host", "0.0.0.0"]
+```
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  fastskill:
+    image: fastskill:latest
+    environment:
+      - FASTSKILL_LOG_LEVEL=INFO
+      - FASTSKILL_STORAGE_PATH=/app/skills
+      - FASTSKILL_EXECUTION_TIMEOUT=30
+      - FASTSKILL_MAX_MEMORY_MB=512
+      - FASTSKILL_ENABLE_NETWORKING=false
+      - FASTSKILL_SANDBOX_LEVEL=basic
+    volumes:
+      - ./skills:/app/skills:ro
+    ports:
+      - "8080:8080"
+```
+
+### Kubernetes Deployment
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastskill
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fastskill
+  template:
+    metadata:
+      labels:
+        app: fastskill
+    spec:
+      containers:
+      - name: fastskill
+        image: fastskill:latest
+        env:
+        - name: FASTSKILL_LOG_LEVEL
+          value: "INFO"
+        - name: FASTSKILL_STORAGE_PATH
+          value: "/app/skills"
+        - name: FASTSKILL_EXECUTION_TIMEOUT
+          value: "30"
+        - name: FASTSKILL_MAX_MEMORY_MB
+          value: "512"
+        - name: FASTSKILL_ENABLE_HOT_RELOAD
+          value: "false"
+        - name: FASTSKILL_ENABLE_METRICS
+          value: "true"
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: skills-volume
+          mountPath: /app/skills
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: skills-volume
+        configMap:
+          name: skills-config
+```
+
+## Priority Order
+
+Configuration values are resolved in this order (highest to lowest priority):
+
+1. **Programmatic Configuration**: Values set in code using ServiceConfig
+2. **Environment Variables**: Values from environment variables
+3. **Configuration Files**: Values from JSON configuration files
+4. **Default Values**: Built-in default values
+
+```rust
+// Highest priority - programmatic configuration
+let config = ServiceConfig {
+    execution: ExecutionConfig {
+        default_timeout: Duration::from_secs(60),  // This overrides environment variables
+        max_memory_mb: 1024,
+        ..Default::default()
+    },
+    ..Default::default()
+};
+
+// Environment variables (if programmatic config not set)
+// export FASTSKILL_EXECUTION_TIMEOUT=30
+// export FASTSKILL_MAX_MEMORY_MB=512
+
+// Configuration file (if no env vars)
+// {
+//   "execution": {
+//     "default_timeout": 30,
+//     "max_memory_mb": 512
+//   }
+// }
+
+// Default values (if nothing else set)
+// execution_timeout: 30
+// max_memory_mb: 256
+```
+
+## Validation
+
+FastSkill validates environment variables at startup:
+
+```rust
+use fastskill::ServiceConfig;
+
+// Configuration is validated when creating the service
+let config = ServiceConfig {
+    skill_storage_path: PathBuf::from("./skills"),
+    ..Default::default()
+};
+
+// Invalid values will cause errors during service initialization
+match FastSkillService::new(config).await {
+    Ok(service) => println!("✅ Configuration is valid"),
+    Err(e) => eprintln!("❌ Configuration error: {}", e),
+}
+```
+
+### Common Validation Errors
+
+<Warning>
+**Invalid numeric values**: Ensure numeric environment variables contain valid numbers
+```bash
+# ❌ Invalid
+export FASTSKILL_EXECUTION_TIMEOUT=abc
+
+# ✅ Valid
+export FASTSKILL_EXECUTION_TIMEOUT=30
+```
+</Warning>
+
+<Warning>
+**Invalid boolean values**: Boolean environment variables must be "true" or "false" (case insensitive)
+```bash
+# ❌ Invalid
+export FASTSKILL_ENABLE_HOT_RELOAD=1
+
+# ✅ Valid
+export FASTSKILL_ENABLE_HOT_RELOAD=true
+```
+</Warning>
+
+<Warning>
+**Invalid enum values**: Enum values must match exactly (case sensitive)
+```bash
+# ❌ Invalid
+export FASTSKILL_LOG_LEVEL=info
+
+# ✅ Valid
+export FASTSKILL_LOG_LEVEL=INFO
+```
+</Warning>
+
+## Best Practices
+
+<Steps>
+<Step title="Use for deployment-specific settings">
+  Use environment variables for settings that change between environments (development, staging, production).
+</Step>
+
+<Step title="Don't commit secrets">
+  Never put sensitive information like API keys or passwords in environment variables in version control.
+</Step>
+
+<Step title="Document your variables">
+  Maintain documentation of which environment variables are used and their expected values.
+</Step>
+
+<Step title="Use consistent naming">
+  Follow the FASTSKILL_ prefix convention for all FastSkill-related environment variables.
+</Step>
+
+<Step title="Validate in CI/CD">
+  Add validation steps in your deployment pipeline to catch configuration errors early.
+</Step>
+</Steps>
+
+## Migration from Configuration Files
+
+If you're migrating from configuration files to environment variables:
+
+<Steps>
+<Step title="Map configuration to variables">
+```bash
+# config.json
+{
+  "execution": {
+    "default_timeout": 30,
+    "max_memory_mb": 512
+  },
+  "enable_hot_reload": true
+}
+
+# Environment variables
+export FASTSKILL_EXECUTION_TIMEOUT=30
+export FASTSKILL_MAX_MEMORY_MB=512
+export FASTSKILL_ENABLE_HOT_RELOAD=true
+```
+</Step>
+
+<Step title="Update deployment scripts">
+  Replace configuration file references with environment variable exports in your deployment scripts.
+</Step>
+
+<Step title="Test thoroughly">
+  Test the migration in a staging environment to ensure all variables are properly set and validated.
+</Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Variables Not Taking Effect">
+  <Warning>
+  **Caching**: Some configuration changes require service restart to take effect. Check if your service supports hot reloading.
+  </Warning>
+
+  <Warning>
+  **Priority**: Remember that programmatic configuration overrides environment variables. Check your code for explicit configuration.
+  </Warning>
+
+  <Tip>
+  **Validation**: Use the validation methods to check if your environment variables are being parsed correctly.
+  </Tip>
+</Accordion>
+
+<Accordion title="Security Concerns">
+  <Info>
+  **Environment Variable Security**: In most systems, environment variables are visible to all processes running as the same user. Consider using configuration files for sensitive settings in multi-user environments.
+  </Info>
+
+  <Info>
+  **Container Security**: In Docker and Kubernetes, environment variables are included in container inspection output. Use secrets management for sensitive values.
+  </Info>
+</Accordion>
+
+<Accordion title="Platform Differences">
+  <Tip>
+  **Windows**: Use `set` instead of `export` for setting environment variables in Command Prompt.
+  </Tip>
+
+  <Tip>
+  **Case Sensitivity**: Environment variable names are case-sensitive on most Unix systems but case-insensitive on Windows.
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Environment variables provide flexibility for deployment but should be used thoughtfully. For complex applications, consider using configuration files for better visibility and version control integration.
+</Note>

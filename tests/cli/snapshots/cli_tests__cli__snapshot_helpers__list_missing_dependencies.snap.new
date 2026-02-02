@@ -1,0 +1,10 @@
+---
+source: tests/cli/snapshot_helpers.rs
+assertion_line: 195
+expression: normalized
+---
+FastSkill [VERSION]
+
+[WARNING] Missing Dependencies (in skill-project.toml but not installed):
+  • web-scraper (not installed)
+  • dev-tools (not installed)

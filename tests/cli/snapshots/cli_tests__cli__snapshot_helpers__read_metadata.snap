@@ -1,0 +1,24 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Reading: test-skill
+Base directory: [TEMP_DIR]
+
+---
+name: test-skill
+description: A test skill for metadata display
+version: [VERSION]
+tags: [test, metadata, display]
+capabilities: [display_capability]
+---
+# Test Skill
+
+This skill tests metadata display functionality.
+
+## Usage
+
+Used for testing metadata display.
+
+Skill read: test-skill

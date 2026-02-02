@@ -1,0 +1,5 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Error: Validation error: Invalid skill ID format: invalid skill id!

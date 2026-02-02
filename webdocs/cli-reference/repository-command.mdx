@@ -1,0 +1,390 @@
+---
+title: repository
+api: "repository"
+---
+
+# registry Command
+
+Manage skill repositories and generate `marketplace.json` files for registry discovery.
+
+**Note**: The `repository` command has been consolidated into the `registry` command. Use `fastskill registry` instead.
+
+## Usage
+
+```bash
+fastskill registry <SUBCOMMAND>
+```
+
+## Subcommands
+
+### list-skills
+
+List skills from HTTP registry installations. This command calls the configured registry's HTTP API endpoint to discover available skills.
+
+```bash
+# List all skills from default registry (grid format)
+fastskill registry list-skills
+
+# Filter by scope
+fastskill registry list-skills --scope acme
+
+# List all versions
+fastskill registry list-skills --all-versions
+
+# Include pre-release versions
+fastskill registry list-skills --include-pre-release
+
+# JSON output
+fastskill registry list-skills --json
+
+# Combined options
+fastskill registry list-skills --scope acme --all-versions --json
+```
+
+**Options**:
+- `--scope <SCOPE>`: Filter skills by scope (exact match)
+- `--all-versions`: Include all versions for each skill (default: latest only)
+- `--include-pre-release`: Include pre-release versions (default: exclude)
+- `--json`: Output in JSON format (mutually exclusive with `--grid`)
+- `--grid`: Output in grid table format (default, mutually exclusive with `--json`)
+
+**Output Format**:
+- **Grid (default)**: Human-readable table with columns: scope, name, description (truncated to 50 chars), latest version (or "version" when `--all-versions` is used), published date
+- **JSON**: Machine-readable array with fields: id, scope, name, description, latest_version, published_at, and optionally versions array
+
+**HTTP API**:
+The command calls `GET /api/registry/index/skills` on the configured registry's `index_url` with query parameters:
+- `scope`: Scope filter (from `--scope` flag)
+- `all_versions`: Boolean (from `--all-versions` flag)
+- `include_pre_release`: Boolean (from `--include-pre-release` flag)
+
+**Authentication**:
+If repository authentication is configured (PAT, basic auth, or API key), credentials are automatically sent in request headers. For private scopes, authentication may be required.
+
+**Example Output (Grid)**:
+```
++--------+-------------+------------------------------------------+---------------+---------------------+
+| Scope  | Name        | Description                              | Latest Version | Published At         |
++--------+-------------+------------------------------------------+---------------+---------------------+
+| acme   | web-scraper | A web scraping skill for extracting...  | 2.0.0         | 2025-01-15T10:30:00Z |
+| dev-user | test-skill | A test skill for validation            | 1.0.0         | 2025-01-20T14:00:00Z |
++--------+-------------+------------------------------------------+---------------+---------------------+
+```
+
+**Example Output (JSON)**:
+```json
+[
+  {
+    "id": "acme/web-scraper",
+    "scope": "acme",
+    "name": "web-scraper",
+    "description": "A web scraping skill for extracting data",
+    "latest_version": "2.0.0",
+    "published_at": "2025-01-15T10:30:00Z"
+  }
+]
+```
+
+**Error Handling**:
+- If registry index path is not configured: Returns clear error message
+- If registry is unreachable: Returns connection error
+- If authentication fails (401/403): Returns clear error indicating auth required for private scopes
+- Empty registry: Returns empty grid/array with success status
+
+### show-skill
+
+Display detailed information about a specific skill from the registry.
+
+```bash
+# Show skill details by ID
+fastskill registry show-skill <skill-id>
+
+# Show skill from specific repository
+fastskill registry show-skill <skill-id> --repository my-repo
+```
+
+**Parameters**:
+- `<skill-id>`: Full skill identifier (e.g., `acme/web-scraper`)
+- `--repository <NAME>`: Repository to search (defaults to default repository)
+
+**Output Format**:
+Displays comprehensive skill information including:
+- Skill metadata (name, description, author, version)
+- Capabilities and tags
+- Installation instructions
+- Dependencies and requirements
+- Documentation links
+- Change log and release notes
+
+**Example Output**:
+```
+Skill: acme/web-scraper
+Version: 2.0.0
+Description: A web scraping skill for extracting data from websites
+Author: ACME Corp
+Tags: web, scraping, data-extraction
+Capabilities: scrape_website, extract_data, handle_cookies
+
+Repository: my-registry
+Published: 2025-01-15T10:30:00Z
+Updated: 2025-01-20T14:00:00Z
+
+Installation: fastskill add acme/web-scraper
+Homepage: https://github.com/acme/web-scraper
+Documentation: https://docs.acme.com/web-scraper
+
+Requirements:
+- Node.js 16+
+- Internet access
+- User agent headers configured
+```
+
+### versions
+
+List all available versions for a specific skill.
+
+```bash
+# List versions for a skill
+fastskill registry versions <skill-id>
+
+# List versions from specific repository
+fastskill registry versions <skill-id> --repository my-repo
+```
+
+**Parameters**:
+- `<skill-id>`: Full skill identifier (e.g., `acme/web-scraper`)
+- `--repository <NAME>`: Repository to query (defaults to default repository)
+
+**Output Format**:
+Displays a table of versions with:
+- Version number
+- Release date
+- Release notes (if available)
+- Pre-release status
+- Compatibility information
+
+**Example Output**:
+```
+Versions for skill: acme/web-scraper
+
++---------+---------------------+-------------+-------------+
+| Version | Published At        | Pre-release | Notes      |
++---------+---------------------+-------------+-------------+
+| 2.0.0   | 2025-01-15T10:30:00Z | false       | Major update |
+| 1.5.2   | 2025-01-10T08:15:00Z | false       | Bug fixes   |
+| 1.5.1   | 2025-01-05T16:45:00Z | false       | Performance |
+| 1.5.0   | 2024-12-20T12:00:00Z | false       | New features|
+| 1.4.0   | 2024-11-15T09:30:00Z | false       | API changes |
++---------+---------------------+-------------+-------------+
+```
+
+### search
+
+Search for skills across configured repositories using semantic search.
+
+```bash
+# Search for skills by keyword
+fastskill registry search "web scraping"
+
+# Search in specific repository
+fastskill registry search "data analysis" --repository my-repo
+```
+
+**Parameters**:
+- `<query>`: Search query string (supports semantic matching)
+- `--repository <NAME>`: Repository to search (searches all if not specified)
+
+**Search Features**:
+- Semantic search: Matches by meaning, not just keywords
+- Multi-repository: Searches across all configured repositories
+- Relevance ranking: Results ordered by relevance score
+- Fuzzy matching: Handles typos and variations
+
+**Output Format**:
+Displays matching skills with relevance scores and brief descriptions.
+
+**Example Output**:
+```
+Search results for "web scraping":
+
+1. acme/web-scraper (relevance: 0.95)
+   A web scraping skill for extracting data from websites
+
+2. data-extractor/html-parser (relevance: 0.87)
+   Parse and extract data from HTML content
+
+3. crawler/spider-bot (relevance: 0.82)
+   Automated web crawling and data collection
+
+Found 3 matching skills
+```
+
+### create
+
+Generate a `marketplace.json` file from a directory containing skills.
+
+```bash
+fastskill registry create [OPTIONS]
+```
+
+#### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--path <PATH>` | Directory to scan for skills | `.` (current directory) |
+| `--output <PATH>` | Output file path | `.claude-plugin/marketplace.json` in scanned directory |
+| `--base-url <URL>` | Base URL for skill download links | None |
+| `--name <NAME>` | Repository name (required, or inferred from directory name) | Directory name |
+| `--owner-name <NAME>` | Owner name (optional) | None |
+| `--owner-email <EMAIL>` | Owner email (optional) | None |
+| `--description <TEXT>` | Repository description (optional) | None |
+| `--version <VERSION>` | Repository version (optional) | None |
+
+## Examples
+
+### Generate from Current Directory
+
+Scan the current directory and create `marketplace.json`:
+
+```bash
+fastskill registry create
+```
+
+### Scan Specific Directory
+
+Generate marketplace.json from a specific skills directory:
+
+```bash
+fastskill repository create --path ./my-skills
+```
+
+### Custom Output Location
+
+Specify a custom output file:
+
+```bash
+fastskill repository create --path ./skills --output ./dist/marketplace.json
+```
+
+### Include Base URL
+
+Add base URL for download links:
+
+```bash
+fastskill repository create \
+  --path ./skills \
+  --base-url https://skills.example.com/
+```
+
+### Generate with Metadata
+
+Generate marketplace.json with owner and metadata information:
+
+```bash
+fastskill repository create \
+  --path ./skills \
+  --name my-skills-repo \
+  --owner-name "My Team" \
+  --owner-email team@example.com \
+  --description "Collection of skills" \
+  --version "1.0.0"
+```
+
+**Note**: The output is automatically placed at `.claude-plugin/marketplace.json` (unless `--output` is specified).
+
+## How It Works
+
+The `repository create` command:
+
+1. **Scans for SKILL.md files**: Recursively searches the specified directory for `SKILL.md` files
+2. **Reads skill-project.toml**: If present, extracts all metadata fields from `skill-project.toml` (takes priority)
+3. **Extracts metadata from SKILL.md**: Reads YAML frontmatter as fallback for missing fields
+4. **Applies priority**: Uses skill-project.toml values for all fields, falls back to SKILL.md frontmatter
+5. **Generates marketplace.json**: Creates a JSON file with all discovered skills
+
+## Marketplace.json Format
+
+The command generates marketplace.json in **Claude Code standard format**:
+
+```json
+{
+  "name": "repository-name",
+  "owner": {
+    "name": "Owner Name",
+    "email": "owner@example.com"
+  },
+  "metadata": {
+    "description": "Repository description",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "plugin-name",
+      "description": "Plugin description",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skill-path-1",
+        "./skill-path-2"
+      ]
+    }
+  ]
+}
+```
+
+For more details, see [Marketplace.json Format](/registry/marketplace-json).
+
+## Metadata Priority
+
+When generating `marketplace.json`, the command uses this priority for all metadata fields (name, description, version, author, tags, capabilities, download_url):
+
+1. **skill-project.toml** `[metadata]` section (highest priority)
+   - Fields: `id` (required, no slashes), `version` (required), `description`, `author`, `tags`, `capabilities`, `download_url`
+   - All fields from skill-project.toml take precedence
+   - The `id` field must not contain slashes or scope information
+2. **SKILL.md** frontmatter (fallback)
+   - Used for: `name` (display only), `description`, `author`, `tags`, `capabilities`
+   - `name` in SKILL.md is for display purposes only, not for package identification
+
+This field-by-field priority allows skill authors to override or supplement SKILL.md metadata with `skill-project.toml` values. The `id` field in `skill-project.toml` is mandatory and must not contain slashes. Skill names for display come from `SKILL.md` frontmatter only.
+
+## Directory Structure
+
+The command expects skills in this structure:
+
+```
+skills/
+├── skill1/
+│   ├── SKILL.md
+│   └── skill-project.toml (optional)
+├── skill2/
+│   ├── SKILL.md
+│   └── skill-project.toml (optional)
+└── ...
+```
+
+## Publishing to Registry
+
+After generating `marketplace.json`, you can:
+
+1. **Host it on a web server**: Place `marketplace.json` at the root of your skills repository
+2. **Configure as repository**: Add your repository to `skill-project.toml`:
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "my-skills"
+type = "git-marketplace"
+priority = 1
+url = "https://github.com/user/repo.git"
+branch = "main"
+```
+
+3. **Access via registry**: Skills will appear in the registry web UI when you run `fastskill serve --enable-registry`
+
+## See Also
+
+- [Registry Overview](/registry/overview)
+- [Marketplace.json Format](/registry/marketplace-json)
+- [Sources Configuration](/registry/sources)
+

@@ -1,0 +1,153 @@
+---
+title: "Available Tools"
+description: "How to discover and access tools available through FastSkill skills."
+---
+
+## Overview
+
+FastSkill provides a tool discovery interface to find tools available through registered skills. Tools are defined in skill SKILL.md files following the Claude Code standard.
+
+<Info>
+FastSkill focuses on skill discovery and management. Tools are defined within skills and can be discovered through the service interface.
+</Info>
+
+## Discovering Tools
+
+### Get Available Tools
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Get available tools from the tool service
+    let tools = service.tool_service().get_available_tools().await?;
+    
+    println!("Found {} available tools", tools.len());
+    for tool in tools {
+        println!("  - {}: {}", tool.name, tool.description);
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Tool Discovery Through Skills
+
+Tools are discovered by examining skill definitions. Skills define tools in their SKILL.md files following the Claude Code standard.
+
+### Finding Skills with Tools
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // List all skills
+    let skills = service.skill_manager().list_skills(None).await?;
+    
+    // Skills contain tool definitions in their SKILL.md files
+    for skill in skills {
+        println!("Skill: {} - {}", skill.id, skill.name);
+        println!("  Description: {}", skill.description);
+        println!("  Capabilities: {:?}", skill.capabilities);
+        // Tools are defined in the skill's SKILL.md file
+        // Read the file to see available tools
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Tool Information
+
+Tools are defined in skill SKILL.md files. To see what tools a skill provides:
+
+1. **Read the skill's SKILL.md file** - Tools are documented there
+2. **Check skill capabilities** - Capabilities indicate what the skill can do
+3. **Use semantic search** - Search for skills by the functionality you need
+
+### Example: Finding Tools for Text Processing
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Search for skills that handle text processing
+    let skills = service.metadata_service()
+        .discover_skills("extract text from documents")
+        .await?;
+
+    println!("Found {} skills for text processing:", skills.len());
+    for skill_meta in skills {
+        println!("  - {}: {}", skill_meta.id, skill_meta.name);
+        println!("    {}", skill_meta.description);
+        // To see actual tools, read the skill's SKILL.md file
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Tool Execution
+
+<Warning>
+FastSkill focuses on skill discovery and management. Tool execution is handled by reading and executing the tools defined in skill SKILL.md files. FastSkill does not provide a full tool execution framework.
+</Warning>
+
+To execute tools:
+
+1. **Discover the skill** using FastSkill's search capabilities
+2. **Read the skill's SKILL.md file** to see available tools and their usage
+3. **Execute the tool** according to the skill's documentation
+
+## Best Practices
+
+<Steps>
+<Step title="Use semantic search">
+  Search for skills by functionality rather than tool names to find the right capabilities.
+</Step>
+
+<Step title="Read skill documentation">
+  Always read the skill's SKILL.md file to understand available tools and their usage.
+</Step>
+
+<Step title="Check capabilities">
+  Use skill capabilities to understand what a skill can do before examining tools.
+</Step>
+</Steps>
+
+<Note>
+Tools are defined within skills following the Claude Code standard. FastSkill helps you discover skills that contain the tools you need, but tool execution is handled by reading and following the skill's documentation.
+</Note>

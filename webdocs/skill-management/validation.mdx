@@ -1,0 +1,343 @@
+---
+title: "Skill Validation"
+description: "Comprehensive guide to validating FastSkill skill definitions including structure, security, and quality checks."
+---
+
+## Overview
+
+Skill validation ensures that skills are properly defined, secure, and ready for production use. FastSkill provides multiple levels of validation to catch issues early in the development process.
+
+<Info>
+Validation happens at multiple stages: definition validation, registration validation, and runtime validation.
+</Info>
+
+## Validation Types
+
+### 1. Structure Validation
+
+Validates that skill definitions follow the correct schema and format:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Create skill definition
+    let skill = SkillDefinition::new(
+        SkillId::new("text-processor".to_string())?,
+        "Text Processor".to_string(),
+        "Process text documents".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    // Validation happens automatically during registration
+    match service.skill_manager().register_skill(skill).await {
+        Ok(_) => println!("✅ Skill definition is structurally valid"),
+        Err(e) => {
+            println!("❌ Validation error: {}", e);
+            // Fix the issues before proceeding
+        }
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+### 2. Security Validation
+
+FastSkill performs basic security validation during skill registration:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+// Security validation happens automatically during registration
+// The service checks for:
+// - Valid skill ID format (alphanumeric, dashes, underscores only)
+// - Valid file paths
+// - Safe skill file references
+```
+
+### 3. Structure Validation
+
+FastSkill validates skill structure during registration:
+
+```rust
+// Validation checks include:
+// - Required fields (id, name, description, version)
+// - Valid skill ID format
+// - Valid version format (semantic versioning)
+// - File path validity
+```
+
+## Validation Rules
+
+### Required Fields
+
+<ParamField path="id" type="string" required>
+- Must be unique within the service
+- Alphanumeric characters, dashes, and underscores only
+- 3-50 characters in length
+- Cannot start or end with dashes/underscores
+</ParamField>
+
+<ParamField path="name" type="string" required>
+- Human-readable name
+- 1-100 characters in length
+- No special formatting requirements
+</ParamField>
+
+<ParamField path="description" type="string" required>
+- Detailed description of functionality
+- 10-500 characters in length
+- Should explain what the skill does
+</ParamField>
+
+<ParamField path="version" type="string" required>
+- Semantic version format (e.g., "1.0.0")
+- Follows MAJOR.MINOR.PATCH convention
+- Should be updated for breaking changes
+</ParamField>
+
+### Optional Fields Validation
+
+<ParamField path="tags" type="string">
+- Comma-separated list of tags
+- Each tag 2-30 characters
+- Alphanumeric, dashes, and underscores only
+- Maximum 20 tags
+</ParamField>
+
+<ParamField path="capabilities" type="string">
+- Comma-separated list of capabilities
+- Each capability 3-50 characters
+- Descriptive of actual functionality
+- Maximum 20 capabilities
+</ParamField>
+
+<ParamField path="skill_file" type="string">
+- Path relative to skill storage directory
+- Must exist and be readable
+- Should be a Python file or markdown document
+</ParamField>
+
+<ParamField path="execution_timeout" type="integer">
+- 1-300 seconds
+- Must be reasonable for the skill's operations
+</ParamField>
+
+<ParamField path="memory_limit_mb" type="integer">
+- 32-2048 MB
+- Must be sufficient for skill execution
+</ParamField>
+
+## Automatic Validation
+
+FastSkill automatically validates skills during installation. Validation ensures skills are properly formatted and functional.
+
+```bash
+# Add skill with automatic validation
+fastskill add https://github.com/org/my-skill.git
+
+# Install with validation (validates all skills)
+fastskill install
+```
+
+### Validation Process
+
+When installing skills, FastSkill automatically checks:
+
+- **Skill structure** (valid SKILL.md format)
+- **Required metadata** (name, description, version)
+- **Dependencies** (all referenced skills available)
+- **Version compatibility** (works with current FastSkill)
+
+### Validation Feedback
+
+If validation fails, you'll see specific error messages:
+
+```bash
+$ fastskill install
+Installing skills...
+❌ Validation failed for 'my-skill':
+   - Missing required field: 'description'
+   - Invalid version format: '1.0' (use semantic versioning: 1.0.0)
+
+Fix issues and try again.
+```
+
+## Batch Validation
+
+Validate multiple skills efficiently:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Get all skills
+    let skills = service.skill_manager().list_skills(None).await?;
+
+    // Validate all skills by attempting to get them
+    let mut valid_count = 0;
+    let mut invalid_count = 0;
+
+    for skill in skills {
+        match service.skill_manager().get_skill(&skill.id).await {
+            Ok(Some(_)) => {
+                valid_count += 1;
+            }
+            Ok(None) | Err(_) => {
+                invalid_count += 1;
+                eprintln!("Invalid skill: {}", skill.id);
+            }
+        }
+    }
+
+    println!("📊 Validation Results:");
+    println!("   ✅ Valid skills: {}", valid_count);
+    println!("   ❌ Invalid skills: {}", invalid_count);
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Integration with CI/CD
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/validate-skills.yml
+name: Validate Skills
+on:
+  push:
+    paths:
+      - 'skills/**'
+  pull_request:
+    paths:
+      - 'skills/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Install FastSkill
+      run: |
+        cd tools/fastskill/rust
+        cargo install --path . --bin fastskill --features git-support
+
+    - name: Validate skills
+      run: |
+        # List skills to verify they can be loaded
+        fastskill show
+        
+    - name: Check skill structure
+      run: |
+        # Skills are validated automatically when registered
+        # This step ensures skills can be discovered and loaded
+        fastskill search "test" || true
+```
+
+### Pre-commit Hooks
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: check-skills
+        name: Verify skill installation
+        entry: fastskill list
+        language: system
+        files: ^skill-project\.toml$
+        pass_filenames: false
+```
+
+## Best Practices
+
+<Steps>
+<Step title="Validate early and often">
+  Run validation as part of your development workflow, not just before deployment.
+</Step>
+
+<Step title="Use multiple validation levels">
+  Combine structure, security, and quality validation for comprehensive coverage.
+</Step>
+
+<Step title="Set up automated validation">
+  Integrate validation into your CI/CD pipeline to catch issues before they reach production.
+</Step>
+
+<Step title="Monitor validation metrics">
+  Track validation success rates and common issues to improve skill quality over time.
+</Step>
+
+<Step title="Document validation rules">
+  Maintain clear documentation of your validation rules and requirements for skill contributors.
+</Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Validation Errors">
+  <Warning>
+  **Missing required fields**: Ensure all required fields are present and have valid values.
+  
+  Required fields:
+  - `id`: Must be alphanumeric with dashes/underscores only
+  - `name`: Human-readable name
+  - `description`: Detailed description
+  - `version`: Semantic version (e.g., "1.0.0")
+  </Warning>
+
+  <Warning>
+  **Invalid field types**: Check that field values match expected types.
+  
+  - `id`, `name`, `description`, `version`: strings
+  - `enabled`: boolean
+  - `timeout`: optional integer
+  </Warning>
+</Accordion>
+
+<Accordion title="Security Validation Issues">
+  <Info>
+  **Common validation issues**: 
+  - Invalid skill ID format (must be alphanumeric, dashes, underscores only)
+  - Skill ID too long (max 255 characters)
+  - Invalid file paths
+  </Info>
+</Accordion>
+</AccordionGroup>
+</AccordionGroup>
+
+<Note>
+Effective validation catches issues early and ensures skills meet quality standards. Invest time in setting up comprehensive validation for your skill ecosystem.
+</Note>

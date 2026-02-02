@@ -1,0 +1,38 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Reading: web-scraper
+Base directory: [TEMP_DIR]
+
+---
+name: web-scraper
+description: A web scraping skill
+version: [VERSION]
+tags: [scraping, web]
+capabilities: [http_client]
+---
+# Web Scraper Skill
+
+Advanced web scraping capabilities for extracting structured data from websites.
+
+## Features
+
+- Extract structured data
+- Handle pagination  
+- Support multiple formats (JSON, CSV, XML)
+- Rate limiting support
+- Custom headers and authentication
+
+## Usage
+
+Basic usage example for web scraping.
+
+```bash
+fastskill read web-scraper
+```
+
+This skill provides comprehensive web scraping functionality.
+
+Skill read: web-scraper

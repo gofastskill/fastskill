@@ -1,0 +1,36 @@
+---
+title: "Cache Management"
+description: "Configure and manage FastSkill's caching system for optimal performance."
+---
+
+## Overview
+
+FastSkill's cache management system optimizes performance through intelligent caching of skill metadata and content.
+
+## Cache Configuration
+
+Configure cache settings for your specific needs:
+
+```rust
+use fastskill::{ServiceConfig, CacheConfig};
+use std::time::Duration;
+
+let config = ServiceConfig {
+    cache: CacheConfig {
+        ttl: Duration::from_secs(3600),  // 1 hour cache
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+## Cache Operations
+
+- View cache statistics
+- Clear cache when needed
+- Configure cache policies
+- Monitor cache performance
+
+<Note>
+Proper cache management is essential for optimal FastSkill performance in production environments.
+</Note>

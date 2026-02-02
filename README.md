@@ -160,12 +160,34 @@ For detailed Kubernetes deployment instructions, see the [Kubernetes Deployment 
 
 ### 1. Configure FastSkill
 
-Create `.fastskill.yaml` in your project root:
+Create `skill-project.toml` in your project root:
 
-```yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
+```toml
+[metadata]
+id = "my-project"
+version = "1.0.0"
+
+[dependencies]
+# Add skill dependencies here
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+
+[[tool.fastskill.repositories]]
+name = "anthropic"
+type = "git-marketplace"
+url = "https://github.com/anthropics/skills"
+priority = 0
+```
+
+Or use the init command:
+
+```bash
+fastskill init
 ```
 
 Set your OpenAI API key:
@@ -241,28 +263,56 @@ FastSkill provides a unified repository system for managing all skill storage lo
 - **ZIP URL sources** (static hosting with marketplace.json)
 - **Local folders** (for development)
 
-All repository types are configured in `.claude/repositories.toml` (or automatically loaded from `sources.toml` and `registries.toml` for backward compatibility).
+All repository types are configured in `skill-project.toml` under `[[tool.fastskill.repositories]]`.
 
 For detailed repository setup, usage, and management instructions, see [docs/REGISTRY.md](docs/REGISTRY.md).
 
 ## Configuration
 
-Create `.fastskill.yaml` in your project root:
+FastSkill uses `skill-project.toml` as the unified configuration file for both project-level and skill-level contexts.
 
-```yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
+### skill-project.toml Structure
 
-# Optional: Custom skills directory
-skills_directory: ".claude/skills"
+```toml
+[metadata]
+id = "my-skill"
+version = "1.0.0"
+
+[dependencies]
+# Add your skill dependencies here
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+
+[[tool.fastskill.repositories]]
+name = "anthropic"
+type = "git-marketplace"
+url = "https://github.com/anthropics/skills"
+priority = 0
 ```
 
-The CLI resolves the skills directory using this priority:
+### Configuration Resolution
 
-1. `skills_directory` from `.fastskill.yaml`
-2. Walk up directory tree to find existing `.claude/skills/`
-3. Default to `.claude/skills/` in current directory (doesn't auto-create)
+The CLI resolves configuration from `skill-project.toml`:
+
+1. Searches current directory and parents for `skill-project.toml`
+2. Extracts `[tool.fastskill]` section for skills directory and embedding config
+3. Extracts `[tool.fastskill.repositories]` for repository sources
+4. Defaults to `.claude/skills/` if no skills_directory is configured
+
+### Quick Setup
+
+```bash
+# Initialize a new project
+fastskill init
+
+# Set OpenAI API key for semantic search
+export OPENAI_API_KEY="your-key-here"
+```
 
 ## Troubleshooting
 
@@ -270,10 +320,9 @@ The CLI resolves the skills directory using this priority:
 
 If you see "Embedding configuration required but not found":
 
-1. Create `.fastskill.yaml` with embedding configuration (see Quick Start section)
-2. Set `OPENAI_API_KEY` environment variable
-
-**Note**: The error message may mention `fastskill init`, but that command is for skill authors only. For project setup, manually create `.fastskill.yaml` as shown in Quick Start.
+1. Run `fastskill init` to create `skill-project.toml`
+2. Add `[tool.fastskill.embedding]` section with embedding configuration
+3. Set `OPENAI_API_KEY` environment variable
 
 ### API Key Issues
 

@@ -1,0 +1,237 @@
+---
+title: "Registry Index System"
+description: "Understanding the HTTP-based registry index system with flat layout for skill distribution"
+---
+
+# Registry Index System
+
+FastSkill uses a simple organization/package directory structure for skill distribution. This provides an intuitive approach to organizing skills by their publishing organization.
+
+## Overview
+
+The registry index is maintained automatically during the publishing process. Each skill is stored in a directory structure based on its organization and package name.
+
+## Registry Structure
+
+The registry index uses a simple org/package directory structure:
+
+```
+registry-index/
+├── acme/
+│   ├── web-scraper/
+│   └── data-processor/
+├── myorg/
+│   ├── analytics-tool/
+│   └── api-client/
+└── john/
+    └── personal-helper/
+```
+
+### Directory Naming
+
+The directory structure is derived from the skill ID (scope/id format):
+
+- **Scope** → First directory level (from JWT token during publishing, e.g., "acme")
+- **ID** → Second directory level (from skill-project.toml, must not contain slashes, e.g., "web-scraper")
+
+Examples:
+- `acme/web-scraper` → `acme/web-scraper/` (scope: "acme", id: "web-scraper" from skill-project.toml)
+- `myorg/analytics-tool` → `myorg/analytics-tool/` (scope: "myorg", id: "analytics-tool" from skill-project.toml)
+- `john/personal-helper` → `john/personal-helper/` (scope: "john", id: "personal-helper" from skill-project.toml)
+
+This structure:
+- Groups skills by organization
+- Provides intuitive navigation
+- Scales well for most use cases
+- Simplifies directory management
+
+## Version Metadata Format
+
+Each skill has a single file at `{scope}/{id}` containing newline-delimited JSON entries for all published versions, sorted with newest first. The path is constructed from:
+- `scope`: Extracted from JWT token during publishing (e.g., "acme")
+- `id`: From skill-project.toml (must not contain slashes, e.g., "web-scraper")
+
+```json
+[
+  {
+    "name": "web-scraper",
+    "vers": "1.2.3",
+    "deps": [],
+    "cksum": "sha256:abc123def456...",
+    "features": {},
+    "yanked": false,
+    "links": null,
+    "download_url": "https://blob.example.com/skills/web-scraper-1.2.3.zip",
+    "published_at": "2024-01-01T12:00:00Z"
+  },
+  {
+    "name": "web-scraper",
+    "vers": "1.2.2",
+    "deps": [],
+    "cksum": "sha256:def456ghi789...",
+    "features": {},
+    "yanked": false,
+    "links": null,
+    "download_url": "https://blob.example.com/skills/web-scraper-1.2.2.zip",
+    "published_at": "2024-01-01T10:00:00Z"
+  }
+]
+```
+
+### Field Descriptions
+
+- **name**: Skill identifier
+- **vers**: Semantic version (e.g., "1.2.3")
+- **deps**: Dependencies (currently empty, reserved for future use)
+- **cksum**: SHA256 checksum of the ZIP artifact
+- **features**: Feature flags (currently empty, reserved for future use)
+- **yanked**: Whether this version is yanked (removed from distribution)
+- **links**: Reserved for future use
+- **download_url**: URL to download the ZIP artifact
+- **published_at**: ISO 8601 timestamp of publication
+
+## Automatic Index Management
+
+The registry index is maintained automatically during the publishing process. No manual index management is required.
+
+### Publishing Workflow
+
+```bash
+# 1. Package skills
+fastskill package --detect-changes --auto-bump --output ./artifacts
+
+# 2. Publish to registry (automatically updates index and uploads to blob storage)
+fastskill publish --artifacts ./artifacts --registry official
+```
+
+### How It Works
+
+When you publish a skill:
+
+1. The skill is validated and uploaded to blob storage
+2. The registry index is automatically updated with the new skill metadata
+3. The index maintains a complete history of all versions
+4. Skills are organized by organization/package structure
+
+## Accessing the Registry
+
+### HTTP Endpoint
+
+The registry index is served over HTTP. Each skill's index file is accessible at:
+
+```
+GET /index/{skill_id}
+```
+
+Where `skill_id` follows the format `{scope}/{skill-name}` (e.g., `dev-user/web-scraper`).
+
+**Example:**
+```bash
+curl https://api.fastskill.io/index/dev-user/web-scraper
+```
+
+This returns the newline-delimited JSON entries for all versions of that skill.
+
+### From FastSkill CLI
+
+Skills published to registries can be installed using the standard FastSkill commands:
+
+```bash
+# Install a skill by its scope/package name
+fastskill add dev-user/web-scraper
+
+# Install a specific version
+fastskill add dev-user/web-scraper@1.2.3
+```
+
+### Registry Structure
+
+The registry maintains a flat filesystem structure on the server that groups skills by scope:
+
+```
+registry-index/
+├── dev-user/
+│   └── web-scraper
+├── acme/
+│   └── data-processor
+└── myorg/
+    └── analytics-tool
+```
+
+Each file path directly matches the skill ID format (`{scope}/{skill-name}`), making lookups efficient. This structure provides:
+- Intuitive organization browsing
+- Efficient skill lookup by scope/package name
+- Direct HTTP access to index files
+- Scalable storage for growing registries
+
+## Version Management
+
+### Adding New Versions
+
+New versions are automatically added when you publish skills:
+
+```bash
+fastskill publish --artifacts ./artifacts --registry official
+```
+
+The publishing process:
+1. Validates the skill package
+2. Uploads to blob storage
+3. Updates the registry index with version metadata
+4. Maintains complete version history
+
+### Version History
+
+All versions are preserved in the registry index. This provides:
+- Complete version history
+- Ability to download any previous version
+- Audit trail of skill evolution
+
+### Skill Organization
+
+Skills are always published with an organization prefix (from the authenticated user):
+
+- Format: `{org}/{package}`
+- Organization: Authenticated username (lowercase, filesystem-safe)
+- Package: Skill package name
+- Example: `john/my-tool`, `acme/web-scraper`
+
+## Best Practices
+
+### Publishing
+
+1. **Version Consistency**: Ensure version numbers follow semver
+2. **Authentication**: Always authenticate before publishing
+3. **Organization**: Skills are automatically scoped to your username
+4. **Testing**: Test skills before publishing to registries
+
+### Registry Management
+
+1. **Automatic Updates**: Registry index is updated automatically during publishing
+2. **Version History**: All versions are preserved for audit and rollback
+3. **Organization Structure**: Skills are organized by publishing organization
+4. **Blob Storage**: Artifacts are stored securely with checksum verification
+
+### Security
+
+1. **Authentication**: Use proper authentication for publishing
+2. **Checksum Verification**: All downloads include SHA256 checksums
+3. **Access Control**: Registry access is controlled by authentication
+4. **Audit Trail**: Publishing history is maintained automatically
+
+## Integration with Blob Storage
+
+Published skills are automatically uploaded to configured blob storage:
+
+- Artifacts are stored securely with unique paths
+- Download URLs include checksum verification
+- Blob storage configuration is set per registry
+- Automatic cleanup and deduplication
+
+## See Also
+
+- [Package Command](/cli-reference/package-command)
+- [Publish Command](/cli-reference/publish-command)
+- [Blob Storage Guide](/integration/blob-storage)
+- [Registry Overview](/registry/overview)
+

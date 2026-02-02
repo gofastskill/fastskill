@@ -1,0 +1,18 @@
+version = "1.0"
+
+[metadata]
+generated_at = "2024-01-01T00:00:00Z"
+fastskill_version = "0.9.16"
+
+[[skill]]
+name = "web-scraper"
+version = "1.2.3"
+source = "registry"
+checksum = "abc123def456"
+
+[[skill]]
+name = "dev-tools"
+version = "2.0.0"
+source = "git"
+url = "https://github.com/org/dev-tools.git"
+resolved = "commit-sha-here"

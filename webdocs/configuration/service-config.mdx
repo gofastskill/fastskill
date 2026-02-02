@@ -1,0 +1,442 @@
+---
+title: "Service Configuration"
+description: "Complete guide to configuring FastSkill services including performance tuning, storage settings, and security options."
+---
+
+## Overview
+
+FastSkill's behavior is controlled through configuration objects that define how the service operates. This guide covers all available configuration options and their impact on performance and functionality.
+
+<Info>
+Configuration can be set programmatically, through environment variables, or via configuration files. Programmatic configuration takes precedence over environment variables, which take precedence over defaults.
+</Info>
+
+## Basic Configuration
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig, HotReloadConfig, CacheConfig, EmbeddingConfig};
+use std::path::PathBuf;
+use std::time::Duration;
+
+// Complete configuration example
+let config = ServiceConfig {
+    // Base directory for skill storage
+    skill_storage_path: PathBuf::from("./skills"),
+
+    // Execution configuration
+    execution: ExecutionConfig {
+        default_timeout: Duration::from_secs(30),
+        max_memory_mb: 512,
+        ..Default::default()
+    },
+
+    // Hot reloading configuration
+    hot_reload: HotReloadConfig {
+        enabled: true,
+        watch_paths: vec![
+            PathBuf::from("./skills"),
+            PathBuf::from("./custom-skills")
+        ],
+        debounce_ms: 1000,
+        auto_reload: true,
+    },
+
+    // Cache configuration
+    cache: CacheConfig {
+        max_size: 1000,
+        metadata_ttl: 300,  // 5 minutes
+        content_ttl: 60,    // 1 minute
+    },
+
+    // Embedding configuration (optional, required for semantic search)
+    embedding: Some(EmbeddingConfig {
+        openai_base_url: "https://api.openai.com/v1".to_string(),
+        embedding_model: "text-embedding-3-small".to_string(),
+        api_key: std::env::var("OPENAI_API_KEY").ok(),
+    }),
+
+    // Security configuration
+    security: Default::default(),
+
+    // Optional: Staging directory for registry publishing
+    staging_dir: Some(PathBuf::from("./staging")),
+
+    // Optional: Registry blob storage configuration
+    registry_blob_storage: None,
+
+    // Optional: Registry index path
+    registry_index_path: Some(PathBuf::from("./registry/index")),
+
+    // Optional: Registry blob base URL
+    registry_blob_base_url: Some("https://registry.example.com/blobs".to_string()),
+};
+```
+
+## Configuration Options
+
+### Core Service Configuration
+
+<ParamField path="skill_storage_path" type="PathBuf">
+Base directory where FastSkill looks for skill files and stores skill data. This is the primary location for skill discovery and management.
+</ParamField>
+
+<ParamField path="staging_dir" type="PathBuf" optional>
+Optional staging directory for registry publishing operations. If not specified, uses system temp directory.
+</ParamField>
+
+<ParamField path="registry_blob_storage" type="BlobStorageConfig" optional>
+Optional blob storage configuration for registry operations. Required for registry publishing functionality.
+</ParamField>
+
+<ParamField path="registry_index_path" type="PathBuf" optional>
+Optional path to registry index storage. Used when running a local registry.
+</ParamField>
+
+<ParamField path="registry_blob_base_url" type="String" optional>
+Optional base URL for registry blob storage. Required for registry publishing to external storage.
+</ParamField>
+
+### Execution Configuration
+
+<ParamField path="execution.default_timeout" type="Duration">
+Default timeout for skill execution. Individual skills can override this value. Default: 30 seconds.
+</ParamField>
+
+<ParamField path="execution.max_memory_mb" type="usize">
+Maximum memory (in MB) that a single skill execution can use. Helps prevent memory exhaustion. Default: 100 MB.
+</ParamField>
+
+<ParamField path="execution.network_policy" type="NetworkPolicy">
+Network access policy for skill execution. Controls whether skills can make network requests.
+</ParamField>
+
+<ParamField path="execution.filesystem_access" type="FileSystemAccess">
+File system access level for skills. Determines what parts of the filesystem skills can access.
+</ParamField>
+
+<ParamField path="execution.allowed_commands" type="Vec&lt;String&gt;">
+List of shell commands that skills are allowed to execute. Empty list disables shell execution.
+</ParamField>
+
+<ParamField path="execution.environment_variables" type="HashMap&lt;String, String&gt;">
+Environment variables to set for skill execution. These are merged with system environment.
+</ParamField>
+
+### Hot Reload Configuration
+
+<ParamField path="hot_reload.enabled" type="bool">
+Whether to enable hot reloading of skills when files change. Useful during development.
+</ParamField>
+
+<ParamField path="hot_reload.watch_paths" type="Vec&lt;PathBuf&gt;">
+List of directories to watch for skill file changes. Only used when hot reload is enabled.
+</ParamField>
+
+<ParamField path="hot_reload.debounce_ms" type="u64">
+Debounce duration in milliseconds for file change events. Prevents excessive reloads during rapid changes. Default: 1000ms.
+</ParamField>
+
+<ParamField path="hot_reload.auto_reload" type="bool">
+Whether to automatically reload skills when file changes are detected. When false, changes are logged but not applied.
+</ParamField>
+
+### Cache Configuration
+
+<ParamField path="cache.max_size" type="usize">
+Maximum number of skills to keep in the cache. Higher values improve performance but use more memory. Default: 1000.
+</ParamField>
+
+<ParamField path="cache.metadata_ttl" type="u64">
+Time-to-live in seconds for cached skill metadata. Metadata expires after this time. Default: 300 seconds (5 minutes).
+</ParamField>
+
+<ParamField path="cache.content_ttl" type="u64">
+Time-to-live in seconds for cached skill content. Content expires after this time. Default: 60 seconds (1 minute).
+</ParamField>
+
+### Embedding Configuration
+
+<ParamField path="embedding" type="Option&lt;EmbeddingConfig&gt;">
+Optional embedding configuration for semantic search. Required for `fastskill search` with semantic matching.
+</ParamField>
+
+<ParamField path="embedding.openai_base_url" type="String">
+Base URL for OpenAI API. Usually "https://api.openai.com/v1".
+</ParamField>
+
+<ParamField path="embedding.embedding_model" type="String">
+OpenAI embedding model to use (e.g., "text-embedding-3-small").
+</ParamField>
+
+<ParamField path="embedding.api_key" type="Option&lt;String&gt;">
+OpenAI API key. Can be set via OPENAI_API_KEY environment variable.
+</ParamField>
+
+### Security Configuration
+
+<ParamField path="security" type="SecurityConfig">
+Security settings for skill execution and service operation. Controls sandboxing and access policies.
+</ParamField>
+
+## Environment Variables
+
+FastSkill primarily uses programmatic configuration, but some settings can be influenced through environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | API key for semantic search | None |
+| `FASTSKILL_CONFIG_FILE` | Path to JSON configuration file | None |
+
+## Configuration Files
+
+### .fastskill/config.yaml Configuration
+
+FastSkill uses `.fastskill/config.yaml` for service-level configuration. This file supports embedding settings and skills storage directory configuration:
+
+```yaml
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+  index_path: ".fastskill/index.db"  # Optional
+
+# Skills storage directory (where installed skills are stored)
+# Default: ".claude/skills"
+skills_directory: ".claude/skills"
+```
+
+**Key Points**:
+- `skills_directory` configures where `fastskill add` installs skills
+- This is separate from repositories in `[tool.fastskill.repositories]` section of `skill-project.toml` (which are for discovery only)
+- Allows separation of development skills from runtime registry
+- Can be absolute or relative path (relative paths resolve from current directory)
+- Project-level configuration (dependencies and repositories) is stored in `skill-project.toml` at project root
+
+### JSON Configuration Files
+
+For deployments requiring external configuration, use JSON files:
+
+```json config.json
+{
+  "skill_storage_path": "./skills",
+  "execution": {
+    "default_timeout": 30,
+    "max_memory_mb": 512
+  },
+  "hot_reload": {
+    "enabled": true,
+    "watch_paths": ["./skills", "./custom-skills"],
+    "debounce_ms": 1000,
+    "auto_reload": true
+  },
+  "cache": {
+    "max_size": 1000,
+    "metadata_ttl": 300,
+    "content_ttl": 60
+  },
+  "embedding": {
+    "openai_base_url": "https://api.openai.com/v1",
+    "embedding_model": "text-embedding-3-small"
+  },
+  "staging_dir": "./staging",
+  "registry_index_path": "./registry/index",
+  "registry_blob_base_url": "https://registry.example.com/blobs"
+}
+```
+
+Load configuration in Rust:
+
+```rust
+use fastskill::ServiceConfig;
+use std::fs;
+
+let config_content = fs::read_to_string("config.json")?;
+let config: ServiceConfig = serde_json::from_str(&config_content)?;
+```
+
+## Performance Tuning
+
+### For High Throughput
+
+```rust
+use fastskill::{ServiceConfig, CacheConfig, ExecutionConfig};
+use std::time::Duration;
+
+// Optimize for many concurrent requests
+let config = ServiceConfig {
+    cache: CacheConfig {
+        max_size: 5000,        // Large cache for high throughput
+        metadata_ttl: 7200,    // 2 hours - keep metadata longer
+        content_ttl: 1800,     // 30 minutes - keep content longer
+    },
+    execution: ExecutionConfig {
+        default_timeout: Duration::from_secs(10),  // Faster timeout
+        max_memory_mb: 256,     // Lower memory per execution
+        ..Default::default()
+    },
+    hot_reload: Default::default(),  // Disable hot reload for production
+    ..Default::default()
+};
+```
+
+### For Memory Constrained Environments
+
+```rust
+use fastskill::{ServiceConfig, CacheConfig, ExecutionConfig};
+
+// Minimize memory usage
+let config = ServiceConfig {
+    cache: CacheConfig {
+        max_size: 100,         // Small cache to save memory
+        metadata_ttl: 60,      // Short TTL to free memory quickly
+        content_ttl: 30,       // Very short content TTL
+    },
+    execution: ExecutionConfig {
+        max_memory_mb: 50,     // Very low memory limit
+        ..Default::default()
+    },
+    hot_reload: Default::default(),  // Disable hot reload
+    ..Default::default()
+};
+```
+
+### For Development
+
+```rust
+use fastskill::{ServiceConfig, HotReloadConfig, CacheConfig};
+use std::path::PathBuf;
+
+// Optimize for development workflow
+let config = ServiceConfig {
+    hot_reload: HotReloadConfig {
+        enabled: true,
+        watch_paths: vec![
+            PathBuf::from("./skills"),
+            PathBuf::from("./custom-skills")
+        ],
+        debounce_ms: 500,       // Quick response to changes
+        auto_reload: true,
+    },
+    cache: CacheConfig {
+        metadata_ttl: 60,      // Short cache for fresh data
+        content_ttl: 30,       // Very short for development
+        ..Default::default()
+    },
+    skill_storage_path: PathBuf::from("./dev-skills"),
+    ..Default::default()
+};
+```
+
+## Security Configuration
+
+Security is primarily controlled through the ExecutionConfig settings:
+
+### High Security Mode
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig};
+
+// Maximum security configuration
+let config = ServiceConfig {
+    execution: ExecutionConfig {
+        max_memory_mb: 256,     // Low memory limit
+        network_policy: fastskill::NetworkPolicy::Blocked,  // No network access
+        filesystem_access: fastskill::FileSystemAccess::Restricted,
+        allowed_commands: vec![],  // No shell commands allowed
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+### Development Security
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig};
+
+// Balanced security for development
+let config = ServiceConfig {
+    execution: ExecutionConfig {
+        max_memory_mb: 1024,    // Higher limits for testing
+        network_policy: fastskill::NetworkPolicy::Allowed,  // Allow network for testing
+        filesystem_access: fastskill::FileSystemAccess::Permissive,
+        allowed_commands: vec!["curl".to_string(), "wget".to_string()],  // Limited commands
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+## Validation and Testing
+
+Always test your configuration before deploying:
+
+<Steps>
+<Step title="Test configuration">
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+
+// Test configuration with a minimal service
+let config = ServiceConfig {
+    hot_reload: fastskill::HotReloadConfig {
+        enabled: false,  // Disable for testing
+        ..Default::default()
+    },
+    ..Default::default()
+};
+
+let service = FastSkillService::new(config).await?;
+service.initialize().await?;
+
+// Quick functionality test
+let skills = service.skill_manager().list_skills(None).await?;
+println!("Service running with {} skills", skills.len());
+
+service.shutdown().await?;
+```
+</Step>
+
+<Step title="Verify skill execution">
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+
+// Test skill execution with your config
+let config = ServiceConfig::default();
+let service = FastSkillService::new(config).await?;
+service.initialize().await?;
+
+// Test a simple skill execution
+let result = service.execute_skill("example-skill", &[]).await?;
+println!("Skill executed successfully: {:?}", result);
+
+service.shutdown().await?;
+```
+</Step>
+</Steps>
+
+## Best Practices
+
+<Steps>
+<Step title="Start with defaults">
+  Begin with default configuration and adjust based on your specific needs and performance observations.
+</Step>
+
+<Step title="Monitor and adjust">
+  Use the metrics system to monitor performance and adjust configuration based on real usage patterns.
+</Step>
+
+<Step title="Test configuration changes">
+  Always test configuration changes in a staging environment before deploying to production.
+</Step>
+
+<Step title="Document your configuration">
+  Keep documentation of your configuration choices and the reasons behind them for future reference.
+</Step>
+
+<Step title="Use configuration files">
+  For production deployments, prefer configuration files over environment variables for better visibility and version control.
+</Step>
+</Steps>
+
+<Warning>
+Invalid configuration can cause service startup failures or unexpected behavior. Always validate your configuration and test thoroughly before deployment.
+</Warning>

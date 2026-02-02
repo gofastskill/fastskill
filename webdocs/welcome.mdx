@@ -1,0 +1,322 @@
+---
+title: "Welcome to FastSkill"
+description: "FastSkill - A comprehensive skills registry system that brings package management to AI agent skills"
+---
+
+# Welcome to FastSkill
+
+FastSkill is a **skills registry and management system** that transforms how you discover, install, and manage AI agent skills. Built on the Anthropic/Claude Code skill standard, FastSkill brings the power of modern package managers (like Poetry and npm) to the world of AI agent development.
+
+## The Problem We're Solving
+
+AI agent skills are scattered across repositories with no standard way to discover, version, or manage them. FastSkill brings package management to AI skills, solving:
+
+- **Discovery**: Skills scattered across repos with no search or discovery mechanism
+- **Versioning**: No version control or reproducible deployments
+- **Dependencies**: Manual dependency management with runtime conflicts
+- **Development**: No separation between dev/prod skills or standardized packaging
+- **Integration**: Each project reinvents skill loading and management
+
+## How FastSkill Solves These Problems
+
+FastSkill extends the Anthropic/Claude Code skill standard into a **comprehensive registry system** that brings software development best practices to AI agent skills.
+
+### 🔍 Semantic Discovery
+
+**Find skills by meaning, not just keywords.**
+
+FastSkill uses OpenAI embeddings to enable semantic search—find skills by what they do, not just what they're called. This means you can search for "powerpoint presentation" and find skills that create presentations, even if they don't use those exact words.
+
+```bash
+# Semantic search finds skills by meaning
+fastskill search "create data visualizations"
+# Returns: chart-generator, dashboard-builder, data-plotter
+```
+
+### 📦 Package Management for Skills
+
+**Declarative skill management, similar to Cargo for Rust or npm for Node.js.**
+
+FastSkill uses a unified `skill-project.toml` file at the project root for all configuration, similar to `pyproject.toml` and `package.json`:
+
+```toml
+# skill-project.toml - Unified configuration
+[dependencies]
+web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
+pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+```
+
+**Benefits:**
+- ✅ **Reproducible Installations**: `skills.lock` preserves exact installs
+- ✅ **Group-Based Organization**: Separate dev/prod skills like Poetry groups
+- ✅ **Version Tracking**: Track skill versions and update safely
+- ✅ **Unified Configuration**: Single file for dependencies and repository settings
+
+### 🔄 Complete Lifecycle Management
+
+**From development to production deployment.**
+
+FastSkill provides tools for the entire skill lifecycle:
+
+```bash
+# Development: Create and test skills
+fastskill init                    # Initialize skill metadata
+fastskill add ./my-skill -e       # Add in editable mode
+
+# Production: Deploy and manage
+fastskill install --without dev   # Install for production
+fastskill update                  # Update to latest versions
+fastskill show --tree             # View dependency tree
+```
+
+### 📊 Smart Dependency Management
+
+**Automatic resolution with conflict detection.**
+
+Skills declare dependencies that FastSkill resolves automatically:
+
+```toml
+[dependencies]
+web-scraper = { source = "registry", name = "team-tools", version = "^1.0" }
+data-processor = { source = "git", url = "https://github.com/org/data.git" }
+```
+
+### 🏗️ Development Workflow Integration
+
+**Skills as first-class development artifacts.**
+
+```bash
+# Version control integration
+fastskill add https://github.com/org/skill.git
+git add skill-project.toml skills.lock
+git commit -m "Add data processing skill"
+```
+
+#### CI/CD & Team Workflows
+
+**Reproducible installations across environments:**
+
+```yaml
+# CI/CD pipeline
+- name: Install skills
+  run: fastskill install --lock
+```
+
+```bash
+# Team collaboration
+fastskill add --group dev pytest     # Developer adds skill
+fastskill install --without dev      # Production deployment
+```
+
+#### Multi-Environment Support
+
+Different skill sets for different environments:
+
+```toml
+[dependencies]
+# Development environment gets extra tools
+dev-tools = { source = "source", name = "registry", skill = "dev-tools", groups = ["dev"] }
+
+# Production gets monitoring
+monitoring = { source = "source", name = "registry", skill = "monitoring", groups = ["prod"] }
+```
+
+### 🚀 Performance Optimizations
+
+**Pre-computed embeddings and efficient storage.**
+
+FastSkill includes performance optimizations that make skill management scalable:
+
+**Pre-computed Embeddings:**
+- Skills can bundle pre-computed embeddings in ZIP packages
+- No API calls needed during installation
+- Faster search and discovery
+- Consistent embeddings across installations
+
+**Local Vector Storage:**
+- SQLite-based embedding database
+- Fast semantic search without external API calls
+- Offline operation capability
+- Incremental indexing for efficiency
+
+## Expanding the Claude Code Standard
+
+FastSkill builds on the solid foundation of the **Anthropic Claude Code skill standard** (SKILL.md format) and extends it with:
+
+### 1. **Registry Infrastructure**
+
+The Claude Code standard defines how individual skills are structured. FastSkill adds the infrastructure to manage multiple skills:
+
+- **Source Tracking**: Know where each skill came from
+- **Version Management**: Track versions across installations
+- **Repository Support**: Multiple skill sources (Git, ZIP, local)
+
+### 2. **Package Management**
+
+Skills become manageable packages:
+
+- **Manifest Files**: Declarative skill definitions
+- **Lock Files**: Reproducible installations
+- **Dependency Resolution**: Automatic dependency management
+- **Group Organization**: Environment-based skill grouping
+
+### 3. **Development Workflow**
+
+Skills integrate into standard development workflows:
+
+- **Editable Installs**: Local development with symlinks
+- **Version Control**: Track skills in git
+- **CI/CD Integration**: Reproducible builds
+- **Team Collaboration**: Shared skill configurations
+
+### 4. **Lifecycle Management**
+
+Complete lifecycle support:
+
+- **Discovery**: Semantic search across skills
+- **Installation**: From various sources (Git, ZIP, repositories)
+- **Updates**: Safe version updates
+- **Removal**: Clean skill removal with dependency checks
+
+## Key Features
+
+### 📋 Declarative Configuration
+
+Define your skills declaratively in `skill-project.toml` at your project root:
+
+```toml
+# skill-project.toml
+[dependencies]
+web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
+data-processor = { source = "source", name = "team-tools", skill = "data-processor", groups = ["prod"] }
+```
+
+### 🔒 Reproducible Installations
+
+Lock files ensure exact reproducibility:
+
+```toml
+# skills.lock - Exact installed state
+[[skills]]
+id = "web-scraper"
+version = "1.2.3"
+commit_hash = "abc123def456"
+fetched_at = "2024-01-01T12:00:00Z"
+```
+
+### 🏷️ Group-Based Organization
+
+Organize skills by environment:
+
+```bash
+# Install all skills
+fastskill install
+
+# Install without dev group
+fastskill install --without dev
+
+# Install only production
+fastskill install --only prod
+```
+
+### 🔗 Editable Installs
+
+Develop skills locally with symlink support:
+
+```bash
+# Install in editable mode
+fastskill add ./local-skill -e --group dev
+```
+
+### 📚 Source Management
+
+Manage multiple skill repositories:
+
+```bash
+# Add a repository
+fastskill registry add team-tools --repo-type git-marketplace https://github.com/org/skills.git
+
+# List repositories
+fastskill registry list
+
+# Install from source
+fastskill install
+```
+
+### 🔍 Semantic Search
+
+Find skills by meaning:
+
+```bash
+# Search by capability
+fastskill search "create presentations"
+
+# Find visualization tools
+fastskill search "charts and graphs"
+```
+
+## Use Cases
+
+### Individual Developers
+
+**Manage your personal skill library:**
+- Track skills you use across projects
+- Version control your skill configurations
+- Update skills safely
+- Discover new skills by capability
+
+### Teams
+
+**Share skill configurations:**
+- Standardize skill sets across team members
+- Separate development and production skills
+- Track skill updates in version control
+- Collaborate on skill selection
+
+### Organizations
+
+**Enterprise skill management:**
+- Central skill repositories
+- Version control and auditing
+- Environment-specific skill sets
+- Dependency management at scale
+
+### Skill Authors
+
+**Publish and distribute skills:**
+- Create versioned skill packages
+- Include pre-computed embeddings
+- Define dependencies
+- Distribute via Git, ZIP, or repositories
+
+## Getting Started
+
+Ready to get started? Here's a quick path:
+
+1. **[Install FastSkill](/installation)** - Get FastSkill set up in your environment
+2. **[Quick Start Guide](/quickstart)** - 5-minute setup tutorial
+3. **[Core Concepts](/core-concepts)** - Understand skills, manifests, and sources
+4. **[CLI Reference](/cli-reference/overview)** - Complete command documentation
+
+## Why FastSkill?
+
+FastSkill brings **software engineering best practices** to AI agent skills:
+
+- ✅ **Reproducibility**: Lock files ensure consistent installations
+- ✅ **Scalability**: Manage hundreds of skills across projects
+- ✅ **Collaboration**: Share skill configurations with teams
+- ✅ **Reliability**: Version tracking and dependency resolution
+- ✅ **Performance**: Pre-computed embeddings and efficient storage
+- ✅ **Standards-Based**: Built on Claude Code skill standard
+
+## What's Next?
+
+- Explore the [Core Concepts](/core-concepts) to understand the architecture
+- Check out the [CLI Reference](/cli-reference/overview) for all available commands
+- Read about [Integration Patterns](/integration/cursor-integration) for your agent framework
+- Learn about [Progressive Loading](/progressive-loading/strategies) for efficient skill usage
+
+---
+
+**FastSkill**: Making AI agent skills manageable, versioned, and reproducible—just like modern software packages.
+

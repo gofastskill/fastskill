@@ -1,0 +1,11 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+
+[INFO] Installed Skills:
+
+ID          Version  Description  Source  Status
+------------------------------------------------
+test-skill  [VERSION]    Test skill   local   Ok
