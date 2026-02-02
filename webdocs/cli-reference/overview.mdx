@@ -114,16 +114,16 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill search" icon="search">
-    Semantic search across installed/available skills.
+    Semantic search across installed/available skills (supports `--format xml`).
   </Card>
-  <Card title="fastskill registry" icon="book">
-    Manage repositories (add/list/remove/show/update/test/refresh/list-skills/show-skill/versions/search/create).
-  </Card>
-  <Card title="fastskill registry list-skills" icon="search">
-    List skills from HTTP registry (supports `--scope`, `--all-versions`, `--include-pre-release`, `--json`, `--grid`).
+  <Card title="fastskill sources" icon="book">
+    Manage repositories (list/add/remove/show/update/test/refresh/create) with authentication and priority.
   </Card>
   <Card title="fastskill auth" icon="key">
-    Manage authentication for registries.
+    Manage authentication (login/logout/whoami) with JWT tokens and RBAC.
+  </Card>
+  <Card title="fastskill registry" icon="book">
+    Legacy alias for sources command (add/list/remove/show/update/test/refresh/list-skills/show-skill/versions/search).
   </Card>
 </CardGroup>
 

@@ -60,10 +60,7 @@
                 "skill-management/manifest-system",
                 "skill-management/lifecycle",
                 "skill-management/validation",
-                "skill-management/hot-reloading",
-                "skill-management/sources",
-                "skill-management/groups",
-                "skill-management/editable-installs"
+                "skill-management/hot-reloading"
             ]
         },
         {
@@ -94,7 +91,8 @@
             "group": "API Reference",
             "pages": [
                 "api-reference/overview",
-                "api-reference/python-sdk"
+                "api-reference/claude-code-v1-api",
+                "api-reference/authentication"
             ]
         },
         {
@@ -103,6 +101,8 @@
                 "cli-reference/overview",
                 "cli-reference/skill-commands",
                 "cli-reference/discovery-commands",
+                "cli-reference/sources-command",
+                "cli-reference/auth-command",
                 "cli-reference/reindex-command",
                 "cli-reference/search-command",
                 "cli-reference/serve-command",
