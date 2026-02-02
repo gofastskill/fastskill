@@ -1,0 +1,159 @@
+{
+    "name": "FastSkill",
+    "logo": {
+        "dark": "/logo/dark.svg",
+        "light": "/logo/light.svg"
+    },
+    "favicon": "/favicon.svg",
+    "colors": {
+        "primary": "#0D9373",
+        "light": "#10B981",
+        "dark": "#059669"
+    },
+    "topbarLinks": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/gofastskill/fastskill"
+        }
+    ],
+    "topbarCtaButton": {
+        "name": "Get Started",
+        "url": "/welcome"
+    },
+    "anchors": [
+        {
+            "name": "Community",
+            "icon": "slack",
+            "url": "https://join.slack.com/t/fastskill/shared_invite/zt-2example"
+        },
+        {
+            "name": "GitHub",
+            "icon": "github",
+            "url": "https://github.com/gofastskill/fastskill"
+        }
+    ],
+    "navigation": [
+        {
+            "group": "Getting Started",
+            "pages": [
+                "welcome",
+                "index",
+                "quickstart",
+                "installation",
+                "core-concepts",
+                "cheatsheet"
+            ]
+        },
+        {
+            "group": "Configuration",
+            "pages": [
+                "configuration/init-command",
+                "configuration/service-config",
+                "configuration/environment",
+                "configuration/best-practices"
+            ]
+        },
+        {
+            "group": "Skill Management",
+            "pages": [
+                "skill-management/registration",
+                "skill-management/manifest-system",
+                "skill-management/lifecycle",
+                "skill-management/validation",
+                "skill-management/hot-reloading",
+                "skill-management/sources",
+                "skill-management/groups",
+                "skill-management/editable-installs"
+            ]
+        },
+        {
+            "group": "Discovery & Routing",
+            "pages": [
+                "discovery/skill-discovery",
+                "discovery/intelligent-routing",
+                "search/embedding-search"
+            ]
+        },
+        {
+            "group": "Tool Calling",
+            "pages": [
+                "tool-calling/available-tools",
+                "tool-calling/execution",
+                "tool-calling/development"
+            ]
+        },
+        {
+            "group": "Progressive Loading",
+            "pages": [
+                "progressive-loading/strategies",
+                "progressive-loading/cache-management",
+                "progressive-loading/performance"
+            ]
+        },
+        {
+            "group": "API Reference",
+            "pages": [
+                "api-reference/overview",
+                "api-reference/python-sdk"
+            ]
+        },
+        {
+            "group": "CLI Reference",
+            "pages": [
+                "cli-reference/overview",
+                "cli-reference/skill-commands",
+                "cli-reference/discovery-commands",
+                "cli-reference/reindex-command",
+                "cli-reference/search-command",
+                "cli-reference/serve-command",
+                "cli-reference/repository-command"
+            ]
+        },
+        {
+            "group": "Registry",
+            "pages": [
+                "registry/overview",
+                "registry/sources",
+                "registry/marketplace-json",
+                "registry/web-ui"
+            ]
+        },
+        {
+            "group": "Examples & Tutorials",
+            "pages": [
+                "examples/basic-examples",
+                "examples/integration-tutorials",
+                "examples/advanced-patterns",
+                "examples/notebooks"
+            ]
+        },
+        {
+            "group": "Advanced Topics",
+            "pages": [
+                "security/model",
+                "security/best-practices",
+                "testing/framework",
+                "testing/debugging"
+            ]
+        },
+        {
+            "group": "Integration",
+            "pages": [
+                "integration/cursor-integration",
+                "integration/kubernetes-deployment"
+            ]
+        }
+    ],
+    "footerSocials": {
+        "github": "https://github.com/gofastskill/fastskill",
+        "twitter": "https://twitter.com/fastskill"
+    },
+    "analytics": {
+        "ga4": {
+            "measurementId": "G-XXXXXXXXXX"
+        }
+    },
+    "search": {
+        "indexName": "fastskill"
+    }
+}

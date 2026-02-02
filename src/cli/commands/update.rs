@@ -84,6 +84,9 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
         entries.retain(|e| e.id == *skill_id);
     }
 
+    // Sort entries alphabetically for deterministic output
+    entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+
     if entries.is_empty() {
         println!("{}", messages::info("No skills to update"));
         return Ok(());

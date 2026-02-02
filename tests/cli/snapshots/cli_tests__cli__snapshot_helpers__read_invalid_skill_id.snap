@@ -1,0 +1,12 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Error: Invalid skill ID format: 'invalid skill id!'
+
+Expected format:
+  - id
+  - scope/id
+  - id@version or scope/id@version (if supported)
+Error: Validation error: Invalid skill ID format: Validation error: Skill ID contains invalid characters (only alphanumeric, dash, underscore allowed)

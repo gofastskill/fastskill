@@ -1,0 +1,434 @@
+---
+title: "Search Command"
+description: "Search for skills using semantic embeddings or traditional keyword matching."
+---
+
+## Overview
+
+The `search` command queries the FastSkill index to find relevant skills based on your query. It supports both semantic search (using embeddings) and traditional keyword search.
+
+<Info>
+Semantic search requires prior indexing with `fastskill reindex`. Keyword search works immediately on available skills.
+</Info>
+
+## Basic Usage
+
+### Prerequisites
+
+**For Semantic Search (default):**
+- OpenAI API key: `export OPENAI_API_KEY="your-openai-api-key"`
+- Skills indexed: `fastskill reindex`
+- Configuration: `.fastskill/config.yaml` with embedding settings
+
+**For Keyword Search:**
+- Skills installed or available in configured repositories
+
+```bash
+# Semantic search (requires OpenAI API key and indexing)
+export OPENAI_API_KEY="your-openai-api-key"
+fastskill search "process documents and extract information"
+
+# Keyword search (works immediately)
+fastskill search "pdf" --embedding false
+
+# Search in specific skills directory
+fastskill --skills-dir .claude/skills/ search "powerpoint"
+```
+
+## Command Options
+
+### --limit <NUMBER>
+
+Maximum number of results to return:
+
+```bash
+# Return top 5 results
+fastskill search "powerpoint" --limit 5
+
+# Return all results (default: 10)
+fastskill search "powerpoint" --limit 0
+```
+
+### --format [table|json|xml]
+
+Output format for results:
+
+```bash
+# ASCII table (default)
+fastskill search "powerpoint" --format table
+
+# JSON output
+fastskill search "powerpoint" --format json
+
+# XML output
+fastskill search "powerpoint" --format xml
+```
+
+## Search Methods
+
+### Semantic Search (Embeddings)
+
+**How it works:**
+1. Converts your query to an embedding vector
+2. Calculates similarity with all indexed skill vectors
+3. Returns most semantically relevant skills
+
+**Advantages:**
+- Finds skills by meaning, not just keywords
+- Understands synonyms and related concepts
+- Better for natural language queries
+
+**Example:**
+```bash
+fastskill search "I need to run a meeting and summarize main points visually"
+# Finds: PowerPoint tools, presentation software, chart generators
+```
+
+## Output Formats
+
+### Table Format (Default)
+
+Professional ASCII table with columns:
+
+```
+Found 3 skills matching 'powerpoint':
+
++-----------------+--------------------------------+------------------+
+| ID              | Path                           | Similarity       |
++-----------------+--------------------------------+------------------+
+| pptx            | product-management/pptx        | 0.87            |
+| presentation    | tools/presentation             | 0.82            |
+| charts          | dataops/charts                 | 0.76            |
++-----------------+--------------------------------+------------------+
+```
+
+**Features:**
+- Auto-sized columns based on content
+- Truncated long descriptions (50 chars max)
+- Similarity scores for embedding results
+- "N/A" for keyword search results
+
+### JSON Format
+
+Clean JSON without embedding vectors:
+
+```bash
+fastskill search "powerpoint" --format json --limit 2
+```
+
+```json
+[
+  {
+    "id": "pptx",
+    "name": "PowerPoint Creator",
+    "description": "Create professional presentations from text content",
+    "version": "1.0.0",
+    "author": null,
+    "tags": ["presentation", "powerpoint", "slides"],
+    "capabilities": ["create_pptx", "text_to_slides"],
+    "enabled": true,
+    "token_estimate": 145,
+    "last_updated": "2025-11-04T18:50:43.036090647Z"
+  },
+  {
+    "skill": {
+      "id": "presentation",
+      "skill_path": "tools/presentation",
+      "frontmatter_json": {
+        "name": "Presentation Tools",
+        "description": "Comprehensive presentation creation and management",
+        "tags": ["presentation", "slides", "charts"]
+      },
+      "file_hash": "a1b2c3...",
+      "updated_at": "2025-11-04T18:50:43.036090647Z"
+    },
+    "similarity": 0.82
+  }
+]
+```
+
+### XML Format
+
+Structured XML output:
+
+```bash
+fastskill search "powerpoint" --format xml
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<skills>
+  <skill id="pptx" path="product-management/pptx">
+    <similarity>0.87</similarity>
+    <name>PowerPoint Creator</name>
+    <description>Create professional presentations from text content</description>
+  </skill>
+  <skill id="presentation" path="tools/presentation">
+    <similarity>0.82</similarity>
+    <name>Presentation Tools</name>
+    <description>Comprehensive presentation creation and management</description>
+  </skill>
+</skills>
+```
+
+## Configuration
+
+### Skills Directory
+
+Specify where indexed skills are located:
+
+```bash
+# Search in default location
+fastskill search "query"
+
+# Search in specific directory
+fastskill --skills-dir ./my-skills/ search "query"
+
+# Use environment variable
+export FASTSKILL_DIRECTORY="./my-skills"
+fastskill search "query"
+```
+
+### Directory Resolution Priority
+
+1. `--skills-dir` command line argument
+2. `FASTSKILL_DIRECTORY` environment variable
+3. `.skills` folder in current directory
+4. Walking up directory tree for `.skills` folder
+
+## Examples
+
+### Basic Queries
+
+```bash
+# Find document processing skills
+fastskill search "process documents and extract text"
+
+# Find visualization tools
+fastskill search "create charts and graphs"
+
+# Find meeting-related skills
+fastskill search "schedule meetings and send invites"
+```
+
+### Advanced Queries
+
+```bash
+# Limit results and use JSON output
+fastskill search "powerpoint" --limit 5 --format json
+
+# Force keyword search for debugging
+fastskill search "presentation" --embedding false --format table
+
+# XML output for integration
+fastskill search "charts" --format xml > charts.xml
+```
+
+### Integration Examples
+
+#### Shell Script
+```bash
+#!/bin/bash
+QUERY="$1"
+RESULTS=$(fastskill search "$QUERY" --format json --limit 3)
+
+if [ -z "$RESULTS" ]; then
+    echo "No skills found for: $QUERY"
+    exit 1
+fi
+
+echo "Found skills for '$QUERY':"
+echo "$RESULTS" | jq -r '.[].name'
+```
+
+#### Rust Integration
+```rust
+use std::process::Command;
+use serde_json::Value;
+
+fn search_skills(query: &str, limit: usize) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let output = Command::new("fastskill")
+        .arg("search")
+        .arg(query)
+        .arg("--format")
+        .arg("json")
+        .arg("--limit")
+        .arg(limit.to_string())
+        .output()?;
+
+    if !output.status.success() {
+        eprintln!("Search failed: {}", String::from_utf8_lossy(&output.stderr));
+        return Ok(vec![]);
+    }
+
+    let skills: Vec<Value> = serde_json::from_slice(&output.stdout)?;
+    Ok(skills)
+}
+
+// Usage
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let skills = search_skills("powerpoint presentation", 5)?;
+    for skill in skills {
+        if let (Some(name), Some(desc)) = (
+            skill.get("name").and_then(|v| v.as_str()),
+            skill.get("description").and_then(|v| v.as_str())
+        ) {
+            println!("- {}: {}", name, desc);
+        }
+    }
+    Ok(())
+}
+```
+
+## Performance
+
+### Search Speed
+
+- **Embedding Search**: < 500ms (local vector similarity)
+- **No Network Calls**: All search happens locally after indexing
+
+### Result Quality
+
+- **Semantic Understanding**: Finds skills by meaning, not just keywords
+- **Intelligent Matching**: Understands synonyms and related concepts
+- **Natural Language**: Better relevance for human queries
+
+### Scalability
+
+- **Vector Search**: Constant time after indexing, scales to 10k+ skills
+- **Local Processing**: No external API calls during search
+
+## Error Handling
+
+### Common Errors
+
+#### "No skills found matching 'query'"
+- **Cause**: No skills match the search criteria
+- **Solution**: Try broader terms or different search method
+
+#### "Embedding configuration required but not found"
+- **Cause**: No `.fastskill/config.yaml` configuration file found in searched locations
+- **Solution**: Run `fastskill init` to set up your project, or create `.fastskill/config.yaml` manually
+
+#### "Vector index service not available"
+- **Cause**: Skills not indexed yet
+- **Solution**: Run `fastskill reindex` first
+
+#### "OPENAI_API_KEY environment variable not set"
+- **Cause**: API key not configured for embedding search
+- **Solution**: Set `OPENAI_API_KEY` environment variable
+
+### Troubleshooting
+
+#### Enable Debug Logging
+```bash
+RUST_LOG=fastskill=debug fastskill search "query"
+```
+
+#### Check Index Status
+```bash
+# Verify index exists
+ls -la .claude/skills/.fastskill/index.db
+
+# Check index contents
+sqlite3 .claude/skills/.fastskill/index.db "SELECT COUNT(*) FROM skills;"
+```
+
+#### Verify Configuration
+```bash
+# Check if configuration file exists
+cat .fastskill/config.yaml
+
+# Test API key is set
+echo $OPENAI_API_KEY
+
+# Test basic search functionality
+fastskill search "test query" --limit 1
+```
+
+## Best Practices
+
+### Query Formulation
+
+- Use natural language descriptions
+- Describe desired outcomes and use cases
+- Include context about what you want to accomplish
+- Semantic search understands synonyms and related concepts
+
+### Performance Optimization
+
+```bash
+# Use appropriate limits
+fastskill search "query" --limit 10  # Not too many results
+
+# Choose appropriate output formats
+fastskill search "query" --format json  # For programmatic use
+fastskill search "query" --format table # For human reading
+```
+
+### Integration Patterns
+
+#### API Integration
+```bash
+# For web applications
+curl -X GET "http://localhost:8080/api/search?q=powerpoint&format=json"
+
+# For command-line tools
+fastskill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
+```
+
+#### CI/CD Integration
+```yaml
+# .github/workflows/search-skills.yml
+name: Test Skill Search
+on: [push]
+jobs:
+  test-search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FastSkill
+        run: cargo install --path tools/fastskill/rust/
+      - name: Index skills
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: fastskill reindex --skills-dir .claude/skills/
+      - name: Test search
+        run: fastskill search "powerpoint" --format json
+```
+
+## Related Commands
+
+### Reindex Command
+Build or update the search index:
+
+```bash
+fastskill reindex --skills-dir .claude/skills/
+```
+
+### List Skills (Rust Library)
+View all indexed skills programmatically:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    let skills = service.skill_manager().list_skills(None).await?;
+    println!("Total indexed skills: {}", skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+The search command provides the primary interface for discovering skills, offering both traditional keyword matching and advanced semantic search capabilities powered by embeddings.

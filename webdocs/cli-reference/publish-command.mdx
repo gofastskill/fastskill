@@ -1,0 +1,394 @@
+---
+title: publish
+api: "publish"
+---
+
+# publish Command
+
+Publish skill packages to a registry API or local folder. This command supports API-based publishing with authentication and local folder publishing for development/testing.
+
+## Usage
+
+```bash
+fastskill publish [OPTIONS]
+```
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--artifacts <PATH>` | Package file or directory containing ZIP artifacts | `./artifacts` |
+| `--target <TARGET>` | API URL (e.g., https://registry.example.com) or local folder path | `FASTSKILL_API_URL` or `http://localhost:8080` |
+| `--wait` | Wait for validation to complete | `true` |
+| `--no-wait` | Don't wait for validation (overrides --wait) | `false` |
+| `--max-wait <SECONDS>` | Maximum wait time in seconds | `300` |
+
+**Note**: Authentication is handled automatically via `fastskill auth login`. The server extracts scope from your JWT token - you don't need to specify it manually.
+
+## Examples
+
+### Publish to Registry API
+
+Publish packages to a registry API (default mode):
+
+```bash
+# Using command-line options (after authenticating)
+fastskill auth login  # Authenticate first
+fastskill publish \
+  --artifacts ./artifacts \
+  --target https://registry.example.com
+
+# Using environment variables
+export FASTSKILL_API_URL=https://registry.example.com
+fastskill auth login  # Authenticate first
+fastskill publish --artifacts ./artifacts
+```
+
+### Publish Single Package File
+
+Publish a single ZIP file:
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts/my-skill-1.0.0.zip \
+  --target https://registry.example.com
+```
+
+### Publish to Local Folder
+
+Publish packages to a local folder (for testing):
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts \
+  --target ./local-registry
+```
+
+### Wait for Validation
+
+By default, the command waits for validation to complete. To skip waiting:
+
+```bash
+# Don't wait (exit after initial status check)
+fastskill publish \
+  --artifacts ./artifacts \
+  --target https://registry.example.com \
+  --no-wait
+
+# Increase timeout (default is 300 seconds)
+fastskill publish \
+  --artifacts ./artifacts \
+  --target https://registry.example.com \
+  --max-wait 600
+```
+
+## Authentication
+
+### Getting a JWT Token
+
+For local development, generate a token from the registry API:
+
+```bash
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"role": "manager", "username": "dev-user"}'
+```
+
+The response includes a `token` field that you can use with `--token` or `FASTSKILL_API_TOKEN`.
+
+### Required Permissions
+
+- **REGISTRY_PUBLISH**: Manager or Admin role required
+- **REGISTRY_PUBLISH_STATUS**: User role or higher required
+
+### Scope Handling and Authentication Flow
+
+The publish command handles scope management automatically through JWT token authentication. Here's how it works:
+
+#### Authentication Flow
+
+1. **Login**: Use `fastskill auth login` to authenticate with the registry
+2. **Token Storage**: JWT token is stored in your local config (`.fastskill/config.yaml`)
+3. **Scope Extraction**: Server extracts scope from JWT token's `claims.sub` field
+4. **Automatic ID Construction**: Final skill ID is `{scope}/{package-name}`
+
+#### Scope Determination Logic
+
+The server automatically determines scope from your authenticated user account:
+
+- **Organization users**: `"org/user"` → scope = `"org"`
+- **Individual users**: `"user"` → scope = `"user"`
+- **Multi-level organizations**: `"company/team/user"` → scope = `"company"`
+
+**Scope Examples:**
+```
+JWT Token (claims.sub)    →  Scope    →  Final Skill ID
+─────────────────────────────────────────────────────────────────
+"acme"                   →  "acme"   →  "acme/web-scraper"
+"acme/alice"             →  "acme"   →  "acme/web-scraper"
+"personal"               →  "personal" → "personal/my-tool"
+"company/dev-team/bob"   →  "company" → "company/data-analyzer"
+```
+
+#### Package Name Requirements
+
+The package name comes from your `SKILL.md` frontmatter and must:
+- Be lowercase only
+- Contain no uppercase letters
+- Be unique within the scope
+- Follow URL-safe naming conventions
+
+#### Complete Authentication Workflow
+
+```bash
+# 1. Authenticate with registry
+fastskill auth login
+
+# 2. Verify your identity and scope
+fastskill auth whoami
+
+# Example output:
+# Logged in as: acme/alice
+# Scope: acme
+# Role: manager
+
+# 3. Package your skills
+fastskill package --detect-changes --output ./artifacts
+
+# 4. Publish (scope automatically handled)
+fastskill publish --artifacts ./artifacts --target https://registry.example.com
+
+# Result: Skills published under "acme/" scope
+```
+
+#### Scope Override Scenarios
+
+**For Organizations:**
+- All team members publishing to the same scope
+- Consistent skill naming across the organization
+- Centralized skill governance
+
+**For Individuals:**
+- Personal skill development and sharing
+- Testing and prototyping
+- Private skill collections
+
+**Scope Conflicts:**
+- Package names must be unique within each scope
+- Different organizations can have same package names
+- Cross-scope skill discovery works automatically
+
+#### Troubleshooting Scope Issues
+
+**"Insufficient permissions for scope"**
+- Verify your JWT token includes the correct scope
+- Check that your account has publish permissions for the target scope
+
+**"Package name already exists"**
+- Choose a different package name
+- Coordinate with your team for naming conventions
+- Check existing skills in your scope with `fastskill registry list-skills --scope your-scope`
+
+**"Invalid scope format"**
+- Scopes cannot start with dots or underscores
+- Use only lowercase letters, numbers, hyphens, and underscores
+
+## Package Naming Guidelines
+
+When choosing a name for your package, choose a name that:
+
+- **Is unique**: Package names must be unique within each scope
+- **Is descriptive**: Choose names that clearly describe what the package does
+- **Meets FastSkill policy guidelines**: Do not give your package an offensive name, and do not use someone else's trademarked name or violate trademark policy
+- **Does not contain uppercase letters**: Package names must be lowercase only
+
+### Scope Naming
+
+Scopes follow the same rules as package names:
+
+- **URL-safe characters**: Scopes can contain lowercase letters, numbers, hyphens (`-`), and underscores (`_`)
+- **No leading dots or underscores**: Scopes cannot start with a dot (`.`) or underscore (`_`)
+- **Grouping mechanism**: Scopes are a way of grouping related packages together
+- **Format**: When used in package names, scopes are preceded by an `@` symbol and followed by a slash: `@<scope>/somepackagename`
+
+**Examples**:
+- `@acme/web-scraper` - Package `web-scraper` in the `acme` scope
+- `@personal-tools/json-utils` - Package `json-utils` in the `personal-tools` scope
+
+## Target Detection
+
+The command auto-detects the target type:
+
+- **URL**: If `--target` is a valid URL (e.g., `https://registry.example.com`), uses API mode
+- **Local Path**: If `--target` is a local path (e.g., `./local-registry`), uses file copy mode
+
+If `--target` is not specified, the command uses:
+1. `FASTSKILL_API_URL` environment variable
+2. Defaults to `http://localhost:8080`
+
+## Artifacts Parameter
+
+The `--artifacts` parameter accepts:
+
+- **Single ZIP file**: Path to a single package file
+- **Directory**: Path to a directory containing ZIP files (all ZIP files will be published)
+
+## API Mode Workflow
+
+When publishing to an API:
+
+1. **Upload**: Package is uploaded via multipart form data
+2. **Staging**: Package is stored in staging area with metadata
+3. **Validation**: Package is queued for validation (async)
+4. **Status**: Use `--wait` to wait for validation or check status via API
+
+### Checking Publish Status
+
+```bash
+# Get status via API (after authenticating)
+fastskill auth login
+curl -H "Authorization: Bearer $(fastskill auth whoami --token)" \
+  https://registry.example.com/api/registry/publish/status/{job_id}
+```
+
+The status response includes:
+
+- `status`: Current status (`pending`, `validating`, `accepted`, `rejected`)
+- `publishedToBlobStorage`: Whether package was published to S3 (only for `accepted` status)
+- `publishedToRegistryIndex`: Whether package was added to registry index (only for `accepted` status)
+- `blobStorageUrl`: URL to the published package in blob storage (if published)
+- `message`: Descriptive message about the current status
+
+Example response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "jobId": "job_abc123",
+    "status": "accepted",
+    "skillId": "my-skill",
+    "version": "1.0.0",
+    "publishedToBlobStorage": true,
+    "publishedToRegistryIndex": true,
+    "blobStorageUrl": "https://s3.example.com/skills/my-skill-1.0.0.zip",
+    "message": "Package has been accepted (published to registry)"
+  }
+}
+```
+
+## Local Folder Mode
+
+When publishing to a local folder:
+
+- Packages are copied directly to the target directory
+- No validation is performed
+- Useful for local development and testing
+- Target directory is created if it doesn't exist
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FASTSKILL_API_URL` | Registry API base URL | `http://localhost:8080` |
+
+**Note**: Authentication tokens are managed automatically via `fastskill auth login` and stored in the config file. You don't need to set `FASTSKILL_API_TOKEN` manually.
+
+## Output
+
+### API Mode
+
+Example output when publishing to API:
+
+```
+ℹ Found 2 package(s) to publish
+ℹ Publishing to API: https://registry.example.com
+ℹ Publishing: my-skill-1.0.0.zip
+✓ Package queued: my-skill v1.0.0 (job: job_abc123)
+ℹ Check status with: GET https://registry.example.com/api/registry/publish/status/job_abc123
+```
+
+With `--wait` (default):
+
+```
+ℹ Found 2 package(s) to publish
+ℹ Publishing to API: https://registry.example.com
+ℹ Publishing: my-skill-1.0.0.zip
+✓ Package queued: my-skill v1.0.0 (job: job_abc123)
+ℹ Initial status: pending
+ℹ Waiting for validation...
+✓ Package accepted: my-skill v1.0.0
+```
+
+With `--no-wait`:
+
+```
+ℹ Found 2 package(s) to publish
+ℹ Publishing to API: https://registry.example.com
+ℹ Publishing: my-skill-1.0.0.zip
+✓ Package queued: my-skill v1.0.0 (job: job_abc123)
+ℹ Initial status: pending
+ℹ Check status with: GET https://registry.example.com/api/registry/publish/status/job_abc123
+```
+
+### Local Folder Mode
+
+Example output when publishing to local folder:
+
+```
+ℹ Found 2 package(s) to publish
+ℹ Publishing to local folder: ./local-registry
+ℹ Copying: my-skill-1.0.0.zip -> ./local-registry/my-skill-1.0.0.zip
+✓ Published: my-skill-1.0.0.zip
+
+✓ Published 2 package(s) to local folder
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+- name: Authenticate with registry
+  run: |
+    echo "${{ secrets.REGISTRY_TOKEN }}" | fastskill auth login --token-stdin
+
+- name: Publish to registry
+  env:
+    FASTSKILL_API_URL: https://registry.example.com
+  run: |
+    fastskill publish \
+      --artifacts ./artifacts \
+      --wait
+```
+
+### GitLab CI
+
+```yaml
+publish:
+  script:
+    - echo "$REGISTRY_TOKEN" | fastskill auth login --token-stdin
+    - fastskill publish
+        --artifacts ./artifacts
+        --target $REGISTRY_URL
+        --wait
+  variables:
+    REGISTRY_URL: https://registry.example.com
+    REGISTRY_TOKEN: $REGISTRY_TOKEN
+```
+
+## Error Handling
+
+Common errors and solutions:
+
+- **"No authentication token found"**: Run `fastskill auth login` to authenticate
+- **"Insufficient permissions"**: Ensure your token has Manager or Admin role
+- **"Package was rejected"**: Check validation errors in the status response
+- **"Timeout waiting for package validation"**: The command will show the current status and continue. Increase `--max-wait` if you need more time, or check the validation queue
+
+## See Also
+
+- [Package Command](/cli-reference/package-command)
+- [Registry API Documentation](/api-reference/overview)

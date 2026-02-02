@@ -1,0 +1,19 @@
+[project]
+name = "test-project"
+version = "1.0.0"
+
+[dependencies]
+# Registry-based dependency
+web-scraper = "1.2.3"
+
+# Git-based dependency
+dev-tools = { source = "git", url = "https://github.com/org/dev-tools.git", branch = "main" }
+
+# Local path dependency
+local-skill = { source = "local", path = "./local-skill" }
+
+# Zip URL dependency
+remote-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+
+[dev-dependencies]
+test-utils = "0.1.0"

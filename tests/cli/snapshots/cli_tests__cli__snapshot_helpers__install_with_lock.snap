@@ -1,0 +1,10 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Installing skills...
+
+Using lock file (4 skills)
+Found 0 skills to install
+[INFO] No skills to install (filtered by groups)

@@ -1,0 +1,5 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Server requires S3 configuration for registry

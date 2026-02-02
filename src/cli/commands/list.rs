@@ -243,7 +243,9 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
             "\n{}",
             messages::warning("Missing Dependencies (in skill-project.toml but not installed):")
         );
-        for entry in &report.missing {
+        let mut missing: Vec<_> = report.missing.iter().collect();
+        missing.sort_by_key(|entry| &entry.id);
+        for entry in missing {
             println!("  • {} (not installed)", entry.id);
         }
     }
@@ -254,7 +256,9 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
             "\n{}",
             messages::warning("Extraneous Packages (installed but not in skill-project.toml):")
         );
-        for skill in &report.extraneous {
+        let mut extraneous: Vec<_> = report.extraneous.iter().collect();
+        extraneous.sort_by_key(|skill| &skill.id);
+        for skill in extraneous {
             println!("  • {} v{}", skill.id, skill.version);
         }
     }
@@ -265,7 +269,9 @@ fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
             "\n{}",
             messages::warning("Version Mismatches (installed version differs from skills.lock):")
         );
-        for mismatch in &report.version_mismatches {
+        let mut mismatches: Vec<_> = report.version_mismatches.iter().collect();
+        mismatches.sort_by_key(|mismatch| &mismatch.id);
+        for mismatch in mismatches {
             println!(
                 "  • {}: installed={}, locked={}",
                 mismatch.id, mismatch.installed_version, mismatch.locked_version

@@ -157,6 +157,8 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
             });
         }
 
+        // Sort entries by ID for deterministic output
+        entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
         entries
     };
 
@@ -176,6 +178,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
     // Install each skill
     let mut installed_skills = Vec::new();
+    let mut failed_skills = Vec::new();
     for entry in skills_to_install {
         println!("  Installing {}...", entry.id);
         match install_utils::install_skill_from_entry(
@@ -194,6 +197,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
                     "  {}",
                     messages::error(&format!("Failed to install {}: {}", entry.id, e))
                 );
+                failed_skills.push(entry.id.to_string());
                 // Continue with other skills
             }
         }
@@ -208,6 +212,15 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     println!();
     println!("{}", messages::ok("Installation complete"));
     println!("   Updated skills.lock");
+
+    // Return error if any skills failed to install
+    if !failed_skills.is_empty() {
+        return Err(CliError::Config(format!(
+            "Failed to install {} skill(s): {}",
+            failed_skills.len(),
+            failed_skills.join(", ")
+        )));
+    }
 
     Ok(())
 }

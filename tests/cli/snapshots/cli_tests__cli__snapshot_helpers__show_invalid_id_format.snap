@@ -1,0 +1,9 @@
+---
+source: tests/cli/snapshot_helpers.rs
+assertion_line: 195
+expression: normalized
+---
+FastSkill [VERSION]
+Skill Information
+
+Error: Validation error: Invalid skill ID format: invalid skill id!

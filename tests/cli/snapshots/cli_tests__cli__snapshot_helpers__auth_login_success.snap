@@ -1,0 +1,8 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Logging in to registry: http://[VERSION].1:[PORT]
+[OK] Successfully logged in to http://[VERSION].1:[PORT]
+Token saved and will be used automatically
