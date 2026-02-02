@@ -1,0 +1,420 @@
+---
+title: "CLI Reference"
+description: "Complete reference for the FastSkill CLI including all commands, options, and usage examples."
+---
+
+## Overview
+
+The FastSkill CLI is a Rust-based command-line tool for managing skills. It provides commands for adding skills from various sources, searching, disabling, and removing skills.
+
+<Info>
+The CLI is the official command-line tool for FastSkill. Python provides a library API only, not a CLI.
+</Info>
+
+## Installation
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/gofastskill/fastskill.git
+cd fastskill/rust
+
+# Build and install
+cargo install --path . --bin fastskill --features git-support
+
+# Verify installation
+fastskill --help
+```
+
+### From Crates.io (when published)
+
+```bash
+cargo install fastskill --features git-support
+```
+
+### Requirements
+
+- Rust 1.70+ (`rustup install stable`)
+- Git (for git URL support, optional - only needed if using `--features git-support`)
+
+## Skills Directory Resolution
+
+The CLI automatically discovers the skills directory using this priority:
+
+1. `--skills-dir` command line argument (highest priority)
+2. `FASTSKILL_DIRECTORY` environment variable
+3. `.skills` folder in current working directory
+4. Walking up directory tree searching for `.skills` folder
+
+## Basic Usage
+
+### Get Help
+
+<Steps>
+<Step title="General help">
+```bash
+fastskill --help
+```
+
+Shows all available commands and options.
+</Step>
+
+<Step title="Command-specific help">
+```bash
+fastskill add --help        # Help for add command
+fastskill disable --help    # Help for disable command
+fastskill remove --help     # Help for remove command
+```
+</Step>
+
+<Step title="No arguments">
+```bash
+fastskill
+```
+
+Shows help automatically when no arguments are provided.
+</Step>
+</Steps>
+
+### Global Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--skills-dir <PATH>` | Skills directory path | `fastskill --skills-dir ./my-skills add ...` |
+| `--verbose, -v` | Enable verbose output | `fastskill -v add ./skill` |
+| `--help, -h` | Show help information | `fastskill --help` |
+
+## Commands
+
+### fastskill add
+
+Add a new skill from a registry ID, zip file, folder, or git URL.
+
+```bash
+# Add from folder
+fastskill add ./my-skill
+
+# Add from zip file
+fastskill add ./skill-package.zip
+
+# Add from git URL
+fastskill add https://github.com/user/skill-repo.git
+
+# Add from git with specific branch
+fastskill add https://github.com/user/skill-repo.git --branch main
+
+# Add from git with specific tag
+fastskill add https://github.com/user/skill-repo.git --tag v1.0.0
+
+# Add from GitHub tree URL (subdirectory)
+fastskill add https://github.com/anthropics/skills/tree/main/document-skills/pptx
+
+# Add from GitHub tree URL with CLI branch override
+fastskill add https://github.com/user/repo/tree/main/path --branch develop
+
+# Force add (overwrite existing)
+fastskill add ./skill --force
+```
+
+**Options:**
+- `<SOURCE>`: Registry ID, path to zip file, folder, or git URL (required)
+- `--source-type <TYPE>`: Force source type (`registry`, `git`, `local`)
+- `--branch <BRANCH>`: Git branch to checkout (git URLs)
+- `--tag <TAG>`: Git tag to checkout (git URLs)
+- `--force, -f`: Overwrite if the skill already exists
+- `-e, --editable`: Install in editable mode (symlink) for local development
+- `--group <GROUP>`: Assign the skill to a group (e.g., `dev`)
+
+**Git URL Formats:**
+- Standard: `https://github.com/user/repo.git`
+- Tree URLs: `https://github.com/user/repo/tree/branch/path/to/skill`
+- With query: `https://github.com/user/repo.git?branch=main`
+
+**Examples:**
+
+<Tabs>
+<Tab title="CLI">
+```bash
+# Add skill from local folder
+fastskill add ./skills/my-text-processor
+
+# Add from remote git repository
+fastskill add https://github.com/user/awesome-skill.git
+```
+</Tab>
+
+<Tab title="Rust API">
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+    
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+    
+    use fastskill::SkillDefinition;
+    use fastskill::SkillId;
+    
+    let skill = SkillDefinition::new(
+        SkillId::new("text-processor".to_string())?,
+        "Text Processor".to_string(),
+        "Process text documents".to_string(),
+        "1.0.0".to_string(),
+    );
+    
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("Registered skill: {}", skill_id);
+    
+    Ok(())
+}
+```
+</Tab>
+</Tabs>
+
+### fastskill search
+
+Search for skills by query string.
+
+```bash
+# Search
+fastskill search "text processing"
+
+# Search with limit
+fastskill search "pdf extraction" --limit 5
+
+# Search with JSON output
+fastskill search "data analysis" --format json
+```
+
+**Options:**
+- `<QUERY>`: Search query string
+- `--limit <N>`: Maximum number of results (default: 10)
+- `--format <FORMAT>`: Output format: `table`, `json`, or `xml` (default: `table`)
+
+**Examples:**
+
+<Tabs>
+<Tab title="CLI">
+```bash
+# Simple search
+fastskill "text extraction"
+
+# Search with options
+fastskill "data processing" --limit 20 --format json
+```
+</Tab>
+
+<Tab title="Rust API">
+```rust
+let skills = service.metadata_service()
+    .discover_skills("text extraction")
+    .await?;
+
+for skill in skills {
+    println!("{}: {}", skill.id, skill.name);
+}
+```
+</Tab>
+</Tabs>
+
+### fastskill disable
+
+Disable one or more skills by ID.
+
+```bash
+# Disable single skill
+fastskill disable skill-id-1
+
+# Disable multiple skills
+fastskill disable skill-id-1 skill-id-2 skill-id-3
+```
+
+**Arguments:**
+- `<SKILL_IDS>...`: One or more skill IDs to disable
+
+**Examples:**
+
+<Tabs>
+<Tab title="CLI">
+```bash
+fastskill disable pdf-processor text-extractor
+```
+</Tab>
+
+<Tab title="Rust API">
+```rust
+service.skill_manager()
+    .disable_skill("pdf-processor")
+    .await?;
+```
+</Tab>
+</Tabs>
+
+### fastskill remove
+
+Remove one or more skills from the database.
+
+```bash
+# Remove single skill (with confirmation)
+fastskill remove skill-id-1
+
+# Remove multiple skills
+fastskill remove skill-id-1 skill-id-2
+
+# Force remove (skip confirmation)
+fastskill remove skill-id-1 --force
+```
+
+**Arguments:**
+- `<SKILL_IDS>...`: One or more skill IDs to remove
+
+**Options:**
+- `--force, -f`: Force removal without confirmation prompt
+
+**Examples:**
+
+<Tabs>
+<Tab title="CLI">
+```bash
+# Remove with confirmation
+fastskill remove old-skill
+
+# Force remove
+fastskill remove old-skill --force
+```
+</Tab>
+
+<Tab title="Rust API">
+```rust
+service.skill_manager()
+    .unregister_skill("old-skill")
+    .await?;
+```
+</Tab>
+</Tabs>
+
+### fastskill install
+
+Install skills declared in `skill-project.toml`. Supports groups and lockfile installs.
+
+```bash
+# Install everything
+fastskill install
+
+# Install without dev skills
+fastskill install --without dev
+
+# Install only prod group
+fastskill install --only prod
+
+# Install from lockfile
+fastskill install --lock
+```
+
+### fastskill reindex
+
+Rebuild the semantic search index.
+
+```bash
+fastskill reindex
+```
+
+## Examples
+
+### Complete Workflow
+
+<Tabs>
+<Tab title="CLI">
+```bash
+# 1. Add a skill from a folder
+fastskill add ./my-skill-folder
+
+# 2. Search for skills
+fastskill search "text processing"
+
+# 3. Disable a skill
+fastskill disable old-skill
+
+# 4. Remove a skill
+fastskill remove unused-skill --force
+```
+</Tab>
+
+<Tab title="Rust API">
+```rust
+// 1. Add skill
+let skill = SkillDefinition::new(...);
+service.skill_manager().register_skill(skill).await?;
+
+// 2. Search
+let skills = service.metadata_service()
+    .discover_skills("text processing")
+    .await?;
+
+// 3. Disable
+service.skill_manager().disable_skill("old-skill").await?;
+
+// 4. Remove
+service.skill_manager().unregister_skill("unused-skill").await?;
+```
+</Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Skills Directory Not Found
+
+If you see an error about skills directory not being found:
+
+1. **Specify explicitly:**
+   ```bash
+   fastskill --skills-dir /path/to/skills add ./skill
+   ```
+
+2. **Set environment variable:**
+   ```bash
+   export FASTSKILL_DIRECTORY=/path/to/skills
+   fastskill add ./skill
+   ```
+
+3. **Create the default folder:**
+   ```bash
+   mkdir -p .claude/skills
+   fastskill add ./skill
+   ```
+
+### Git URL Support
+
+If git URL support is not working:
+
+- Ensure you built with the `git-support` feature:
+  ```bash
+  cargo build --bin fastskill --features git-support
+  ```
+
+- Check that git is installed:
+  ```bash
+  git --version
+  ```
+
+### Validation Errors
+
+If skill validation fails:
+
+- Ensure SKILL.md exists in the skill directory
+- Check that SKILL.md has valid YAML frontmatter
+- Verify the skill follows Claude Code standard structure
+
+## Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `FASTSKILL_DIRECTORY` | Skills directory path | `export FASTSKILL_DIRECTORY=./my-skills` |
+

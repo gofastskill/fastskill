@@ -1,0 +1,358 @@
+---
+title: "Reindex Command"
+description: "Index skills with embeddings for semantic search capabilities."
+---
+
+## Overview
+
+The `reindex` command scans skill directories, extracts metadata from SKILL.md files, generates embeddings using OpenAI's API, and builds a local vector index for semantic search.
+
+<Info>
+This command requires OpenAI API configuration and will create a local SQLite database to store embeddings.
+</Info>
+
+## Basic Usage
+
+```bash
+fastskill reindex --skills-dir /path/to/skills/
+```
+
+## Command Options
+
+### --skills-dir <DIRECTORY>
+
+**Required.** Specifies the root directory containing SKILL.md files.
+
+```bash
+# Index skills from Claude directory
+fastskill reindex --skills-dir .claude/skills/
+
+# Index from custom location
+fastskill reindex --skills-dir ./my-skills/
+```
+
+### --force
+
+Force re-indexing of all skills, even if they haven't changed.
+
+```bash
+# Rebuild entire index
+fastskill reindex --skills-dir .claude/skills/ --force
+```
+
+**Use Cases:**
+- After significant content changes
+- When embeddings seem outdated
+- To rebuild corrupted index
+
+### --max-concurrent <NUMBER>
+
+Control the number of concurrent embedding API requests (default: 5).
+
+```bash
+# Increase concurrency for faster indexing
+fastskill reindex --skills-dir .claude/skills/ --max-concurrent 10
+
+# Reduce concurrency to avoid rate limits
+fastskill reindex --skills-dir .claude/skills/ --max-concurrent 2
+```
+
+## Configuration Requirements
+
+### 1. FastSkill Configuration
+
+Create `.fastskill/config.yaml` with embedding settings:
+
+```yaml
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+```
+
+### 2. OpenAI API Key
+
+Set the environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-your-actual-api-key"
+```
+
+## What Happens During Reindex
+
+### 1. Directory Scanning
+
+The command recursively searches for `SKILL.md` files:
+
+```
+.claude/skills/
+├── dataops/
+│   ├── airflow-ops/
+│   │   └── SKILL.md
+│   └── dag-development/
+│       └── SKILL.md
+├── infra/
+│   ├── k8s-monitoring/
+│   │   └── SKILL.md
+│   └── k8s-ops/
+│       └── SKILL.md
+└── product-management/
+    └── backlog/
+        └── SKILL.md
+```
+
+### 2. Content Extraction
+
+For each SKILL.md file:
+- Parses YAML frontmatter
+- Extracts metadata (name, description, tags, capabilities)
+- Calculates file hash for change detection
+
+### 3. Embedding Generation
+
+- Sends content to OpenAI embedding API
+- Stores resulting vectors locally
+- Handles API rate limits and errors gracefully
+
+### 4. Index Building
+
+- Creates/updates SQLite database
+- Stores metadata, embeddings, and file hashes
+- Creates optimized indexes for fast search
+
+## Output and Progress
+
+### Success Output
+
+```
+INFO Processing skill: airflow-ops
+INFO Processing skill: dag-development
+INFO Processing skill: k8s-monitoring
+INFO Reindex completed: 15 successful, 0 errors
+```
+
+### Error Handling
+
+```
+WARN Failed to process skill: Validation error: Failed to generate embedding for airflow-ops: Custom error: OpenAI API error 401 Unauthorized
+INFO Reindex completed: 14 successful, 1 errors
+```
+
+Common errors:
+- **API Key Issues**: Check `OPENAI_API_KEY` environment variable
+- **Rate Limits**: Reduce `--max-concurrent` or wait before retrying
+- **Network Issues**: Check internet connectivity
+- **Permission Issues**: Ensure write access to skills directory
+
+## Database Location
+
+The vector index is stored in the skills directory:
+
+```
+.claude/skills/
+└── .fastskill/
+    └── index.db
+```
+
+**File Details:**
+- **Format**: SQLite database
+- **Size**: ~1-10MB depending on number of skills
+- **Content**: Metadata, embeddings, file hashes, timestamps
+
+## Performance Considerations
+
+### Indexing Time
+
+- **Small repositories**: < 1 minute
+- **Medium repositories** (100 skills): 2-5 minutes
+- **Large repositories** (1000+ skills): 10-30 minutes
+
+### Cost Estimation
+
+- **text-embedding-3-small**: ~$0.02 per 1M tokens
+- **Average skill**: ~500 tokens
+- **100 skills**: ~$0.001 (less than 1 cent)
+
+### Optimization Tips
+
+```bash
+# Use smaller batches for rate limit avoidance
+fastskill reindex --max-concurrent 2
+
+# Index only changed skills (default behavior)
+fastskill reindex --skills-dir .claude/skills/
+
+# Force full rebuild only when necessary
+fastskill reindex --force
+```
+
+## Incremental Updates
+
+The reindex command is intelligent about updates:
+
+### Change Detection
+- Calculates SHA256 hash of each SKILL.md file
+- Only re-embeds files that have changed
+- Preserves existing embeddings for unchanged files
+
+### Example Workflow
+```bash
+# Initial indexing
+fastskill reindex --skills-dir .claude/skills/
+# Indexes all 15 skills
+
+# Add one new skill
+# Only the new skill gets indexed
+fastskill reindex --skills-dir .claude/skills/
+# Indexes 1 skill (the new one)
+```
+
+## Integration Features
+
+### Cursor Integration
+
+When reindex completes, it can optionally generate a markdown file for Cursor:
+
+```bash
+fastskill reindex --skills-dir .claude/skills/
+# Creates: .claude/skills/.fastskill/skills.md
+```
+
+This file contains all indexed skills in Cursor-compatible format.
+
+### Configuration for Markdown Export
+
+Add to `.fastskill/config.yaml`:
+
+```yaml
+markdown_export:
+  enabled: true
+  output_path: ".cursor/rules/skills.md"
+  header_instructions: |
+    Skills are modular packages in `.claude/skills/<category>/<skill-name>/SKILL.md`
+    that provide specialized workflows, tool integrations, and domain knowledge.
+    Each SKILL.md contains YAML frontmatter and full instructions.
+    Use the `description` field to identify relevant skills.
+  fastskill_usage_instructions: |
+    Use `fastskill search "query"` to search for skills semantically.
+    Use `fastskill reindex` to update the skill index.
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### "Embedding not configured"
+```bash
+# Solution: Create .fastskill/config.yaml
+cat > .fastskill/config.yaml << EOF
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+EOF
+```
+
+#### "OPENAI_API_KEY environment variable not set"
+```bash
+# Solution: Set API key
+export OPENAI_API_KEY="sk-your-key-here"
+```
+
+#### "Permission denied" on database
+```bash
+# Solution: Check directory permissions
+chmod 755 .claude/skills/
+```
+
+#### Rate limit exceeded
+```bash
+# Solution: Reduce concurrency and retry
+fastskill reindex --max-concurrent 1 --skills-dir .claude/skills/
+```
+
+### Debug Mode
+
+Enable detailed logging:
+
+```bash
+RUST_LOG=fastskill=debug fastskill reindex --skills-dir .claude/skills/
+```
+
+### Verification
+
+Check if indexing succeeded:
+
+```bash
+# Check database exists
+ls -la .claude/skills/.fastskill/index.db
+
+# Test search
+fastskill --skills-dir .claude/skills/ search "test" --embedding false
+```
+
+## Advanced Usage
+
+### Custom Embedding Models
+
+Use different OpenAI models:
+
+```yaml
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-large"  # Higher accuracy, higher cost
+```
+
+### Multiple Directories
+
+Index skills from multiple locations:
+
+```bash
+# Index primary skills
+fastskill reindex --skills-dir .claude/skills/
+
+# Index additional skills
+fastskill reindex --skills-dir ./custom-skills/
+```
+
+### Automated Reindex
+
+Add to CI/CD pipeline:
+
+```yaml
+# .github/workflows/reindex-skills.yml
+name: Reindex Skills Index
+on:
+  push:
+    paths:
+      - '.claude/skills/**'
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up FastSkill
+        run: cargo install fastskill --path tools/fastskill/rust/
+      - name: Reindex skills
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: fastskill reindex --skills-dir .claude/skills/
+```
+
+## Related Commands
+
+### Search Command
+Use indexed skills for semantic search:
+
+```bash
+fastskill search "process documents" --skills-dir .claude/skills/
+```
+
+### List Skills
+View indexed skills without search:
+
+```bash
+# Use Rust library
+# Or use CLI to list skills
+fastskill list --skills-dir .claude/skills/
+```
+
+The reindex command is the foundation of FastSkill's semantic search capabilities, transforming static skill definitions into searchable, semantically-aware knowledge base.

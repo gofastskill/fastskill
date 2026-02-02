@@ -1,0 +1,421 @@
+---
+title: "Kubernetes Deployment"
+description: "Deploy FastSkill registry server in Kubernetes using Helm charts"
+---
+
+# Kubernetes Deployment with Helm
+
+Deploy FastSkill as a production-ready service in Kubernetes using the official Helm chart. The chart supports deployment with S3 backend and Git-based registry index.
+
+## Overview
+
+This chart supports registry deployment with S3 backend for advanced use cases.
+
+## Prerequisites
+
+### Prerequisites
+- S3-compatible storage (AWS S3, MinIO, DigitalOcean Spaces, etc.)
+- GitHub Personal Access Token (repo scope)
+- Git repository for registry index
+- OpenAI API key (optional, for semantic search)
+
+---
+
+## Deployment: Full Registry with S3 Backend
+
+### What You Get
+- Registry server with web UI for skill management
+- Skill publishing via REST API
+- S3 blob storage for skill packages
+- Git-based registry index for version control
+- Optional semantic search with OpenAI
+
+### Installation Steps
+
+1. Create S3 bucket and IAM credentials
+2. Create GitHub repository for registry index
+3. Create Kubernetes secrets
+4. Install chart with registry enabled
+5. Verify deployment
+
+### Complete Example
+
+```bash
+# Step 1: Create S3 bucket (AWS example)
+aws s3 mb s3://my-fastskill-registry --region us-east-1
+aws s3api put-public-access-block \
+  --bucket my-fastskill-registry \
+  --public-access-block-configuration \
+  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+# Create IAM user with S3 access
+aws iam create-user --user-name fastskill-registry
+aws iam attach-user-policy \
+  --user-name fastskill-registry \
+  --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+aws iam create-access-key --user-name fastskill-registry
+# Save the AccessKeyId and SecretAccessKey
+
+# Step 2: Registry index is automatically managed (no separate repository needed)
+
+# Step 3: Create Kubernetes secrets
+kubectl create namespace fastskill
+
+kubectl create secret generic fastskill-github-token \
+  --from-literal=GITHUB_TOKEN=ghp_your_token_here \
+  --namespace fastskill
+
+kubectl create secret generic fastskill-s3-credentials \
+  --from-literal=AWS_ACCESS_KEY_ID=AKIA... \
+  --from-literal=AWS_SECRET_ACCESS_KEY=secret... \
+  --namespace fastskill
+
+# Optional: OpenAI API key for semantic search
+kubectl create secret generic fastskill-openai-key \
+  --from-literal=OPENAI_API_KEY=sk-... \
+  --namespace fastskill
+
+# Step 4: Install chart with registry enabled
+helm install fastskill ./tools/fastskill/helm/fastskill \
+  --namespace fastskill \
+  --set s3.bucket=my-fastskill-registry \
+  --set s3.region=us-east-1 \
+  --set s3.blobBaseUrl=https://my-fastskill-registry.s3.amazonaws.com/skills
+
+# Or use values file
+helm install fastskill ./tools/fastskill/helm/fastskill \
+  -f ./tools/fastskill/helm/fastskill/values-registry-s3.yaml \
+  --namespace fastskill
+
+# Step 5: Verify deployment
+kubectl get pods -n fastskill
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=registry -n fastskill --timeout=300s
+
+# Test registry API
+kubectl port-forward -n fastskill svc/fastskill-registry 8080:8080
+curl http://localhost:8080/api/status
+
+# Access web UI
+open http://localhost:8080/registry
+```
+
+### S3-Compatible Storage Options
+
+#### AWS S3 (Default)
+```yaml
+s3:
+  bucket: "my-fastskill-registry"
+  region: "us-east-1"
+  endpoint: ""  # Leave empty for AWS S3
+  blobBaseUrl: "https://my-fastskill-registry.s3.amazonaws.com/skills"
+```
+
+#### MinIO (Self-hosted)
+```yaml
+s3:
+  bucket: "fastskill-registry"
+  region: "us-east-1"
+  endpoint: "http://minio.example.com:9000"
+  blobBaseUrl: "http://minio.example.com:9000/fastskill-registry/skills"
+```
+
+#### DigitalOcean Spaces
+```yaml
+s3:
+  bucket: "my-space-name"
+  region: "nyc3"
+  endpoint: "https://nyc3.digitaloceanspaces.com"
+  blobBaseUrl: "https://my-space-name.nyc3.digitaloceanspaces.com/skills"
+```
+
+#### Cloudflare R2
+```yaml
+s3:
+  bucket: "my-r2-bucket"
+  region: "auto"
+  endpoint: "https://ACCOUNT_ID.r2.cloudflarestorage.com"
+  blobBaseUrl: "https://ACCOUNT_ID.r2.cloudflarestorage.com/my-r2-bucket/skills"
+```
+
+### Configuration Options
+
+Use `values-registry-s3.yaml` or set values directly:
+
+```yaml
+registry:
+  enabled: true
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+persistence:
+  skills:
+    enabled: true
+    size: 10Gi
+  registryIndex:
+    enabled: true
+    size: 5Gi
+
+s3:
+  bucket: "my-fastskill-registry"
+  region: "us-east-1"
+  endpoint: ""  # Leave empty for AWS S3
+  blobBaseUrl: "https://my-fastskill-registry.s3.amazonaws.com/skills"
+
+openai:
+  enabled: false  # Enable for semantic search
+
+fastskill:
+  logLevel: INFO
+```
+
+---
+
+## Values Reference
+
+### Component Toggles
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `registry.enabled` | Enable registry server | `true` |
+
+### Resource Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `registry.replicaCount` | Number of registry replicas | `1` |
+| `registry.resources.limits.cpu` | Registry CPU limit | `"1"` |
+| `registry.resources.limits.memory` | Registry memory limit | `"1Gi"` |
+| `registry.resources.requests.cpu` | Registry CPU request | `"500m"` |
+| `registry.resources.requests.memory` | Registry memory request | `"512Mi"` |
+
+### Storage Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `persistence.skills.enabled` | Enable skills PVC | `true` |
+| `persistence.skills.size` | Skills storage size | `10Gi` |
+| `persistence.skills.existingClaim` | Use existing PVC | `""` |
+| `persistence.registryIndex.enabled` | Enable registry index PVC | `true` |
+| `persistence.registryIndex.size` | Registry index storage size | `5Gi` |
+
+### S3 Configuration (Registry Mode Only)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `s3.bucket` | S3 bucket name | `""` (required for registry) |
+| `s3.region` | AWS region | `us-east-1` |
+| `s3.endpoint` | S3-compatible service endpoint | `""` |
+| `s3.blobBaseUrl` | Base URL for published packages | `""` |
+
+### Registry Index Configuration (Registry Mode Only)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `registryIndex.url` | Git repository URL | `""` (required for registry) |
+| `registryIndex.branch` | Git branch | `main` |
+
+### Optional Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `openai.enabled` | Enable OpenAI integration | `false` |
+| `fastskill.logLevel` | Logging level | `INFO` |
+| `ingress.enabled` | Enable ingress | `false` |
+
+## Environment-Specific Values
+
+### Development (`values-dev.yaml`)
+- Lower resource limits
+- Debug logging
+- Smaller storage sizes
+- Ingress disabled (use port-forward)
+
+### Staging (`values-staging.yaml`)
+- Production-like resources
+- Info logging
+- Standard storage sizes
+- Ingress with staging certificates
+
+### Production (`values-prod.yaml`)
+- Higher resource limits
+- Multiple replicas for HA
+- Warn/Error logging
+- Larger storage sizes
+- Production ingress with TLS
+
+## Accessing Services
+
+### Port Forwarding (Development)
+
+```bash
+# Registry server
+kubectl port-forward -n fastskill svc/fastskill-registry 8080:8080
+```
+
+### Ingress (Production)
+
+- Registry UI: `https://fastskill.example.com/registry`
+- Registry API: `https://fastskill.example.com/api/*`
+
+## Health Checks
+
+### Registry Server
+- Readiness: `GET /api/status`
+- Liveness: `GET /api/status`
+- Returns JSON with service status
+
+## API Endpoints
+
+### Registry Server
+- `GET /api/status` - Service status
+- `GET /api/skills` - List all skills
+- `GET /api/skills/:id` - Get skill details
+- `POST /api/search` - Search skills
+- `POST /api/registry/publish` - Publish skill package
+- `GET /registry` - Web UI
+
+## Upgrading
+
+```bash
+# Upgrade with new values
+helm upgrade fastskill ./tools/fastskill/helm/fastskill \
+  -f ./tools/fastskill/helm/fastskill/values-prod.yaml \
+  --namespace fastskill
+
+# Upgrade with new image tag
+helm upgrade fastskill ./tools/fastskill/helm/fastskill \
+  --set image.tag=v0.2.0 \
+  --namespace fastskill
+```
+
+## Uninstalling
+
+```bash
+helm uninstall fastskill --namespace fastskill
+```
+
+<Warning>
+This does not delete PVCs. To remove storage:
+
+```bash
+kubectl delete pvc -n fastskill -l app.kubernetes.io/name=fastskill
+```
+</Warning>
+
+## Architecture
+
+### Components
+
+1. **Registry Deployment**: Runs `fastskill serve --enable-registry`
+   - Requires: S3 storage, GitHub token, registry index path
+   - Provides: REST API, Web UI, skill publishing
+
+2. **Init Container**: Clones registry index Git repository
+   - Runs only if registry index path is empty
+   - Uses GitHub token for authentication
+
+### Storage
+
+- **Skills PVC**: Stores installed skills
+  - Mount path: `/app/skills`
+  - Access mode: `ReadWriteOnce` (or `ReadWriteMany` for scaling)
+
+### Networking
+
+- **Registry Service**: ClusterIP on port 8080
+- **Ingress**: Optional, for external access
+
+## Troubleshooting
+
+### Registry Server Won't Start
+
+**Error**: "Registry enabled but blob storage not configured"
+
+**Solution**: Ensure S3 configuration is set:
+```yaml
+s3:
+  bucket: your-bucket
+  region: us-east-1
+```
+
+**Error**: "Registry enabled but registry index path not configured"
+
+**Solution**: Ensure registry index URL is set:
+```yaml
+registryIndex:
+  url: "https://github.com/org/repo.git"
+```
+
+### Init Container Fails
+
+**Error**: "Failed to clone registry index"
+
+**Solution**: 
+1. Verify GitHub token has repository access
+2. Check registry index URL is correct
+3. Ensure network connectivity to GitHub
+
+### Storage Issues
+
+**Error**: "PVC not found"
+
+**Solution**: 
+1. Check storage class exists: `kubectl get storageclass`
+2. Verify PVC was created: `kubectl get pvc -n fastskill`
+3. Check storage class in values.yaml matches cluster
+
+### Secret Access Issues
+
+**Error**: "Secret not found"
+
+**Solution**: 
+1. Verify secrets exist: `kubectl get secrets -n fastskill`
+2. Check secret names match values.yaml
+3. Ensure secrets are in the correct namespace
+
+### Health Check Failures
+
+**Error**: "Readiness probe failed"
+
+**Solution**:
+1. Check pod logs: `kubectl logs -n fastskill <pod-name>`
+2. Verify service is listening on correct port
+3. Check network policies allow health check traffic
+4. Increase `initialDelaySeconds` if service takes longer to start
+
+### S3 Connection Issues
+
+**Error**: "Failed to connect to S3"
+
+**Solution**:
+1. Verify AWS credentials are correct
+2. Check S3 bucket exists and is accessible
+3. For S3-compatible services, ensure `s3.endpoint` is set
+4. Verify network connectivity to S3 endpoint
+
+## Security Considerations
+
+1. **Secrets Management**: Never commit secrets to version control. Use Kubernetes secrets or external secret management.
+
+2. **Network Policies**: Consider implementing network policies to restrict pod-to-pod communication.
+
+3. **RBAC**: Service account has minimal permissions. Adjust as needed for your environment.
+
+4. **TLS**: Always use TLS in production. Configure ingress with valid certificates.
+
+5. **Image Security**: Use specific image tags (not `latest`) in production. Scan images for vulnerabilities.
+
+## Chart Location
+
+The Helm chart is located at:
+```
+tools/fastskill/helm/fastskill/
+```
+
+For detailed chart documentation, see the [chart README](https://github.com/gofastskill/fastskill/blob/main/tools/fastskill/helm/fastskill/README.md).

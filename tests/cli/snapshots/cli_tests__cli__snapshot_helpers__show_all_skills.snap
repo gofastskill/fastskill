@@ -1,0 +1,10 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Skill Information
+
+Installed Skills (1):
+
+  • test-skill (v[VERSION])

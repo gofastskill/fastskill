@@ -1,0 +1,9 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Repository: showable-repo
+  Type: git-marketplace
+  Priority: 5
+  URL: https://github.com/org/repo.git

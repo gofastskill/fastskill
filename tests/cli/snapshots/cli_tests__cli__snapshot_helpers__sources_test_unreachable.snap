@@ -1,0 +1,7 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[INFO] Testing repository: unreachable-repo...
+Error: Configuration error: Repository 'unreachable-repo' test failed: Client error: HTTP request failed: error sending request for url (http://localhost:9999/api/registry/index/skills): error trying to connect: tcp connect error: Connection refused (os error 111)

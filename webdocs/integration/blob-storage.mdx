@@ -1,0 +1,351 @@
+---
+title: "Blob Storage Integration"
+description: "Guide to configuring and using blob storage backends for skill artifact distribution"
+---
+
+# Blob Storage Integration
+
+FastSkill supports multiple blob storage backends for distributing skill artifacts. This guide covers configuration, authentication, and best practices for each storage type.
+
+## Supported Storage Backends
+
+### Local Filesystem
+
+Store artifacts on the local filesystem. Useful for:
+- Development and testing
+- Local deployments
+- Backup storage
+
+### S3 Storage
+
+Support for AWS S3 and S3-compatible services (via endpoint configuration):
+- **AWS S3**: Amazon Web Services Simple Storage Service
+- **S3-compatible services**: Any service that implements the S3 API (configure via endpoint)
+
+## Configuration
+
+### Command Line Options
+
+Configure storage via command line:
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts \
+  --blob-storage s3 \
+  --bucket skills-registry \
+  --region us-east-1 \
+  --endpoint https://s3.amazonaws.com
+```
+
+### Configuration File
+
+Use `.fastskill/publish.toml` for persistent configuration:
+
+```toml
+[blob_storage]
+type = "s3"  # or "local"
+endpoint = "https://s3.amazonaws.com"  # Optional: set for S3-compatible services
+bucket = "skills-registry"
+region = "us-east-1"
+access_key_id = "${AWS_ACCESS_KEY_ID}"
+secret_access_key = "${AWS_SECRET_ACCESS_KEY}"
+
+[registry]
+git_url = "https://github.com/GoFastSkill/skill-registry.git"
+branch = "main"
+blob_base_url = "https://skills-registry.s3.amazonaws.com"
+```
+
+### Environment Variables
+
+Set credentials via environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# For S3-compatible services, use the same AWS environment variables
+# and configure the endpoint in your service configuration
+```
+
+## Storage Backend Details
+
+### Local Filesystem
+
+**Configuration**:
+
+```bash
+fastskill publish --artifacts ./artifacts --blob-storage local
+```
+
+**Use Cases**:
+- Local development
+- Testing workflows
+- Backup storage
+- Air-gapped environments
+
+**Storage Path**: Artifacts are stored in the specified base path (default: `./artifacts`).
+
+### AWS S3
+
+**Configuration**:
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts \
+  --blob-storage s3 \
+  --bucket my-bucket \
+  --region us-east-1
+```
+
+**Authentication**:
+- AWS Access Key ID and Secret Access Key
+- IAM roles (when running on AWS)
+- AWS credentials file (`~/.aws/credentials`)
+
+**IAM Permissions Required**:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-bucket/*",
+        "arn:aws:s3:::my-bucket"
+      ]
+    }
+  ]
+}
+```
+
+**Best Practices**:
+- Use IAM roles instead of access keys when possible
+- Enable versioning on S3 buckets
+- Use bucket policies for access control
+- Enable server-side encryption
+
+### S3-Compatible Services
+
+**Configuration**:
+
+For S3-compatible services (e.g., self-hosted storage), use the same S3 configuration but set the `endpoint` parameter:
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts \
+  --blob-storage s3 \
+  --endpoint https://your-s3-compatible-service.com \
+  --bucket my-bucket \
+  --region us-east-1
+```
+
+**Use Cases**:
+- Self-hosted storage solutions
+- Development environments
+- Private cloud deployments
+- Any service implementing the S3 API
+
+**Note**: S3-compatible services use the same AWS-style credentials and API, so you can use `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables.
+
+## Authentication
+
+### AWS S3
+
+**Method 1: Environment Variables**
+
+```bash
+export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+fastskill publish --artifacts ./artifacts --blob-storage s3 --bucket my-bucket
+```
+
+**Method 2: Configuration File**
+
+```toml
+[blob_storage]
+type = "s3"
+access_key_id = "${AWS_ACCESS_KEY_ID}"
+secret_access_key = "${AWS_SECRET_ACCESS_KEY}"
+```
+
+**Method 3: AWS Credentials File**
+
+```ini
+# ~/.aws/credentials
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+### S3-Compatible Services
+
+**Environment Variables**:
+
+For S3-compatible services, use the same AWS environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID=your-access-key
+export AWS_SECRET_ACCESS_KEY=your-secret-key
+fastskill publish \
+  --artifacts ./artifacts \
+  --blob-storage s3 \
+  --endpoint https://your-s3-compatible-service.com \
+  --bucket my-bucket \
+  --region us-east-1
+```
+
+## Upload Workflow
+
+### Basic Upload
+
+```bash
+# 1. Package skills
+fastskill package --detect-changes --auto-bump --output ./artifacts
+
+# 2. Upload to blob storage
+fastskill publish \
+  --artifacts ./artifacts \
+  --blob-storage s3 \
+  --bucket skills-registry \
+  --region us-east-1
+```
+
+### With Registry Index
+
+```bash
+# 1. Package skills
+fastskill package --detect-changes --auto-bump --output ./artifacts
+
+# 2. Publish to registry (automatically uploads to blob storage and updates index)
+fastskill publish \
+  --artifacts ./artifacts \
+  --registry official
+```
+
+## Download URLs
+
+### Public Access
+
+For public artifacts, the blob base URL is configured in your repository configuration and automatically used during publishing.
+
+This generates download URLs like:
+```
+https://skills-registry.s3.amazonaws.com/skills/web-scraper-1.2.3.zip
+```
+
+### Private Access
+
+For private artifacts:
+
+1. Use signed URLs (future feature)
+2. Configure access control via bucket policies
+3. Use IAM roles for authenticated access
+
+## Best Practices
+
+### Security
+
+1. **Never commit credentials**: Use environment variables or secrets management
+2. **Use IAM roles**: Prefer IAM roles over access keys when possible
+3. **Enable encryption**: Use server-side encryption for sensitive artifacts
+4. **Access control**: Use bucket policies to restrict access
+5. **Rotate credentials**: Regularly rotate access keys
+
+### Performance
+
+1. **CDN Integration**: Use CloudFront or similar CDN for faster downloads
+2. **Compression**: ZIP files are already compressed
+3. **Parallel Uploads**: FastSkill uploads artifacts in parallel when possible
+4. **Regional Storage**: Store artifacts close to users
+
+### Cost Optimization
+
+1. **Lifecycle Policies**: Set up S3 lifecycle policies to archive old artifacts
+2. **Storage Classes**: Use appropriate S3 storage classes (Standard, IA, Glacier)
+3. **Cleanup**: Regularly remove old or unused artifacts
+4. **Monitoring**: Monitor storage usage and costs
+
+### Reliability
+
+1. **Versioning**: Enable versioning on storage buckets
+2. **Replication**: Use cross-region replication for redundancy
+3. **Backup**: Maintain backups of critical artifacts
+4. **Monitoring**: Set up alerts for storage issues
+
+## Troubleshooting
+
+### Upload Failures
+
+**Issue**: Upload fails with authentication error
+
+**Solutions**:
+- Verify credentials are correct
+- Check IAM permissions
+- Ensure bucket exists and is accessible
+- Verify endpoint URL is correct
+
+### Access Denied
+
+**Issue**: Cannot access uploaded artifacts
+
+**Solutions**:
+- Check bucket policies
+- Verify IAM permissions
+- Ensure public access is configured (if needed)
+- Check CORS settings for web access
+
+### Slow Uploads
+
+**Issue**: Uploads are slow
+
+**Solutions**:
+- Check network connectivity
+- Use regional endpoints
+- Enable multipart uploads (automatic for large files)
+- Consider using faster storage class
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+- name: Upload to blob storage
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  run: |
+    fastskill publish \
+      --artifacts ./artifacts \
+      --blob-storage s3 \
+      --bucket ${{ secrets.S3_BUCKET }} \
+      --region us-east-1
+```
+
+### GitLab CI
+
+```yaml
+publish:
+  script:
+    - fastskill publish
+        --artifacts ./artifacts
+        --blob-storage s3
+        --bucket $S3_BUCKET
+        --region us-east-1
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+```
+
+## See Also
+
+- [Publish Command](/cli-reference/publish-command)
+- [Registry Index System](/registry/index-system)
+- [CI/CD Integration Guide](/integration/cicd-pipelines)
+

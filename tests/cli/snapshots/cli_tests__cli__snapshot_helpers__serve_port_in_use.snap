@@ -1,0 +1,8 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+FastSkill HTTP server starting...
+  Listening on: http://localhost:18084
+Error: Validation error: Server error: Address already in use (os error 98)

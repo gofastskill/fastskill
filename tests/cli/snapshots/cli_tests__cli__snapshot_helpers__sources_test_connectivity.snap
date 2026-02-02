@@ -1,0 +1,7 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[INFO] Testing repository: testable-repo...
+[OK] Repository 'testable-repo' is accessible (0 skills found)

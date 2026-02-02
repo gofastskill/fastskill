@@ -1,0 +1,11 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Skill Information
+
+Skill: complex-skill
+  ID: complex-skill
+  Version: [VERSION]
+  Description: A complex skill with dependencies

@@ -1,0 +1,61 @@
+---
+title: Registry Overview
+api: "registry"
+---
+
+# Registry Overview
+
+The FastSkill Registry provides a web-based interface for browsing, searching, and managing skills from multiple configured sources.
+
+## Features
+
+- **Multi-source browsing**: View skills from all configured sources in one place
+- **Search and filter**: Find skills by name, description, tags, or capabilities
+- **Installation status**: See which skills are installed and which are available
+- **Virtual scrolling**: Efficiently handle repositories with hundreds of skills
+- **Real-time updates**: Skills list updates when you install or uninstall
+
+## Enabling the Registry
+
+Start the server with the `--enable-registry` flag:
+
+```bash
+fastskill serve --enable-registry
+```
+
+Then open `http://localhost:8080/registry` in your browser.
+
+## Architecture
+
+The registry consists of:
+
+1. **REST API**: Backend endpoints for fetching skills and sources
+2. **Web UI**: Frontend interface for browsing and managing skills
+3. **Marketplace.json**: Standard format for skill discovery from sources
+
+## Sources
+
+Skills can come from multiple sources:
+
+- **Git repositories**: Skills hosted in Git repos with `marketplace.json`
+- **Zip URL sources**: Skills distributed via ZIP files with `marketplace.json`
+- **Local sources**: Skills in local directories (not supported in registry)
+
+Only sources that provide `marketplace.json` files are displayed in the registry.
+
+## Workflow
+
+1. **Configure repositories**: Add repositories to `[tool.fastskill.repositories]` section in `skill-project.toml`
+2. **Generate marketplace.json**: Use `fastskill registry create` to generate marketplace files
+3. **Start server**: Run `fastskill serve --enable-registry`
+4. **Browse skills**: Open `/registry` in your browser or use `fastskill registry list-skills` to list skills from HTTP registries
+5. **List installed skills**: Use `fastskill list` to see locally installed skills with reconciliation status
+6. **Install skills**: Click "Install" in the web UI or use `fastskill add` to add skills to your local installation
+
+## See Also
+
+- [Sources Configuration](/registry/sources)
+- [Marketplace.json Format](/registry/marketplace-json)
+- [Web UI Guide](/registry/web-ui)
+- [Repository Command](/cli-reference/repository-command)
+

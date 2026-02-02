@@ -1,0 +1,6 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[OK] Refreshed cache for repository: refreshable-repo

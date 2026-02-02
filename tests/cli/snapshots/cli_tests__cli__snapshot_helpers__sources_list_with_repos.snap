@@ -1,0 +1,8 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Configured Repositories (2):
+  • git-repo (type: git-marketplace, priority: 5)
+  • local-skills (type: local, priority: 10)

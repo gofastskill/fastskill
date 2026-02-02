@@ -1,0 +1,216 @@
+---
+title: Marketplace.json Format
+api: "marketplace-json"
+---
+
+# Marketplace.json Format
+
+`marketplace.json` is a standardized JSON file that describes available skills in a repository. It enables the FastSkill registry to discover and display skills without scanning repository contents.
+
+## File Location
+
+For sources to be discoverable in the registry, `marketplace.json` must be accessible at one of these locations (checked in priority order):
+
+### Priority 1: Claude Code Standard Location (Recommended)
+- **Git sources**: `{repository_url}/.claude-plugin/marketplace.json` (via raw content API)
+  - Example: `https://raw.githubusercontent.com/owner/repo/main/.claude-plugin/marketplace.json`
+- **Zip URL sources**: `{base_url}/.claude-plugin/marketplace.json`
+  - Example: `https://skills.example.com/.claude-plugin/marketplace.json`
+
+### Priority 2: Root Location (Legacy Support)
+- **Git sources**: `{repository_url}/marketplace.json` (via raw content API)
+  - Example: `https://raw.githubusercontent.com/owner/repo/main/marketplace.json`
+- **Zip URL sources**: `{base_url}/marketplace.json`
+  - Example: `https://skills.example.com/marketplace.json`
+
+**Note**: FastSkill will automatically try the Claude Code standard location (`.claude-plugin/marketplace.json`) first, then fall back to the root location if not found. This ensures compatibility with both Claude Code standard repositories and legacy setups.
+
+## Format
+
+FastSkill uses the **Claude Code standard format** for marketplace.json files. This ensures compatibility with Claude Code repositories and follows the established standard.
+
+## Schema
+
+```json
+{
+  "name": "repository-name",
+  "owner": {
+    "name": "Owner Name",
+    "email": "owner@example.com"
+  },
+  "metadata": {
+    "description": "Repository description",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "plugin-name",
+      "description": "Plugin description",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skill-path-1",
+        "./skill-path-2"
+      ]
+    }
+  ]
+}
+```
+
+### Fields
+
+#### Root Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Repository name |
+| `owner` | object | No | Owner information |
+| `metadata` | object | No | Repository metadata |
+| `plugins` | array | Yes | Array of plugin definitions |
+
+#### Owner Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Owner name |
+| `email` | string | No | Owner email address |
+
+#### Metadata Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `description` | string | No | Repository description |
+| `version` | string | No | Repository version |
+
+#### Plugin Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Plugin name |
+| `description` | string | No | Plugin description |
+| `source` | string | No | Source path (default: "./") |
+| `strict` | boolean | No | Strict mode flag (default: false) |
+| `skills` | array | Yes | Array of skill paths (relative to repository root) |
+
+### Internal Processing
+
+When FastSkill reads a marketplace.json file, it:
+
+1. **Parses Claude Code format** directly
+2. **Converts to internal format** for processing by:
+   - Extracting skills from plugin `skills` arrays
+   - Resolving skill paths relative to the repository root
+   - Mapping owner information to skill author fields
+   - Using plugin-level metadata as defaults for skills
+   - Constructing download URLs from base repository URL + skill path
+
+The conversion preserves all available metadata and enables FastSkill to work with Claude Code standard repositories.
+
+## Generating marketplace.json
+
+Use the `fastskill registry create` command to generate `marketplace.json` in Claude Code format from a directory of skills:
+
+```bash
+fastskill registry create --path ./skills --name my-repo
+```
+
+**Options:**
+- `--path <path>`: Directory to scan for skills (default: current directory)
+- `--output <path>`: Output file path (default: `.claude-plugin/marketplace.json`)
+- `--name <name>`: Repository name (required, or inferred from directory name)
+- `--owner-name <name>`: Owner name (optional)
+- `--owner-email <email>`: Owner email (optional)
+- `--description <text>`: Repository description (optional)
+- `--version <version>`: Repository version (optional)
+- `--base-url <url>`: Base URL for skill download links (optional)
+
+**Note**: The output file is automatically placed at `.claude-plugin/marketplace.json` (unless `--output` is specified).
+
+### Command Behavior
+
+The command:
+- Scans for `SKILL.md` files
+- Reads `skill-project.toml` if present (takes priority for all fields)
+- Extracts metadata from `SKILL.md` YAML frontmatter as fallback
+- Applies field-by-field priority: skill-project.toml > SKILL.md
+- Generates the marketplace.json file in Claude Code format
+
+**Note**: `skill-project.toml` provides metadata support (id, version, description, author, tags, capabilities, download_url). The `id` field is required and must not contain slashes. The `name` field is not used in skill-project.toml - skill names for display come from `SKILL.md` frontmatter only. All fields in skill-project.toml take priority over SKILL.md frontmatter.
+
+## Example
+
+```json
+{
+  "name": "fastskill-skills",
+  "owner": {
+    "name": "FastSkill Team",
+    "email": "team@fastskill.example.com"
+  },
+  "metadata": {
+    "description": "Collection of FastSkill skills",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "document-processing",
+      "description": "Skills for processing documents",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./pdf-processor",
+        "./data-analyzer"
+      ]
+    }
+  ]
+}
+```
+
+## Metadata Priority
+
+When generating `marketplace.json`, all metadata fields follow this priority order:
+
+1. **skill-project.toml** `[metadata]` section (highest priority)
+   - Fields: `id` (required, no slashes), `version` (required), `description`, `author`, `tags`, `capabilities`, `download_url`
+   - All fields from skill-project.toml take precedence over SKILL.md
+   - The `id` field is required and must not contain slashes or scope information
+2. **SKILL.md** frontmatter (fallback)
+   - Used for: `name` (display only), `description`, `author`, `tags`, `capabilities`
+   - `name` in SKILL.md is for display purposes only, not for package identification
+
+This field-by-field priority allows skill authors to:
+- Override specific fields in skill-project.toml while keeping others in SKILL.md
+- Supplement SKILL.md metadata with additional fields in skill-project.toml
+- Maintain version control separately from SKILL.md content
+
+**Example**: If skill-project.toml has `version = "2.0.0"` but SKILL.md has `version: "1.0.0"`, the marketplace.json will use `"2.0.0"`. Similarly, if skill-project.toml has `author = "New Author"`, it will override the author from SKILL.md. The `name` field always comes from SKILL.md frontmatter for display purposes, as it is not present in skill-project.toml.
+
+## Validation
+
+The registry validates `marketplace.json` files:
+
+- All required fields must be present
+- `id`, `name`, and `description` must not be empty
+- Skills with invalid data are skipped
+
+## Caching
+
+Marketplace.json files are cached for 5 minutes to reduce network requests. To force a refresh:
+
+1. Wait 5 minutes for cache expiry
+2. Restart the server
+3. Clear cache manually (future feature)
+
+## Best Practices
+
+1. **Keep it updated**: Regenerate `marketplace.json` when skills change
+2. **Use semantic versioning**: Use clear version identifiers
+3. **Include all metadata**: Provide tags, capabilities, and author information
+4. **Test accessibility**: Verify the URL is accessible from your environment
+5. **Version control**: Commit `marketplace.json` to your repository
+
+## See Also
+
+- [Repository Command](/cli-reference/repository-command)
+- [Sources Configuration](/registry/sources)
+- [Registry Overview](/registry/overview)
+

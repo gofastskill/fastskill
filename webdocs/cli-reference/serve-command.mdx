@@ -1,0 +1,111 @@
+---
+title: serve
+api: "serve"
+---
+
+# serve Command
+
+Start the FastSkill HTTP API server for programmatic access to skills.
+
+## Usage
+
+```bash
+fastskill serve [OPTIONS]
+```
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host <HOST>` | Host to bind the server to | `localhost` |
+| `--port <PORT>` | Port to bind the server to | `8080` |
+| `--enable-registry` | Enable registry web UI at `/registry` | `false` |
+| `--workers <N>` | Number of worker threads (not currently used) | `1` |
+
+## Examples
+
+### Basic Server
+
+Start the server on default port 8080:
+
+```bash
+fastskill serve
+```
+
+The server will be available at `http://localhost:8080`.
+
+### Custom Host and Port
+
+Start on a specific host and port:
+
+```bash
+fastskill serve --host 0.0.0.0 --port 3000
+```
+
+### Enable Registry Web UI
+
+Enable the web-based registry interface:
+
+```bash
+fastskill serve --enable-registry
+```
+
+This provides:
+- REST API at `/api/*` endpoints
+- Web Registry UI at `/registry`
+- JWT authentication endpoints at `/auth/*`
+
+## API Endpoints
+
+When the server is running, the following endpoints are available:
+
+- `GET /` - Root HTML dashboard
+- `GET /api/status` - Service status
+- `GET /api/skills` - List all skills
+- `GET /api/skills/:id` - Get skill details
+- `POST /api/skills` - Register new skill
+- `PUT /api/skills/:id` - Update skill
+- `DELETE /api/skills/:id` - Remove skill
+- `POST /api/search` - Search skills
+- `POST /api/reindex` - Reindex skills
+- `POST /auth/token` - Generate JWT token (development)
+- `GET /auth/verify` - Verify JWT token
+
+### Registry Endpoints (with --enable-registry)
+
+- `GET /api/registry/sources` - List configured sources
+- `GET /api/registry/skills` - List all skills from sources
+- `GET /api/registry/sources/:name/skills` - Get skills from specific source
+- `GET /api/registry/sources/:name/marketplace` - Get raw marketplace.json
+- `GET /registry` - Web UI for browsing skills
+
+## Authentication
+
+For local development, obtain a JWT token:
+
+```bash
+curl -X POST http://localhost:8080/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin", "username": "dev"}'
+```
+
+Use the token in API requests:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/skills
+```
+
+## Production Deployment
+
+For production, configure JWT authentication properly:
+
+1. Set `FASTSKILL_JWT_SECRET` environment variable
+2. Disable `/auth/token` endpoint or secure it
+3. Configure CORS appropriately
+4. Use reverse proxy (nginx, Traefik) for SSL/TLS
+
+## See Also
+
+- [Registry Overview](/registry/overview)
+- [API Reference](/api-reference/overview)
+

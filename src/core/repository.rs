@@ -139,8 +139,21 @@ impl RepositoryManager {
             repo_map.entry(repo.name.clone()).or_insert(repo);
         }
 
+        // Determine config path: try to use skill-project.toml, otherwise use empty path
+        let config_path = std::env::current_dir()
+            .ok()
+            .and_then(|dir| {
+                let project_file = crate::core::project::resolve_project_file(&dir);
+                if project_file.found {
+                    Some(project_file.path)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
         Self {
-            config_path: PathBuf::new(), // Not used when loading from definitions
+            config_path,
             repositories: repo_map,
             clients: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -183,15 +196,136 @@ impl RepositoryManager {
 
     /// Save repositories to TOML file
     pub fn save(&self) -> Result<(), ServiceError> {
-        let mut repos: Vec<RepositoryDefinition> = self.repositories.values().cloned().collect();
-        repos.sort_by_key(|r| r.priority);
-        let config = RepositoriesConfig {
-            repositories: repos,
-        };
-        self.save_config(&config)
+        // Check if config_path is a skill-project.toml file
+        if self.config_path.file_name().and_then(|n| n.to_str()) == Some("skill-project.toml") {
+            self.save_to_project_file()
+        } else {
+            // Old repositories.toml format
+            let mut repos: Vec<RepositoryDefinition> =
+                self.repositories.values().cloned().collect();
+            repos.sort_by_key(|r| r.priority);
+            let config = RepositoriesConfig {
+                repositories: repos,
+            };
+            self.save_config(&config)
+        }
     }
 
-    /// Internal helper to save config
+    /// Save repositories to skill-project.toml
+    fn save_to_project_file(&self) -> Result<(), ServiceError> {
+        use crate::core::manifest::SkillProjectToml;
+
+        // Ensure parent directory exists
+        if let Some(parent) = self.config_path.parent() {
+            std::fs::create_dir_all(parent).map_err(ServiceError::Io)?;
+        }
+
+        // Load existing project file or create new one
+        let mut project = if self.config_path.exists() {
+            SkillProjectToml::load_from_file(&self.config_path).map_err(|e| {
+                ServiceError::Custom(format!("Failed to load skill-project.toml: {}", e))
+            })?
+        } else {
+            // Create minimal project file
+            SkillProjectToml {
+                metadata: None,
+                dependencies: None,
+                tool: None,
+            }
+        };
+
+        // Convert RepositoryDefinition back to manifest format
+        let manifest_repos: Vec<crate::core::manifest::RepositoryDefinition> = self
+            .repositories
+            .values()
+            .map(|repo| self.convert_to_manifest_repo(repo))
+            .collect();
+
+        // Update tool.fastskill.repositories
+        if project.tool.is_none() {
+            project.tool = Some(crate::core::manifest::ToolSection {
+                fastskill: Some(crate::core::manifest::FastSkillToolConfig {
+                    skills_directory: None,
+                    embedding: None,
+                    repositories: Some(manifest_repos),
+                }),
+            });
+        } else if let Some(ref mut tool) = project.tool {
+            if tool.fastskill.is_none() {
+                tool.fastskill = Some(crate::core::manifest::FastSkillToolConfig {
+                    skills_directory: None,
+                    embedding: None,
+                    repositories: Some(manifest_repos),
+                });
+            } else if let Some(ref mut fastskill) = tool.fastskill {
+                fastskill.repositories = Some(manifest_repos);
+            }
+        }
+
+        // Save the project file
+        project.save_to_file(&self.config_path).map_err(|e| {
+            ServiceError::Custom(format!("Failed to save skill-project.toml: {}", e))
+        })?;
+
+        Ok(())
+    }
+
+    /// Convert RepositoryDefinition to manifest format
+    fn convert_to_manifest_repo(
+        &self,
+        repo: &RepositoryDefinition,
+    ) -> crate::core::manifest::RepositoryDefinition {
+        use crate::core::manifest::{
+            AuthConfig, AuthType, RepositoryConnection, RepositoryType as ManifestType,
+        };
+
+        let repo_type = match repo.repo_type {
+            RepositoryType::HttpRegistry => ManifestType::HttpRegistry,
+            RepositoryType::GitMarketplace => ManifestType::GitMarketplace,
+            RepositoryType::ZipUrl => ManifestType::ZipUrl,
+            RepositoryType::Local => ManifestType::Local,
+        };
+
+        let connection = match &repo.config {
+            RepositoryConfig::HttpRegistry { index_url } => RepositoryConnection::HttpRegistry {
+                index_url: index_url.clone(),
+            },
+            RepositoryConfig::GitMarketplace {
+                url,
+                branch,
+                tag: _,
+            } => RepositoryConnection::GitMarketplace {
+                url: url.clone(),
+                branch: branch.clone(),
+            },
+            RepositoryConfig::ZipUrl { base_url } => RepositoryConnection::ZipUrl {
+                zip_url: base_url.clone(),
+            },
+            RepositoryConfig::Local { path } => RepositoryConnection::Local {
+                path: path.to_string_lossy().to_string(),
+            },
+        };
+
+        // Convert auth - manifest format only supports PAT currently
+        let auth = repo.auth.as_ref().and_then(|a| match a {
+            RepositoryAuth::Pat { env_var } => Some(AuthConfig {
+                r#type: AuthType::Pat,
+                env_var: Some(env_var.clone()),
+            }),
+            // Other auth types not supported in manifest format yet
+            _ => None,
+        });
+
+        crate::core::manifest::RepositoryDefinition {
+            name: repo.name.clone(),
+            r#type: repo_type,
+            priority: repo.priority,
+            connection,
+            auth,
+        }
+    }
+
+    /// Internal helper to save config (for old repositories.toml format)
     fn save_config(&self, config: &RepositoriesConfig) -> Result<(), ServiceError> {
         // Ensure parent directory exists
         if let Some(parent) = self.config_path.parent() {
@@ -233,8 +367,9 @@ impl RepositoryManager {
             )));
         }
         // Also remove client if it exists
-        let mut clients = self.clients.blocking_write();
-        clients.remove(name);
+        if let Ok(mut clients) = self.clients.try_write() {
+            clients.remove(name);
+        }
         Ok(())
     }
 

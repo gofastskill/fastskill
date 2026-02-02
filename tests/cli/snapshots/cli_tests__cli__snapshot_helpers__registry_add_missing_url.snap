@@ -1,0 +1,10 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Error: error: the following required arguments were not provided:
+  <URL_OR_PATH>
+
+Usage: fastskill sources add --repo-type <REPO_TYPE> <NAME> <URL_OR_PATH>
+
+For more information, try '--help'.

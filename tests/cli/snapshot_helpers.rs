@@ -26,11 +26,20 @@ pub fn get_binary_path() -> String {
     let debug_path = format!("{}/target/debug/fastskill", manifest_dir);
     let release_path = format!("{}/target/release/fastskill", manifest_dir);
 
+    println!(
+        "DEBUG: Looking for binary at: {}, exists: {}",
+        debug_path,
+        Path::new(&debug_path).exists()
+    );
+
     if Path::new(&debug_path).exists() {
+        println!("DEBUG: Using debug path: {}", debug_path);
         debug_path
     } else if Path::new(&release_path).exists() {
+        println!("DEBUG: Using release path: {}", release_path);
         release_path
     } else {
+        println!("DEBUG: No binary found, using cargo fallback");
         // Fallback to cargo run
         "cargo".to_string()
     }
@@ -53,22 +62,41 @@ pub fn run_fastskill_command(
         let mut cmd = Command::new(&binary);
         cmd.args(args);
         if let Some(dir) = working_dir {
+            #[cfg(test)]
+            eprintln!("DEBUG: Setting working directory to: {:?}", dir);
             cmd.current_dir(dir);
         }
+        #[cfg(test)]
+        eprintln!("DEBUG: Executing command: {} with args: {:?}", binary, args);
         cmd
     };
 
     let output = cmd.output().expect("Failed to execute command");
 
+    #[cfg(test)]
+    eprintln!(
+        "DEBUG: Command output - success: {}, stdout: {}, stderr: {}",
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
     CommandResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout: stdout.to_string(),
+        stderr: stderr.to_string(),
         success: output.status.success(),
     }
 }
 
 /// Run a fastskill command with custom environment variables
-pub fn run_fastskill_command_with_env(args: &[&str], env_vars: &[(&str, &str)]) -> CommandResult {
+pub fn run_fastskill_command_with_env(
+    args: &[&str],
+    env_vars: &[(&str, &str)],
+    working_dir: Option<&std::path::Path>,
+) -> CommandResult {
     let binary = get_binary_path();
     let mut cmd = if binary == "cargo" {
         let mut cmd = Command::new("cargo");
@@ -84,7 +112,19 @@ pub fn run_fastskill_command_with_env(args: &[&str], env_vars: &[(&str, &str)]) 
         cmd.env(key, value);
     }
 
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+
     let output = cmd.output().expect("Failed to execute command");
+
+    #[cfg(test)]
+    eprintln!(
+        "DEBUG: Command output - success: {}, stdout: {}, stderr: {}",
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     CommandResult {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -96,6 +136,14 @@ pub fn run_fastskill_command_with_env(args: &[&str], env_vars: &[(&str, &str)]) 
 /// Normalize output for snapshot testing by removing dynamic content
 pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> String {
     let mut result = output.to_string();
+
+    if settings.normalize_versions {
+        // Normalize version numbers (semantic versioning)
+        result = regex::Regex::new(r"\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?")
+            .unwrap()
+            .replace_all(&result, "[VERSION]")
+            .to_string();
+    }
 
     if settings.normalize_paths {
         // Normalize user home directory
@@ -115,13 +163,11 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
             .unwrap()
             .replace_all(&result, "[WINDOWS_PATH]")
             .to_string();
-    }
 
-    if settings.normalize_versions {
-        // Normalize version numbers (semantic versioning)
-        result = regex::Regex::new(r"\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?")
+        // Normalize port numbers in URLs (after version normalization)
+        result = regex::Regex::new(r"http://\[VERSION\]\.\d+:\d{4,5}")
             .unwrap()
-            .replace_all(&result, "[VERSION]")
+            .replace_all(&result, "http://[VERSION].1:[PORT]")
             .to_string();
     }
 

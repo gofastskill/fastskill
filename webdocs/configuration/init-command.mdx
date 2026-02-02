@@ -1,0 +1,269 @@
+---
+title: "Init Command"
+description: "Create skill-project.toml for skill authors and project configuration."
+---
+
+## Overview
+
+The `fastskill init` command creates a `skill-project.toml` file for skill authors. This command extracts metadata from an existing `SKILL.md` file (if present) and interactively prompts for any missing information to create a properly configured skill project.
+
+<Info>
+This command is for **skill authors** who want to create a new skill project. It generates the `skill-project.toml` manifest file that defines your skill's metadata, dependencies, and configuration. For general FastSkill setup, see the [Installation Guide](/installation).
+</Info>
+
+<Info>
+**Context Detection**: `fastskill init` automatically detects whether you're working in a skill directory or project root:
+- **Skill-level**: If run in a directory containing `SKILL.md`, creates `skill-project.toml` with `[metadata]` section (for skill authors)
+- **Project-level**: If run at project root, can create `skill-project.toml` with `[dependencies]` section (for skill consumers)
+
+See [Skill Commands](/cli-reference/skill-commands) for details on skill-level initialization.
+</Info>
+
+## What It Does
+
+When you run `fastskill init`, it performs the following steps:
+
+1. **Checks for Existing Files**: Validates if `skill-project.toml` already exists
+2. **Reads SKILL.md**: Extracts metadata from frontmatter (name, description, version, etc.)
+3. **Interactive Prompts**: Asks for missing information or uses provided CLI arguments
+4. **Creates skill-project.toml**: Generates the manifest file with proper structure
+5. **Validates Configuration**: Ensures all required fields are present and valid
+
+## Usage
+
+### Interactive Setup (Recommended)
+
+```bash
+fastskill init
+```
+
+This will prompt you for each configuration option:
+
+```
+🚀 FastSkill Project Initialization
+
+🔑 OpenAI API Key
+Enter your OpenAI API key (or press Enter to set via environment variable): sk-...
+
+✅ API key format validated
+
+🤖 Embedding Model
+Choose an embedding model:
+  1. text-embedding-3-small (recommended, cost-effective)
+  2. text-embedding-3-large (higher accuracy, more expensive)
+  3. Custom model
+Enter choice (1-3) [1]: 1
+
+📁 Skills Directory
+Enter skills directory path [.skills]: .skills
+
+✅ FastSkill project initialized successfully!
+
+💡 Next steps:
+  • Add skills to the '.skills' directory
+  • Run: fastskill reindex
+  • Then: fastskill search "your query"
+```
+
+### Non-Interactive Setup
+
+```bash
+# Use defaults for everything (requires OPENAI_API_KEY env var)
+fastskill init --yes
+
+# Specify custom options
+fastskill init --yes --skills-dir my-skills --embedding-model text-embedding-3-large
+
+# Skip creating example skill
+fastskill init --yes --no-example
+```
+
+## Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--yes` | Skip interactive prompts, use defaults | `false` |
+| `--force` | Reinitialize even if files exist | `false` |
+| `--skills-dir <DIR>` | Skills directory path | `.skills` |
+| `--embedding-model <MODEL>` | OpenAI embedding model | `text-embedding-3-small` |
+| `--no-example` | Skip creating example skill | `false` |
+
+## Files Created
+
+### `.fastskill/config.yaml`
+
+Service-level configuration file with your embedding settings:
+
+```yaml
+# FastSkill Configuration
+# This file configures embedding search settings
+
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+```
+
+**Note**: Service-level configuration (embedding settings) is stored in `.fastskill/config.yaml`. Project-level configuration (skill dependencies and repositories) is stored in `skill-project.toml` at your project root.
+
+### `.skills/` Directory Structure
+
+```
+.skills/
+├── .fastskill/          # Internal FastSkill data (index, cache)
+├── examples/            # Example skills for learning
+│   └── hello-world/
+│       └── SKILL.md    # Sample skill definition
+└── README.md           # Directory documentation
+```
+
+### Example Skill
+
+Creates a basic skill at `.skills/examples/hello-world/SKILL.md`:
+
+```markdown
+---
+name: Hello World
+description: A simple example skill that demonstrates the FastSkill format
+version: 1.0.0
+author: FastSkill
+tags: [example, demo, hello-world]
+capabilities: [text_processing, greeting]
+---
+
+# Hello World Skill
+
+This is an example skill to demonstrate the FastSkill format and structure.
+
+## Purpose
+
+This skill demonstrates how to create a basic FastSkill skill definition.
+```
+
+## Configuration Options
+
+### Embedding Models
+
+| Model | Description | Cost | Use Case |
+|-------|-------------|------|----------|
+| `text-embedding-3-small` | Cost-effective, good performance | Low | Most projects |
+| `text-embedding-3-large` | Higher accuracy, more expensive | High | Enterprise, high-precision needs |
+| Custom | Any OpenAI-compatible model | Varies | Advanced users |
+
+### Skills Directory
+
+- **Default**: `.skills` (recommended)
+- **Custom**: Any directory path you specify
+- **Existing**: Will be created if it doesn't exist
+
+## Environment Variables
+
+### OPENAI_API_KEY
+
+The init command will use this environment variable if set:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+fastskill init --yes  # Will use the env var automatically
+```
+
+If not set, you'll be prompted to enter it interactively.
+
+## Troubleshooting
+
+### "API key should start with 'sk-'"
+
+**Cause**: The provided API key doesn't match OpenAI's format
+**Solution**: Check that you're using a valid OpenAI API key
+
+### "API key appears to be too short"
+
+**Cause**: The API key is incomplete
+**Solution**: Ensure you're copying the complete API key from OpenAI
+
+### "FastSkill is already initialized"
+
+**Cause**: Configuration files already exist
+**Solution**: Use `--force` to reinitialize, or remove existing files first
+
+### Permission Denied
+
+**Cause**: Cannot write to the current directory
+**Solution**: Check file permissions or run in a directory where you have write access
+
+## Integration with CI/CD
+
+For automated setups in CI/CD pipelines:
+
+```yaml
+# .github/workflows/setup-fastskill.yml
+name: Setup FastSkill
+on: [push]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install FastSkill
+        run: cargo install fastskill
+
+      - name: Initialize FastSkill
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: fastskill init --yes --no-example
+
+      - name: Add skills
+        run: cp -r my-skills/* .skills/
+
+      - name: Index skills
+        run: fastskill reindex
+```
+
+## Best Practices
+
+### Project Structure
+
+Keep FastSkill configuration at the project root:
+
+```
+my-project/
+├── .fastskill/
+│   └── config.yaml  # Service-level configuration (embedding settings)
+├── skill-project.toml  # Project-level configuration (dependencies, repositories)
+├── skills.lock       # Lock file (auto-generated)
+├── .claude/
+│   └── skills/      # Skills directory (default location)
+│       ├── my-skill/
+│       └── another-skill/
+└── src/              # Your application code
+```
+
+### API Key Management
+
+- **Development**: Use environment variables
+- **Production**: Use secure secret management
+- **CI/CD**: Store in encrypted secrets
+
+### Version Control
+
+Consider what to commit:
+
+```bash
+# Commit these files
+git add .fastskill/config.yaml
+git add skill-project.toml
+git add skills.lock
+git add .claude/skills/README.md
+git add .claude/skills/examples/
+
+# Don't commit these (generated)
+echo ".skills/.fastskill/" >> .gitignore
+```
+
+## Next Steps After Init
+
+1. **Add Your Skills**: Create skill directories under `.skills/`
+2. **Index Skills**: Run `fastskill reindex` to build the search index
+3. **Test Search**: Try `fastskill search "your query"`
+4. **Integration**: Connect to your AI agent or application
+
+The init command gets you started quickly with a properly configured FastSkill environment. All the complexity of configuration files and directory structure is handled automatically.

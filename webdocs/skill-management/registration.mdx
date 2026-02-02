@@ -1,0 +1,554 @@
+---
+title: "Skill Registration"
+description: "Complete guide to registering skills in FastSkill including manual registration, auto-discovery, and batch operations."
+---
+
+## Overview
+
+Skill registration is the process of making skills available to AI agents through the FastSkill service. Skills can be registered manually through the API or discovered automatically from the filesystem.
+
+<Info>
+Once registered, skills become available for discovery, routing, and execution by AI agents and frameworks.
+</Info>
+
+## Skill Definition Format
+
+Before registering a skill, you need to understand the skill definition format. Each skill is defined by a JSON object with specific required and optional fields:
+
+### Required Fields
+
+<ParamField path="id" type="string" required>
+Unique identifier for the skill. Must be alphanumeric with dashes and underscores only. Example: `"text-processor"`, `"pdf-extractor-v2"`.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+Human-readable name for the skill. Should be descriptive and user-friendly. Example: `"Text Processing Suite"`, `"PDF Document Extractor"`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+Detailed description of what the skill does and its capabilities. Used for discovery and routing.
+</ParamField>
+
+<ParamField path="version" type="string" required>
+Version number following semantic versioning (e.g., "1.0.0", "2.1.3"). Helps track skill evolution and compatibility.
+</ParamField>
+
+### Optional Fields
+
+<ParamField path="author" type="string">
+Name or organization of the skill creator. Useful for skill attribution and support.
+</ParamField>
+
+<ParamField path="tags" type="string">
+Comma-separated list of tags for categorization. Example: `"text,nlp,analysis,extraction"`.
+</ParamField>
+
+<ParamField path="capabilities" type="string">
+Comma-separated list of specific capabilities. Example: `"text_extraction,sentiment_analysis,keyword_detection"`.
+</ParamField>
+
+<ParamField path="skill_file" type="string">
+Path to the skill implementation file (relative to storage path). Example: `"text-processor/SKILL.md"`.
+</ParamField>
+
+<ParamField path="enabled" type="boolean">
+Whether the skill is enabled for use. Defaults to `true`. Disabled skills are not available for discovery or execution.
+</ParamField>
+
+<ParamField path="execution_timeout" type="integer">
+Maximum execution time in seconds for this skill. Overrides the global default.
+</ParamField>
+
+<ParamField path="memory_limit_mb" type="integer">
+Memory limit in MB for skill execution. Overrides the global default.
+</ParamField>
+
+<ParamField path="dependencies" type="array">
+List of dependencies required by the skill. Example: `["serde", "tokio", "reqwest"]`.
+</ParamField>
+
+<ParamField path="metadata" type="object">
+Additional metadata as key-value pairs. Useful for custom extensions.
+</ParamField>
+
+## Manual Registration
+
+### Rust API
+
+<Steps>
+<Step title="Create skill definition">
+```rust
+use fastskill::{SkillDefinition, SkillId};
+
+let mut skill = SkillDefinition::new(
+    SkillId::new("text-processor".to_string())?,
+    "Text Processing Suite".to_string(),
+    "Comprehensive text processing capabilities including extraction, analysis, and transformation".to_string(),
+    "1.0.0".to_string(),
+);
+
+skill.author = Some("FastSkill Team".to_string());
+skill.tags = vec![
+    "text".to_string(),
+    "nlp".to_string(),
+    "analysis".to_string(),
+    "extraction".to_string(),
+    "transformation".to_string(),
+];
+skill.capabilities = vec![
+    "text_extraction".to_string(),
+    "text_analysis".to_string(),
+    "sentiment_analysis".to_string(),
+    "keyword_extraction".to_string(),
+    "text_transformation".to_string(),
+];
+skill.skill_file = std::path::PathBuf::from("text-processor/SKILL.md");
+skill.enabled = true;
+skill.timeout = Some(30);
+skill.dependencies = Some(vec![
+    "nltk".to_string(),
+    "spacy".to_string(),
+]);
+```
+</Step>
+
+<Step title="Register the skill">
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Register the skill (using skill from previous step)
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("✅ Skill registered with ID: {}", skill_id);
+
+    // Verify registration
+    let skills = service.skill_manager().list_skills(None).await?;
+    println!("📋 Total skills: {}", skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+
+<Step title="Update existing skill">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillId, SkillUpdate};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    let skill_id = SkillId::new("text-processor".to_string())?;
+
+    // Update skill definition
+    let updates = SkillUpdate {
+        name: Some("Advanced Text Processing Suite".to_string()),
+        description: Some("Enhanced text processing with AI-powered analysis".to_string()),
+        version: Some("1.1.0".to_string()),
+        tags: Some(vec![
+            "text".to_string(),
+            "nlp".to_string(),
+            "analysis".to_string(),
+            "ai".to_string(),
+        ]),
+        capabilities: Some(vec![
+            "text_extraction".to_string(),
+            "text_analysis".to_string(),
+            "ai_analysis".to_string(),
+        ]),
+        ..Default::default()
+    };
+
+    // Update the skill
+    service.skill_manager()
+        .update_skill(&skill_id, updates)
+        .await?;
+
+    println!("✅ Skill updated successfully");
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+</Steps>
+
+### REST API
+
+```bash
+# Register a skill via REST API
+curl -X POST http://localhost:8080/api/skills \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "text-processor",
+    "name": "Text Processing Suite",
+    "description": "Comprehensive text processing capabilities",
+    "version": "1.0.0",
+    "tags": "text,nlp,analysis",
+    "capabilities": "text_extraction,text_analysis",
+    "enabled": true
+  }'
+```
+
+## Auto-Discovery
+
+FastSkill can automatically discover and register skills from the filesystem:
+
+### Directory Structure
+
+Organize your skills in a directory structure like this:
+
+```
+skills/
+├── text-processor/
+│   ├── SKILL.md            # Skill definition (Claude Code format)
+│   ├── script.sh           # Implementation script (optional)
+│   └── README.md           # Documentation
+├── data-analyzer/
+│   ├── SKILL.md
+│   └── README.md
+└── web-scraper/
+    ├── SKILL.json
+    ├── scraper.py
+    └── config.yaml
+```
+
+### Enable Auto-Discovery
+
+<Steps>
+<Step title="Configure auto-discovery">
+```rust
+// Auto-discovery happens automatically when service initializes
+// Skills are discovered from the skill_storage_path directory
+// The service scans for SKILL.md files during initialization
+```
+</Step>
+</Steps>
+
+## Batch Operations
+
+Register multiple skills efficiently:
+
+### Rust Batch Registration
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Define multiple skills
+    let skills_to_register = vec![
+        SkillDefinition::new(
+            SkillId::new("text-extractor".to_string())?,
+            "Text Extractor".to_string(),
+            "Extract text from various document formats".to_string(),
+            "1.0.0".to_string(),
+        ),
+        SkillDefinition::new(
+            SkillId::new("data-validator".to_string())?,
+            "Data Validator".to_string(),
+            "Validate and clean data structures".to_string(),
+            "1.0.0".to_string(),
+        ),
+        SkillDefinition::new(
+            SkillId::new("file-organizer".to_string())?,
+            "File Organizer".to_string(),
+            "Organize files by type and content".to_string(),
+            "1.0.0".to_string(),
+        ),
+    ];
+
+    // Register all skills
+    let mut registered_ids = Vec::new();
+    for skill in skills_to_register {
+        match service.skill_manager().register_skill(skill).await {
+            Ok(skill_id) => {
+                registered_ids.push(skill_id.clone());
+                println!("✅ Registered: {}", skill_id);
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to register skill: {}", e);
+            }
+        }
+    }
+
+    println!("\n🎯 Successfully registered {} skills", registered_ids.len());
+    
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+### Batch Update
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillId, SkillUpdate};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Define updates for multiple skills
+    let updates = vec![
+        (
+            SkillId::new("text-extractor".to_string())?,
+            SkillUpdate {
+                version: Some("1.0.1".to_string()),
+                timeout: Some(60),
+                ..Default::default()
+            },
+        ),
+        (
+            SkillId::new("file-organizer".to_string())?,
+            SkillUpdate {
+                version: Some("1.0.1".to_string()),
+                timeout: Some(60),
+                ..Default::default()
+            },
+        ),
+    ];
+
+    for (skill_id, update_data) in updates {
+        match service.skill_manager().update_skill(&skill_id, update_data).await {
+            Ok(_) => println!("✅ Updated {}", skill_id),
+            Err(e) => eprintln!("❌ Failed to update {}: {}", skill_id, e),
+        }
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Validation
+
+FastSkill validates skill definitions before registration:
+
+<Steps>
+<Step title="Manual validation">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Create skill definition
+    let skill = SkillDefinition::new(
+        SkillId::new("my-skill".to_string())?,
+        "My Skill".to_string(),
+        "A test skill".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    // Validation happens automatically during registration
+    // Register the skill (will validate internally)
+    match service.skill_manager().register_skill(skill).await {
+        Ok(skill_id) => {
+            println!("✅ Skill definition is valid");
+            println!("✅ Registered: {}", skill_id);
+        }
+        Err(e) => {
+            eprintln!("❌ Validation/registration failed: {}", e);
+            // Fix the issues before registering
+        }
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+
+<Step title="Batch validation">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Define skills to validate and register
+    let skills_to_validate = vec![
+        SkillDefinition::new(
+            SkillId::new("skill1".to_string())?,
+            "Skill 1".to_string(),
+            "First skill".to_string(),
+            "1.0.0".to_string(),
+        ),
+        SkillDefinition::new(
+            SkillId::new("skill2".to_string())?,
+            "Skill 2".to_string(),
+            "Second skill".to_string(),
+            "1.0.0".to_string(),
+        ),
+    ];
+
+    let mut valid_count = 0;
+    let mut invalid_count = 0;
+
+    for skill in skills_to_validate {
+        match service.skill_manager().register_skill(skill).await {
+            Ok(_) => {
+                valid_count += 1;
+            }
+            Err(_) => {
+                invalid_count += 1;
+            }
+        }
+    }
+
+    println!("✅ Valid skills: {}", valid_count);
+    println!("❌ Invalid skills: {}", invalid_count);
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+</Steps>
+
+## CLI Registration
+
+Use the FastSkill CLI for command-line skill management:
+
+```bash
+# Add a skill from local directory
+fastskill add ./skills/text-processor --editable
+
+# Add a skill from Git repository
+fastskill add https://github.com/org/text-processor.git
+
+# Add skill with validation (automatic during install)
+fastskill install
+
+# List all registered skills
+fastskill list
+```
+
+## Best Practices
+
+<Steps>
+<Step title="Use descriptive identifiers">
+  Choose skill IDs that are descriptive and likely to be unique. Include version numbers for skill variants.
+</Step>
+
+<Step title="Provide comprehensive metadata">
+  Include detailed descriptions, relevant tags, and specific capabilities to improve discoverability.
+</Step>
+
+<Step title="Version properly">
+  Use semantic versioning and update versions when making breaking changes or adding new features.
+</Step>
+
+<Step title="Validate before registration">
+  Always validate skill definitions before registering them to catch issues early.
+</Step>
+
+<Step title="Use auto-discovery for development">
+  Enable auto-discovery during development for faster iteration, but use manual registration in production.
+</Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Registration Failures">
+  <Warning>
+  **Duplicate ID**: Each skill must have a unique ID. Check if a skill with the same ID already exists.
+  ```python
+  # Check existing skills
+  existing_skills = await service.list_skills()
+  existing_ids = [s['id'] for s in existing_skills]
+  ```
+  </Warning>
+
+  <Warning>
+  **Invalid format**: Ensure all required fields are present and have the correct types.
+  ```python
+  # Use validation before registration
+  validate_skill_definition(skill_data)
+  ```
+  </Warning>
+
+  <Warning>
+  **File not found**: If using `skill_file`, ensure the path exists relative to the storage directory.
+  </Warning>
+</Accordion>
+
+<Accordion title="Discovery Issues">
+  <Info>
+  **Pattern matching**: Auto-discovery uses glob patterns. Ensure your files match the configured patterns.
+  </Info>
+
+  <Info>
+  **Permission denied**: Check that FastSkill has read permissions for skill directories.
+  </Info>
+
+  <Tip>
+  **Debug discovery**: Enable debug logging to see which files are being discovered and why others are skipped.
+  </Tip>
+</Accordion>
+
+<Accordion title="Performance Considerations">
+  <Tip>
+  **Batch size**: For large numbers of skills, use batch operations instead of individual registrations.
+  </Tip>
+
+  <Tip>
+  **Validation timing**: Consider validating skills offline before registration in production environments.
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Skill registration is the foundation of FastSkill's functionality. Take time to understand the skill definition format and validation requirements to avoid common issues.
+</Note>

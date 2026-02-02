@@ -1,0 +1,6 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Error: Configuration error: Cannot use both --json and --grid flags. Use only one.

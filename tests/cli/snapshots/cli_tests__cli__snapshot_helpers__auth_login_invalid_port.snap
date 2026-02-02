@@ -1,0 +1,6 @@
+---
+source: tests/cli/snapshot_helpers.rs
+assertion_line: 195
+expression: normalized
+---
+Error: Configuration error: Failed to connect to registry: builder error: invalid port number

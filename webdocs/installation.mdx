@@ -1,0 +1,448 @@
+---
+title: "Installation Guide"
+description: "Complete installation instructions for FastSkill Rust implementation including CLI and library installation."
+---
+
+## System Requirements
+
+Before installing FastSkill, ensure your system meets these requirements:
+
+| Component | Minimum Version | Recommended |
+|-----------|----------------|-------------|
+| **Rust** | 1.70 | 1.75+ (only needed for source builds) |
+| **Memory** | 512MB | 2GB+ |
+| **Storage** | 100MB | 500MB+ |
+| **OpenAI API Key** | Required | For embedding features |
+
+<Info>
+For binary installation, you don't need Rust installed. Rust is only required if building from source.
+</Info>
+
+## CLI Installation
+
+The FastSkill CLI is a Rust-based command-line tool for managing skills.
+
+<Tabs>
+<Tab title="From GitHub Releases (Recommended)">
+Download the pre-built binary for your platform from [GitHub Releases](https://github.com/gofastskill/fastskill/releases).
+
+<Steps>
+<Step title="Download for Linux">
+```bash
+# Download and extract
+VERSION="0.6.8"  # Replace with latest version from GitHub Releases
+wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
+
+# Move to PATH
+sudo mv fastskill /usr/local/bin/
+
+# Verify installation
+fastskill --version
+```
+
+<Tip>
+If you prefer a user-local installation, move to `~/.local/bin/` instead and ensure it's in your PATH.
+</Tip>
+</Step>
+
+<Step title="Download for Windows">
+```powershell
+# Download fastskill-x86_64-pc-windows-msvc.zip from GitHub Releases
+# Extract the ZIP file to a directory of your choice
+
+# Option 1: Add to PATH
+# Add the extracted directory to your system PATH environment variable
+
+# Option 2: Run from directory
+# Navigate to the extracted directory and run:
+.\fastskill.exe --version
+```
+
+<Tip>
+To add to PATH permanently on Windows:
+1. Open System Properties → Environment Variables
+2. Edit the "Path" variable under User or System variables
+3. Add the directory containing fastskill.exe
+4. Restart your terminal
+</Tip>
+</Step>
+</Steps>
+</Tab>
+
+<Tab title="From Source">
+Build from source if you need the latest development version or want to customize the build.
+
+```bash
+# Clone the repository
+git clone https://github.com/gofastskill/fastskill.git
+cd fastskill/rust
+
+# Build and install
+cargo install --path . --bin fastskill --features git-support
+
+# Verify installation
+fastskill --help
+```
+
+**Requirements:**
+- Rust 1.70+ (`rustup install stable`)
+- Git (for git URL support, optional - only needed with `--features git-support`)
+</Tab>
+
+<Tab title="Development Build">
+For contributors and developers working on FastSkill:
+
+```bash
+cd tools/fastskill/rust
+cargo build --bin fastskill --features git-support
+
+# Run directly
+./target/debug/fastskill --help
+
+# Or install locally
+cargo install --path . --bin fastskill --features git-support
+```
+</Tab>
+</Tabs>
+
+**Skills Directory Resolution:**
+
+The CLI automatically discovers the skills directory in this priority order:
+
+1. `skills_directory` setting in `.fastskill/config.yaml`
+2. Walk up directory tree to find existing `.claude/skills/`
+3. Default to `.claude/skills/` in current directory
+
+**Manifests and lockfiles:**
+
+- Declare skills in `skill-project.toml` at project root (with `[dependencies]` section)
+- Install with `fastskill install` (use `--without`/`--only` for groups)
+- Lockfile is written to `skills.lock` at project root after installs
+- Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`
+
+## Rust Library Installation
+
+### Using Cargo
+
+Add FastSkill to your `Cargo.toml`:
+
+```toml
+[dependencies]
+fastskill = { version = "0.1.0", features = ["git-support"] }
+tokio = { version = "1.0", features = ["full"] }
+```
+
+Install dependencies:
+
+```bash
+cargo build
+```
+
+<Check>
+Verify installation:
+```bash
+cargo check --package fastskill
+```
+</Check>
+
+### From Source
+
+<Steps>
+<Step title="Clone and setup">
+```bash
+git clone https://github.com/gofastskill/fastskill.git
+cd fastskill/rust
+```
+</Step>
+
+<Step title="Build the project">
+```bash
+cargo build --release
+```
+
+<Check>
+Test the build:
+```bash
+cargo test
+```
+</Check>
+</Step>
+
+<Step title="Install system-wide (optional)">
+```bash
+cargo install --path . --bin fastskill
+```
+</Step>
+</Steps>
+
+## Configuration
+
+After installation, configure FastSkill by creating `.fastskill/config.yaml`:
+
+```yaml
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+
+# Optional: Custom skills directory
+skills_directory: ".claude/skills"
+```
+
+**Note**: Service-level configuration (embedding settings) is stored in `.fastskill/config.yaml`. Project-level configuration (skill dependencies and repositories) is stored in `skill-project.toml` at your project root.
+
+Set your OpenAI API key:
+
+```bash
+export OPENAI_API_KEY="your-key-here"
+```
+
+## Docker Installation
+
+### Building from Source
+
+<Steps>
+<Step title="Clone the repository">
+```bash
+git clone https://github.com/gofastskill/fastskill.git
+cd fastskill
+```
+</Step>
+
+<Step title="Build Docker image">
+```bash
+# Build Rust image
+docker build -f docker/rust/Dockerfile -t fastskill-rust .
+```
+</Step>
+
+<Step title="Run the container">
+```bash
+docker run -it fastskill-rust ./target/release/fastskill --help
+```
+</Step>
+</Steps>
+
+## Development Setup
+
+For contributors and advanced users:
+
+<Steps>
+<Step title="Install Rust toolchain">
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+```
+</Step>
+
+<Step title="Install development tools">
+```bash
+cargo install cargo-watch cargo-audit cargo-udeps
+rustup component add rustfmt clippy
+```
+</Step>
+
+<Step title="Setup development environment">
+```bash
+cd tools/fastskill/rust
+cargo build
+```
+</Step>
+
+<Step title="Run tests and checks">
+```bash
+cargo test
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo audit
+```
+</Step>
+</Steps>
+
+## Platform-Specific Instructions
+
+### macOS
+
+<Tabs>
+<Tab title="Intel Macs">
+```bash
+# Using Homebrew (optional, Rust can be installed via rustup)
+brew install rust
+
+# Or use rustup (recommended)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+cargo install fastskill --features git-support
+```
+</Tab>
+
+<Tab title="Apple Silicon (M1/M2)">
+```bash
+# Rust (native)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+cargo install fastskill --features git-support
+```
+</Tab>
+</Tabs>
+
+### Linux
+
+<Tabs>
+<Tab title="Ubuntu/Debian">
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+cargo install fastskill --features git-support
+```
+</Tab>
+
+<Tab title="CentOS/RHEL/Fedora">
+```bash
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+cargo install fastskill --features git-support
+```
+</Tab>
+
+<Tab title="Arch Linux">
+```bash
+# Install Rust
+sudo pacman -S rustup
+rustup install stable
+cargo install fastskill --features git-support
+```
+</Tab>
+</Tabs>
+
+### Windows
+
+<Tabs>
+<Tab title="Rust Installation">
+```cmd
+# Install Rust using rustup-init.exe from https://rustup.rs/
+# Follow the installation prompts
+
+# Add Cargo to PATH (usually done automatically)
+cargo install fastskill --features git-support
+
+# Verify installation
+cargo --version
+fastskill --version
+```
+</Tab>
+
+<Tab title="WSL (Recommended)">
+```bash
+# Install WSL2 and Ubuntu
+wsl --install Ubuntu
+
+# Then follow Linux instructions above
+```
+</Tab>
+</Tabs>
+
+## Verification
+
+After installation, verify everything works correctly:
+
+<Steps>
+<Step title="Basic functionality test">
+Create a test file `verification.rs`:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Running FastSkill verification...");
+
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Test skill listing
+    let skills = service.skill_manager().list_skills(None).await?;
+    println!("Found {} skills", skills.len());
+
+    // Test skill discovery
+    let relevant_skills = service.metadata_service()
+        .discover_skills("test")
+        .await?;
+    
+    println!("Found {} relevant skills", relevant_skills.len());
+    println!("✅ All verification tests passed!");
+
+    Ok(())
+}
+```
+</Step>
+
+<Step title="Run the verification">
+```bash
+# Add to Cargo.toml temporarily or run as example
+cargo run --example verification
+```
+</Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Installation Issues">
+  <Warning>
+  **Binary not found in PATH**: After extracting the binary, ensure it's in your system PATH. On Linux, try `/usr/local/bin/` or `~/.local/bin/`. On Windows, add the directory to your PATH environment variable.
+  </Warning>
+
+  <Warning>
+  **Permission denied (Linux)**: If you get permission errors, use `sudo` when moving to `/usr/local/bin/`, or install to `~/.local/bin/` instead and ensure it's in your PATH.
+  </Warning>
+
+  <Warning>
+  **Windows security warning**: Windows may show a security warning for unsigned binaries. Click "More info" and then "Run anyway" if you trust the source.
+  </Warning>
+
+  <Warning>
+  **Rust not found (source builds only)**: If building from source, ensure Rust is installed and in your PATH. Run `rustc --version` to verify.
+  </Warning>
+
+  <Warning>
+  **Cargo build errors (source builds only)**: Make sure you have a stable Rust toolchain: `rustup install stable`
+  </Warning>
+</Accordion>
+
+<Accordion title="Configuration Issues">
+  <Info>
+  **Embedding configuration required**: Create `.fastskill/config.yaml` with OpenAI API configuration. See [Configuration Guide](/configuration/service-config).
+  </Info>
+
+  <Info>
+  **OpenAI API key not found**: Set `OPENAI_API_KEY` environment variable or configure in `.fastskill/config.yaml`.
+  </Info>
+</Accordion>
+
+<Accordion title="Platform-Specific Problems">
+  <Tip>
+  **macOS security**: If you get security warnings, go to System Settings > Privacy & Security and allow the binary.
+  </Tip>
+
+  <Tip>
+  **Windows antivirus**: Add an exception for the FastSkill installation directory if antivirus blocks compilation.
+  </Tip>
+
+  <Tip>
+  **Linux linker errors**: Install build essentials: `sudo apt-get install build-essential` (Ubuntu/Debian) or equivalent.
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Still having issues? Check the [troubleshooting section](/troubleshooting).
+</Note>

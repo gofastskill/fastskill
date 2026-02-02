@@ -1,0 +1,898 @@
+---
+title: Repository Configuration
+api: "repositories"
+---
+
+# Repository Configuration
+
+Repositories allow you to define where FastSkill should look for skills. FastSkill supports multiple repository types, all configured through a unified interface.
+
+**Important**: Repositories are used for skill discovery only. They define where skills come FROM. The storage location (where skills are installed when you run `fastskill add`) is configured separately in `.fastskill/config.yaml` via the `skills_directory` setting.
+
+## Configuration File
+
+Repository configuration is stored in the `[tool.fastskill.repositories]` section of `skill-project.toml` at your project root:
+
+```toml
+# skill-project.toml
+
+[dependencies]
+# ... skill dependencies ...
+
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "anthropic"
+type = "git-marketplace"
+url = "https://github.com/anthropics/skills"
+priority = 0
+
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"
+priority = 1
+auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }
+
+[[tool.fastskill.repositories]]
+name = "team-tools"
+type = "git-marketplace"
+url = "https://github.com/org/team-skills.git"
+branch = "main"
+priority = 2
+
+[[tool.fastskill.repositories]]
+name = "local-dev"
+type = "local"
+path = "./local-skills"
+priority = 3
+```
+
+**Note**: Repositories are searched in priority order (lower number = higher priority). If multiple repositories have the same priority, the first one in the file is used.
+
+## Source Types
+
+### Git Marketplace Sources
+
+Git marketplace sources reference a Git repository that contains skills organized with a marketplace.json file.
+
+#### Complete Setup Workflow
+
+**1. Create a Git Repository**
+```bash
+# Create new repository
+mkdir my-skills-repo
+cd my-skills-repo
+git init
+```
+
+**2. Create Skill Structure**
+```bash
+# Create skills directory structure
+mkdir -p skills/web-scraper skills/data-analyzer
+
+# Create skill files
+cat > skills/web-scraper/SKILL.md << 'EOF'
+---
+name: "web-scraper"
+description: "Web scraping skill for data extraction"
+version: "1.0.0"
+author: "Your Team"
+tags: ["web", "scraping", "data"]
+capabilities: ["scrape_website", "extract_data"]
+---
+
+# Web Scraper Skill
+
+This skill provides tools for web scraping and data extraction.
+EOF
+
+cat > skills/web-scraper/skill-project.toml << 'EOF'
+[metadata]
+id = "web-scraper"
+version = "1.0.0"
+description = "Web scraping skill for data extraction"
+author = "Your Team"
+tags = ["web", "scraping", "data"]
+capabilities = ["scrape_website", "extract_data"]
+download_url = "https://github.com/your-org/my-skills-repo/releases/download/v1.0.0/web-scraper-1.0.0.zip"
+EOF
+```
+
+**3. Generate Marketplace.json**
+```bash
+# Use fastskill to generate marketplace.json
+fastskill registry create --path ./skills --name my-skills-repo
+
+# This creates .claude-plugin/marketplace.json
+```
+
+**4. Configure Repository**
+```toml
+# skill-project.toml (in your project)
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "my-skills-repo"
+type = "git-marketplace"
+url = "https://github.com/your-org/my-skills-repo.git"
+branch = "main"
+priority = 0
+```
+
+**5. Test Repository**
+```bash
+# Add the repository to your project
+fastskill registry add my-skills-repo \
+  --repo-type git-marketplace \
+  --url https://github.com/your-org/my-skills-repo.git \
+  --priority 0
+
+# List skills from the repository
+fastskill registry list-skills --repository my-skills-repo
+
+# Install a skill
+fastskill add my-skills-repo/web-scraper
+```
+
+#### Configuration Options
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "team-skills"
+type = "git-marketplace"
+url = "https://github.com/org/skills.git"
+branch = "main"        # Default: main
+tag = "v1.0.0"         # Optional: pin to specific tag
+priority = 0           # Lower number = higher priority
+```
+
+**Requirements**:
+- Repository must contain `marketplace.json` in one of these locations:
+  - **Claude Code standard**: `.claude-plugin/marketplace.json` (recommended)
+  - **Root location**: `marketplace.json` (legacy support)
+- Marketplace.json should reference skills available in the repository
+
+**Marketplace.json locations** (checked in priority order):
+1. `{url}/.claude-plugin/marketplace.json` (Claude Code standard - tried first)
+2. `{url}/marketplace.json` (root location - fallback)
+Both are fetched via raw content API (e.g., `raw.githubusercontent.com`)
+
+#### Advanced Examples
+
+**Private Repository with Authentication:**
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "private-skills"
+type = "git-marketplace"
+url = "https://github.com/org/private-skills.git"
+branch = "main"
+priority = 0
+auth = { type = "pat", env_var = "GITHUB_TOKEN" }
+```
+
+**Monorepo with Multiple Skill Directories:**
+```bash
+# Repository structure
+org-skills/
+├── packages/
+│   ├── web-skills/
+│   │   ├── marketplace.json  # Skills: scraper, crawler
+│   └── data-skills/
+│       ├── marketplace.json  # Skills: analyzer, processor
+└── .claude-plugin/
+    └── marketplace.json      # Root marketplace pointing to packages
+```
+
+**Branch-based Development:**
+```toml
+[[tool.fastskill.repositories]]
+name = "dev-skills"
+type = "git-marketplace"
+url = "https://github.com/org/skills.git"
+branch = "develop"     # Use develop branch for latest features
+priority = 1
+
+[[tool.fastskill.repositories]]
+name = "stable-skills"
+type = "git-marketplace"
+url = "https://github.com/org/skills.git"
+branch = "main"        # Use main branch for stable releases
+priority = 0
+```
+
+### HTTP Registry Sources
+
+HTTP-based registries provide skills through REST APIs with centralized index and blob storage.
+
+#### Complete Setup Workflow
+
+**1. Registry Server Setup**
+```bash
+# Start FastSkill registry server
+fastskill serve --enable-registry --port 8080
+
+# Or use a hosted registry service
+# FASTSKILL_API_URL=https://registry.yourcompany.com
+```
+
+**2. Authentication Setup**
+```bash
+# Login to registry
+fastskill auth login
+
+# Or set token directly
+export FASTSKILL_API_TOKEN="your-jwt-token"
+```
+
+**3. Configure Repository**
+```toml
+# skill-project.toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "company-registry"
+type = "http-registry"
+index_url = "https://registry.yourcompany.com/api/registry/index"
+priority = 0
+auth = { type = "pat", env_var = "FASTSKILL_API_TOKEN" }
+```
+
+**4. Browse and Install Skills**
+```bash
+# List all skills in registry
+fastskill registry list-skills --repository company-registry
+
+# List skills by scope
+fastskill registry list-skills --repository company-registry --scope engineering
+
+# Search for skills
+fastskill registry search "data analysis" --repository company-registry
+
+# Get skill details
+fastskill registry show-skill engineering/data-analyzer --repository company-registry
+
+# List skill versions
+fastskill registry versions engineering/data-analyzer --repository company-registry
+
+# Install skill
+fastskill add engineering/data-analyzer
+```
+
+#### Publishing to HTTP Registry
+
+**Package Skills:**
+```bash
+# Package changed skills
+fastskill package --detect-changes --output ./artifacts
+
+# Or package specific skills
+fastskill package --skills data-analyzer web-scraper --output ./artifacts
+```
+
+**Publish to Registry:**
+```bash
+# Authenticate
+fastskill auth login
+
+# Publish packages
+fastskill publish \
+  --artifacts ./artifacts \
+  --target https://registry.yourcompany.com \
+  --wait
+
+# Check publish status
+curl -H "Authorization: Bearer $FASTSKILL_API_TOKEN" \
+  https://registry.yourcompany.com/api/registry/publish/status/{job_id}
+```
+
+#### Configuration Options
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "production-registry"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"           # Required: Index API endpoint
+priority = 0                                          # Search priority
+auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }  # Authentication (optional)
+```
+
+#### Authentication Types
+
+**Personal Access Token (PAT):**
+```toml
+auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }
+```
+
+**API Key:**
+```toml
+auth = { type = "api_key", env_var = "FASTSKILL_API_KEY" }
+```
+
+**Basic Authentication:**
+```toml
+auth = { type = "basic", username = "user", env_var = "FASTSKILL_PASSWORD" }
+```
+
+**SSH Key:**
+```toml
+auth = { type = "ssh-key", auth_key_path = "~/.ssh/fastskill_key" }
+```
+
+#### Advanced Examples
+
+**Multi-Environment Setup:**
+```toml
+# Development registry
+[[tool.fastskill.repositories]]
+name = "dev-registry"
+type = "http-registry"
+index_url = "https://dev-registry.company.com/api/registry/index"
+priority = 1
+
+# Staging registry
+[[tool.fastskill.repositories]]
+name = "staging-registry"
+type = "http-registry"
+index_url = "https://staging-registry.company.com/api/registry/index"
+priority = 2
+
+# Production registry
+[[tool.fastskill.repositories]]
+name = "prod-registry"
+type = "http-registry"
+index_url = "https://registry.company.com/api/registry/index"
+priority = 0
+```
+
+**Cross-Organization Sharing:**
+```toml
+# Public registry
+[[tool.fastskill.repositories]]
+name = "public"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"
+priority = 2
+
+# Company private registry
+[[tool.fastskill.repositories]]
+name = "company-private"
+type = "http-registry"
+index_url = "https://registry.company.com/api/registry/index"
+priority = 0
+auth = { type = "pat", env_var = "COMPANY_TOKEN" }
+```
+
+Use `fastskill registry list-skills` to list skills from HTTP registries. The command calls `GET /api/registry/index/skills` on the configured registry's `index_url`.
+
+The registry server serves index files at `/index/{skill_id}` where `skill_id` follows the format `{scope}/{skill-name}` (e.g., `dev-user/web-scraper`).
+
+### ZIP URL Sources
+
+ZIP URL sources provide skills through static hosting with pre-packaged ZIP archives.
+
+#### Complete Setup Workflow
+
+**1. Prepare Skill Packages**
+```bash
+# Create skills directory
+mkdir skills-packs
+cd skills-packs
+
+# Package individual skills
+fastskill package --force --output ./packages
+
+# This creates: web-scraper-1.0.0.zip, data-analyzer-1.0.0.zip, etc.
+```
+
+**2. Create Marketplace.json**
+```json
+// marketplace.json
+{
+  "name": "company-tools",
+  "owner": {
+    "name": "Engineering Team",
+    "email": "engineering@company.com"
+  },
+  "metadata": {
+    "description": "Official company skill collection",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "tools",
+      "description": "Company skill plugins",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        {
+          "name": "web-scraper",
+          "description": "Web scraping utilities",
+          "download_url": "./packages/web-scraper-1.0.0.zip"
+        },
+        {
+          "name": "data-analyzer",
+          "description": "Data analysis tools",
+          "download_url": "./packages/data-analyzer-1.0.0.zip"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**3. Host Files**
+```bash
+# Upload to static hosting (GitHub Pages, S3, etc.)
+# Directory structure:
+# https://skills.company.com/
+# ├── marketplace.json
+# └── packages/
+#     ├── web-scraper-1.0.0.zip
+#     └── data-analyzer-1.0.0.zip
+```
+
+**4. Configure Repository**
+```toml
+# skill-project.toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "company-tools"
+type = "zip-url"
+base_url = "https://skills.company.com/"
+priority = 0
+```
+
+**5. Test Repository**
+```bash
+# Add repository
+fastskill registry add company-tools \
+  --repo-type zip-url \
+  --url https://skills.company.com/ \
+  --priority 0
+
+# List available skills
+fastskill registry list-skills --repository company-tools
+
+# Install skills
+fastskill add company-tools/web-scraper
+fastskill add company-tools/data-analyzer
+```
+
+#### Configuration Options
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "official-skills"
+type = "zip-url"
+base_url = "https://example.com/skills/"     # Required: Base URL for marketplace.json
+priority = 0                                # Search priority
+```
+
+#### Hosting Examples
+
+**GitHub Pages:**
+```bash
+# Repository: your-org/skills
+# Branch: gh-pages
+# URL structure:
+# https://your-org.github.io/skills/
+# ├── marketplace.json
+# └── packages/
+#     └── skill-1.0.0.zip
+```
+
+**Amazon S3:**
+```bash
+# Bucket: skills.company.com
+# Public access enabled
+# URL: https://skills.company.com.s3.amazonaws.com/
+```
+
+**Nginx/Apache Static Hosting:**
+```bash
+# Server configuration serves static files
+# URL: https://skills.company.com/
+```
+
+#### Marketplace.json Requirements
+
+The marketplace.json file must include `download_url` fields pointing to ZIP files:
+
+```json
+{
+  "plugins": [
+    {
+      "skills": [
+        {
+          "name": "my-skill",
+          "description": "Skill description",
+          "download_url": "./packages/my-skill-1.0.0.zip"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### CI/CD Pipeline Example
+
+**GitHub Actions for Automated Publishing:**
+```yaml
+name: Publish Skills
+on:
+  push:
+    branches: [main]
+    paths: ['skills/**']
+
+jobs:
+  package-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Package skills
+        run: fastskill package --detect-changes --output ./packages
+
+      - name: Generate marketplace.json
+        run: fastskill registry create --path ./skills --output ./marketplace.json
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          publish_branch: gh-pages
+```
+
+#### Advanced Examples
+
+**Versioned Releases:**
+```bash
+# Directory structure for versioned hosting
+skills.company.com/
+├── v1.0/
+│   ├── marketplace.json
+│   └── packages/
+├── v2.0/
+│   ├── marketplace.json
+│   └── packages/
+└── latest/ -> v2.0/  # Symlink to latest version
+```
+
+**Multi-Environment:**
+```toml
+# Development skills
+[[tool.fastskill.repositories]]
+name = "dev-skills"
+type = "zip-url"
+base_url = "https://dev-skills.company.com/"
+priority = 2
+
+# Production skills
+[[tool.fastskill.repositories]]
+name = "prod-skills"
+type = "zip-url"
+base_url = "https://skills.company.com/"
+priority = 0
+```
+
+**Requirements**:
+- Base URL must serve `marketplace.json` in one of these locations:
+  - **Claude Code standard**: `.claude-plugin/marketplace.json` (recommended)
+  - **Root location**: `marketplace.json` (legacy support)
+- Marketplace.json should include `download_url` for each skill
+
+**Marketplace.json locations** (checked in priority order):
+1. `{base_url}/.claude-plugin/marketplace.json` (Claude Code standard - tried first)
+2. `{base_url}/marketplace.json` (root location - fallback)
+
+### Local Sources
+
+Local sources provide skills from filesystem directories for development and testing.
+
+#### Complete Setup Workflow
+
+**1. Create Local Skills Directory**
+```bash
+# Create local skills repository
+mkdir -p ~/local-skills
+cd ~/local-skills
+
+# Create skill directories
+mkdir -p experimental/test-skill prototype/web-tool
+```
+
+**2. Create Skill Files**
+```bash
+# Create test skill
+cat > experimental/test-skill/SKILL.md << 'EOF'
+---
+name: "test-skill"
+description: "Experimental testing skill"
+version: "0.1.0"
+author: "Developer"
+tags: ["testing", "experimental"]
+capabilities: ["run_tests", "validate_data"]
+---
+
+# Test Skill
+
+Experimental skill for testing FastSkill functionality.
+EOF
+
+cat > experimental/test-skill/skill-project.toml << 'EOF'
+[metadata]
+id = "test-skill"
+version = "0.1.0"
+description = "Experimental testing skill"
+author = "Developer"
+tags = ["testing", "experimental"]
+capabilities = ["run_tests", "validate_data"]
+EOF
+
+# Create prototype skill
+cat > prototype/web-tool/SKILL.md << 'EOF'
+---
+name: "web-tool"
+description: "Web utility tools"
+version: "0.1.0"
+author: "Developer"
+tags: ["web", "utility"]
+capabilities: ["http_request", "parse_html"]
+---
+
+# Web Tool
+
+Prototype web utility skill.
+EOF
+
+cat > prototype/web-tool/skill-project.toml << 'EOF'
+[metadata]
+id = "web-tool"
+version = "0.1.0"
+description = "Web utility tools"
+author = "Developer"
+tags = ["web", "utility"]
+capabilities = ["http_request", "parse_html"]
+EOF
+```
+
+**3. Generate Marketplace.json (Optional)**
+```bash
+# Generate marketplace.json for the local repository
+fastskill registry create --path ~/local-skills --name local-dev
+```
+
+**4. Configure Repository**
+```toml
+# skill-project.toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "local-dev"
+type = "local"
+path = "~/local-skills"
+priority = 0
+```
+
+**5. Test Local Repository**
+```bash
+# Add local repository
+fastskill registry add local-dev \
+  --repo-type local \
+  --url ~/local-skills \
+  --priority 0
+
+# List local skills
+fastskill registry list-skills --repository local-dev
+
+# Install local skills
+fastskill add local-dev/test-skill
+fastskill add local-dev/web-tool
+
+# Test skill functionality
+fastskill read local-dev/test-skill
+```
+
+#### Configuration Options
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "local-dev"
+type = "local"
+path = "./local-skills"     # Required: Local directory path
+priority = 0               # Search priority
+```
+
+#### Directory Structure
+
+Local repositories support flexible directory structures:
+
+```
+local-skills/
+├── single-skill/
+│   └── SKILL.md
+├── category1/
+│   ├── skill-a/
+│   │   └── SKILL.md
+│   └── skill-b/
+│       └── SKILL.md
+├── category2/
+│   └── nested/
+│       └── skill-c/
+│           └── SKILL.md
+└── marketplace.json (optional)
+```
+
+**Skill ID Generation:**
+- `single-skill` → ID: `single-skill`
+- `category1/skill-a` → ID: `category1/skill-a`
+- `category2/nested/skill-c` → ID: `category2/nested/skill-c`
+
+#### Development Workflow
+
+**Rapid Iteration:**
+```bash
+# Edit skill code
+vim ~/local-skills/experimental/test-skill/scripts/test.js
+
+# Test changes immediately
+fastskill add local-dev/test-skill --force
+
+# No need to package or publish for local development
+```
+
+**Version Control Integration:**
+```bash
+# Local skills can be git repositories
+cd ~/local-skills
+git init
+git add .
+git commit -m "Add experimental skills"
+
+# Or reference external git repos
+fastskill registry add external-dev \
+  --repo-type git-marketplace \
+  --url ~/projects/external-skills \
+  --priority 1
+```
+
+#### Hot Reloading
+
+Local sources support hot reloading during development:
+
+```bash
+# Enable hot reloading (if supported)
+export FASTSKILL_HOT_RELOAD=true
+
+# Changes to local skills are picked up automatically
+# No need to reinstall after file modifications
+```
+
+#### Testing and Validation
+
+**Skill Validation:**
+```bash
+# Validate local skills
+fastskill validate ~/local-skills
+
+# Check for common issues
+fastskill validate ~/local-skills --strict
+```
+
+**Integration Testing:**
+```bash
+# Test skill in different contexts
+fastskill add local-dev/test-skill
+fastskill read local-dev/test-skill
+fastskill list | grep local-dev
+```
+
+#### Advanced Examples
+
+**Multi-Developer Setup:**
+```toml
+# Individual developer repositories
+[[tool.fastskill.repositories]]
+name = "alice-dev"
+type = "local"
+path = "../alice/local-skills"
+priority = 2
+
+[[tool.fastskill.repositories]]
+name = "bob-dev"
+type = "local"
+path = "../bob/experimental"
+priority = 3
+
+# Shared team repository
+[[tool.fastskill.repositories]]
+name = "team-shared"
+type = "local"
+path = "./team-skills"
+priority = 1
+```
+
+**CI/CD Testing:**
+```yaml
+# GitHub Actions example
+- name: Test local skills
+  run: |
+    fastskill registry add test-repo \
+      --repo-type local \
+      --url ./test-skills
+
+    fastskill validate ./test-skills
+    fastskill add test-repo/test-skill
+    fastskill read test-repo/test-skill
+```
+
+**Note**: Local sources are not displayed in the registry web UI. They are only available for direct CLI operations.
+
+## Marketplace.json Requirement
+
+Only Git and Zip URL sources are supported in the registry because they can provide `marketplace.json` files. The registry will:
+
+1. Fetch `marketplace.json` from the source URL
+2. Cache the response for 5 minutes (TTL)
+3. Display skills from the marketplace in the web UI
+
+Sources without `marketplace.json` will not appear in the registry.
+
+## Managing Sources
+
+### Adding a Repository
+
+Add a new repository using the CLI:
+
+```bash
+fastskill registry add new-source --type git-marketplace --url https://github.com/user/repo.git --priority 0
+```
+
+Or edit `skill-project.toml` directly:
+
+```toml
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "new-source"
+type = "git-marketplace"
+url = "https://github.com/user/repo.git"
+priority = 0
+```
+
+### Removing a Repository
+
+Remove the repository using `fastskill registry remove <name>` or edit `skill-project.toml` directly.
+
+## Best Practices
+
+1. **Use descriptive names**: Repository names should clearly identify the repository
+2. **Version control**: Keep `skill-project.toml` in version control (includes repository configuration)
+3. **Update marketplace.json**: Regularly regenerate marketplace.json when skills change
+4. **HTTPS**: Use HTTPS URLs for security
+5. **Caching**: Be aware that marketplace.json is cached for 5 minutes
+6. **Priority ordering**: Use priority values to control repository search order
+
+## Troubleshooting
+
+### Source Not Appearing in Registry
+
+- Verify `marketplace.json` exists at the expected URL
+- Check that the source type is `git` or `zip-url` (not `local`)
+- Ensure the URL is accessible and returns valid JSON
+- Check server logs for fetch errors
+
+### Marketplace.json Not Found
+
+- Verify the URL is correct
+- Ensure `marketplace.json` is at the root of the repository (for Git sources)
+- Check that the base URL is correct (for Zip URL sources)
+
+## See Also
+
+- [Marketplace.json Format](/registry/marketplace-json)
+- [Registry Command](/cli-reference/repository-command)
+- [Registry Overview](/registry/overview)
+

@@ -1,0 +1,60 @@
+---
+title: "Discovery Commands"
+description: "FastSkill CLI commands for skill discovery, search, and intelligent routing."
+---
+
+## Overview
+
+Discovery commands help you find and analyze skills in your FastSkill ecosystem.
+
+## Command Reference
+
+### fastskill search
+
+Search for skills using natural language queries.
+
+```bash
+# Search for skills
+fastskill search "extract text from PDF"
+
+# Search with filters
+fastskill search "analyze data" --tags data,analysis
+
+# Search with limits
+fastskill search "convert files" --limit 5
+
+# Search with minimum relevance score
+fastskill search "process text" --min-score 0.5
+```
+
+### fastskill route
+
+Get intelligent routing recommendations.
+
+```bash
+# Get routing recommendations
+fastskill route "analyze customer feedback"
+
+# Route with context
+fastskill route "process documents" --context "batch_processing"
+
+# Route with constraints
+fastskill route "convert files" --format pdf --size large
+```
+
+## Examples
+
+```bash
+# Search workflow
+fastskill search "text processing"
+fastskill find --capability text_extraction --tag nlp
+fastskill route "extract and analyze text content"
+
+# Discovery analysis
+fastskill list --format json | jq '.data | group_by(.tags) | map({tag: .[0].tags, count: length})'
+fastskill search "data analysis" --format json
+```
+
+<Note>
+Discovery commands help you understand and navigate your skill ecosystem efficiently.
+</Note>

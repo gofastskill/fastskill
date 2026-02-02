@@ -1,0 +1,8 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Updating skills...
+
+Error: Configuration error: skills.lock not found. Run 'fastskill install' first.

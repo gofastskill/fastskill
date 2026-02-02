@@ -36,8 +36,6 @@ async fn main() {
         Err(e) => {
             // Print error message
             eprintln!("Error: {}", e);
-            // Print help after error message
-            let _ = Cli::command().print_help();
             std::process::exit(e.exit_code());
         }
     }

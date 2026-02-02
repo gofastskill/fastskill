@@ -1,0 +1,654 @@
+---
+title: "Rust API Reference"
+description: "Complete reference for the FastSkill Rust library including types, methods, and usage examples."
+---
+
+## Installation
+
+Add FastSkill to your `Cargo.toml`:
+
+```toml
+[dependencies]
+fastskill = { version = "0.1.0", features = ["git-support"] }
+tokio = { version = "1.0", features = ["full"] }
+```
+
+<Info>
+The Rust API requires tokio for async/await support. All service methods are asynchronous.
+</Info>
+
+## FastSkillService
+
+The main service struct that provides access to all FastSkill functionality.
+
+### Constructor
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Use the service...
+    
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+### Lifecycle Methods
+
+#### `new(config: ServiceConfig) -> Result<Self, ServiceError>`
+
+Create a new service instance with the provided configuration.
+
+**Parameters:**
+- `config`: Service configuration including skill storage path, embedding settings, etc.
+
+**Returns:** `Result<FastSkillService, ServiceError>`
+
+**Example:**
+```rust
+let config = ServiceConfig {
+    skill_storage_path: PathBuf::from("./skills"),
+    ..Default::default()
+};
+
+let service = FastSkillService::new(config).await?;
+```
+
+#### `initialize(&mut self) -> Result<(), ServiceError>`
+
+Initialize the service and load all components. Must be called before using other methods.
+
+**Returns:** `Result<(), ServiceError>`
+
+**Example:**
+```rust
+service.initialize().await?;
+```
+
+#### `shutdown(&mut self) -> Result<(), ServiceError>`
+
+Gracefully shut down the service and clean up resources. Should be called when done.
+
+**Returns:** `Result<(), ServiceError>`
+
+**Example:**
+```rust
+service.shutdown().await?;
+```
+
+#### `is_initialized(&self) -> bool`
+
+Check if the service has been initialized.
+
+**Returns:** `bool`
+
+### Service Accessors
+
+#### `skill_manager(&self) -> Arc<dyn SkillManagementService>`
+
+Get the skill management service for CRUD operations on skills.
+
+**Returns:** `Arc<dyn SkillManagementService>`
+
+**Example:**
+```rust
+let skill_manager = service.skill_manager();
+let skills = skill_manager.list_skills(None).await?;
+```
+
+#### `metadata_service(&self) -> Arc<dyn MetadataService>`
+
+Get the metadata service for skill discovery and search.
+
+**Returns:** `Arc<dyn MetadataService>`
+
+**Example:**
+```rust
+let metadata_service = service.metadata_service();
+let skills = metadata_service.discover_skills("text processing").await?;
+```
+
+#### `vector_index_service(&self) -> Option<Arc<dyn VectorIndexService>>`
+
+Get the vector index service for semantic search (if embedding is configured).
+
+**Returns:** `Option<Arc<dyn VectorIndexService>>`
+
+**Example:**
+```rust
+if let Some(vector_service) = service.vector_index_service() {
+    let matches = vector_service.search("query", 10).await?;
+}
+```
+
+#### `loading_service(&self) -> Arc<dyn ProgressiveLoadingService>`
+
+Get the progressive loading service for on-demand skill content loading.
+
+**Returns:** `Arc<dyn ProgressiveLoadingService>`
+
+#### `tool_service(&self) -> Arc<dyn ToolCallingService>`
+
+Get the tool calling service for executing skill tools.
+
+**Returns:** `Arc<dyn ToolCallingService>`
+
+#### `routing_service(&self) -> Arc<dyn RoutingService>`
+
+Get the routing service for intelligent skill routing.
+
+**Returns:** `Arc<dyn RoutingService>`
+
+#### `config(&self) -> &ServiceConfig`
+
+Get the service configuration.
+
+**Returns:** `&ServiceConfig`
+
+## ServiceConfig
+
+Main configuration struct for the FastSkill service.
+
+```rust
+pub struct ServiceConfig {
+    pub skill_storage_path: PathBuf,
+    pub execution: ExecutionConfig,
+    pub hot_reload: HotReloadConfig,
+    pub cache: CacheConfig,
+    pub embedding: Option<EmbeddingConfig>,
+    pub security: SecurityConfig,
+}
+```
+
+### Fields
+
+- `skill_storage_path: PathBuf` - Base directory for skill storage
+- `execution: ExecutionConfig` - Execution configuration
+- `hot_reload: HotReloadConfig` - Hot reloading configuration
+- `cache: CacheConfig` - Cache configuration
+- `embedding: Option<EmbeddingConfig>` - Embedding configuration (optional, required for semantic search)
+- `security: SecurityConfig` - Security configuration
+
+### Example
+
+```rust
+use fastskill::ServiceConfig;
+use std::path::PathBuf;
+
+let config = ServiceConfig {
+    skill_storage_path: PathBuf::from("./skills"),
+    embedding: Some(EmbeddingConfig {
+        openai_base_url: "https://api.openai.com/v1".to_string(),
+        embedding_model: "text-embedding-3-small".to_string(),
+        api_key: std::env::var("OPENAI_API_KEY").ok(),
+    }),
+    ..Default::default()
+};
+```
+
+## SkillManagementService
+
+Trait for managing skills (CRUD operations).
+
+### Methods
+
+#### `register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError>`
+
+Register a new skill with the service.
+
+**Parameters:**
+- `skill`: Skill definition to register
+
+**Returns:** `Result<SkillId, ServiceError>`
+
+**Example:**
+```rust
+use fastskill::{SkillDefinition, SkillId};
+
+let skill = SkillDefinition::new(
+    SkillId::new("my-skill".to_string())?,
+    "My Skill".to_string(),
+    "A test skill".to_string(),
+    "1.0.0".to_string(),
+);
+
+let skill_id = skill_manager.register_skill(skill).await?;
+```
+
+#### `force_register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError>`
+
+Force register a skill, overwriting if it already exists.
+
+**Parameters:**
+- `skill`: Skill definition to register
+
+**Returns:** `Result<SkillId, ServiceError>`
+
+#### `get_skill(&self, skill_id: &SkillId) -> Result<Option<SkillDefinition>, ServiceError>`
+
+Get a skill by ID.
+
+**Parameters:**
+- `skill_id`: ID of the skill to retrieve
+
+**Returns:** `Result<Option<SkillDefinition>, ServiceError>`
+
+**Example:**
+```rust
+let skill_id = SkillId::new("my-skill".to_string())?;
+if let Some(skill) = skill_manager.get_skill(&skill_id).await? {
+    println!("Found skill: {}", skill.name);
+}
+```
+
+#### `update_skill(&self, skill_id: &SkillId, updates: SkillUpdate) -> Result<(), ServiceError>`
+
+Update an existing skill.
+
+**Parameters:**
+- `skill_id`: ID of the skill to update
+- `updates`: Fields to update
+
+**Returns:** `Result<(), ServiceError>`
+
+#### `unregister_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>`
+
+Unregister a skill from the service.
+
+**Parameters:**
+- `skill_id`: ID of the skill to unregister
+
+**Returns:** `Result<(), ServiceError>`
+
+#### `list_skills(&self, filters: Option<SkillFilters>) -> Result<Vec<SkillDefinition>, ServiceError>`
+
+List all registered skills with optional filtering.
+
+**Parameters:**
+- `filters`: Optional filter criteria
+
+**Returns:** `Result<Vec<SkillDefinition>, ServiceError>`
+
+**Example:**
+```rust
+let all_skills = skill_manager.list_skills(None).await?;
+println!("Found {} skills", all_skills.len());
+```
+
+#### `enable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>`
+
+Enable a disabled skill.
+
+**Parameters:**
+- `skill_id`: ID of the skill to enable
+
+**Returns:** `Result<(), ServiceError>`
+
+#### `disable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>`
+
+Disable an active skill.
+
+**Parameters:**
+- `skill_id`: ID of the skill to disable
+
+**Returns:** `Result<(), ServiceError>`
+
+## MetadataService
+
+Trait for skill discovery and metadata operations.
+
+### Methods
+
+#### `discover_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError>`
+
+Discover skills relevant to a query using natural language processing.
+
+**Parameters:**
+- `query`: Search query string
+
+**Returns:** `Result<Vec<SkillMetadata>, ServiceError>`
+
+**Example:**
+```rust
+let skills = metadata_service.discover_skills("extract text from PDF").await?;
+for skill in skills {
+    println!("Found: {}", skill.name);
+}
+```
+
+#### `find_skills_by_capability(&self, capability: &str) -> Result<Vec<SkillMetadata>, ServiceError>`
+
+Find skills that provide a specific capability.
+
+**Parameters:**
+- `capability`: Capability to search for
+
+**Returns:** `Result<Vec<SkillMetadata>, ServiceError>`
+
+**Example:**
+```rust
+let skills = metadata_service.find_skills_by_capability("text-extraction").await?;
+```
+
+#### `find_skills_by_tag(&self, tag: &str) -> Result<Vec<SkillMetadata>, ServiceError>`
+
+Find skills with a specific tag.
+
+**Parameters:**
+- `tag`: Tag to search for
+
+**Returns:** `Result<Vec<SkillMetadata>, ServiceError>`
+
+**Example:**
+```rust
+let skills = metadata_service.find_skills_by_tag("data-processing").await?;
+```
+
+#### `search_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError>`
+
+Search skills using keyword matching.
+
+**Parameters:**
+- `query`: Search query string
+
+**Returns:** `Result<Vec<SkillMetadata>, ServiceError>`
+
+#### `get_available_capabilities(&self) -> Result<Vec<String>, ServiceError>`
+
+Get all available capabilities across all skills.
+
+**Returns:** `Result<Vec<String>, ServiceError>`
+
+#### `get_skill_frontmatter(&self, skill_id: &str) -> Result<SkillFrontmatter, ServiceError>`
+
+Get the frontmatter for a specific skill.
+
+**Parameters:**
+- `skill_id`: ID of the skill
+
+**Returns:** `Result<SkillFrontmatter, ServiceError>`
+
+## VectorIndexService
+
+Trait for semantic search using vector embeddings.
+
+### Methods
+
+#### `search(&self, query: &str, limit: usize) -> Result<Vec<SkillMatch>, ServiceError>`
+
+Search for skills using semantic similarity.
+
+**Parameters:**
+- `query`: Search query string
+- `limit`: Maximum number of results
+
+**Returns:** `Result<Vec<SkillMatch>, ServiceError>`
+
+**Example:**
+```rust
+if let Some(vector_service) = service.vector_index_service() {
+    let matches = vector_service.search("powerpoint presentation", 10).await?;
+    for m in matches {
+        println!("Match: {} (score: {})", m.skill_id, m.score);
+    }
+}
+```
+
+#### `index_skill(&self, skill_id: &str, metadata: &SkillMetadata) -> Result<(), ServiceError>`
+
+Index a skill for semantic search.
+
+**Parameters:**
+- `skill_id`: ID of the skill to index
+- `metadata`: Skill metadata
+
+**Returns:** `Result<(), ServiceError>`
+
+#### `reindex_all(&self) -> Result<(), ServiceError>`
+
+Reindex all skills in the vector index.
+
+**Returns:** `Result<(), ServiceError>`
+
+## RoutingService
+
+Trait for intelligent skill routing.
+
+### Methods
+
+#### `find_relevant_skills(&self, query: &str, context: Option<QueryContext>) -> Result<Vec<RoutedSkill>, ServiceError>`
+
+Find the most relevant skills for a query using intelligent routing.
+
+**Parameters:**
+- `query`: Search query string
+- `context`: Optional query context (tokens, conversation history, etc.)
+
+**Returns:** `Result<Vec<RoutedSkill>, ServiceError>`
+
+**Example:**
+```rust
+let routing_service = service.routing_service();
+let context = QueryContext {
+    available_tokens: Some(10000),
+    conversation_history: None,
+    user_preferences: None,
+};
+
+let routed = routing_service.find_relevant_skills("process data", Some(context)).await?;
+```
+
+## ToolCallingService
+
+Trait for tool execution.
+
+### Methods
+
+#### `get_available_tools(&self) -> Result<Vec<AvailableTool>, ServiceError>`
+
+Get all available tools.
+
+**Returns:** `Result<Vec<AvailableTool>, ServiceError>`
+
+## ProgressiveLoadingService
+
+Trait for progressive loading of skill content.
+
+### Methods
+
+#### `load_metadata(&self, skill_ids: &[String]) -> Result<Vec<LoadedSkill>, ServiceError>`
+
+Load metadata for specific skills.
+
+**Parameters:**
+- `skill_ids`: List of skill IDs to load metadata for
+
+**Returns:** `Result<Vec<LoadedSkill>, ServiceError>`
+
+#### `load_content(&self, skill_ids: &[String]) -> Result<Vec<LoadedSkill>, ServiceError>`
+
+Load full content for specific skills.
+
+**Parameters:**
+- `skill_ids`: List of skill IDs to load content for
+
+**Returns:** `Result<Vec<LoadedSkill>, ServiceError>`
+
+## Error Handling
+
+### ServiceError
+
+Main error type for all service operations.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum ServiceError {
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    #[error("Execution error: {0}")]
+    Execution(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Event error: {0}")]
+    Event(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    #[error("Skill not found: {0}")]
+    SkillNotFound(String),
+
+    #[error("Invalid operation: {0}")]
+    InvalidOperation(String),
+
+    #[error("Custom error: {0}")]
+    Custom(String),
+}
+```
+
+### Error Handling Patterns
+
+```rust
+use fastskill::ServiceError;
+
+match service.skill_manager().get_skill(&skill_id).await {
+    Ok(Some(skill)) => {
+        println!("Found skill: {}", skill.name);
+    }
+    Ok(None) => {
+        println!("Skill not found");
+    }
+    Err(ServiceError::SkillNotFound(id)) => {
+        eprintln!("Skill {} not found", id);
+    }
+    Err(ServiceError::Storage(msg)) => {
+        eprintln!("Storage error: {}", msg);
+    }
+    Err(e) => {
+        eprintln!("Error: {}", e);
+    }
+}
+```
+
+## Complete Example
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create service configuration
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    // Create and initialize service
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // List all skills
+    let skills = service.skill_manager().list_skills(None).await?;
+    println!("Found {} skills", skills.len());
+
+    // Discover relevant skills
+    let relevant = service.metadata_service()
+        .discover_skills("text processing")
+        .await?;
+    println!("Found {} relevant skills", relevant.len());
+
+    // Semantic search (if vector index is available)
+    if let Some(vector_service) = service.vector_index_service() {
+        let matches = vector_service.search("data analysis", 5).await?;
+        for m in matches {
+            println!("Match: {} (score: {:.2})", m.skill_id, m.score);
+        }
+    }
+
+    // Shutdown
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Advanced Usage
+
+### Custom Configuration
+
+```rust
+use fastskill::{ServiceConfig, EmbeddingConfig, ExecutionConfig};
+use std::path::PathBuf;
+
+let config = ServiceConfig {
+    skill_storage_path: PathBuf::from("./skills"),
+    embedding: Some(EmbeddingConfig {
+        openai_base_url: "https://api.openai.com/v1".to_string(),
+        embedding_model: "text-embedding-3-small".to_string(),
+        api_key: std::env::var("OPENAI_API_KEY").ok(),
+    }),
+    execution: ExecutionConfig {
+        timeout: 30,
+        max_memory_mb: 512,
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+### Concurrent Operations
+
+```rust
+use futures::future::join_all;
+
+// Execute multiple discovery operations concurrently
+let queries = vec!["text processing", "data analysis", "file conversion"];
+let tasks: Vec<_> = queries.iter()
+    .map(|q| service.metadata_service().discover_skills(q))
+    .collect();
+
+let results = join_all(tasks).await;
+for (query, result) in queries.iter().zip(results) {
+    match result {
+        Ok(skills) => println!("{}: Found {} skills", query, skills.len()),
+        Err(e) => eprintln!("{}: Error: {}", query, e),
+    }
+}
+```
+
+### Error Recovery
+
+```rust
+async fn safe_operation(service: &FastSkillService) {
+    match service.skill_manager().list_skills(None).await {
+        Ok(skills) => {
+            println!("Successfully retrieved {} skills", skills.len());
+        }
+        Err(ServiceError::Storage(msg)) => {
+            eprintln!("Storage error, retrying: {}", msg);
+            // Implement retry logic
+        }
+        Err(e) => {
+            eprintln!("Unexpected error: {}", e);
+        }
+    }
+}
+```
+

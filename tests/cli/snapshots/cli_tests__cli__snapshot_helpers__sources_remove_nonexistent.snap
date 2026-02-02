@@ -1,0 +1,6 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Error: Configuration error: Failed to remove repository: Custom error: Repository 'nonexistent-repo' not found

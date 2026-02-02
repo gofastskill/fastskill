@@ -1,0 +1,7 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Logging in to registry: http://localhost:9999
+Error: Configuration error: Failed to connect to registry: error sending request for url (http://localhost:9999/auth/token): error trying to connect: tcp connect error: Connection refused (os error 111)

@@ -1,0 +1,11 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Skill Information
+
+Skill: web-scraper
+  ID: web-scraper
+  Version: [VERSION]
+  Description: A web scraping skill

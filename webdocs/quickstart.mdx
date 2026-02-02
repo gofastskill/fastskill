@@ -1,0 +1,90 @@
+---
+title: "Quick Start Guide"
+description: "Get up and running with FastSkill in under 10 minutes with this step-by-step guide."
+---
+
+## Prerequisites
+
+- Rust 1.70+ and `cargo`
+- OpenAI API key (required for semantic search/reindex)
+
+## Five-minute setup (CLI)
+
+<Steps>
+<Step title="Install the CLI">
+```bash
+cargo install fastskill --features git-support
+fastskill --version
+```
+</Step>
+
+<Step title="Create a manifest">
+Create `skill-project.toml` at your project root:
+```toml skill-project.toml
+[dependencies]
+demo-skill = { source = "local", path = "./skills/demo-skill", editable = true, groups = ["dev"] }
+```
+</Step>
+
+<Step title="Add a skill">
+Pick the source that matches your workflow:
+```bash
+# From a public registry ID
+fastskill add pptx@1.0.0
+
+# From a local folder (editable for dev)
+fastskill add ./skills/demo-skill -e --group dev
+
+# From git with a branch
+fastskill add https://github.com/org/skill.git --branch main
+```
+</Step>
+
+<Step title="Install & index">
+```bash
+fastskill install
+fastskill reindex
+```
+</Step>
+
+<Step title="Search & verify">
+```bash
+fastskill search "text processing" --format json
+```
+
+<Check>
+You should see a JSON list of matching skills. If empty, add a skill and rerun `fastskill reindex`.
+</Check>
+</Step>
+
+<Step title="Optional: serve UI">
+```bash
+fastskill serve --enable-registry --port 8080
+```
+Browse http://localhost:8080/registry to view installed/available skills.
+</Step>
+</Steps>
+
+## Use-case quick recipes
+
+- **Install from sources**
+  - Public registry ID: `fastskill add pptx@1.0.0`
+  - Local folder (editable): `fastskill add ./skills/my-skill -e --group dev`
+  - Git repo with branch: `fastskill add https://github.com/org/skill.git --branch main`
+  - Private registry:  
+    ```bash
+    fastskill registry add team --type git-marketplace --url https://github.com/org/skills.git \
+      --priority 1
+    fastskill install
+    ```
+
+- **Package skills**
+  ```bash
+  fastskill package --skills my-skill --output ./artifacts --bump patch
+  ```
+
+## Troubleshooting
+
+- **No skills found**: ensure `skill-project.toml` exists at project root and rerun `fastskill install`.
+- **Search returns nothing**: run `fastskill reindex` after adding or installing skills.
+- **Binary not on PATH**: reinstall or move the binary to a directory in PATH (e.g., `~/.local/bin`).

@@ -1,0 +1,164 @@
+---
+title: "Tool Execution"
+description: "Learn about FastSkill's execution environment and script execution capabilities."
+---
+
+## Overview
+
+FastSkill provides a basic execution environment for running skill scripts with security sandboxing. The execution system supports script execution with configurable resource limits and security policies.
+
+<Info>
+FastSkill focuses on skill discovery and management. Tool execution is a basic feature for running skill scripts, not a full execution framework.
+</Info>
+
+## Execution Environment
+
+### Execution Configuration
+
+Configure the execution environment using `ExecutionConfig`:
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig};
+use std::path::PathBuf;
+use std::time::Duration;
+
+let config = ServiceConfig {
+    skill_storage_path: PathBuf::from("./skills"),
+    execution: ExecutionConfig {
+        default_timeout: Duration::from_secs(30),
+        max_memory_mb: 512,
+        network_policy: NetworkPolicy::Restricted {
+            allowed_domains: vec![],
+        },
+        filesystem_access: FileSystemAccess::WorkingDirectory,
+        allowed_commands: vec![
+            "python".to_string(),
+            "python3".to_string(),
+            "node".to_string(),
+        ],
+        environment_variables: std::collections::HashMap::new(),
+    },
+    ..Default::default()
+};
+```
+
+### Execution Sandbox
+
+The execution sandbox provides basic isolation for script execution:
+
+```rust
+use fastskill::execution::{ExecutionSandbox, ExecutionConfig};
+
+let exec_config = ExecutionConfig::default();
+let sandbox = ExecutionSandbox::new(exec_config)?;
+
+// Execute a script
+let result = sandbox.execute_script(
+    &PathBuf::from("./script.sh"),
+    &[],
+).await?;
+```
+
+## Execution Configuration Options
+
+### Network Policy
+
+Control network access for executed scripts:
+
+```rust
+use fastskill::execution::NetworkPolicy;
+
+// No network access
+let policy = NetworkPolicy::None;
+
+// Only localhost
+let policy = NetworkPolicy::Localhost;
+
+// Restricted to specific domains
+let policy = NetworkPolicy::Restricted {
+    allowed_domains: vec!["api.example.com".to_string()],
+};
+
+// Full network access (use with caution)
+let policy = NetworkPolicy::Full;
+```
+
+### File System Access
+
+Control file system access:
+
+```rust
+use fastskill::execution::FileSystemAccess;
+use std::path::PathBuf;
+
+// No file system access
+let access = FileSystemAccess::None;
+
+// Only working directory
+let access = FileSystemAccess::WorkingDirectory;
+
+// Read-only access to specific paths
+let access = FileSystemAccess::ReadOnly {
+    paths: vec![
+        PathBuf::from("./data"),
+        PathBuf::from("./input"),
+    ],
+};
+
+// Full access (dangerous)
+let access = FileSystemAccess::Full;
+```
+
+## Error Handling
+
+Execution errors are returned as `ExecutionError`:
+
+```rust
+use fastskill::execution::ExecutionError;
+
+match sandbox.execute_script(&script_path, &[]).await {
+    Ok(result) => {
+        println!("Execution successful: {:?}", result);
+    }
+    Err(ExecutionError::Timeout(duration)) => {
+        eprintln!("Execution timed out after {:?}", duration);
+    }
+    Err(ExecutionError::ResourceExceeded(resource)) => {
+        eprintln!("Resource limit exceeded: {}", resource);
+    }
+    Err(ExecutionError::SecurityViolation(violation)) => {
+        eprintln!("Security violation: {}", violation);
+    }
+    Err(e) => {
+        eprintln!("Execution error: {}", e);
+    }
+}
+```
+
+## Best Practices
+
+<Steps>
+<Step title="Use appropriate timeouts">
+  Set reasonable timeouts based on expected script execution time.
+</Step>
+
+<Step title="Restrict network access">
+  Use `NetworkPolicy::None` or `NetworkPolicy::Restricted` unless network access is required.
+</Step>
+
+<Step title="Limit file system access">
+  Use `FileSystemAccess::WorkingDirectory` or `FileSystemAccess::ReadOnly` to minimize security risks.
+</Step>
+
+<Step title="Monitor resource usage">
+  Check execution results for resource usage information.
+</Step>
+</Steps>
+
+<Warning>
+FastSkill's execution environment is basic. For production use cases requiring advanced sandboxing, consider using dedicated execution frameworks or containers.
+</Warning>
+
+<Note>
+Tool execution in FastSkill is primarily for running skill scripts. For complex tool execution scenarios, consider integrating with specialized execution frameworks.
+</Note>

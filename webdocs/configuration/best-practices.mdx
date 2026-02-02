@@ -1,0 +1,362 @@
+---
+title: "Configuration Best Practices"
+description: "Best practices for configuring FastSkill in development and production environments."
+---
+
+## Overview
+
+Proper configuration is essential for FastSkill's performance, security, and reliability. This guide covers best practices for different deployment scenarios.
+
+<Info>
+Configuration best practices evolve with your application's needs. Start with defaults and adjust based on monitoring and performance data.
+</Info>
+
+## Development Configuration
+
+### Hot Reload Setup
+
+Enable hot reloading for faster development cycles:
+
+```rust
+use fastskill::{ServiceConfig, HotReloadConfig};
+use std::path::PathBuf;
+use std::time::Duration;
+
+let config = ServiceConfig {
+    enable_hot_reload: true,
+    watch_paths: vec![
+        PathBuf::from("./skills"),
+        PathBuf::from("./custom-skills"),
+    ],
+    hot_reload_config: Some(HotReloadConfig {
+        debounce: Duration::from_secs(1),
+        ..Default::default()
+    }),
+    ..Default::default()
+};
+```
+
+### Development Security
+
+Balance security with development convenience:
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig, NetworkPolicy, FileSystemAccess};
+use std::path::PathBuf;
+
+let config = ServiceConfig {
+    execution: ExecutionConfig {
+        network_policy: NetworkPolicy::Full,  // Allow external APIs
+        filesystem_access: FileSystemAccess::ReadOnly {
+            paths: vec![
+                PathBuf::from("./test-data"),
+            ],
+        },
+        max_memory_mb: 2048,  // Higher limits for testing
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+## Production Configuration
+
+### Performance Optimization
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig, CacheConfig, NetworkPolicy};
+use std::time::Duration;
+
+let config = ServiceConfig {
+    cache: CacheConfig {
+        ttl: Duration::from_secs(3600),  // 1 hour cache
+        ..Default::default()
+    },
+    execution: ExecutionConfig {
+        default_timeout: Duration::from_secs(30),
+        max_memory_mb: 512,
+        network_policy: NetworkPolicy::None,  // Disable for security
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+### Security Hardening
+
+```rust
+use fastskill::{ServiceConfig, ExecutionConfig, NetworkPolicy, FileSystemAccess};
+
+let config = ServiceConfig {
+    execution: ExecutionConfig {
+        network_policy: NetworkPolicy::None,  // No external network access
+        filesystem_access: FileSystemAccess::None,  // Minimal file access
+        max_memory_mb: 256,  // Lower memory limits
+        ..Default::default()
+    },
+    ..Default::default()
+};
+```
+
+## Configuration Validation
+
+Always validate configuration before deployment:
+
+```python
+# Validate configuration
+try:
+    config.validate()
+    print("✅ Configuration is valid")
+except ValidationError as e:
+    print(f"❌ Configuration error: {e}")
+    # Fix validation errors before proceeding
+```
+
+## Environment-Specific Configuration
+
+### Docker Deployment
+
+```dockerfile
+# Dockerfile
+FROM fastskill:latest
+
+# Production configuration
+ENV FASTSKILL_LOG_LEVEL=WARN
+ENV FASTSKILL_EXECUTION_TIMEOUT=30
+ENV FASTSKILL_MAX_MEMORY_MB=512
+ENV FASTSKILL_ENABLE_HOT_RELOAD=false
+ENV FASTSKILL_ENABLE_NETWORKING=false
+
+# Health checks
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+CMD ["fastskill", "serve", "--config", "/app/config/production.json"]
+```
+
+### Kubernetes Deployment
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastskill
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fastskill
+  template:
+    metadata:
+      labels:
+        app: fastskill
+    spec:
+      containers:
+      - name: fastskill
+        image: fastskill:latest
+        env:
+        - name: FASTSKILL_LOG_LEVEL
+          value: "INFO"
+        - name: FASTSKILL_STORAGE_PATH
+          value: "/app/skills"
+        - name: FASTSKILL_EXECUTION_TIMEOUT
+          value: "30"
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+```
+
+## Monitoring and Alerting
+
+Configure monitoring for production environments:
+
+```python
+config = ServiceConfig(
+    # Health monitoring
+    enable_health_checks=True,
+    health_check_interval_seconds=30,
+
+    # Performance monitoring
+    enable_metrics=True,
+    metrics_retention_hours=168,  # 1 week retention
+
+    # Logging configuration
+    enable_audit_logging=True,
+    log_level="INFO",
+
+    # Alert thresholds
+    max_concurrent_executions=100,  # Alert if exceeded
+    enable_performance_alerts=True
+)
+```
+
+## Configuration Management
+
+### Version Control
+
+Store configuration in version control:
+
+```
+config/
+├── development.json
+├── staging.json
+├── production.json
+└── testing.json
+```
+
+### Configuration Templates
+
+```python
+# config/templates/production.py
+def get_production_config():
+    return ServiceConfig(
+        skill_storage_path=Path("/opt/fastskill/skills"),
+        execution=ExecutionConfig(
+            default_timeout=30,
+            max_memory_mb=512,
+            enable_networking=False,
+            sandbox_level="strict"
+        ),
+        enable_hot_reload=False,
+        enable_metrics=True,
+        log_level="INFO"
+    )
+
+# config/templates/development.py
+def get_development_config():
+    return ServiceConfig(
+        skill_storage_path=Path("./skills"),
+        execution=ExecutionConfig(
+            default_timeout=60,
+            max_memory_mb=2048,
+            enable_networking=True,
+            sandbox_level="basic"
+        ),
+        enable_hot_reload=True,
+        enable_metrics=True,
+        log_level="DEBUG"
+    )
+```
+
+## Performance Tuning
+
+### Memory Optimization
+
+```python
+# Memory-optimized configuration
+config = ServiceConfig(
+    cache=CacheConfig(
+        metadata_cache_size=1000,    # Reduced from default
+        content_cache_size=100,      # Reduced from default
+        enable_persistence=True      # Use disk cache
+    ),
+
+    execution=ExecutionConfig(
+        max_memory_mb=256,          # Lower per-execution limit
+        max_cpu_percent=50          # CPU limit
+    ),
+
+    max_concurrent_executions=20    # Lower concurrency
+)
+```
+
+### High-Throughput Configuration
+
+```python
+# High-throughput configuration
+config = ServiceConfig(
+    cache=CacheConfig(
+        metadata_cache_size=10000,   # Large cache
+        content_cache_size=2000,     # Large content cache
+        cache_ttl_seconds=7200       # 2 hour cache
+    ),
+
+    execution=ExecutionConfig(
+        default_timeout=10,         # Faster timeout
+        max_memory_mb=128,          # Lower memory per execution
+        max_cpu_percent=100         # Full CPU usage
+    ),
+
+    max_concurrent_executions=100,  # High concurrency
+    enable_metrics=True            # Monitor performance
+)
+```
+
+## Security Best Practices
+
+<Steps>
+<Step title="Principle of least privilege">
+  Configure minimum necessary permissions for skills and services.
+</Step>
+
+<Step title="Regular security audits">
+  Review configuration changes and security settings regularly.
+</Step>
+
+<Step title="Environment separation">
+  Use different configurations for development, staging, and production.
+</Step>
+
+<Step title="Access logging">
+  Enable audit logging to track all operations and changes.
+</Step>
+</Steps>
+
+## Troubleshooting Configuration
+
+### Common Issues
+
+<AccordionGroup>
+<Accordion title="Configuration Not Taking Effect">
+  <Warning>
+  **Restart required**: Some configuration changes require service restart.
+  ```bash
+  # Check if restart is needed
+  fastskill status --detailed
+
+  # Restart service
+  fastskill restart --config new-config.json
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Performance Issues">
+  <Tip>
+  **Monitor metrics**: Use built-in metrics to identify configuration bottlenecks.
+  ```python
+  metrics = await service.get_metrics()
+  print(f"Cache hit rate: {metrics['cache_hit_rate']}")
+  print(f"Average response time: {metrics['avg_response_time_ms']}ms")
+  ```
+  </Tip>
+</Accordion>
+
+<Accordion title="Security Conflicts">
+  <Info>
+  **Gradual hardening**: Implement security measures gradually to avoid breaking functionality.
+  </Info>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Configuration is a balance between security, performance, and functionality. Monitor your application's behavior and adjust configuration based on real-world usage patterns.
+</Note>
