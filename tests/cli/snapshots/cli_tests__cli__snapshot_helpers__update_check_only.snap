@@ -1,6 +1,5 @@
 ---
 source: tests/cli/snapshot_helpers.rs
-assertion_line: 195
 expression: normalized
 ---
 FastSkill [VERSION]
@@ -9,9 +8,9 @@ Updating skills...
 
 Skills that would be updated:
 
-  • web-scraper (from Source { name: "default", skill: "web-scraper", version: Some("[VERSION]") })
   • dev-tools (from Git { url: "https://github.com/org/dev-tools.git", branch: Some("main"), tag: None, subdir: None })
   • local-skill (from Local { path: "./local-skill", editable: false })
   • remote-skill (from ZipUrl { base_url: "https://example.com/skill.zip", version: None })
+  • web-scraper (from Source { name: "default", skill: "web-scraper", version: Some("[VERSION]") })
 
 [INFO] Run without --check to actually update
