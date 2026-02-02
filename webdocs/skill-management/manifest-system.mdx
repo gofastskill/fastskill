@@ -1,0 +1,413 @@
+---
+title: "Skills Manifest System"
+description: "Learn how FastSkill uses declarative manifest files to manage skills, similar to Poetry or npm package management"
+---
+
+# Skills Manifest System
+
+FastSkill uses a **declarative manifest system** inspired by modern package managers like Poetry and npm. This system allows you to define which skills should be installed in your project, manage their versions, and ensure reproducible installations.
+
+## Overview
+
+FastSkill uses a **unified `skill-project.toml` file** for all project configuration, following industry-standard patterns like `pyproject.toml` and `package.json`. The manifest system consists of:
+
+1. **`skill-project.toml`** (project root) - Unified configuration file with `[dependencies]` section for skill dependencies and `[tool.fastskill.repositories]` for repository configuration
+2. **`skills.lock`** (project root) - Lock file recording exact installed state (like `poetry.lock`)
+3. **`skill-project.toml`** (skill directory) - Skill metadata for authors with `[metadata]` section
+
+## Context Detection
+
+FastSkill automatically detects whether you're working in a skill directory or project root:
+
+- **Skill-level**: `skill-project.toml` in directory with `SKILL.md` → requires `[metadata]` section with `id` and `version`
+- **Project-level**: `skill-project.toml` at project root → requires `[dependencies]` section
+
+The same file name works in both contexts with different required sections.
+
+## skill-project.toml - Project-Level Configuration
+
+The `skill-project.toml` file at your project root is the **source of truth** for which skills should be installed in your skills directory.
+
+### Basic Structure
+
+```toml
+# Project root: skill-project.toml
+
+# Optional: Project metadata (for documentation)
+[metadata]
+name = "my-awesome-project"
+version = "1.0.0"
+description = "My project that uses FastSkill skills"
+
+# Required: Skill dependencies
+[dependencies]
+web-scraper = { source = "git", url = "https://github.com/org/web-scraper.git", branch = "main" }
+monitoring = { source = "source", name = "team-tools", skill = "monitoring", version = "1.0.0" }
+
+# Optional: Repository configuration
+[tool.fastskill.repositories]
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+priority = 0
+index_url = "https://api.fastskill.io/index"
+auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }
+```
+
+### Dependency Source Types
+
+All existing dependency source types are supported in the `[dependencies]` section:
+
+**Git Repository:**
+```toml
+[dependencies]
+git-skill = { source = "git", url = "https://github.com/org/skill.git", branch = "main" }
+```
+
+**Local Path:**
+```toml
+[dependencies]
+local-skill = { source = "local", path = "./local-skill" }
+```
+
+**ZIP URL:**
+```toml
+[dependencies]
+zip-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+```
+
+**Registry Source:**
+```toml
+[dependencies]
+registry-skill = { source = "source", name = "public-registry", skill = "skill-name", version = "1.0.0" }
+```
+
+**With Groups:**
+```toml
+[dependencies]
+dev-skill = { source = "git", url = "https://github.com/org/dev-skill.git", groups = ["dev"] }
+```
+
+**Editable Install:**
+```toml
+[dependencies]
+editable-skill = { source = "local", path = "./skill", editable = true }
+```
+
+### Groups
+
+Skills can be organized into groups (like Poetry groups):
+
+```toml
+[dependencies]
+# Default skills (installed in all cases)
+web-scraper = { source = "git", url = "https://github.com/org/repo.git" }
+
+# Development group skills
+pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+
+# Production group skills
+monitoring = { source = "source", name = "team-tools", skill = "monitoring", groups = ["prod"] }
+```
+
+**Install commands:**
+- `fastskill install` - Installs all skills (default + all groups)
+- `fastskill install --without dev` - Installs all except dev group
+- `fastskill install --only prod` - Installs only prod group
+
+### Editable Installs
+
+For local development, you can mark skills as editable:
+
+```toml
+[dependencies]
+my-local-skill = { source = "local", path = "./local-skills/my-skill", editable = true, groups = ["dev"] }
+```
+
+Editable skills are installed as symlinks (on Unix) or references, allowing you to edit them in place without reinstalling.
+
+### Repository Configuration
+
+Repository configuration is stored in the `[tool.fastskill.repositories]` section:
+
+```toml
+[tool.fastskill.repositories]
+# HTTP Registry
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+priority = 0
+index_url = "https://api.fastskill.io/index"
+auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }
+
+# Git Marketplace
+[[tool.fastskill.repositories]]
+name = "team-marketplace"
+type = "git-marketplace"
+priority = 1
+url = "https://github.com/org/skills.git"
+branch = "main"
+
+# ZIP URL Repository
+[[tool.fastskill.repositories]]
+name = "archive-repo"
+type = "zip-url"
+priority = 2
+zip_url = "https://example.com/skills.zip"
+
+# Local Repository
+[[tool.fastskill.repositories]]
+name = "local-repo"
+type = "local"
+priority = 3
+path = "/path/to/local/skills"
+```
+
+Repositories are searched in priority order (lower number = higher priority). If multiple repositories have the same priority, the first one in the file is used.
+
+## skills.lock - Lock File
+
+The `skills.lock` file at your project root records the **exact installed state** of all skills for reproducibility.
+
+### Structure
+
+```toml
+[metadata]
+version = "1.0.0"
+generated_at = "2024-01-01T12:00:00Z"
+fastskill_version = "0.1.0"
+
+[[skills]]
+id = "web-scraper"
+name = "Web Scraper"
+version = "1.2.3"
+source = { type = "git", url = "https://github.com/org/repo.git", branch = "main" }
+commit_hash = "abc123def456789"
+fetched_at = "2024-01-01T12:00:00Z"
+groups = []
+editable = false
+```
+
+### Key Differences from skill-project.toml
+
+| Feature | skill-project.toml | skills.lock |
+|---------|-------------|------------------|
+| **Purpose** | Declarative (what should be) | Exact state (what is installed) |
+| **Editable** | Yes (user edits) | No (auto-generated) |
+| **Versions** | Flexible (branches, ranges) | Exact (specific commits/versions) |
+| **Commit Hashes** | No | Yes (for Git sources) |
+| **Timestamps** | No | Yes (fetched_at) |
+| **Groups** | Yes | Yes (from manifest) |
+| **Location** | Project root | Project root |
+
+### When Lock File is Updated
+
+The lock file is automatically updated when you:
+- Run `fastskill install`
+- Run `fastskill add <skill>`
+- Run `fastskill update`
+- Run `fastskill remove <skill>`
+
+**Never edit the lock file manually** - it's generated automatically to ensure accuracy.
+
+## Workflow Examples
+
+### Development Workflow
+
+```bash
+# 1. Add a skill to manifest
+fastskill add https://github.com/org/skill.git --group dev
+
+# 2. Install all skills
+fastskill install
+
+# 3. Commit both files
+git add skill-project.toml skills.lock
+git commit -m "Add development skill"
+```
+
+### Production Deployment
+
+```bash
+# 1. Install from lock file (reproducible)
+fastskill install --lock
+
+# 2. Only production skills
+fastskill install --without dev
+```
+
+### Team Collaboration
+
+```bash
+# Developer 1: Adds a skill
+fastskill add --group dev pytest
+
+# Developer 2: Gets updates
+git pull
+fastskill install
+
+# Both have identical skill installations
+```
+
+## Version Management
+
+### Semantic Versioning
+
+Skills can use semantic versioning when distributed as ZIP files:
+
+```toml
+[dependencies]
+versioned-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+```
+
+### Git-Based Versioning
+
+For Git sources, FastSkill tracks:
+- **Branch**: The branch being tracked
+- **Commit Hash**: Exact commit installed
+- **Tag**: Optional tag reference
+
+```toml
+# In skill-project.toml (declarative)
+[dependencies]
+web-scraper = { source = "git", url = "...", branch = "main" }
+
+# In skills.lock (exact state)
+[[skills]]
+id = "web-scraper"
+source = { type = "git", url = "...", branch = "main" }
+commit_hash = "abc123def456789"  # Exact commit
+```
+
+## skill-project.toml - Skill-Level Configuration
+
+Skill authors can provide comprehensive metadata in `skill-project.toml` within their skill directory. This file uses the same name as the project-level configuration but serves a different purpose.
+
+**Full structure**:
+
+```toml
+# my-skill/skill-project.toml
+
+# Required: Skill metadata
+[metadata]
+id = "my-skill"  # Required: must not contain slashes
+version = "1.2.3"  # Required: semantic version
+description = "Does something useful"  # Optional
+author = "Jane Doe"  # Optional
+tags = ["automation", "cli"]  # Optional
+capabilities = ["file-processing"]  # Optional
+
+# Optional: Skill dependencies (if this skill depends on other skills)
+[dependencies]
+other-skill = "1.0.0"
+another-skill = { source = "source", name = "registry", skill = "another", version = "2.0.0" }
+```
+
+**Key Points**:
+- The `id` field is required and must not contain forward slashes or scope information
+- The `version` field is also required
+- Skill name for display comes from `SKILL.md` frontmatter, not from `skill-project.toml`
+- Created using `fastskill init` command in the skill directory
+- When generating `marketplace.json` or during skill registration, fields in `skill-project.toml` take precedence over `SKILL.md` frontmatter
+
+**Context Detection**: FastSkill automatically detects skill-level context when `skill-project.toml` exists in a directory containing `SKILL.md`, requiring the `[metadata]` section instead of `[dependencies]`.
+
+## Best Practices
+
+### 1. Commit Both Files
+
+Always commit both `skill-project.toml` and `skills.lock`:
+
+```bash
+git add skill-project.toml skills.lock
+git commit -m "Add skills"
+```
+
+### 2. Use Groups for Environments
+
+Separate development and production skills:
+
+```toml
+[dependencies]
+# Development tools
+pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+
+# Production monitoring
+monitoring = { source = "source", name = "team-tools", skill = "monitoring", groups = ["prod"] }
+```
+
+### 3. Lock File for Production
+
+Use `--lock` flag for reproducible production deployments:
+
+```bash
+fastskill install --lock
+```
+
+### 4. Regular Updates
+
+Keep skills up to date:
+
+```bash
+# Check for updates
+fastskill update --check
+
+# Update all skills
+fastskill update
+
+# Update specific skill
+fastskill update my-skill-id
+```
+
+### 5. Editable for Local Development
+
+Use editable installs for skills you're developing:
+
+```bash
+fastskill add ./my-skill -e --group dev
+```
+
+## Comparison with Other Package Managers
+
+FastSkill's manifest system is inspired by modern package managers:
+
+| Feature | FastSkill | Poetry | npm |
+|---------|-----------|--------|-----|
+| Declarative manifest | `skill-project.toml` | `pyproject.toml` | `package.json` |
+| Lock file | `skills.lock` | `poetry.lock` | `package-lock.json` |
+| Groups | `groups = ["dev"]` | `--group dev` | `devDependencies` |
+| Editable installs | `editable = true` | `-e` flag | `npm link` |
+| Source tracking | Git, ZIP, local | PyPI, Git, local | npm registry, Git |
+
+## Troubleshooting
+
+### Lock File Out of Sync
+
+If your lock file doesn't match installed skills:
+
+```bash
+# Regenerate lock file
+fastskill install
+```
+
+### Missing Skills
+
+If skills are missing after `git pull`:
+
+```bash
+# Install from lock file
+fastskill install --lock
+```
+
+### Version Conflicts
+
+If you see version conflicts:
+
+```bash
+# Check what's installed
+fastskill show
+
+# Update to resolve conflicts
+fastskill update
+```
+

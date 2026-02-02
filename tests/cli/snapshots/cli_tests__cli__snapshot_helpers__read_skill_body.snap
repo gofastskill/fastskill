@@ -1,0 +1,39 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Reading: body-skill
+Base directory: [TEMP_DIR]
+
+---
+name: body-skill
+description: Skill for testing body content display
+version: [VERSION]
+tags: [test, body]
+---
+# Body Skill
+
+This skill has comprehensive body content for testing.
+
+## Features
+
+This skill demonstrates:
+- Markdown rendering
+- Multiple sections
+- Code blocks
+- Lists and tables
+
+## Usage
+
+Used to verify that skill body content is properly displayed in the CLI read command.
+
+## Installation
+
+Install this skill to test body content rendering.
+
+## Examples
+
+Example usage showing that the skill body should be displayed correctly.
+
+Skill read: body-skill

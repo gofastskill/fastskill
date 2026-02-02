@@ -1,0 +1,64 @@
+---
+title: Cheatsheet
+description: Quick reference for common FastSkill operations
+---
+
+# FastSkill Cheatsheet
+
+Quick reference for common FastSkill operations.
+
+## Installation
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Public registry | `fastskill add pptx` | Installs skill from configured registry, clones to `.claude/skills/`, updates `skill-project.toml` and `skills.lock` |
+| With version | `fastskill add pptx@1.2.3` | Installs specific version from registry, pins exact version in lock file |
+| Private registry | `fastskill add team-skill` | Installs from private registry (auth configured in `skill-project.toml`), uses env var for authentication |
+| Git repo | `fastskill add https://github.com/org/skill.git` | Git URL is the source (no package name needed), clones repository, validates skill structure, registers and installs to skills directory |
+| Network share | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Installs from corporate network file share, copies skill to local skills directory, enables team-wide skill distribution |
+| Editable install | `fastskill add ./dev-skill -e` | Creates symlink/reference to local path, changes reflect immediately without reinstall |
+| Read skill | `fastskill read my-skill-id` | Retrieves skill documentation and base directory path in agent-optimized format |
+| List installed | `fastskill list` | Lists locally installed skills with reconciliation status (grid format) |
+| List installed (JSON) | `fastskill list --json` | Lists locally installed skills in JSON format with reconciliation status |
+| Remove skill | `fastskill remove my-skill-id` | Removes skill from skills directory, updates `skill-project.toml` and `skills.lock`, prompts for confirmation |
+| Force remove | `fastskill remove my-skill-id --force` | Removes skill without confirmation prompt |
+| Show all skills | `fastskill show` | Lists all installed skills with versions from lock file |
+| Show skill details | `fastskill show my-skill-id` | Displays detailed information about specific skill (ID, version, description, source) |
+| Show dependency tree | `fastskill show --tree` | Displays dependency relationships between installed skills |
+
+## Skill Authoring
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Initialize metadata | `fastskill init` | Extracts metadata from `SKILL.md` frontmatter, prompts for missing fields, creates `skill-project.toml` |
+| With version | `fastskill init --version 1.2.3` | Creates `skill-project.toml` with specified version, skips version prompt |
+| Non-interactive | `fastskill init --yes` | Uses defaults from `SKILL.md`, creates `skill-project.toml` without prompts |
+| Package skill | `fastskill package --output ./artifacts` | Packages skill into ZIP artifact with version from `skill-project.toml`, creates checksums and metadata |
+| Auto-detect changes | `fastskill package --detect-changes --auto-bump` | Detects changed skills using file hashes, auto-bumps version, packages only changed skills |
+| Package specific | `fastskill package --skills web-scraper data-processor` | Packages only specified skills into ZIP artifacts |
+
+## Servers
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Web UI | `fastskill serve --enable-registry` | Starts HTTP server with REST API and web UI at `/registry` for browsing installed skills |
+| API server | `fastskill serve` | Starts HTTP server with REST API only (no web UI), exposes endpoints for programmatic access |
+
+## Admin
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| List repositories | `fastskill registry list` | Lists all configured repositories from `skill-project.toml` |
+| Show repository | `fastskill registry show repo-name` | Displays repository configuration details (type, URL, auth, priority) |
+| Add repository | `fastskill registry add repo-name --type git-marketplace --url <url>` | Adds new repository to `skill-project.toml`, supports git-marketplace, http-registry, zip-url, local |
+| Remove repository | `fastskill registry remove repo-name` | Removes repository from `skill-project.toml` |
+| Create marketplace | `fastskill registry create --path ./skills` | Scans directory for skills, generates `marketplace.json` for repository distribution |
+| List registry skills | `fastskill registry list-skills` | Lists all skills from HTTP registry (grid format) |
+| List registry skills (JSON) | `fastskill registry list-skills --json` | Lists all skills from HTTP registry in JSON format |
+| List by scope | `fastskill registry list-skills --scope acme` | Lists skills filtered by scope from HTTP registry |
+| List all versions | `fastskill registry list-skills --all-versions` | Lists all versions of each skill from HTTP registry |
+| Show skill | `fastskill registry show-skill skill-id` | Shows details for a specific skill |
+| Search skills | `fastskill registry search query` | Searches for skills across repositories |
+
+For detailed documentation, see the [README](/) and [Registry Guide](/registry/overview).
+

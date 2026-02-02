@@ -1,0 +1,73 @@
+<svg width="800" height="500" viewBox="0 0 800 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- FastSkill Architecture Diagram -->
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0D9373;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#10B981;stop-opacity:1" />
+    </linearGradient>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #1F2937; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; fill: #374151; }
+      .label { font-family: Arial, sans-serif; font-size: 12px; fill: #1F2937; }
+    </style>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="500" fill="#F9FAFB" rx="8"/>
+  
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" class="title">FastSkill Architecture</text>
+  
+  <!-- AI Agent Layer -->
+  <rect x="50" y="70" width="200" height="100" rx="8" fill="url(#grad1)" opacity="0.1"/>
+  <text x="150" y="95" text-anchor="middle" class="subtitle" fill="#0D9373">AI Agent Layer</text>
+  <circle cx="100" cy="125" r="15" fill="#0D9373"/>
+  <text x="100" y="130" text-anchor="middle" class="label" fill="white" font-size="10">Agent</text>
+  <circle cx="150" cy="125" r="15" fill="#10B981"/>
+  <text x="150" y="130" text-anchor="middle" class="label" fill="white" font-size="10">Frame</text>
+  <circle cx="200" cy="125" r="15" fill="#059669"/>
+  <text x="200" y="130" text-anchor="middle" class="label" fill="white" font-size="10">Tools</text>
+  
+  <!-- Service Layer -->
+  <rect x="300" y="200" width="200" height="150" rx="8" fill="url(#grad1)" opacity="0.2"/>
+  <text x="400" y="225" text-anchor="middle" class="subtitle" fill="#0D9373">Service Layer</text>
+  <rect x="320" y="240" width="160" height="30" rx="4" fill="#0D9373"/>
+  <text x="400" y="260" text-anchor="middle" class="label" fill="white">FastSkill Service</text>
+  <rect x="320" y="280" width="70" height="25" rx="4" fill="#10B981" opacity="0.7"/>
+  <text x="355" y="296" text-anchor="middle" class="label" fill="white" font-size="10">Manager</text>
+  <rect x="410" y="280" width="70" height="25" rx="4" fill="#10B981" opacity="0.7"/>
+  <text x="445" y="296" text-anchor="middle" class="label" fill="white" font-size="10">Discovery</text>
+  <rect x="320" y="315" width="70" height="25" rx="4" fill="#10B981" opacity="0.7"/>
+  <text x="355" y="330" text-anchor="middle" class="label" fill="white" font-size="10">Loading</text>
+  <rect x="410" y="315" width="70" height="25" rx="4" fill="#10B981" opacity="0.7"/>
+  <text x="445" y="330" text-anchor="middle" class="label" fill="white" font-size="10">Routing</text>
+  
+  <!-- Storage Layer -->
+  <rect x="550" y="200" width="200" height="150" rx="8" fill="url(#grad1)" opacity="0.15"/>
+  <text x="650" y="225" text-anchor="middle" class="subtitle" fill="#0D9373">Storage Layer</text>
+  <rect x="570" y="240" width="160" height="30" rx="4" fill="#059669"/>
+  <text x="650" y="260" text-anchor="middle" class="label" fill="white">Skill Storage</text>
+  <rect x="580" y="280" width="70" height="25" rx="4" fill="#0D9373" opacity="0.6"/>
+  <text x="615" y="296" text-anchor="middle" class="label" fill="white" font-size="10">Filesystem</text>
+  <rect x="660" y="280" width="60" height="25" rx="4" fill="#0D9373" opacity="0.6"/>
+  <text x="690" y="296" text-anchor="middle" class="label" fill="white" font-size="10">ZIP</text>
+  <rect x="580" y="315" width="70" height="25" rx="4" fill="#0D9373" opacity="0.6"/>
+  <text x="615" y="330" text-anchor="middle" class="label" fill="white" font-size="10">Execution</text>
+  <rect x="660" y="315" width="60" height="25" rx="4" fill="#0D9373" opacity="0.6"/>
+  <text x="690" y="330" text-anchor="middle" class="label" fill="white" font-size="10">Sandbox</text>
+  
+  <!-- Arrows -->
+  <path d="M250 125 L 300 275" stroke="#0D9373" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <path d="M500 275 L 550 275" stroke="#0D9373" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#0D9373" />
+    </marker>
+  </defs>
+  
+  <!-- Footer note -->
+  <text x="400" y="480" text-anchor="middle" class="label" fill="#6B7280" font-size="11">Language-agnostic service layer for AI agent skill management</text>
+</svg>
+

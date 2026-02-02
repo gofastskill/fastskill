@@ -1,0 +1,5 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Error: Configuration error: Failed to remove repository: Custom error: Repository 'nonexistent-repo' not found

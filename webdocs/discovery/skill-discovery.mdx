@@ -1,0 +1,531 @@
+---
+title: "Skill Discovery"
+description: "Learn how FastSkill discovers and finds relevant skills using text search, capability matching, and intelligent filtering."
+---
+
+## Overview
+
+Skill discovery is the process of finding relevant skills for a given task or query. FastSkill provides multiple discovery methods to ensure AI agents can find the most appropriate skills for their needs.
+
+<Info>
+Effective skill discovery is crucial for AI agent performance. FastSkill uses multiple algorithms and metadata to provide accurate, relevant results.
+</Info>
+
+## Discovery Methods
+
+FastSkill offers several complementary discovery methods, each optimized for different types of queries and use cases.
+
+### Text Search
+
+Full-text search across skill descriptions, names, and metadata:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Search by natural language
+    let skills = service.metadata_service()
+        .discover_skills("extract text from PDF documents")
+        .await?;
+    println!("Found {} text extraction skills", skills.len());
+
+    // Search by functionality
+    let skills = service.metadata_service()
+        .discover_skills("convert documents to different formats")
+        .await?;
+    println!("Found {} conversion skills", skills.len());
+
+    // Search by domain
+    let skills = service.metadata_service()
+        .discover_skills("analyze data and create visualizations")
+        .await?;
+    println!("Found {} analysis skills", skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+<Note>
+Text search uses TF-IDF (Term Frequency-Inverse Document Frequency) and semantic similarity algorithms to find relevant skills even when exact keywords don't match.
+</Note>
+
+### Capability Matching
+
+Find skills by specific capabilities they provide:
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Search by specific capability
+    let extraction_skills = service.metadata_service()
+        .find_skills_by_capability("text_extraction")
+        .await?;
+    println!("📄 Text extraction: {} skills", extraction_skills.len());
+
+    // Search by processing capability
+    let analysis_skills = service.metadata_service()
+        .find_skills_by_capability("data_analysis")
+        .await?;
+    println!("📊 Data analysis: {} skills", analysis_skills.len());
+
+    // Search by conversion capability
+    let conversion_skills = service.metadata_service()
+        .find_skills_by_capability("format_conversion")
+        .await?;
+    println!("🔄 Format conversion: {} skills", conversion_skills.len());
+
+    // Search by web capability
+    let web_skills = service.metadata_service()
+        .find_skills_by_capability("web_scraping")
+        .await?;
+    println!("🌐 Web scraping: {} skills", web_skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+### Tag-Based Search
+
+Find skills using categorization tags:
+
+```python
+async def tag_search_example():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Search by category tags
+    text_skills = await service.find_skills_by_tag("text")
+    print(f"📝 Text skills: {len(text_skills)}")
+
+    # Search by domain tags
+    nlp_skills = await service.find_skills_by_tag("nlp")
+    print(f"🧠 NLP skills: {len(nlp_skills)}")
+
+    # Search by technology tags
+    ai_skills = await service.find_skills_by_tag("ai")
+    print(f"🤖 AI skills: {len(ai_skills)}")
+
+    # Search by format tags
+    pdf_skills = await service.find_skills_by_tag("pdf")
+    print(f"📋 PDF skills: {len(pdf_skills)}")
+
+    await service.shutdown()
+```
+
+## Advanced Discovery
+
+### Multi-Criteria Search
+
+Combine multiple search criteria for precise results:
+
+<CodeGroup>
+```python Python
+async def advanced_discovery():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Define search criteria
+    query = "analyze data from CSV files and create charts"
+    required_capabilities = ["data_analysis", "csv_processing"]
+    preferred_tags = ["data", "analysis", "visualization"]
+
+    # Multi-criteria search
+    skills = await service.discover_skills(query)
+
+    # Filter by capabilities
+    capability_matches = []
+    for skill in skills:
+        skill_capabilities = skill.get('capabilities', '').split(',')
+        if any(cap in skill_capabilities for cap in required_capabilities):
+            capability_matches.append(skill)
+
+    # Filter by tags
+    tag_matches = []
+    for skill in capability_matches:
+        skill_tags = skill.get('tags', '').split(',')
+        if any(tag in skill_tags for tag in preferred_tags):
+            tag_matches.append(skill)
+
+    print(f"🎯 Found {len(tag_matches)} skills matching all criteria")
+
+    # Show results
+    for skill in tag_matches[:3]:
+        print(f"   - {skill['name']}: {skill['description']}")
+
+    await service.shutdown()
+```
+
+```rust Rust
+async fn advanced_discovery() -> Result<(), Box<dyn std::error::Error>> {
+    let service = FastSkillService::new(config).await?;
+
+    // Multi-criteria search
+    let query = "analyze data from CSV files and create charts";
+    let skills = service.metadata_service().discover_skills(query).await?;
+
+    // Filter by multiple criteria
+    let filtered_skills: Vec<_> = skills.into_iter()
+        .filter(|skill| {
+            let capabilities: Vec<&str> = skill.capabilities.split(',').collect();
+            capabilities.contains(&"data_analysis") && capabilities.contains(&"csv_processing")
+        })
+        .filter(|skill| {
+            let tags: Vec<&str> = skill.tags.split(',').collect();
+            tags.contains(&"data") || tags.contains(&"analysis")
+        })
+        .collect();
+
+    println!("Found {} skills matching criteria", filtered_skills.len());
+
+    Ok(())
+}
+```
+</CodeGroup>
+
+### Fuzzy Matching
+
+Handle typos, variations, and partial matches:
+
+```python
+async def fuzzy_search_example():
+    service = FastSkillService()
+    await service.initialize()
+
+    # These queries should find similar skills even with variations
+    queries = [
+        "extrakt text from PDF",      # Typo in "extract"
+        "convert to pdf",             # Missing "document" context
+        "analize data",               # Typo in "analyze"
+        "webscraping",                # Alternative spelling
+        "doc conversion",             # Abbreviated terms
+        "file format change"          # Different terminology
+    ]
+
+    for query in queries:
+        skills = await service.discover_skills(query)
+        print(f"🔍 '{query}': {len(skills)} matches")
+
+        if skills:
+            print(f"   💡 Best match: {skills[0]['name']}")
+
+    await service.shutdown()
+```
+
+## Search Configuration
+
+### Search Settings
+
+Configure discovery behavior for your use case:
+
+```python
+# Configure search parameters
+config = ServiceConfig(
+    search_config=SearchConfig(
+        max_results=20,                    # Maximum results to return
+        min_relevance_score=0.3,          # Minimum relevance threshold
+        enable_fuzzy_matching=True,       # Allow fuzzy matching
+        fuzzy_threshold=0.8,              # Fuzzy matching sensitivity
+        enable_semantic_search=True,      # Use semantic similarity
+        semantic_weight=0.4,              # Weight for semantic vs keyword search
+        boost_exact_matches=True,         # Boost exact phrase matches
+        boost_recent_skills=True,         # Favor recently updated skills
+        enable_caching=True,              # Cache search results
+        cache_ttl_seconds=300             # Search cache duration
+    )
+)
+```
+
+### Custom Scoring
+
+Implement custom relevance scoring:
+
+```python
+async def custom_scoring_example():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Get all skills
+    all_skills = await service.list_skills()
+
+    # Define custom scoring weights
+    def custom_relevance_score(skill, query):
+        score = 0.0
+
+        # Text match score (0.4 weight)
+        if query.lower() in skill['description'].lower():
+            score += 0.4
+
+        # Capability match (0.3 weight)
+        query_caps = extract_capabilities_from_query(query)
+        skill_caps = skill.get('capabilities', '').split(',')
+        capability_matches = len(set(query_caps) & set(skill_caps))
+        score += 0.3 * (capability_matches / max(len(query_caps), 1))
+
+        # Tag match (0.2 weight)
+        query_tags = extract_tags_from_query(query)
+        skill_tags = skill.get('tags', '').split(',')
+        tag_matches = len(set(query_tags) & set(skill_tags))
+        score += 0.2 * (tag_matches / max(len(query_tags), 1))
+
+        # Recency bonus (0.1 weight)
+        if is_recently_updated(skill):
+            score += 0.1
+
+        return score
+
+    # Apply custom scoring
+    query = "analyze text data"
+    scored_skills = [(skill, custom_relevance_score(skill, query))
+                    for skill in all_skills]
+
+    # Sort by score and filter
+    scored_skills.sort(key=lambda x: x[1], reverse=True)
+    top_skills = [skill for skill, score in scored_skills if score > 0.2]
+
+    print(f"🎯 Custom scoring found {len(top_skills)} relevant skills")
+    for skill in top_skills[:5]:
+        print(f"   - {skill['name']} (score: {scored_skills[all_skills.index(skill)][1]:.3f})")
+
+    await service.shutdown()
+```
+
+## Discovery APIs
+
+### REST API
+
+```bash
+# Text search
+curl -X GET "http://localhost:8080/api/discovery/search?q=extract%20text%20from%20PDF" \
+  -H "Content-Type: application/json"
+
+# Capability search
+curl -X GET "http://localhost:8080/api/discovery/capabilities/text_extraction" \
+  -H "Content-Type: application/json"
+
+# Tag search
+curl -X GET "http://localhost:8080/api/discovery/tags/text" \
+  -H "Content-Type: application/json"
+
+# Advanced search
+curl -X POST "http://localhost:8080/api/discovery/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "analyze data",
+    "capabilities": ["data_analysis"],
+    "tags": ["data", "analysis"],
+    "limit": 10,
+    "min_score": 0.5
+  }'
+```
+
+### WebSocket API
+
+```python
+# Real-time discovery updates
+async def websocket_discovery():
+    import websockets
+    import json
+
+    async with websockets.connect("ws://localhost:8080/ws/discovery") as websocket:
+        # Subscribe to discovery events
+        subscription = {
+            "type": "subscribe",
+            "channels": ["skill.discovered", "skill.updated"]
+        }
+        await websocket.send(json.dumps(subscription))
+
+        # Continuous discovery
+        while True:
+            message = await websocket.recv()
+            event = json.loads(message)
+
+            if event["type"] == "skill.discovered":
+                print(f"🆕 New skill discovered: {event['skill']['name']}")
+            elif event["type"] == "skill.updated":
+                print(f"🔄 Skill updated: {event['skill']['name']}")
+```
+
+## Performance Optimization
+
+### Caching Strategy
+
+```python
+# Configure discovery caching
+config = ServiceConfig(
+    cache=CacheConfig(
+        metadata_cache_size=2000,    # Cache skill metadata
+        search_cache_size=500,       # Cache search results
+        cache_ttl_seconds=600,       # 10 minute cache
+        enable_persistence=True     # Persist cache to disk
+    )
+)
+```
+
+### Batch Discovery
+
+```python
+# Efficient batch discovery
+async def batch_discovery_example():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Multiple queries at once
+    queries = [
+        "extract text from documents",
+        "analyze data patterns",
+        "convert file formats",
+        "scrape website content",
+        "organize files by type"
+    ]
+
+    # Batch discovery (more efficient than individual calls)
+    all_results = []
+    for query in queries:
+        skills = await service.discover_skills(query)
+        all_results.append((query, skills))
+
+    # Process results
+    for query, skills in all_results:
+        print(f"🔍 '{query}': {len(skills)} matches")
+        if skills:
+            print(f"   💡 Top match: {skills[0]['name']}")
+
+    await service.shutdown()
+```
+
+## Discovery Analytics
+
+Monitor and analyze discovery performance:
+
+```python
+async def discovery_analytics():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Get discovery statistics
+    all_skills = await service.list_skills()
+
+    # Analyze capability distribution
+    capability_counts = {}
+    for skill in all_skills:
+        capabilities = skill.get('capabilities', '').split(',')
+        for cap in capabilities:
+            cap = cap.strip()
+            if cap:
+                capability_counts[cap] = capability_counts.get(cap, 0) + 1
+
+    print("📊 Capability Distribution:")
+    for cap, count in sorted(capability_counts.items(), key=lambda x: x[1], reverse=True):
+        print(f"   {cap}: {count} skills")
+
+    # Analyze tag distribution
+    tag_counts = {}
+    for skill in all_skills:
+        tags = skill.get('tags', '').split(',')
+        for tag in tags:
+            tag = tag.strip()
+            if tag:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+    print(f"\n🏷️  Tag Distribution (top 10):")
+    for tag, count in sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
+        print(f"   {tag}: {count} skills")
+
+    await service.shutdown()
+```
+
+## Best Practices
+
+<Steps>
+<Step title="Use descriptive metadata">
+  Provide comprehensive descriptions, relevant tags, and specific capabilities to improve discoverability.
+</Step>
+
+<Step title="Test discovery queries">
+  Test your skills with various query types to ensure they can be found by users.
+</Step>
+
+<Step title="Monitor search analytics">
+  Track which queries are successful and which skills are rarely discovered to improve metadata.
+</Step>
+
+<Step title="Optimize for multiple query types">
+  Consider how users might search for your skill (by function, domain, technology, etc.).
+</Step>
+
+<Step title="Use consistent terminology">
+  Use consistent terms in descriptions, tags, and capabilities to improve matching accuracy.
+</Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="No Skills Found">
+  <Warning>
+  **Check skill registration**: Ensure skills are properly registered and enabled.
+  ```python
+  skills = await service.list_skills()
+  enabled_skills = [s for s in skills if s.get('enabled', True)]
+  print(f"Enabled skills: {len(enabled_skills)}")
+  ```
+  </Warning>
+
+  <Warning>
+  **Verify metadata**: Check that skill descriptions, tags, and capabilities are comprehensive.
+  ```python
+  # Check a skill's metadata
+  skill = await service.get_skill("skill-id")
+  print(f"Tags: {skill.get('tags', 'No tags')}")
+  print(f"Capabilities: {skill.get('capabilities', 'No capabilities')}")
+  ```
+  </Warning>
+</Accordion>
+
+<Accordion title="Irrelevant Results">
+  <Tip>
+  **Improve metadata**: Add more specific descriptions, tags, and capabilities to help the search algorithm understand your skill better.
+  </Tip>
+
+  <Tip>
+  **Check query processing**: The search engine may be interpreting queries differently than expected. Try different phrasings.
+  </Tip>
+</Accordion>
+
+<Accordion title="Performance Issues">
+  <Info>
+  **Enable caching**: Use search result caching to improve performance for repeated queries.
+  </Info>
+
+  <Info>
+  **Tune search parameters**: Adjust relevance thresholds and result limits based on your use case.
+  </Info>
+</Accordion>
+</AccordionGroup>
+
+<Note>
+Effective skill discovery requires good metadata. Invest time in writing clear descriptions and choosing relevant tags and capabilities to ensure your skills are easily discoverable.
+</Note>

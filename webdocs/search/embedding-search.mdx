@@ -1,0 +1,258 @@
+---
+title: "Embedding-Based Search"
+description: "Use semantic search powered by OpenAI embeddings to find skills based on meaning rather than exact keyword matches."
+---
+
+## Overview
+
+FastSkill's embedding-based search uses OpenAI's embedding models to understand the semantic meaning of queries, enabling intelligent skill discovery beyond simple keyword matching.
+
+<Info>
+Embedding search requires configuration and an OpenAI API key. It provides superior relevance for natural language queries.
+</Info>
+
+<Note>
+**Version Notice**: Semantic search with OpenAI embeddings is available in FastSkill v0.8.0+. For versions prior to v0.8.0, only keyword-based search is available.
+</Note>
+
+## How It Works
+
+### 1. Text Vectorization
+
+Both your search query and all indexed skills are converted into mathematical vectors using OpenAI's embedding models. These vectors capture semantic meaning, not just keywords.
+
+### 2. Similarity Calculation
+
+The system calculates cosine similarity between your query vector and all skill vectors to find the most semantically relevant matches.
+
+### 3. Relevance Ranking
+
+Skills are ranked by their semantic similarity to your query, often finding skills that don't contain exact keywords but are conceptually related.
+
+## Configuration
+
+### 1. Create Configuration File
+
+Create `.fastskill/config.yaml` in your project root:
+
+```yaml
+embedding:
+  openai_base_url: "https://api.openai.com/v1"
+  embedding_model: "text-embedding-3-small"
+```
+
+### 2. Set API Key
+
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+```
+
+### 3. Index Skills
+
+```bash
+fastskill --skills-dir /path/to/skills/ refresh
+```
+
+This command:
+- Scans all `SKILL.md` files in the specified directory
+- Extracts frontmatter and content
+- Generates embeddings for each skill
+- Stores them in a local SQLite database
+
+## Usage
+
+### Basic Semantic Search
+
+```bash
+# Find skills related to document processing
+fastskill --skills-dir .claude/skills/ "process documents and extract information"
+
+# Search for visualization tools
+fastskill --skills-dir .claude/skills/ "create charts and graphs"
+```
+
+### Output Formats
+
+#### Prerequisites
+All search examples require:
+- OpenAI API key configured: `export OPENAI_API_KEY="your-key"`
+- Skills indexed: `fastskill reindex`
+- Configuration file: `.fastskill/config.yaml` with embedding settings
+
+#### Table Format (Default)
+```bash
+# Prerequisites: Set API key and configure embeddings
+export OPENAI_API_KEY="your-openai-api-key"
+fastskill search "powerpoint" --format table
+```
+
+#### JSON Format
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+fastskill search "powerpoint" --format json
+```
+
+#### XML Format
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+fastskill search "powerpoint" --format xml
+```
+
+### Controlling Search Behavior
+
+```bash
+# Prerequisites: Set API key and configure embeddings
+export OPENAI_API_KEY="your-openai-api-key"
+
+# Limit results
+fastskill search "query" --limit 5
+
+# Output formats
+fastskill search "query" --format json
+fastskill search "query" --format xml
+```
+
+## Example Results
+
+### Semantic Search Results
+
+For query: *"I need to run a meeting and need to summarize the main points visually"*
+
+**Embedding Search Finds:**
+- PowerPoint presentation skills
+- Meeting summarization tools
+- Chart and graph creation utilities
+- Visual data representation tools
+
+**Keyword Search Might Miss:**
+- Skills that use synonyms or related terms
+- Tools that focus on the outcome rather than the exact process
+
+## Performance Considerations
+
+### Indexing
+- **First Time**: May take several minutes for large skill sets
+- **Updates**: Only changed skills are re-indexed
+- **Storage**: Embeddings are stored locally in SQLite database
+
+### Search Speed
+- **Very Fast**: Vector similarity search is optimized
+- **Local**: No external API calls during search
+- **Scalable**: Handles thousands of skills efficiently
+
+## Troubleshooting
+
+### Common Issues
+
+#### "Embedding not configured"
+**Solution:** Create `.fastskill/config.yaml` with embedding configuration.
+
+#### "OPENAI_API_KEY environment variable not set"
+**Solution:** Set your OpenAI API key as an environment variable.
+
+#### "Vector index service not available"
+**Solution:** Run `fastskill reindex` first to build the index.
+
+#### API Rate Limits
+**Solution:** The system handles rate limits gracefully. Consider using a paid OpenAI plan for large indexing operations.
+
+### Debugging
+
+Enable verbose logging to troubleshoot issues:
+
+```bash
+RUST_LOG=fastskill=debug fastskill reindex --skills-dir /path/to/skills/
+```
+
+## Integration with AI Agents
+
+### Cursor Integration
+
+FastSkill automatically generates markdown files for Cursor integration:
+
+```bash
+fastskill reindex --skills-dir .claude/skills/
+# Creates .claude/skills/.fastskill/skills.md
+```
+
+This file contains all indexed skills in a format Cursor can use for tool discovery.
+
+### Custom Agent Integration
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Semantic search using metadata service
+    let results = service.metadata_service()
+        .discover_skills("process images and extract text")
+        .await?;
+
+    for skill in results {
+        println!("Found: {} - {}", skill.name, skill.description);
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Best Practices
+
+### Query Formulation
+- Use natural language queries
+- Describe the desired outcome, not specific tools
+- Include context about your use case
+
+### Index Maintenance
+- Run `fastskill reindex` after adding new skills
+- Re-index periodically to catch updates
+- Use `--force` flag to rebuild entire index if needed
+
+### Configuration
+- Use `text-embedding-3-small` for most use cases (cost-effective)
+- Upgrade to `text-embedding-3-large` for higher accuracy if needed
+- Keep API keys secure and rotate regularly
+
+## Cost Considerations
+
+### OpenAI API Costs
+- **text-embedding-3-small**: ~$0.02 per 1M tokens
+- **Indexing**: Costs scale with total content size
+- **Search**: Free after indexing (local vector search)
+
+### Optimization Tips
+- Index only relevant skills
+- Use smaller embedding models for cost savings
+- Cache embeddings to avoid re-indexing
+
+## Advanced Features
+
+### Custom Embedding Models
+FastSkill can be extended to use custom embedding models:
+
+```rust
+// Implement custom embedding service
+struct CustomEmbeddingService {
+    // Your embedding logic here
+}
+
+#[async_trait]
+impl EmbeddingService for CustomEmbeddingService {
+    async fn embed_text(&self, text: &str) -> Result<Vec<f32>, ServiceError> {
+        // Your embedding implementation
+    }
+}
+```
+
+Embedding-based search provides intelligent skill discovery through semantic understanding, finding relevant skills based on meaning rather than exact keyword matches.

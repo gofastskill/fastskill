@@ -1,0 +1,282 @@
+---
+title: package
+api: "package"
+---
+
+# package Command
+
+Package skills into ZIP artifacts with automatic version bumping and change detection. This command is designed for CI/CD pipelines and local development workflows.
+
+## Usage
+
+```bash
+fastskill package [OPTIONS]
+```
+
+## Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--detect-changes` | Auto-detect changed skills using file hash comparison | `false` |
+| `--git-diff <BASE> <HEAD>` | Use git diff for change detection | None |
+| `--skills <IDS...>` | Package specific skills by ID | None |
+| `--bump <major\|minor\|patch>` | Bump version type | None |
+| `--auto-bump` | Auto-detect bump type from changes (defaults to patch) | `false` |
+| `--output <DIR>` | Output directory for artifacts | `./artifacts` |
+| `--force` | Package all skills regardless of changes | `false` |
+| `--dry-run` | Show what would be packaged without actually packaging | `false` |
+| `--skills-dir <DIR>` | Skills directory to scan | `./skills` |
+| `--recursive` | Recursively scan skills directory for nested skills | `false` |
+
+## Examples
+
+### Auto-detect Changed Skills
+
+Detect changed skills using file hash comparison and package them:
+
+```bash
+fastskill package --detect-changes --output ./artifacts
+```
+
+### Git-based Change Detection
+
+Use git diff to detect changed skills between two commits:
+
+```bash
+fastskill package --git-diff HEAD~1 HEAD --output ./artifacts
+```
+
+### Package Specific Skills
+
+Package only specific skills by ID:
+
+```bash
+fastskill package --skills web-scraper data-processor --output ./artifacts
+```
+
+### Version Bumping
+
+Package with explicit version bumping:
+
+```bash
+# Bump minor version
+fastskill package --detect-changes --bump minor --output ./artifacts
+
+# Bump patch version
+fastskill package --detect-changes --bump patch --output ./artifacts
+
+# Bump major version
+fastskill package --detect-changes --bump major --output ./artifacts
+```
+
+### Auto-detect Bump Type
+
+Automatically determine bump type from changes (defaults to patch):
+
+```bash
+fastskill package --detect-changes --auto-bump --output ./artifacts
+```
+
+### Force Package All Skills
+
+Package all skills regardless of changes:
+
+```bash
+fastskill package --force --output ./artifacts
+```
+
+### Recursive Package Discovery
+
+Package all skills recursively from nested directory structures:
+
+```bash
+# Package all skills, including nested ones
+fastskill package --force --recursive --output ./artifacts
+```
+
+When using `--recursive`, the command scans the `--skills-dir` directory recursively and treats any directory containing `SKILL.md` as a skill. Nested skills will have IDs based on their relative path from `skills_dir` (e.g., `category1/skill-a`, `category2/sub/skill-b`).
+
+**Example directory structure:**
+
+```
+skills/
+├── top-level-skill/
+│   └── SKILL.md
+├── category1/
+│   └── nested-skill/
+│       └── SKILL.md
+└── category2/
+    └── sub/
+        └── deep-skill/
+            └── SKILL.md
+```
+
+Running `fastskill package --force --recursive --skills-dir ./skills` will discover:
+- `top-level-skill`
+- `category1/nested-skill`
+- `category2/sub/deep-skill`
+
+Without `--recursive`, only `top-level-skill` would be discovered.
+
+### Dry Run
+
+Show what would be packaged without actually creating artifacts:
+
+```bash
+fastskill package --detect-changes --dry-run
+```
+
+## How It Works
+
+The `package` command:
+
+1. **Detects Changed Skills**: Uses either git diff or file hash comparison to identify which skills have changed
+2. **Reads Current Version**: Extracts version from `skill-project.toml` (or defaults to "1.0.0")
+3. **Bumps Version** (if requested): Updates version based on bump type (major, minor, patch)
+4. **Updates skill-project.toml**: Writes new version to `skill-project.toml` file
+5. **Creates ZIP Artifact**: Packages skill directory into ZIP file with:
+   - All skill files (SKILL.md, scripts/, references/, assets/)
+   - BUILD_INFO.json (build metadata)
+   - CHECKSUM.sha256 (file checksum)
+6. **Updates Build Cache**: Records version, hash, and artifact path in `.fastskill/build-cache.json`
+
+## Artifact Structure
+
+Each packaged skill creates a ZIP file with the following structure:
+
+```
+skill-id-version.zip
+├── SKILL.md
+├── skill-project.toml
+├── scripts/
+├── references/
+├── assets/
+├── BUILD_INFO.json
+└── CHECKSUM.sha256
+```
+
+## Build Cache
+
+The command maintains a build cache at `.fastskill/build-cache.json` that tracks:
+
+- Skill versions
+- File hashes (SHA256)
+- Artifact paths
+- Git commit information
+- Last packaged timestamp
+
+This cache enables efficient change detection on subsequent runs.
+
+## Change Detection Methods
+
+### File Hash-based Detection
+
+Uses SHA256 hashing of all files in skill directories:
+
+```bash
+fastskill package --detect-changes
+```
+
+Compares current file hashes with cached hashes to detect changes.
+
+**Examples:**
+
+```bash
+# Package only skills that have changed since last build
+fastskill package --detect-changes --output ./artifacts
+
+# Combine with auto-bump for patch releases
+fastskill package --detect-changes --auto-bump --output ./artifacts
+
+# Force rebuild all skills (ignores change detection)
+fastskill package --force --output ./artifacts
+```
+
+**What gets hashed:**
+- All files in skill directories (SKILL.md, scripts/, references/, assets/)
+- Excludes: build artifacts, temp files, .git directories
+- Includes: configuration files, source code, documentation
+
+### Git Diff-based Detection
+
+Uses git diff to detect changed skill directories:
+
+```bash
+fastskill package --git-diff HEAD~1 HEAD
+```
+
+More efficient for large repositories with many skills, especially in CI/CD pipelines.
+
+**Examples:**
+
+```bash
+# Package skills changed in the last commit
+fastskill package --git-diff HEAD~1 HEAD --output ./artifacts
+
+# Package skills changed between two specific commits
+fastskill package --git-diff abc123 def456 --output ./artifacts
+
+# Package skills changed since last tag
+fastskill package --git-diff v1.2.0 HEAD --bump minor --output ./artifacts
+
+# Package skills changed in current branch vs main
+fastskill package --git-diff origin/main HEAD --output ./artifacts
+```
+
+**Change Detection Logic:**
+- Identifies skill directories with modified files
+- Considers additions, deletions, and modifications
+- Ignores non-skill file changes (README.md, CI config, etc.)
+- Supports any valid git revision range
+
+**Advanced Scenarios:**
+
+```bash
+# CI/CD: Package only skills changed in PR
+fastskill package \
+  --git-diff origin/main HEAD \
+  --bump patch \
+  --output ./artifacts
+
+# Release management: Major version bump for breaking changes
+fastskill package \
+  --git-diff v1.0.0 v2.0.0 \
+  --bump major \
+  --output ./artifacts
+
+# Hotfix: Patch release for specific commits
+fastskill package \
+  --git-diff hotfix-start hotfix-end \
+  --bump patch \
+  --output ./artifacts
+```
+
+## Version Bumping
+
+Version bumping follows semantic versioning (semver):
+
+- **Major**: Breaking changes (1.2.3 → 2.0.0)
+- **Minor**: New features (1.2.3 → 1.3.0)
+- **Patch**: Bug fixes (1.2.3 → 1.2.4)
+
+The `--auto-bump` flag currently defaults to patch bumps. Future versions may analyze changes to determine appropriate bump type.
+
+## CI/CD Integration
+
+The package command is designed for CI/CD workflows:
+
+```yaml
+# GitHub Actions example
+- name: Package changed skills
+  run: |
+    fastskill package \
+      --git-diff HEAD~1 HEAD \
+      --auto-bump \
+      --output ./artifacts
+```
+
+## See Also
+
+- [Publish Command](/cli-reference/publish-command)
+- [CI/CD Integration Guide](/integration/cicd-pipelines)
+

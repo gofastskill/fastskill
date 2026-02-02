@@ -1,0 +1,146 @@
+---
+title: Registry Web UI
+api: "web-ui"
+---
+
+# Registry Web UI
+
+The FastSkill Registry Web UI provides a user-friendly interface for browsing, searching, and managing skills from configured sources.
+
+## Accessing the UI
+
+Start the server with the registry enabled:
+
+```bash
+fastskill serve --enable-registry
+```
+
+Then open `http://localhost:8080/registry` in your browser.
+
+## Features
+
+### Source Navigation
+
+- **Sidebar**: Browse skills by source
+- **Source filter**: Filter skills by source in the dropdown
+- **Source counts**: See how many skills each source provides
+
+### Search and Filter
+
+- **Text search**: Search by name, description, tags, or capabilities
+- **Status filter**: Show only installed or available skills
+- **Real-time filtering**: Results update as you type
+
+### Skill Cards
+
+Each skill is displayed as a card showing:
+
+- **Name and version**: Primary skill information
+- **Description**: What the skill does
+- **Tags**: Categorization tags
+- **Capabilities**: What the skill can do
+- **Installation status**: Installed (green) or Available (blue)
+- **Source**: Which source provides the skill
+- **Actions**: Install or Uninstall buttons
+
+### Virtual Scrolling
+
+For sources with hundreds of skills, the UI uses virtual scrolling to:
+
+- Only render visible skills
+- Maintain smooth performance
+- Handle large skill lists efficiently
+
+## Using the UI
+
+### Browse Skills
+
+1. Open the registry at `http://localhost:8080/registry`
+2. Skills are automatically loaded from all configured sources
+3. Use the sidebar to filter by source
+4. Click on a source name to show only skills from that source
+
+### Search Skills
+
+1. Type in the search box at the top
+2. Results filter in real-time
+3. Search matches:
+   - Skill names
+   - Descriptions
+   - Tags
+   - Capabilities
+
+### Install Skills
+
+1. Find the skill you want to install
+2. Click the "Install" button
+3. The skill will be added to your local installation
+4. Status updates to "Installed" (green badge)
+
+### Uninstall Skills
+
+1. Find an installed skill
+2. Click the "Uninstall" button
+3. Confirm the action
+4. The skill is removed from your local installation
+
+## API Integration
+
+The UI uses the following API endpoints:
+
+- `GET /api/registry/sources` - List all sources
+- `GET /api/registry/skills` - Get all skills from all sources
+- `GET /api/registry/sources/:name/skills` - Get skills from specific source
+- `POST /api/skills` - Install a skill
+- `DELETE /api/skills/:id` - Uninstall a skill
+
+## Performance
+
+The UI is optimized for performance:
+
+- **Virtual scrolling**: Only renders visible items
+- **Client-side filtering**: Fast search without server round-trips
+- **Caching**: Marketplace.json responses are cached
+- **Lazy loading**: Skills load as needed
+
+## Browser Support
+
+The UI works in modern browsers:
+
+- Chrome/Edge 90+
+- Firefox 88+
+- Safari 14+
+
+## Troubleshooting
+
+### Skills Not Loading
+
+- Check that repositories are configured in `[tool.fastskill.repositories]` section of `skill-project.toml`
+- Verify `marketplace.json` files are accessible
+- Check browser console for errors
+- Verify server logs for API errors
+
+### Search Not Working
+
+- Ensure JavaScript is enabled
+- Check browser console for errors
+- Try refreshing the page
+
+### Install/Uninstall Not Working
+
+- Verify you have proper permissions
+- Check server logs for errors
+- Ensure the skill ID is valid
+
+## Keyboard Shortcuts
+
+- **Ctrl+F / Cmd+F**: Focus search box
+- **Esc**: Clear search
+- **Enter**: Trigger search (when search box is focused)
+
+## See Also
+
+- [Registry Overview](/registry/overview)
+- [Sources Configuration](/registry/sources)
+- [Serve Command](/cli-reference/serve-command)
+

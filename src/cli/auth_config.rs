@@ -40,6 +40,11 @@ struct Claims {
 
 /// Get the config file path
 fn get_config_path() -> CliResult<PathBuf> {
+    // Check for FASTSKILL_CONFIG_DIR environment variable first
+    if let Ok(env_config_dir) = std::env::var("FASTSKILL_CONFIG_DIR") {
+        return Ok(PathBuf::from(env_config_dir).join("config.toml"));
+    }
+
     let config_dir = config_dir()
         .ok_or_else(|| CliError::Config("Failed to determine config directory".to_string()))?;
     let fastskill_dir = config_dir.join("fastskill");

@@ -1,0 +1,544 @@
+---
+title: "Basic Examples"
+description: "Simple, practical examples for common FastSkill use cases including text processing, file management, and data analysis."
+---
+
+## Overview
+
+This section provides simple, copy-paste examples for common FastSkill use cases. Each example includes complete code that you can run immediately to get started with FastSkill.
+
+<Info>
+These examples use the Rust library and CLI. All examples are production-ready and demonstrate real-world usage patterns.
+</Info>
+
+## Text Processing
+
+### Extract Text from PDF
+
+<Steps>
+<Step title="Create a PDF text extractor skill">
+```json skills/pdf-extractor.json
+{
+  "id": "pdf-text-extractor",
+  "name": "PDF Text Extractor",
+  "description": "Extract clean text content from PDF documents",
+  "version": "1.0.0",
+  "author": "FastSkill Examples",
+  "tags": ["text", "pdf", "extraction", "documents"],
+  "capabilities": ["text_extraction", "pdf_processing", "document_analysis"],
+  "skill_file": "pdf-extractor/SKILL.md",
+  "enabled": true,
+  "execution_timeout": 60,
+  "memory_limit_mb": 512,
+  "dependencies": [],
+  "metadata": {
+    "category": "text-processing",
+    "supported_formats": ["pdf"],
+    "max_pages": 100,
+    "output_format": "plain_text"
+  }
+}
+```
+
+```markdown skills/pdf-extractor/SKILL.md
+---
+name: pdf-text-extractor
+description: Extract clean text content from PDF documents
+---
+
+# PDF Text Extractor
+
+This skill extracts text from PDF documents.
+
+## Tools
+
+### extract_text_from_pdf
+
+Extracts text content from a PDF document.
+
+**Parameters:**
+- `file_path` (string, required): Path to the PDF file
+- `page_range` (array, optional): Specific pages to extract (e.g., [1, 2, 3])
+
+**Returns:**
+- Extracted text content
+- Total pages
+- Extracted pages count
+```
+</Step>
+
+<Step title="Register and use the skill with Rust">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize service
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Create skill definition
+    let skill = SkillDefinition::new(
+        SkillId::new("pdf-text-extractor".to_string())?,
+        "PDF Text Extractor".to_string(),
+        "Extract clean text content from PDF documents".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    // Register skill
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("✅ PDF extractor skill registered: {}", skill_id);
+
+    // Discover skills
+    let skills = service.metadata_service()
+        .discover_skills("extract text from PDF")
+        .await?;
+    
+    println!("Found {} relevant skills", skills.len());
+    for skill_meta in skills {
+        println!("  - {}: {}", skill_meta.id, skill_meta.name);
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+</Steps>
+
+### Text Analysis
+
+<Steps>
+<Step title="Create a sentiment analyzer skill">
+```json skills/sentiment-analyzer.json
+{
+  "id": "sentiment-analyzer",
+  "name": "Sentiment Analyzer",
+  "description": "Analyze text sentiment and extract emotional insights",
+  "version": "1.0.0",
+  "author": "FastSkill Examples",
+  "tags": ["text", "nlp", "sentiment", "analysis", "emotions"],
+  "capabilities": ["sentiment_analysis", "text_analysis", "emotion_detection", "opinion_mining"],
+  "skill_file": "sentiment-analyzer/SKILL.md",
+  "enabled": true,
+  "execution_timeout": 30,
+  "memory_limit_mb": 256,
+  "dependencies": [],
+  "metadata": {
+    "category": "text-analysis",
+    "supported_languages": ["en", "es", "fr", "de"],
+    "analysis_types": ["polarity", "subjectivity", "emotions"]
+  }
+}
+```
+
+```markdown skills/sentiment-analyzer/SKILL.md
+---
+name: sentiment-analyzer
+description: Analyze text sentiment and extract emotional insights
+---
+
+# Sentiment Analyzer
+
+This skill analyzes text sentiment and emotions.
+
+## Tools
+
+### analyze_sentiment
+
+Analyzes sentiment and emotions in text content.
+
+**Parameters:**
+- `text` (string, required): Text content to analyze
+- `language` (string, optional): Language code for analysis (default: "en")
+
+**Returns:**
+- Sentiment analysis results (polarity, subjectivity, category)
+- Text statistics
+- Key phrases
+```
+</Step>
+
+<Step title="Test sentiment analysis">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Register sentiment analyzer skill
+    let skill = SkillDefinition::new(
+        SkillId::new("sentiment-analyzer".to_string())?,
+        "Sentiment Analyzer".to_string(),
+        "Analyze text sentiment and emotions".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("✅ Sentiment analyzer registered: {}", skill_id);
+
+    // Discover skills for sentiment analysis
+    let skills = service.metadata_service()
+        .discover_skills("analyze sentiment")
+        .await?;
+    
+    println!("Found {} relevant skills", skills.len());
+    for skill_meta in skills {
+        println!("  - {}: {}", skill_meta.id, skill_meta.name);
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+</Steps>
+
+## File Management
+
+### File Organizer
+
+<Steps>
+<Step title="Create a file organizer skill">
+```json skills/file-organizer.json
+{
+  "id": "file-organizer",
+  "name": "Smart File Organizer",
+  "description": "Automatically organize files by type, size, date, or content",
+  "version": "1.0.0",
+  "author": "FastSkill Examples",
+  "tags": ["files", "organization", "management", "automation"],
+  "capabilities": ["file_management", "directory_operations", "content_analysis", "auto_sorting"],
+  "skill_file": "file-organizer/SKILL.md",
+  "enabled": true,
+  "execution_timeout": 120,
+  "memory_limit_mb": 512,
+  "dependencies": [],
+  "metadata": {
+    "category": "file-management",
+    "supported_operations": ["by_type", "by_size", "by_date", "by_content"],
+    "max_files": 10000,
+    "preserve_structure": true
+  }
+}
+```
+
+```markdown skills/file-organizer/SKILL.md
+---
+name: file-organizer
+description: Automatically organize files by type, size, date, or content
+---
+
+# Smart File Organizer
+
+This skill organizes files automatically.
+
+## Tools
+
+### organize_files_by_type
+
+Organizes files in a directory by their type.
+
+**Parameters:**
+- `source_dir` (string, required): Source directory to organize
+- `target_dir` (string, required): Target directory for organized files
+
+**Returns:**
+- Organization results
+- Files organized count
+- Categories created
+```
+</Step>
+
+<Step title="Test file organization">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Register file organizer skill
+    let skill = SkillDefinition::new(
+        SkillId::new("file-organizer".to_string())?,
+        "File Organizer".to_string(),
+        "Organize files by type".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("✅ File organizer registered: {}", skill_id);
+
+    // Discover skills for file management
+    let skills = service.metadata_service()
+        .discover_skills("organize files")
+        .await?;
+    
+    println!("Found {} relevant skills", skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+import asyncio
+from fastskill import FastSkillService
+import tempfile
+import os
+from pathlib import Path
+
+async def test_file_organizer():
+    service = FastSkillService()
+    await service.initialize()
+
+    # Create test files
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # Create source directory
+        source_dir = temp_path / "source"
+        source_dir.mkdir()
+
+        # Create test files
+        test_files = [
+            ("document.pdf", "This is a PDF document"),
+            ("spreadsheet.xlsx", "Excel spreadsheet data"),
+            ("image.jpg", "JPEG image content"),
+            ("script.py", "# Python script"),
+            ("video.mp4", "Video content"),
+            ("archive.zip", "Compressed archive")
+        ]
+
+        for filename, content in test_files:
+            file_path = source_dir / filename
+            with open(file_path, 'w') as f:
+                f.write(content)
+
+        # Register file organizer skill
+        skill_id = await service.register_skill({
+            "id": "file-organizer",
+            "name": "File Organizer",
+            "description": "Organize files by type",
+            "version": "1.0.0",
+            "capabilities": ["file_management"],
+            "skill_file": "skills/file_organizer.py",
+            "enabled": True
+        })
+
+        # Organize files
+        target_dir = temp_path / "organized"
+        result = await service.tool_service.execute_tool(
+            skill_id,
+            "organize_files_by_type",
+            {
+                "source_dir": str(source_dir),
+                "target_dir": str(target_dir)
+            }
+        )
+
+        print("📁 File Organization Results:")
+        print(f"   Files organized: {result['organized_files']}")
+        print(f"   Total files: {result['total_files']}")
+        print(f"   Categories created: {result['categories_created']}")
+
+        # Show organized structure
+        if result["success"]:
+            print("
+📂 Organized structure:"            for category_dir in sorted(target_dir.iterdir()):
+                if category_dir.is_dir():
+                    file_count = len(list(category_dir.iterdir()))
+                    print(f"   {category_dir.name}/: {file_count} files")
+
+        if result["errors"]:
+            print(f"\n⚠️  Errors: {result['errors']}")
+
+    await service.shutdown()
+
+asyncio.run(test_file_organizer())
+```
+</Step>
+</Steps>
+
+## Data Analysis
+
+### CSV Data Analyzer
+
+<Steps>
+<Step title="Create a CSV analyzer skill">
+```json skills/csv-analyzer.json
+{
+  "id": "csv-analyzer",
+  "name": "CSV Data Analyzer",
+  "description": "Analyze CSV data with statistical summaries and insights",
+  "version": "1.0.0",
+  "author": "FastSkill Examples",
+  "tags": ["data", "csv", "analysis", "statistics", "visualization"],
+  "capabilities": ["data_analysis", "csv_processing", "statistical_analysis", "data_visualization"],
+  "skill_file": "csv-analyzer/SKILL.md",
+  "enabled": true,
+  "execution_timeout": 60,
+  "memory_limit_mb": 512,
+  "dependencies": [],
+  "metadata": {
+    "category": "data-analysis",
+    "supported_formats": ["csv", "tsv"],
+    "max_rows": 100000,
+    "max_columns": 100
+  }
+}
+```
+
+```markdown skills/csv-analyzer/SKILL.md
+---
+name: csv-analyzer
+description: Analyze CSV data with statistical summaries and insights
+---
+
+# CSV Data Analyzer
+
+This skill analyzes CSV data.
+
+## Tools
+
+### analyze_csv_data
+
+Analyzes CSV data and provides statistical insights.
+
+**Parameters:**
+- `file_path` (string, required): Path to CSV file
+- `analysis_type` (string, optional): Type of analysis (summary, correlation, trends, anomalies)
+
+**Returns:**
+- Analysis results
+- Column information
+- Statistical summaries
+```
+```
+</Step>
+
+<Step title="Test CSV analysis">
+```rust
+use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Register CSV analyzer skill
+    let skill = SkillDefinition::new(
+        SkillId::new("csv-analyzer".to_string())?,
+        "CSV Analyzer".to_string(),
+        "Analyze CSV data".to_string(),
+        "1.0.0".to_string(),
+    );
+
+    let skill_id = service.skill_manager().register_skill(skill).await?;
+    println!("✅ CSV analyzer registered: {}", skill_id);
+
+    // Discover skills for data analysis
+    let skills = service.metadata_service()
+        .discover_skills("analyze CSV data")
+        .await?;
+    
+    println!("Found {} relevant skills", skills.len());
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+</Step>
+</Steps>
+
+## Integration Examples
+
+### With AI Agents
+
+```rust
+use fastskill::{FastSkillService, ServiceConfig};
+use std::path::PathBuf;
+
+// Example: Integration with an AI agent using FastSkill
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = ServiceConfig {
+        skill_storage_path: PathBuf::from("./skills"),
+        ..Default::default()
+    };
+
+    let mut service = FastSkillService::new(config).await?;
+    service.initialize().await?;
+
+    // Discover relevant skills for a user query
+    let user_query = "analyze this text for sentiment";
+    let relevant_skills = service.metadata_service()
+        .discover_skills(user_query)
+        .await?;
+
+    if relevant_skills.is_empty() {
+        println!("No skills found for: {}", user_query);
+    } else {
+        println!("Found {} relevant skills:", relevant_skills.len());
+        for skill in relevant_skills {
+            println!("  - {}: {}", skill.id, skill.name);
+        }
+    }
+
+    service.shutdown().await?;
+    Ok(())
+}
+```
+
+## Best Practices
+
+<Steps>
+<Step title="Start simple">
+  Begin with basic examples and gradually add complexity as you understand the patterns.
+</Step>
+
+<Step title="Test thoroughly">
+  Test your skills with various inputs, edge cases, and error conditions before deploying.
+</Step>
+
+<Step title="Handle errors gracefully">
+  Implement proper error handling and provide meaningful error messages for debugging.
+</Step>
+
+<Step title="Document your skills">
+  Include comprehensive documentation and examples for each skill you create.
+</Step>
+
+<Step title="Monitor performance">
+  Monitor execution times and resource usage to identify optimization opportunities.
+</Step>
+</Steps>
+
+<Check>
+These examples provide a solid foundation for understanding FastSkill's capabilities. Use them as starting points and adapt them for your specific use cases.
+</Check>

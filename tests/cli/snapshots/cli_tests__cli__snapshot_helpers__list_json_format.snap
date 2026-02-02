@@ -1,0 +1,11 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+{
+  "installed": [],
+  "missing": [],
+  "extraneous": [],
+  "version_mismatches": []
+}

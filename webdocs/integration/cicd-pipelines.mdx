@@ -1,0 +1,323 @@
+---
+title: "CI/CD Pipeline Integration"
+description: "Complete guide to integrating FastSkill with CI/CD pipelines for automated skill packaging and publishing"
+---
+
+# CI/CD Pipeline Integration
+
+FastSkill provides comprehensive CI/CD integration for automated skill packaging, versioning, and publishing. This guide covers setup, workflows, and best practices.
+
+## Overview
+
+FastSkill's CI/CD integration enables:
+
+- **Automatic Change Detection**: Detect which skills have changed using git diff or file hashing
+- **Version Bumping**: Automatically increment semantic versions (major, minor, patch)
+- **Artifact Creation**: Package skills into ZIP files with metadata and checksums
+- **Blob Storage Publishing**: Upload artifacts to S3 (supports S3-compatible services)
+- **Registry Index Management**: Maintain a crates.io-like registry for skill distribution
+
+## Change Detection Strategies
+
+### Git-based Detection
+
+Use git diff to detect changed skill directories. Ideal for CI/CD pipelines:
+
+```bash
+fastskill package --git-diff HEAD~1 HEAD --auto-bump --output ./artifacts
+```
+
+**Advantages**:
+- Fast and efficient
+- Works well in CI/CD environments
+- Can compare any two git references (commits, tags, branches)
+
+**Use Cases**:
+- GitHub Actions workflows
+- GitLab CI pipelines
+- Any git-based CI/CD system
+
+### Hash-based Detection
+
+Use file hashing to detect changes. Better for local development:
+
+```bash
+fastskill package --detect-changes --auto-bump --output ./artifacts
+```
+
+**Advantages**:
+- Works without git repository
+- Detects any file changes
+- Maintains build cache for efficiency
+
+**Use Cases**:
+- Local development workflows
+- Non-git version control systems
+- Incremental builds
+
+## Version Bumping Strategies
+
+### Explicit Bump Type
+
+Specify the bump type explicitly:
+
+```bash
+# Major version (breaking changes)
+fastskill package --detect-changes --bump major
+
+# Minor version (new features)
+fastskill package --detect-changes --bump minor
+
+# Patch version (bug fixes)
+fastskill package --detect-changes --bump patch
+```
+
+### Auto-detect Bump Type
+
+Let FastSkill determine the bump type (currently defaults to patch):
+
+```bash
+fastskill package --detect-changes --auto-bump
+```
+
+Future versions may analyze commit messages or change types to determine appropriate bump level.
+
+## Complete Workflow Examples
+
+### Local Development Workflow
+
+```bash
+# 1. Make changes to skills
+# ... edit skill files ...
+
+# 2. Package changed skills with auto-version bump
+fastskill package --detect-changes --auto-bump --output ./artifacts
+
+# 3. Publish to registry (automatically updates index)
+fastskill publish --artifacts ./artifacts --registry official
+```
+
+### GitHub Actions Workflow
+
+Create `.github/workflows/publish-skills.yml`:
+
+```yaml
+name: Publish Skills
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2  # Need previous commit for diff
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Install FastSkill
+        run: cargo install --path tools/fastskill/rust
+      
+      - name: Package changed skills
+        run: |
+          fastskill package \
+            --git-diff HEAD~1 HEAD \
+            --auto-bump \
+            --output ./artifacts
+      
+      - name: Update registry index
+        run: |
+          fastskill registry-index update \
+            --artifacts ./artifacts \
+            --blob-base-url ${{ secrets.BLOB_BASE_URL }}
+      
+      - name: Upload to blob storage
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          fastskill publish \
+            --artifacts ./artifacts \
+            --blob-storage s3 \
+            --bucket ${{ secrets.S3_BUCKET }} \
+            --region us-east-1
+      
+      # Registry index is automatically updated during publishing
+```
+
+### GitLab CI Workflow
+
+Create `.gitlab-ci.yml`:
+
+```yaml
+stages:
+  - package
+  - publish
+
+package:
+  stage: package
+  image: rust:latest
+  script:
+    - cargo install --path tools/fastskill/rust
+    - fastskill package
+        --git-diff $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA
+        --auto-bump
+        --output ./artifacts
+  artifacts:
+    paths:
+      - artifacts/
+    expire_in: 1 hour
+
+publish:
+  stage: publish
+  image: rust:latest
+  dependencies:
+    - package
+  script:
+    - cargo install --path tools/fastskill/rust
+    - fastskill publish
+        --artifacts ./artifacts
+        --blob-storage s3
+        --bucket $S3_BUCKET
+        --region us-east-1
+    # Registry index is automatically updated during publishing
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+  only:
+    - main
+```
+
+### Jenkins Pipeline
+
+Create `Jenkinsfile`:
+
+```groovy
+pipeline {
+    agent any
+    
+    environment {
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+    }
+    
+    stages {
+        stage('Package') {
+            steps {
+                sh 'cargo install --path tools/fastskill/rust'
+                sh '''
+                    fastskill package \
+                        --git-diff HEAD~1 HEAD \
+                        --auto-bump \
+                        --output ./artifacts
+                '''
+            }
+        }
+        
+        stage('Publish') {
+            steps {
+                sh '''
+                    fastskill publish \
+                        --artifacts ./artifacts \
+                        --blob-storage s3 \
+                        --bucket ${S3_BUCKET} \
+                        --region us-east-1
+                    # Registry index is automatically updated during publishing
+                '''
+            }
+        }
+    }
+}
+```
+
+## Configuration Best Practices
+
+### Environment Variables
+
+Store sensitive credentials as environment variables or secrets:
+
+```bash
+# AWS S3
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
+
+# Blob storage base URL
+export BLOB_BASE_URL=https://blob.example.com/skills
+```
+
+### Configuration Files
+
+Use `.fastskill/publish.toml` for non-sensitive configuration:
+
+```toml
+[blob_storage]
+type = "s3"
+bucket = "skills-registry"
+region = "us-east-1"
+# Credentials from environment variables
+
+[registry]
+git_url = "https://github.com/GoFastSkill/skill-registry.git"
+branch = "main"
+blob_base_url = "https://blob.example.com/skills"
+```
+
+### Build Cache
+
+The build cache (`.fastskill/build-cache.json`) should be:
+
+- **Included in CI/CD**: Persist cache between builds for efficiency
+- **Version Controlled**: Commit cache to track build history
+- **Regularly Cleaned**: Remove old entries to prevent cache bloat
+
+## Troubleshooting
+
+### No Skills Detected
+
+If no skills are detected for packaging:
+
+1. Check that skills directory exists and contains `SKILL.md` files
+2. Verify git diff is working: `git diff HEAD~1 HEAD --name-only`
+3. Check build cache for stale entries
+4. Use `--force` to package all skills regardless of changes
+
+### Version Bumping Issues
+
+If version bumping fails:
+
+1. Ensure `skill-project.toml` exists or can be created
+2. Check that version format is valid semver (e.g., "1.2.3")
+3. Verify write permissions for `skill-project.toml`
+
+### Blob Storage Upload Failures
+
+If uploads fail:
+
+1. Verify credentials are correct
+2. Check network connectivity to storage endpoint
+3. Ensure bucket/container exists and is accessible
+4. Verify IAM permissions for S3 buckets
+
+### Registry Index Issues
+
+If registry index operations fail:
+
+1. Ensure git repository is accessible
+2. Check git credentials and permissions
+3. Verify registry path exists and is writable
+4. Ensure blob base URL is correct
+
+## See Also
+
+- [Package Command](/cli-reference/package-command)
+- [Publish Command](/cli-reference/publish-command)
+- [Blob Storage Guide](/integration/blob-storage)
+
