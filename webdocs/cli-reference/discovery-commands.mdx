@@ -1,60 +1,358 @@
 ---
 title: "Discovery Commands"
-description: "FastSkill CLI commands for skill discovery, search, and intelligent routing."
+description: "FastSkill CLI commands for skill search, vector indexing, and repository management."
 ---
 
 ## Overview
 
-Discovery commands help you find and analyze skills in your FastSkill ecosystem.
+Discovery commands help you find, index, and manage skills in your FastSkill ecosystem. These commands provide semantic search, vector indexing, and repository management capabilities.
+
+<Note>
+For detailed documentation on specific commands, see the dedicated command pages linked below.
+</Note>
 
 ## Command Reference
 
 ### fastskill search
 
-Search for skills using natural language queries.
+Search for installed skills using semantic similarity with OpenAI embeddings. Returns ranked results based on semantic relevance.
+
+<Info>
+See [search Command](/cli-reference/search-command) for complete documentation with output formats.
+</Info>
 
 ```bash
 # Search for skills
-fastskill search "extract text from PDF"
-
-# Search with filters
-fastskill search "analyze data" --tags data,analysis
-
-# Search with limits
-fastskill search "convert files" --limit 5
-
-# Search with minimum relevance score
-fastskill search "process text" --min-score 0.5
-```
-
-### fastskill route
-
-Get intelligent routing recommendations.
-
-```bash
-# Get routing recommendations
-fastskill route "analyze customer feedback"
-
-# Route with context
-fastskill route "process documents" --context "batch_processing"
-
-# Route with constraints
-fastskill route "convert files" --format pdf --size large
-```
-
-## Examples
-
-```bash
-# Search workflow
 fastskill search "text processing"
-fastskill find --capability text_extraction --tag nlp
-fastskill route "extract and analyze text content"
 
-# Discovery analysis
-fastskill list --format json | jq '.data | group_by(.tags) | map({tag: .[0].tags, count: length})'
-fastskill search "data analysis" --format json
+# Search with XML format output
+fastskill search "analyze data" --format xml
+
+# Search with JSON format
+fastskill search "convert files" --format json
+
+# Search with limit
+fastskill search "process text" --limit 5
 ```
 
-<Note>
-Discovery commands help you understand and navigate your skill ecosystem efficiently.
-</Note>
+**What it does**:
+- Embeds query text using OpenAI's `text-embedding-3-small` model
+- Searches vector index (SQLite database at `.claude/.fastskill/index.db`)
+- Returns ranked results using cosine similarity
+- File content is hashed (SHA256) to detect changes
+
+**Options**:
+- `<QUERY>`: Search query (natural language)
+- `--format <FORMAT>`: Output format: `json`, `xml`, or `text` (default: text)
+- `--limit <N>`: Maximum number of results to return (default: 10)
+- `--min-score <SCORE>`: Minimum relevance threshold (0.0-1.0)
+
+**Output**:
+- **text**: Human-readable table with skill details
+- **json**: Machine-readable array with relevance scores
+- **xml**: Structured XML for API integration
+
+### fastskill reindex
+
+Rebuild the vector search index by scanning all installed skills. Updates embeddings and similarity database.
+
+<Info>
+See [reindex Command](/cli-reference/reindex-command) for complete documentation with concurrency options.
+</Info>
+
+```bash
+# Reindex all skills
+fastskill reindex
+
+# Reindex specific skill
+fastskill reindex web-scraper
+
+# Force reindex (ignore file hash cache)
+fastskill reindex --force
+
+# Control concurrent embedding requests
+fastskill reindex --max-concurrent 5
+```
+
+**What it does**:
+- Scans `.claude/skills/` for all installed skills
+- Generates embeddings for SKILL.md content using OpenAI API
+- Stores embeddings in SQLite database at `.claude/.fastskill/index.db`
+- Tracks file hashes (SHA256) for change detection
+- Skips unchanged files based on hash comparison
+
+**Options**:
+- `<SKILL_ID>`: Reindex specific skill only (optional)
+- `--force`: Force reindex all files (ignore hash cache)
+- `--max-concurrent <N>`: Maximum concurrent embedding API requests (default: 10)
+
+**When to use**:
+- After installing new skills
+- After updating existing skills
+- When search results are stale or incomplete
+- When skill content has changed
+
+### fastskill sources
+
+Manage skill sources (repositories) for discovering and installing skills. Supports multiple repository types with authentication and priority-based resolution.
+
+<Info>
+See [sources Command](/cli-reference/sources-command) for complete documentation with subcommands and authentication.
+</Info>
+
+```bash
+# List all configured sources
+fastskill sources list
+
+# Add new source
+fastskill sources add team-tools --type git-marketplace --url https://github.com/team/skills.git
+
+# Remove source
+fastskill sources remove team-tools
+
+# Show source details
+fastskill sources show team-tools
+
+# Update source configuration
+fastskill sources update team-tools --priority 1
+
+# Test source connectivity
+fastskill sources test team-tools
+
+# Refresh source cache
+fastskill sources refresh
+
+# Create marketplace.json from directory
+fastskill sources create ./skills --output marketplace.json
+```
+
+**What it does**:
+- Manages repository configuration in `skill-project.toml` [tool.fastskill.repositories]
+- Supports multiple repository types: `git-marketplace`, `http-registry`, `zip-url`, `local`
+- Handles authentication: PAT, SSH key, SSH, Basic Auth, API Key
+- Implements priority-based conflict resolution (lower priority = higher precedence)
+- Creates marketplace.json for git-marketplace repositories
+
+**Repository Types**:
+
+**Git Marketplace**:
+```toml
+[[tool.fastskill.repositories]]
+name = "team-skills"
+type = "git-marketplace"
+url = "https://github.com/team/skills.git"
+priority = 0
+branch = "main"
+# Optional authentication
+auth_type = "pat"
+auth_value = "token-value"
+```
+
+**HTTP Registry**:
+```toml
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://registry.fastskill.dev/index"
+priority = 0
+# Optional authentication
+auth_type = "api-key"
+auth_value = "key-value"
+```
+
+**ZIP URL**:
+```toml
+[[tool.fastskill.repositories]]
+name = "skill-archive"
+type = "zip-url"
+base_url = "https://example.com/skills"
+priority = 0
+```
+
+**Local**:
+```toml
+[[tool.fastskill.repositories]]
+name = "local-skills"
+type = "local"
+path = "./local-skills"
+priority = 0
+```
+
+**Authentication Types**:
+- `pat`: Personal Access Token (for git repositories)
+- `ssh-key`: SSH key path
+- `ssh`: SSH connection
+- `basic`: Basic authentication (username/password)
+- `api-key`: API key (for HTTP registries)
+
+**Priority Resolution**:
+When skills are available in multiple repositories, priority determines the order:
+- Lower priority numbers are checked first
+- Default priority: 0
+- Higher priority values are checked later
+
+### fastskill registry
+
+Legacy alias for sources command. Provides same functionality with different subcommand names.
+
+<Warning>
+The `registry` command is a legacy alias. Use `fastskill sources` for new code. Both commands have identical functionality.
+</Warning>
+
+```bash
+# Legacy: Add repository
+fastskill registry add team-tools --repo-type git-marketplace https://github.com/team/skills.git
+
+# Preferred: Add repository
+fastskill sources add team-tools --type git-marketplace --url https://github.com/team/skills.git
+```
+
+## Search and Reindex Workflow
+
+### Initial Setup
+
+```bash
+# 1. Install skills
+fastskill install
+
+# 2. Reindex for search
+fastskill reindex
+
+# 3. Test search
+fastskill search "text processing"
+```
+
+### After Updates
+
+```bash
+# 1. Update skills
+fastskill update
+
+# 2. Reindex to refresh embeddings
+fastskill reindex --force
+
+# 3. Verify search results
+fastskill search "new feature"
+```
+
+### Adding New Skills
+
+```bash
+# 1. Add skill
+fastskill add https://github.com/user/new-skill.git
+
+# 2. Reindex to include in search
+fastskill reindex
+
+# 3. Test discovery
+fastskill search "skill name or description"
+```
+
+## Performance Considerations
+
+### Reindexing
+
+**File Hash Detection**:
+- Files are hashed with SHA256 to detect changes
+- Unchanged files are skipped during reindex
+- Use `--force` to bypass hash cache
+
+**Concurrency**:
+- Embedding API requests are concurrent (default: 10)
+- Use `--max-concurrent` to control API rate limiting
+- Lower values reduce API rate limit errors
+- Higher values speed up reindexing
+
+### Searching
+
+**Semantic Search**:
+- Uses cosine similarity for ranking
+- Embeddings are cached in SQLite database
+- Search is O(log n) with vector index
+
+**Query Tips**:
+- Use natural language queries (similar to SKILL.md descriptions)
+- Include relevant domain terms
+- Try different query phrasings for better results
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Search returns no results">
+  <Warning>
+  **Index not built**: Make sure you've run `fastskill reindex` after installing skills.
+  </Warning>
+
+  <Warning>
+  **Query too specific**: Try broader terms or different phrasing.
+  </Warning>
+
+  <Warning>
+  **Skills not installed**: Verify skills are in `.claude/skills/` with `fastskill list`.
+  </Warning>
+</Accordion>
+
+<Accordion title="Reindex fails">
+  <Info>
+  **OpenAI API key not set**: Set `OPENAI_API_KEY` environment variable.
+  ```bash
+  export OPENAI_API_KEY="your-key-here"
+  fastskill reindex
+  ```
+  </Info>
+
+  <Info>
+  **API rate limit errors**: Reduce concurrent requests with `--max-concurrent 3`.
+  </Info>
+
+  <Info>
+  **Network errors**: Check internet connectivity and OpenAI API status.
+  </Info>
+</Accordion>
+
+<Accordion title="Repository not found">
+  <Tip>
+  **Invalid repository name**: Check repository name with `fastskill sources list`.
+  </Tip>
+
+  <Tip>
+  **Repository URL incorrect**: Verify URL is accessible with `fastskill sources test <name>`.
+  </Tip>
+
+  <Tip>
+  **Authentication failed**: Verify authentication type and credentials with `fastskill sources show <name>`.
+  </Tip>
+</Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+<Step title="Reindex after changes">
+  Always run `fastskill reindex` after installing, updating, or modifying skills to keep search index current.
+</Step>
+
+<Step title="Use natural language queries">
+  Search queries work best with natural language that matches skill descriptions in SKILL.md files.
+</Step>
+
+<Step title="Organize repositories by priority">
+  Set lower priority numbers for primary repositories to ensure preferred skills are discovered first.
+</Step>
+
+<Step title="Test repositories after configuration">
+  Use `fastskill sources test <name>` to verify repositories are accessible before using them.
+</Step>
+
+<Step title="Control API concurrency for reindexing">
+  Use `--max-concurrent` to balance speed and API rate limits. Start with default and adjust based on rate limit errors.
+</Step>
+</Steps>
+
+## See Also
+
+- [Install Command](/cli-reference/install-command) - Install skills from repositories
+- [Sources Command](/cli-reference/sources-command) - Complete sources management documentation
+- [Search Command](/cli-reference/search-command) - Detailed search command documentation
+- [Embedding Search](/search/embedding-search) - Semantic search architecture details
+- [Repository System](/registry/repository-architecture) - Repository types and configuration
