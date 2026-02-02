@@ -2,7 +2,4 @@
 source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-FastSkill [VERSION]
-Installing skills...
-
 Error: Configuration error: skill-project.toml not found. Create it or use 'fastskill add' to add skills.

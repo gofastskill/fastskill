@@ -300,14 +300,17 @@ fn test_auth_logout_nonexistent_registry() {
     let config_dir = temp_dir.path().join("config");
     fs::create_dir_all(&config_dir).unwrap();
 
-    let result = cli::snapshot_helpers::run_fastskill_command(
+    let env_vars = vec![("FASTSKILL_CONFIG_DIR", config_dir.to_str().unwrap())];
+
+    let result = cli::snapshot_helpers::run_fastskill_command_with_env(
         &[
             "auth",
             "logout",
             "--registry",
             "http://nonexistent-registry",
         ],
-        None,
+        &env_vars,
+        Some(temp_dir.path()),
     );
     assert!(result.success);
 
@@ -327,7 +330,8 @@ fn test_registry_list_empty() {
     let config_dir = temp_dir.path().join("config");
     fs::create_dir_all(&config_dir).unwrap();
 
-    let result = cli::snapshot_helpers::run_fastskill_command(&["sources", "list"], None);
+    let result =
+        cli::snapshot_helpers::run_fastskill_command(&["sources", "list"], Some(temp_dir.path()));
     assert!(result.success);
     assert!(result.stdout.contains("No repositories") || result.stdout.is_empty());
 

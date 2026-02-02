@@ -50,10 +50,7 @@ fn test_update_specific_skill() {
     fs::write(temp_dir.path().join("skill-project.toml"), sample_project).unwrap();
     fs::write(temp_dir.path().join("skills.lock"), sample_lock).unwrap();
 
-    let result = run_fastskill_command(
-        &["update", "--skill-id", "web-scraper"],
-        Some(temp_dir.path()),
-    );
+    let result = run_fastskill_command(&["update", "web-scraper"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("web-scraper") || result.stdout.contains("No updates"));
@@ -128,7 +125,11 @@ fn test_update_strategy_patch() {
     let result = run_fastskill_command(&["update", "--strategy", "patch"], Some(temp_dir.path()));
 
     assert!(result.success);
-    assert!(result.stdout.contains("patch") || result.stdout.contains("No updates"));
+    assert!(
+        result.stdout.contains("patch")
+            || result.stdout.contains("No updates")
+            || result.stdout.contains("Updated")
+    );
 
     assert_snapshot_with_settings(
         "update_strategy_patch",
@@ -152,7 +153,11 @@ fn test_update_strategy_minor() {
     let result = run_fastskill_command(&["update", "--strategy", "minor"], Some(temp_dir.path()));
 
     assert!(result.success);
-    assert!(result.stdout.contains("minor") || result.stdout.contains("No updates"));
+    assert!(
+        result.stdout.contains("minor")
+            || result.stdout.contains("No updates")
+            || result.stdout.contains("Updated")
+    );
 
     assert_snapshot_with_settings(
         "update_strategy_minor",

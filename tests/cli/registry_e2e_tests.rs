@@ -439,8 +439,8 @@ async fn test_sources_test_connectivity() {
     // Mock server for testing
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/health"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
+        .and(path("/api/registry/index/skills"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
         .mount(&mock_server)
         .await;
 

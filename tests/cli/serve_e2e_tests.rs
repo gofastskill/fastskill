@@ -136,25 +136,28 @@ fn test_serve_with_enable_registry() {
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
-    // Spawn server in background
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+    // Try to spawn server in background - should fail due to missing S3 config
+    let result = Command::new(env!("CARGO_BIN_EXE_fastskill"))
         .args(&["serve", "--enable-registry", "--port", "18083"])
         .current_dir(temp_dir.path())
-        .spawn()
-        .expect("Failed to start server");
+        .output()
+        .expect("Failed to execute command");
 
-    // Wait for server to start
+    // Server should fail to start due to missing registry blob storage config
     assert!(
-        wait_for_port(18083, 5),
-        "Server failed to start on port 18083"
+        !result.status.success(),
+        "Server should fail without S3 configuration"
     );
 
-    // Kill the server
-    child.kill().expect("Failed to kill server");
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("registry_blob_storage") || stderr.contains("S3 configuration"),
+        "Error should mention missing blob storage config"
+    );
 
     assert_snapshot_with_settings(
         "serve_enable_registry",
-        "Server started successfully",
+        "Server requires S3 configuration for registry",
         &cli_snapshot_settings(),
     );
 }

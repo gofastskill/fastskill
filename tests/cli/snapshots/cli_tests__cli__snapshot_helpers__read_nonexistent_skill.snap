@@ -2,7 +2,6 @@
 source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-FastSkill [VERSION]
 Error: Skill 'nonexistent-skill' not found
 
 Searched:

@@ -5,4 +5,7 @@ expression: normalized
 FastSkill [VERSION]
 Updating skills...
 
-Error: Configuration error: skills.lock not found. Run 'fastskill install' first.
+  Updating web-scraper...
+
+[OK] Updated 0 skill(s)
+   Updated skills.lock

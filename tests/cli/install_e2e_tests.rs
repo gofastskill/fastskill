@@ -47,9 +47,13 @@ fn test_install_with_lock_file() {
 
     let result = run_fastskill_command(&["install", "--lock"], Some(temp_dir.path()));
 
-    // Test skills will fail to install since they don't exist
-    assert!(!result.success);
-    assert!(result.stdout.contains("lock") || result.stdout.contains("Installing"));
+    // Using lock file - succeeds even if no skills to install (filtered by groups)
+    assert!(result.success);
+    assert!(
+        result.stdout.contains("lock")
+            || result.stdout.contains("Installing")
+            || result.stdout.contains("No skills")
+    );
 
     assert_snapshot_with_settings(
         "install_with_lock",

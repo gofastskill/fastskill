@@ -1,18 +1,34 @@
-version = "1.0"
-
 [metadata]
+version = "1.0"
 generated_at = "2024-01-01T00:00:00Z"
 fastskill_version = "0.9.16"
 
-[[skill]]
+[[skills]]
+id = "web-scraper"
 name = "web-scraper"
 version = "1.2.3"
-source = "registry"
+source = { type = "source", name = "default-registry", skill = "web-scraper", version = "1.2.3" }
+fetched_at = "2024-01-01T00:00:00Z"
 checksum = "abc123def456"
 
-[[skill]]
+[[skills]]
+id = "dev-tools"
 name = "dev-tools"
 version = "2.0.0"
-source = "git"
-url = "https://github.com/org/dev-tools.git"
-resolved = "commit-sha-here"
+source = { type = "git", url = "https://github.com/org/dev-tools.git", branch = "main" }
+commit_hash = "commit-sha-here"
+fetched_at = "2024-01-01T00:00:00Z"
+
+[[skills]]
+id = "local-skill"
+name = "local-skill"
+version = "1.0.0"
+source = { type = "local", path = "./local-skill" }
+fetched_at = "2024-01-01T00:00:00Z"
+
+[[skills]]
+id = "remote-skill"
+name = "remote-skill"
+version = "1.0.0"
+source = { type = "zip-url", base_url = "https://example.com/skill.zip" }
+fetched_at = "2024-01-01T00:00:00Z"
