@@ -248,9 +248,14 @@ Add a skill from a source (git URL, local folder, or zip file) and install it to
 
 **Storage Location**: Skills are installed to the directory configured in `.fastskill/config.yaml` via the `skills_directory` setting (default: `.claude/skills/`). Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`.
 
+**Installing from a subdirectory**: Use a GitHub tree URL to add a skill that lives in a subfolder of a repo. Format: `https://github.com/user/repo/tree/<branch>/<path/to/skill>`. The CLI clones the repo and uses the specified path as the skill root.
+
 ```bash
 # Add skill from git URL
 fastskill add https://github.com/org/skill.git
+
+# Add skill from a subdirectory (GitHub tree URL)
+fastskill add "https://github.com/org/repo/tree/main/path/to/skill"
 
 # Add skill in editable mode (for local development)
 fastskill add ./local-skill -e
@@ -261,6 +266,10 @@ fastskill add https://github.com/org/skill.git --group dev
 # Add editable skill to dev group
 fastskill add ./local-skill -e --group dev
 ```
+
+**Git URL formats:**
+- Standard: `https://github.com/user/repo.git`
+- Tree URL (subdirectory): `https://github.com/user/repo/tree/branch/path/to/skill`
 
 **Options:**
 - `-e, --editable`: Install skill in editable mode (symlink/reference for local development)

@@ -202,6 +202,9 @@ export OPENAI_API_KEY="your-key-here"
 # Add skill from git URL
 fastskill add https://github.com/org/skill.git
 
+# Add skill from a subdirectory (GitHub tree URL: tree/branch/path/to/skill)
+fastskill add "https://github.com/org/repo/tree/main/path/to/skill"
+
 # Add skill from local folder
 fastskill add ./local-skill
 
@@ -225,7 +228,7 @@ fastskill search "data processing" --limit 5
 ### Skill Management
 
 ```bash
-fastskill add <source>              # Add skill (git URL, local path, or ZIP)
+fastskill add <source>              # Add skill (git URL, tree URL for subdir, local path, or ZIP)
 fastskill remove <skill-id>          # Remove skill
 fastskill show                       # List installed skills
 fastskill update                     # Update skills to latest versions
