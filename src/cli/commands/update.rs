@@ -231,7 +231,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
 /// This is needed because PackageResolver requires SourcesManager
-fn create_sources_manager_from_repositories(
+pub fn create_sources_manager_from_repositories(
     repo_manager: &RepositoryManager,
 ) -> CliResult<Option<Arc<SourcesManager>>> {
     use fastskill::core::sources::SourceDefinition;

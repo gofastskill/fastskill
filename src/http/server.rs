@@ -8,7 +8,6 @@ use crate::http::handlers::{
 };
 use axum::{
     http::Method,
-    response::Html,
     routing::{delete, get, post, put},
     Router,
 };
@@ -111,18 +110,11 @@ fn display_startup_banner() {
 pub struct FastSkillServer {
     service: Arc<FastSkillService>,
     addr: SocketAddr,
-    enable_registry: bool,
-    auto_generate_mdc: bool,
 }
 
 impl FastSkillServer {
     /// Create a new server instance
-    pub fn new(
-        service: Arc<FastSkillService>,
-        host: &str,
-        port: u16,
-        enable_registry: bool,
-    ) -> Self {
+    pub fn new(service: Arc<FastSkillService>, host: &str, port: u16) -> Self {
         let addr = match Self::parse_address(host, port) {
             Ok(addr) => addr,
             Err(e) => {
@@ -131,12 +123,7 @@ impl FastSkillServer {
             }
         };
 
-        Self {
-            service,
-            addr,
-            enable_registry,
-            auto_generate_mdc: false,
-        }
+        Self { service, addr }
     }
 
     /// Parse and normalize host:port into a SocketAddr
@@ -281,34 +268,8 @@ impl FastSkillServer {
         static_path
     }
 
-    /// Serve the registry index.html file
-    async fn serve_registry_index(
-        static_dir: PathBuf,
-    ) -> Result<Html<String>, axum::http::StatusCode> {
-        let index_path = static_dir.join("index.html");
-
-        match tokio::fs::read_to_string(&index_path).await {
-            Ok(content) => Ok(Html(content)),
-            Err(e) => {
-                warn!(
-                    "Failed to read index.html from {}: {}",
-                    index_path.display(),
-                    e
-                );
-                Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        }
-    }
-
     /// Create a new server instance from a service reference
-    pub fn from_ref(
-        service: &FastSkillService,
-        host: &str,
-        port: u16,
-        enable_registry: bool,
-        auto_generate_mdc: bool,
-    ) -> Self {
-        // Create Arc from reference (safe because we know the service lives long enough)
+    pub fn from_ref(service: &FastSkillService, host: &str, port: u16) -> Self {
         let service_arc = unsafe {
             Arc::increment_strong_count(service);
             Arc::from_raw(service as *const FastSkillService)
@@ -325,8 +286,6 @@ impl FastSkillServer {
         Self {
             service: service_arc,
             addr,
-            enable_registry,
-            auto_generate_mdc,
         }
     }
 
@@ -335,19 +294,17 @@ impl FastSkillServer {
         // Resolve skill-project.toml path
         let project_file_path = resolve_project_file_path();
 
-        let state = AppState::new(self.service.clone())
-            .with_project_file_path(project_file_path)
-            .with_auto_generate_mdc(self.auto_generate_mdc);
+        let state = AppState::new(self.service.clone()).with_project_file_path(project_file_path);
 
         let mut router = Router::new()
-            // Root endpoint
-            .route("/", get(status::root))
             // Skills CRUD endpoints
             .route("/api/skills", get(skills::list_skills))
             .route("/api/skills", post(skills::create_skill))
             .route("/api/skills/:id", get(skills::get_skill))
             .route("/api/skills/:id", put(skills::update_skill))
             .route("/api/skills/:id", delete(skills::delete_skill))
+            .route("/api/skills/upgrade", post(skills::upgrade_skills))
+            .route("/api/project", get(manifest::get_project))
             // Search endpoint
             .route("/api/search", post(search::search_skills))
             // Reindex endpoints
@@ -380,115 +337,58 @@ impl FastSkillServer {
                 delete(claude_api::delete_skill_version),
             );
 
-        // Add registry routes if enabled
-        if self.enable_registry {
-            // Resolve static directory path relative to crate root
-            let static_dir = Self::resolve_static_dir();
-
-            if !static_dir.exists() {
-                warn!(
-                    "Registry static directory not found at: {}. Registry UI may not work correctly.",
-                    static_dir.display()
-                );
-            } else {
-                info!("Serving registry UI from: {}", static_dir.display());
-
-                // Verify key files exist
-                let index_path = static_dir.join("index.html");
-                let styles_path = static_dir.join("styles.css");
-                let app_js_path = static_dir.join("app.js");
-
-                if !index_path.exists() {
-                    warn!("index.html not found at: {}", index_path.display());
-                }
-                if !styles_path.exists() {
-                    warn!("styles.css not found at: {}", styles_path.display());
-                }
-                if !app_js_path.exists() {
-                    warn!("app.js not found at: {}", app_js_path.display());
-                }
-            }
-
-            // Clone static_dir for the handler closures
-            let static_dir_for_index = static_dir.clone();
-            let static_dir_for_index2 = static_dir.clone();
-
-            // Create a nested router for registry UI
-            // The route "/" handles /registry/ (with trailing slash)
-            // The fallback_service handles all other paths under /registry/ and serves static files
-            // If a file is not found, it falls back to serving index.html (SPA behavior)
-            let registry_router = Router::new()
-                .route(
-                    "/",
-                    get(move || {
-                        let static_dir = static_dir_for_index.clone();
-                        async move {
-                            Self::serve_registry_index(static_dir)
-                                .await
-                                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }),
-                )
-                .fallback_service(ServeDir::new(static_dir.clone()));
-
+        // Installed-skills UI at / (always); dashboard at /dashboard
+        let static_dir = Self::resolve_static_dir();
+        if static_dir.exists() {
+            info!("Serving UI at / (installed skills)");
             router = router
-                // Registry index file serving (flat layout: /index/{scope}/{skill-name})
-                .route("/index/*skill_id", get(registry::serve_index_file))
-                .route(
-                    "/api/registry/index/skills",
-                    get(registry::list_index_skills),
-                )
-                // Registry API endpoints
-                .route("/api/registry/sources", get(registry::list_sources))
-                .route("/api/registry/skills", get(registry::list_all_skills))
-                .route(
-                    "/api/registry/sources/:name/skills",
-                    get(registry::list_source_skills),
-                )
-                .route(
-                    "/api/registry/sources/:name/marketplace",
-                    get(registry::get_marketplace),
-                )
-                .route("/api/registry/refresh", post(registry::refresh_sources))
-                // Registry publish endpoints
-                .route(
-                    "/api/registry/publish",
-                    post(registry_publish::publish_package),
-                )
-                .route(
-                    "/api/registry/publish/status/:job_id",
-                    get(registry_publish::get_publish_status),
-                )
-                // Manifest API endpoints
-                .route("/api/manifest/skills", get(manifest::list_manifest_skills))
-                .route(
-                    "/api/manifest/skills",
-                    post(manifest::add_skill_to_manifest),
-                )
-                .route(
-                    "/api/manifest/skills/:id",
-                    put(manifest::update_skill_in_manifest),
-                )
-                .route(
-                    "/api/manifest/skills/:id",
-                    delete(manifest::remove_skill_from_manifest),
-                )
-                .route("/api/manifest/generate-mdc", post(manifest::generate_mdc))
-                // Explicit route for /registry (without trailing slash) to serve index.html
-                .route(
-                    "/registry",
-                    get(move || {
-                        let static_dir = static_dir_for_index2.clone();
-                        async move {
-                            Self::serve_registry_index(static_dir)
-                                .await
-                                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                        }
-                    }),
-                )
-                // Registry UI router (handles /registry/ and static files)
-                .nest_service("/registry/", registry_router);
+                .route("/dashboard", get(status::root))
+                .nest_service("/", ServeDir::new(static_dir));
+        } else {
+            router = router.route("/", get(status::root));
+            warn!("Static dir not found, serving dashboard at /");
         }
+
+        // Registry and manifest API routes (always available)
+        router = router
+            .route("/index/*skill_id", get(registry::serve_index_file))
+            .route(
+                "/api/registry/index/skills",
+                get(registry::list_index_skills),
+            )
+            .route("/api/registry/sources", get(registry::list_sources))
+            .route("/api/registry/skills", get(registry::list_all_skills))
+            .route(
+                "/api/registry/sources/:name/skills",
+                get(registry::list_source_skills),
+            )
+            .route(
+                "/api/registry/sources/:name/marketplace",
+                get(registry::get_marketplace),
+            )
+            .route("/api/registry/refresh", post(registry::refresh_sources))
+            .route(
+                "/api/registry/publish",
+                post(registry_publish::publish_package),
+            )
+            .route(
+                "/api/registry/publish/status/:job_id",
+                get(registry_publish::get_publish_status),
+            )
+            .route("/api/manifest/skills", get(manifest::list_manifest_skills))
+            .route(
+                "/api/manifest/skills",
+                post(manifest::add_skill_to_manifest),
+            )
+            .route(
+                "/api/manifest/skills/:id",
+                put(manifest::update_skill_in_manifest),
+            )
+            .route(
+                "/api/manifest/skills/:id",
+                delete(manifest::remove_skill_from_manifest),
+            )
+            .route("/api/manifest/generate-mdc", post(manifest::generate_mdc));
 
         // Add middleware and state
         Ok(router
@@ -513,35 +413,26 @@ impl FastSkillServer {
 
         let app = self.create_router()?;
 
-        // Start validation worker if registry is enabled
-        if self.enable_registry {
-            let config = self.service.config();
-
-            // Validate required configuration for operational registry
-            if let Err(err_msg) = validate_registry_config(config) {
-                return Err(err_msg.into());
-            }
-
+        // Start validation worker only when registry config is valid
+        let config = self.service.config();
+        if validate_registry_config(config).is_ok() {
             let staging_dir = config
                 .staging_dir
                 .clone()
                 .unwrap_or_else(|| PathBuf::from(".staging"));
 
             let staging_manager = StagingManager::new(staging_dir);
-            staging_manager
-                .initialize()
-                .map_err(|e| format!("Failed to initialize staging: {}", e))?;
-
-            let worker_config = ValidationWorkerConfig {
-                poll_interval_secs: 5,
-                blob_storage_config: config.registry_blob_storage.clone(),
-                registry_index_path: config.registry_index_path.clone(),
-                blob_base_url: config.registry_blob_base_url.clone(),
-            };
-
-            let worker = ValidationWorker::new(staging_manager, worker_config);
-            worker.start();
-            info!("Validation worker started");
+            if staging_manager.initialize().is_ok() {
+                let worker_config = ValidationWorkerConfig {
+                    poll_interval_secs: 5,
+                    blob_storage_config: config.registry_blob_storage.clone(),
+                    registry_index_path: config.registry_index_path.clone(),
+                    blob_base_url: config.registry_blob_base_url.clone(),
+                };
+                let worker = ValidationWorker::new(staging_manager, worker_config);
+                worker.start();
+                info!("Validation worker started");
+            }
         }
 
         info!("Starting FastSkill HTTP server on {}", self.addr);
@@ -566,8 +457,7 @@ pub async fn serve(
     service: Arc<FastSkillService>,
     host: &str,
     port: u16,
-    enable_registry: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let server = FastSkillServer::new(service, host, port, enable_registry);
+    let server = FastSkillServer::new(service, host, port);
     server.serve().await
 }

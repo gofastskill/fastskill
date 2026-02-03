@@ -14,21 +14,6 @@ pub struct ServeArgs {
     /// Port to bind the server to
     #[arg(long, default_value = "8080", help = "Port to bind the server to")]
     port: u16,
-
-    /// Number of worker threads (currently not used, Axum handles this internally)
-    #[arg(long, default_value = "1", help = "Number of worker threads")]
-    workers: usize,
-
-    /// Enable registry web UI
-    #[arg(long, help = "Enable registry web UI at /registry")]
-    enable_registry: bool,
-
-    /// Auto-generate skills.mdc file after manifest changes
-    #[arg(
-        long,
-        help = "Auto-generate .cursor/rules/skills.mdc after skills.toml changes"
-    )]
-    auto_generate_mdc: bool,
 }
 
 pub async fn execute_serve(
@@ -40,22 +25,10 @@ pub async fn execute_serve(
         args.host, args.port
     );
 
-    // Always display startup information to user, regardless of log level
     println!("FastSkill HTTP server starting...");
     println!("  Listening on: http://{}:{}", args.host, args.port);
-    if args.enable_registry {
-        info!("Registry web UI enabled at /registry");
-        println!("  Registry UI: http://{}:{}/registry", args.host, args.port);
-    }
 
-    // Create server instance from service reference
-    let server = fastskill::http::server::FastSkillServer::from_ref(
-        service,
-        &args.host,
-        args.port,
-        args.enable_registry,
-        args.auto_generate_mdc,
-    );
+    let server = fastskill::http::server::FastSkillServer::from_ref(service, &args.host, args.port);
 
     // Start the server (this will block until shutdown)
     server
@@ -86,10 +59,7 @@ mod tests {
 
         let _args = ServeArgs {
             host: "localhost".to_string(),
-            port: 0, // Use port 0 to avoid binding issues in tests
-            workers: 1,
-            enable_registry: false,
-            auto_generate_mdc: false,
+            port: 0,
         };
 
         // Note: This test doesn't actually start the server since it would block
@@ -113,12 +83,7 @@ mod tests {
         let _args = ServeArgs {
             host: "127.0.0.1".to_string(),
             port: 0,
-            workers: 1,
-            enable_registry: true,
-            auto_generate_mdc: false,
         };
-
-        // Same as above - just verify args are accepted
     }
 
     #[tokio::test]
@@ -135,9 +100,6 @@ mod tests {
         let _args = ServeArgs {
             host: "localhost".to_string(),
             port: 9999,
-            workers: 2,
-            enable_registry: false,
-            auto_generate_mdc: true,
         };
 
         // Verify args are accepted

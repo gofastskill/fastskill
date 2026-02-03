@@ -1,384 +1,236 @@
-// FastSkill Registry UI
-class RegistryApp {
+// FastSkill UI - skill-project.toml view; table lists all installed skills
+class ProjectApp {
     constructor() {
         this.apiBase = '/api';
-        this.allSkills = [];
-        this.filteredSkills = [];
-        this.manifestSkills = new Set(); // Set of skill IDs in manifest
-        this.installedSkills = new Set(); // Set of skill IDs that are installed
-        this.currentSource = null;
-        this.virtualScroll = {
-            container: null,
-            itemHeight: 200, // Approximate height of skill card
-            visibleItems: 0,
-            startIndex: 0,
-            endIndex: 0,
-        };
+        this.project = null;
+        this.skills = [];
         this.init();
     }
 
     async init() {
         this.setupEventListeners();
-        await this.loadSources();
-        await this.loadManifestSkills();
-        await this.loadSkills();
-        this.setupVirtualScroll();
+        await this.loadAll();
     }
 
     setupEventListeners() {
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            this.handleSearch(e.target.value);
-        });
-        document.getElementById('search-btn').addEventListener('click', () => {
-            const query = document.getElementById('search-input').value;
-            this.handleSearch(query);
-        });
-        document.getElementById('source-filter').addEventListener('change', (e) => {
-            this.filterBySource(e.target.value);
-        });
-        document.getElementById('status-filter').addEventListener('change', (e) => {
-            this.filterByStatus(e.target.value);
-        });
-        const refreshBtn = document.getElementById('refresh-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => {
-                this.refreshSources();
-            });
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => this.render());
+        }
+        const upgradeAllBtn = document.getElementById('upgrade-all-btn');
+        if (upgradeAllBtn) {
+            upgradeAllBtn.addEventListener('click', () => this.upgradeAll());
         }
     }
 
-    async loadSources() {
-        try {
-            const response = await fetch(`${this.apiBase}/registry/sources`);
-            const data = await response.json();
-            if (data.success && data.data) {
-                this.renderSources(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to load sources:', error);
-        }
-    }
-
-    async loadManifestSkills() {
-        try {
-            const response = await fetch(`${this.apiBase}/manifest/skills`);
-            const data = await response.json();
-            if (data.success && data.data) {
-                this.manifestSkills = new Set(data.data.map(skill => skill.id));
-            }
-        } catch (error) {
-            console.error('Failed to load manifest skills:', error);
-            // Continue even if manifest load fails
-        }
-    }
-
-    async loadSkills() {
+    async loadAll() {
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
-        const container = document.getElementById('skills-container');
-        
-        loading.style.display = 'block';
-        error.style.display = 'none';
-        container.style.display = 'none';
+        const content = document.getElementById('content');
+
+        if (loading) loading.style.display = 'block';
+        if (error) { error.style.display = 'none'; error.textContent = ''; }
+        if (content) content.style.display = 'none';
 
         try {
-            const response = await fetch(`${this.apiBase}/registry/skills`);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const [projectRes, skillsRes] = await Promise.all([
+                fetch(`${this.apiBase}/project`),
+                fetch(`${this.apiBase}/skills`),
+            ]);
+
+            if (!projectRes.ok) throw new Error(`Project: HTTP ${projectRes.status}`);
+            const projectData = await projectRes.json();
+            if (!projectData.success || !projectData.data) {
+                throw new Error(projectData.error?.message || 'Failed to load project');
             }
-            
-            const data = await response.json();
-            console.log('Skills API response:', data);
-            
-            if (data.success && data.data) {
-                this.allSkills = [];
-                this.installedSkills = new Set();
-                
-                // Handle empty sources array
-                if (data.data.sources && Array.isArray(data.data.sources)) {
-                    data.data.sources.forEach(source => {
-                        if (source.skills && Array.isArray(source.skills)) {
-                            source.skills.forEach(skill => {
-                                // Mark installed skills
-                                if (skill.installed) {
-                                    this.installedSkills.add(skill.id);
-                                }
-                                // Add status information
-                                skill.inManifest = this.manifestSkills.has(skill.id);
-                                this.allSkills.push(skill);
-                            });
-                        }
-                    });
-                }
-                
-                this.filteredSkills = [...this.allSkills];
-                loading.style.display = 'none';
-                
-                if (this.allSkills.length === 0) {
-                    // Show message when no skills are available
-                    container.innerHTML = '<div class="no-skills">No skills found. Make sure your sources have valid marketplace.json files.</div>';
-                    container.style.display = 'block';
-                } else {
-                    container.style.display = 'block';
-                    this.renderSkills();
-                }
+            this.project = projectData.data;
+
+            if (!skillsRes.ok) throw new Error(`Skills: HTTP ${skillsRes.status}`);
+            const skillsData = await skillsRes.json();
+            if (skillsData.success && skillsData.data && skillsData.data.skills) {
+                this.skills = skillsData.data.skills;
             } else {
-                throw new Error(data.error?.message || data.error || 'Failed to load skills');
+                this.skills = [];
+            }
+
+            if (loading) loading.style.display = 'none';
+            if (content) content.style.display = 'block';
+            this.render();
+        } catch (err) {
+            if (loading) loading.style.display = 'none';
+            if (error) {
+                error.style.display = 'block';
+                error.textContent = `Error: ${err.message}`;
+            }
+            if (content) content.style.display = 'block';
+            this.project = this.project || { metadata: null, skills_directory: '—', skills: [] };
+            this.skills = this.skills || [];
+            this.render();
+            console.error('Load failed:', err);
+        }
+    }
+
+    render() {
+        if (!this.project) return;
+
+        this.renderMetadata();
+        this.renderSkillsDirectory();
+        this.renderSkillsTable();
+    }
+
+    renderMetadata() {
+        const el = document.getElementById('metadata-section');
+        if (!el) return;
+
+        const m = this.project.metadata;
+        if (!m || (m && !m.id && !m.name && !m.version)) {
+            el.innerHTML = '<h2 class="section-title">[metadata]</h2><p class="muted">No metadata</p>';
+            return;
+        }
+
+        const rows = [];
+        if (m.id) rows.push(`<tr><td class="k">id</td><td>${this.escapeHtml(m.id)}</td></tr>`);
+        if (m.name) rows.push(`<tr><td class="k">name</td><td>${this.escapeHtml(m.name)}</td></tr>`);
+        if (m.version) rows.push(`<tr><td class="k">version</td><td>${this.escapeHtml(m.version)}</td></tr>`);
+        if (m.description) rows.push(`<tr><td class="k">description</td><td>${this.escapeHtml(m.description)}</td></tr>`);
+        if (m.author) rows.push(`<tr><td class="k">author</td><td>${this.escapeHtml(m.author)}</td></tr>`);
+
+        el.innerHTML = `
+            <h2 class="section-title">[metadata]</h2>
+            <table class="meta-table"><tbody>${rows.join('')}</tbody></table>
+        `;
+    }
+
+    renderSkillsDirectory() {
+        const el = document.getElementById('skills-dir-section');
+        if (!el) return;
+
+        const dir = this.project.skills_directory || '—';
+        el.innerHTML = `
+            <h2 class="section-title">[tool.fastskill]</h2>
+            <table class="meta-table"><tbody>
+                <tr><td class="k">skills_directory</td><td><code>${this.escapeHtml(dir)}</code></td></tr>
+            </tbody></table>
+        `;
+    }
+
+    renderSkillsTable() {
+        const tbody = document.getElementById('skills-tbody');
+        if (!tbody) return;
+
+        const skills = this.skills;
+        const query = (document.getElementById('search-input') || {}).value || '';
+        const q = query.toLowerCase().trim();
+        const filtered = q
+            ? skills.filter(s => {
+                const name = (s.name || '').toLowerCase();
+                const id = (s.id || '').toLowerCase();
+                const desc = (s.description || '').toLowerCase();
+                const meta = s.metadata || {};
+                const ver = (meta.version || '').toLowerCase();
+                const loc = (meta.source_url || '').toLowerCase();
+                const typ = (meta.source_type || '').toLowerCase();
+                return name.includes(q) || id.includes(q) || desc.includes(q) || ver.includes(q) || loc.includes(q) || typ.includes(q);
+            })
+            : skills;
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">No skills</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(s => {
+            const meta = s.metadata || {};
+            const name = this.escapeHtml(s.name || '—');
+            const id = this.escapeHtml(s.id || '—');
+            const version = this.escapeHtml(meta.version || '—');
+            const typ = this.escapeHtml(String(meta.source_type || '—'));
+            const locRaw = meta.source_url || '';
+            const loc = locRaw
+                ? (locRaw.startsWith('http') ? `<a href="${this.escapeHtml(locRaw)}" target="_blank" rel="noopener">${this.escapeHtml(locRaw)}</a>` : this.escapeHtml(locRaw))
+                : '—';
+            const desc = this.escapeHtml((s.description || '').slice(0, 80));
+            const descCell = (s.description || '').length > 80 ? desc + '…' : desc || '—';
+            return `
+                <tr>
+                    <td class="name">${name}</td>
+                    <td class="id"><code>${id}</code></td>
+                    <td class="version">${version}</td>
+                    <td class="type">${typ}</td>
+                    <td class="location">${loc}</td>
+                    <td class="description">${descCell}</td>
+                    <td class="actions">
+                        <button type="button" class="btn-upgrade" data-id="${this.escapeHtml(s.id)}">Upgrade</button>
+                        <button type="button" class="btn-remove" data-id="${this.escapeHtml(s.id)}">Remove</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        tbody.querySelectorAll('.btn-upgrade').forEach(btn => {
+            btn.addEventListener('click', () => this.upgradeSkill(btn.dataset.id));
+        });
+        tbody.querySelectorAll('.btn-remove').forEach(btn => {
+            btn.addEventListener('click', () => this.removeSkill(btn.dataset.id));
+        });
+    }
+
+    async upgradeAll() {
+        const btn = document.getElementById('upgrade-all-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Upgrading...'; }
+        try {
+            const response = await fetch(`${this.apiBase}/skills/upgrade`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const data = await response.json();
+            if (data.success) {
+                await this.loadAll();
+                alert(data.data?.message || 'Upgrade completed');
+            } else {
+                alert(data.error?.message || 'Upgrade failed');
             }
         } catch (err) {
-            loading.style.display = 'none';
-            error.style.display = 'block';
-            error.textContent = `Error: ${err.message}`;
-            console.error('Failed to load skills:', err);
-            console.error('Full error details:', err);
-        }
-    }
-
-    renderSources(sources) {
-        const sourcesList = document.getElementById('sources-list');
-        const sourceFilter = document.getElementById('source-filter');
-        
-        sourcesList.innerHTML = '';
-        sourceFilter.innerHTML = '<option value="">All Sources</option>';
-        
-        sources.forEach(source => {
-            // Sidebar list
-            const li = document.createElement('li');
-            li.textContent = source.name;
-            li.dataset.source = source.name;
-            li.addEventListener('click', () => {
-                document.querySelectorAll('#sources-list li').forEach(item => {
-                    item.classList.remove('active');
-                });
-                li.classList.add('active');
-                this.filterBySource(source.name);
-            });
-            sourcesList.appendChild(li);
-            
-            // Filter dropdown
-            const option = document.createElement('option');
-            option.value = source.name;
-            option.textContent = source.name;
-            sourceFilter.appendChild(option);
-        });
-    }
-
-    renderSkills() {
-        const container = document.getElementById('skills-list');
-        container.innerHTML = '';
-        
-        if (this.filteredSkills.length === 0) {
-            container.innerHTML = '<div class="no-results">No skills found</div>';
-            return;
-        }
-
-        // Simple virtual scrolling: render visible items + buffer
-        const viewportHeight = container.parentElement.clientHeight;
-        const visibleCount = Math.ceil(viewportHeight / this.virtualScroll.itemHeight) + 2;
-        
-        const start = Math.max(0, this.virtualScroll.startIndex);
-        const end = Math.min(this.filteredSkills.length, start + visibleCount);
-        
-        // Render visible items
-        for (let i = start; i < end; i++) {
-            const skill = this.filteredSkills[i];
-            const card = this.createSkillCard(skill);
-            container.appendChild(card);
-        }
-        
-        // Update scroll handler
-        this.updateVirtualScroll();
-    }
-
-    createSkillCard(skill) {
-        const card = document.createElement('div');
-        card.className = `skill-card ${skill.installed ? 'installed' : 'available'}`;
-        
-        const tagsHtml = skill.tags.map(tag => `<span class="tag">${this.escapeHtml(tag)}</span>`).join('');
-        const capabilitiesHtml = skill.capabilities.map(cap => `<span class="tag">${this.escapeHtml(cap)}</span>`).join('');
-        
-        // Build status badges
-        const statusBadges = [];
-        if (skill.inManifest) {
-            statusBadges.push('<span class="status-badge in-manifest">In Manifest</span>');
-        }
-        if (skill.installed) {
-            statusBadges.push('<span class="status-badge installed">Installed</span>');
-        }
-        if (!skill.inManifest && !skill.installed) {
-            statusBadges.push('<span class="status-badge available">Available</span>');
-        }
-        
-        card.innerHTML = `
-            <div class="skill-header">
-                <div>
-                    <div class="skill-name">${this.escapeHtml(skill.name)}</div>
-                    <div class="skill-meta">
-                        <span>Version: ${this.escapeHtml(skill.version)}</span>
-                        ${skill.author ? `<span>Author: ${this.escapeHtml(skill.author)}</span>` : ''}
-                        <span>Source: ${this.escapeHtml(skill.sourceName)}</span>
-                    </div>
-                </div>
-                <div class="skill-status-badges">
-                    ${statusBadges.join('')}
-                </div>
-            </div>
-            <div class="skill-description">${this.escapeHtml(skill.description)}</div>
-            ${tagsHtml ? `<div class="skill-tags">${tagsHtml}</div>` : ''}
-            ${capabilitiesHtml ? `<div class="skill-tags">Capabilities: ${capabilitiesHtml}</div>` : ''}
-            <div class="skill-actions">
-                ${skill.inManifest 
-                    ? `<button class="btn-uninstall" onclick="app.uninstallSkill('${this.escapeHtml(skill.id)}')">Remove from Manifest</button>`
-                    : `<button class="btn-install" onclick="app.installSkill('${this.escapeHtml(skill.id)}', '${this.escapeHtml(skill.sourceName)}')">Add to Manifest</button>`
-                }
-            </div>
-        `;
-        
-        return card;
-    }
-
-    setupVirtualScroll() {
-        const container = document.getElementById('skills-container');
-        container.addEventListener('scroll', () => {
-            this.updateVirtualScroll();
-        });
-    }
-
-    updateVirtualScroll() {
-        const container = document.getElementById('skills-container');
-        const scrollTop = container.scrollTop;
-        const startIndex = Math.floor(scrollTop / this.virtualScroll.itemHeight);
-        
-        if (startIndex !== this.virtualScroll.startIndex) {
-            this.virtualScroll.startIndex = startIndex;
-            this.renderSkills();
-        }
-    }
-
-    handleSearch(query) {
-        const lowerQuery = query.toLowerCase().trim();
-        if (!lowerQuery) {
-            this.filteredSkills = [...this.allSkills];
-        } else {
-            this.filteredSkills = this.allSkills.filter(skill => {
-                return skill.name.toLowerCase().includes(lowerQuery) ||
-                       skill.description.toLowerCase().includes(lowerQuery) ||
-                       skill.tags.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-                       skill.capabilities.some(cap => cap.toLowerCase().includes(lowerQuery));
-            });
-        }
-        this.renderSkills();
-    }
-
-    filterBySource(sourceName) {
-        if (!sourceName) {
-            this.filteredSkills = [...this.allSkills];
-        } else {
-            this.filteredSkills = this.allSkills.filter(skill => skill.sourceName === sourceName);
-        }
-        this.renderSkills();
-    }
-
-    filterByStatus(status) {
-        if (!status) {
-            this.filteredSkills = [...this.allSkills];
-        } else {
-            this.filteredSkills = this.allSkills.filter(skill => {
-                return status === 'installed' ? skill.installed : !skill.installed;
-            });
-        }
-        this.renderSkills();
-    }
-
-    async installSkill(skillId, sourceName) {
-        try {
-            const response = await fetch(`${this.apiBase}/manifest/skills`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    skillId: skillId,
-                    sourceName: sourceName,
-                }),
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                // Reload manifest skills and all skills to update status
-                await this.loadManifestSkills();
-                await this.loadSkills();
-            } else {
-                alert(`Failed to add skill: ${data.error?.message || 'Unknown error'}`);
-            }
-        } catch (error) {
-            alert(`Error adding skill: ${error.message}`);
-            console.error('Failed to add skill:', error);
-        }
-    }
-
-    async uninstallSkill(skillId) {
-        if (!confirm(`Remove skill ${skillId} from manifest?`)) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`${this.apiBase}/manifest/skills/${encodeURIComponent(skillId)}`, {
-                method: 'DELETE',
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                // Reload manifest skills and all skills to update status
-                await this.loadManifestSkills();
-                await this.loadSkills();
-            } else {
-                alert(`Failed to remove skill: ${data.error?.message || 'Unknown error'}`);
-            }
-        } catch (error) {
-            alert(`Error removing skill: ${error.message}`);
-            console.error('Failed to remove skill:', error);
-        }
-    }
-
-    async refreshSources() {
-        const refreshBtn = document.getElementById('refresh-btn');
-        if (refreshBtn) {
-            refreshBtn.disabled = true;
-            refreshBtn.textContent = 'Refreshing...';
-        }
-        
-        try {
-            const response = await fetch(`${this.apiBase}/registry/refresh`, {
-                method: 'POST',
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                // Reload skills after refresh
-                await this.loadSkills();
-            } else {
-                alert(`Failed to refresh: ${data.error?.message || 'Unknown error'}`);
-            }
-        } catch (error) {
-            alert(`Error refreshing: ${error.message}`);
-            console.error('Failed to refresh sources:', error);
+            alert(`Error: ${err.message}`);
         } finally {
-            if (refreshBtn) {
-                refreshBtn.disabled = false;
-                refreshBtn.textContent = 'Refresh';
-            }
+            if (btn) { btn.disabled = false; btn.textContent = 'Upgrade all'; }
+        }
+    }
+
+    async upgradeSkill(skillId) {
+        try {
+            const response = await fetch(`${this.apiBase}/skills/upgrade`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skillId: skillId }),
+            });
+            const data = await response.json();
+            if (data.success) await this.loadAll();
+            else alert(data.error?.message || 'Upgrade failed');
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    }
+
+    async removeSkill(skillId) {
+        if (!confirm(`Remove skill ${skillId}?`)) return;
+        try {
+            const response = await fetch(`${this.apiBase}/skills/${encodeURIComponent(skillId)}`, { method: 'DELETE' });
+            const data = await response.json();
+            if (data.success) await this.loadAll();
+            else alert(data.error?.message || 'Remove failed');
+        } catch (err) {
+            alert(`Error: ${err.message}`);
         }
     }
 
     escapeHtml(text) {
+        if (text == null) return '';
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
     }
 }
 
-// Initialize app
-const app = new RegistryApp();
-
+const app = new ProjectApp();
