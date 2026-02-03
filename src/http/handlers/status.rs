@@ -13,7 +13,6 @@ pub struct AppState {
     pub service: Arc<FastSkillService>,
     pub start_time: SystemTime,
     pub project_file_path: std::path::PathBuf,
-    pub auto_generate_mdc: bool,
 }
 
 impl AppState {
@@ -22,17 +21,11 @@ impl AppState {
             service,
             start_time: SystemTime::now(),
             project_file_path: std::path::PathBuf::from("skill-project.toml"),
-            auto_generate_mdc: false,
         }
     }
 
     pub fn with_project_file_path(mut self, path: std::path::PathBuf) -> Self {
         self.project_file_path = path;
-        self
-    }
-
-    pub fn with_auto_generate_mdc(mut self, enabled: bool) -> Self {
-        self.auto_generate_mdc = enabled;
         self
     }
 
@@ -204,10 +197,6 @@ pub async fn root(State(state): State<AppState>) -> Html<String> {
                 </ul>
             </div>
         </div>
-
-        <div class="footer">
-            <p>FastSkill v{} | Built with Rust and Axum</p>
-        </div>
     </div>
 </body>
 </html>"#,
@@ -219,8 +208,7 @@ pub async fn root(State(state): State<AppState>) -> Html<String> {
             format!("<p>... and {} more skills</p>", skills_count - 10)
         } else {
             "".to_string()
-        },
-        env!("CARGO_PKG_VERSION")
+        }
     );
 
     Html(html)

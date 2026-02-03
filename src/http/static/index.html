@@ -3,19 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastSkill Registry</title>
+    <title>FastSkill</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app">
-        <header>
-            <h1>FastSkill Registry</h1>
-            <div class="search-container">
-                <input type="text" id="search-input" placeholder="Search skills...">
+        <header class="page-header">
+            <h1>skill-project.toml</h1>
+            <div class="toolbar">
+                <button type="button" id="upgrade-all-btn" class="btn-upgrade-all">Upgrade all</button>
+                <input type="text" id="search-input" placeholder="Filter skills..." class="search-input">
             </div>
         </header>
         <main>
-            <div id="skills-container"></div>
+            <div id="loading" class="loading" style="display: none;">Loading...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            <div id="content" class="content-panel">
+                <section id="metadata-section" class="section"></section>
+                <section id="skills-dir-section" class="section"></section>
+                <section id="skills-section" class="section">
+                    <table class="skills-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>ID</th>
+                                <th>Version</th>
+                                <th>Type</th>
+                                <th>Location</th>
+                                <th>Description</th>
+                                <th class="th-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="skills-tbody"></tbody>
+                    </table>
+                </section>
+            </div>
         </main>
     </div>
     <script src="app.js"></script>
