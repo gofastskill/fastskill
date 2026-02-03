@@ -151,6 +151,21 @@ fn extract_line_number(error_msg: &str) -> Option<usize> {
 
 pub type CliResult<T> = Result<T, CliError>;
 
+/// Canonical error message when skill-project.toml is not found in the hierarchy.
+/// Used by install, list, update, and add when `!project_file_result.found`.
+pub fn manifest_required_message() -> &'static str {
+    "skill-project.toml not found in this directory or any parent. \
+     Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
+     then run this command again."
+}
+
+/// Message for add command when manifest is missing (includes add-specific hint).
+pub fn manifest_required_for_add_message() -> &'static str {
+    "skill-project.toml not found in this directory or any parent. \
+     Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
+     then run 'fastskill add <skill>' from your project."
+}
+
 impl CliError {
     /// Get the exit code for this error
     /// Returns: 0 = success, 1 = not found/invalid, 2 = system error

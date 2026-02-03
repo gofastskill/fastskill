@@ -11,15 +11,38 @@ use std::fs;
 use tempfile::TempDir;
 
 #[test]
+fn test_list_no_manifest_fails_with_instructions() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    // No skill-project.toml
+
+    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+
+    assert!(!result.success);
+    assert!(
+        result.stderr.contains("skill-project.toml not found")
+            && result.stderr.contains("fastskill init"),
+        "stderr should mention skill-project.toml and fastskill init: {}",
+        result.stderr
+    );
+}
+
+#[test]
 fn test_list_default_grid_format() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
 
     assert!(result.success);
-    // Should show no skills installed in empty directory
+    // Should show no skills (empty manifest)
 
     assert_snapshot_with_settings(
         "list_default_grid_format",
@@ -33,12 +56,17 @@ fn test_list_json_format() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["list", "--json"], Some(temp_dir.path()));
 
     assert!(result.success);
-    // Should output valid JSON with empty arrays
-    assert!(result.stdout.contains("installed") && result.stdout.contains("[]"));
+    // Should output valid JSON (array of list rows, may be empty)
+    assert!(result.stdout.contains("[]") || result.stdout.contains("\"id\""));
 
     assert_snapshot_with_settings("list_json_format", &result.stdout, &cli_snapshot_settings());
 }
@@ -48,11 +76,20 @@ fn test_list_empty_skills_directory() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
 
     assert!(result.success);
-    assert!(result.stdout.contains("No skills installed") || result.stdout.contains("[INFO]"));
+    assert!(
+        result.stdout.contains("No skills") || result.stdout.contains("[INFO]"),
+        "stdout: {}",
+        result.stdout
+    );
 
     assert_snapshot_with_settings(
         "list_empty_skills_directory",
@@ -67,12 +104,7 @@ fn test_list_missing_dependencies() {
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
-    // Create skill-project.toml with dependencies but no installed skills
-    let project_content = r#"[project]
-name = "test-project"
-version = "1.0.0"
-
-[dependencies]
+    let project_content = r#"[dependencies]
 web-scraper = "1.2.3"
 dev-tools = "2.0.0"
 "#;
@@ -81,7 +113,13 @@ dev-tools = "2.0.0"
     let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
 
     assert!(result.success);
-    assert!(result.stdout.contains("missing") || result.stdout.contains("Missing"));
+    assert!(
+        result.stdout.contains("missing")
+            || result.stdout.contains("Missing")
+            || result.stdout.contains("web-scraper"),
+        "stdout: {}",
+        result.stdout
+    );
 
     assert_snapshot_with_settings(
         "list_missing_dependencies",
@@ -96,7 +134,6 @@ fn test_list_version_mismatch() {
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
-    // Create an installed skill
     let skill_dir = skills_dir.join("test-skill");
     fs::create_dir_all(&skill_dir).unwrap();
     let skill_content = r#"---
@@ -109,12 +146,7 @@ tags: [test]
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
-    // Create skill-project.toml with different version
-    let project_content = r#"[project]
-name = "test-project"
-version = "1.0.0"
-
-[dependencies]
+    let project_content = r#"[dependencies]
 test-skill = "2.0.0"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
@@ -136,11 +168,20 @@ fn test_list_conflicting_flags_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["list", "--json", "--grid"], Some(temp_dir.path()));
 
     assert!(!result.success);
-    assert!(result.stderr.contains("error") || result.stderr.contains("cannot be used with"));
+    assert!(
+        result.stderr.contains("error")
+            || result.stderr.contains("Cannot use both")
+            || result.stderr.contains("cannot be used with")
+    );
 
     assert_snapshot_with_settings(
         "list_conflicting_flags",
