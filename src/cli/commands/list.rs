@@ -3,17 +3,33 @@
 //! Similar to `pip list` or `uv list`, this command lists all locally installed skills
 //! and reconciles them against skill-project.toml and skills.lock.
 //!
-//! `list` shows a reconciliation report (project + lock + files on disk); `show` displays
-//! skill metadata only. Use `list` for dependency/reconciliation checks, `show` for inspecting
-//! skill details.
+//! Requires skill-project.toml in the hierarchy. Uses three sources: installed skills (target
+//! folder), skill-project.toml [dependencies], and skills.lock. Outputs one table with flags
+//! for missing from folder, missing from lock, missing from manifest.
 
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::messages;
 use clap::Args;
-use fastskill::core::reconciliation::{build_reconciliation_report, ReconciliationReport};
+use fastskill::core::lock::SkillsLock;
+use fastskill::core::manifest::SkillProjectToml;
+use fastskill::core::project::resolve_project_file;
 use fastskill::core::service::FastSkillService;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::PathBuf;
+
+/// One row for the list table: union of all skills with presence and gap flags.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ListRow {
+    pub id: String,
+    pub version: Option<String>,
+    pub in_manifest: bool,
+    pub in_lock: bool,
+    pub installed: bool,
+    pub missing_from_folder: bool,
+    pub missing_from_lock: bool,
+    pub missing_from_manifest: bool,
+}
 
 /// List locally installed skills
 #[derive(Debug, Args)]
@@ -36,10 +52,49 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
         ));
     }
 
-    let config = service.config();
-    let skills_dir = &config.skill_storage_path;
+    // Require manifest: resolve from current directory
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let project_file_result = resolve_project_file(&current_dir);
+    if !project_file_result.found {
+        return Err(CliError::Config(manifest_required_message().to_string()));
+    }
 
-    // Get all installed skills from the service
+    let project_file_path = project_file_result.path;
+    let lock_path = project_file_path
+        .parent()
+        .map(|p| p.join("skills.lock"))
+        .unwrap_or_else(|| PathBuf::from("skills.lock"));
+
+    // Load skill-project.toml and skills.lock
+    let project = SkillProjectToml::load_from_file(&project_file_path)
+        .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
+    let manifest_ids: HashMap<String, ()> = project
+        .dependencies
+        .as_ref()
+        .map(|d| d.dependencies.keys().cloned().map(|k| (k, ())).collect())
+        .unwrap_or_default();
+
+    let lock = if lock_path.exists() {
+        SkillsLock::load_from_file(&lock_path)
+            .map_err(|e| CliError::Config(format!("Failed to load skills.lock: {}", e)))?
+    } else {
+        SkillsLock {
+            metadata: fastskill::core::lock::LockMetadata {
+                version: "1.0.0".to_string(),
+                generated_at: chrono::Utc::now(),
+                fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            },
+            skills: Vec::new(),
+        }
+    };
+    let lock_map: HashMap<String, String> = lock
+        .skills
+        .iter()
+        .map(|s| (s.id.clone(), s.version.clone()))
+        .collect();
+
+    // Installed skills from service
     let skill_manager = service.skill_manager();
     let installed_skills = skill_manager.list_skills(None).await.map_err(|e| {
         CliError::Service(fastskill::ServiceError::Custom(format!(
@@ -47,30 +102,55 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
             e
         )))
     })?;
+    let installed_map: HashMap<String, String> = installed_skills
+        .iter()
+        .map(|s| (s.id.to_string(), s.version.clone()))
+        .collect();
 
-    // Resolve project and lock file paths
-    let project_path = resolve_project_file(skills_dir);
-    let lock_path = resolve_lock_file(skills_dir);
+    // Union of all skill IDs
+    let all_ids: HashSet<String> = manifest_ids
+        .keys()
+        .chain(lock_map.keys())
+        .chain(installed_map.keys())
+        .cloned()
+        .collect();
 
-    // Load project and lock files
-    let project_deps = load_project_file(&project_path).unwrap_or_default();
-    let lock_deps = load_lock_file(&lock_path).unwrap_or_default();
+    let mut rows: Vec<ListRow> = all_ids
+        .into_iter()
+        .map(|id| {
+            let in_manifest = manifest_ids.contains_key(&id);
+            let in_lock = lock_map.contains_key(&id);
+            let installed = installed_map.contains_key(&id);
+            let version = installed_map
+                .get(&id)
+                .or_else(|| lock_map.get(&id))
+                .cloned();
+            let missing_from_folder = (in_manifest || in_lock) && !installed;
+            let missing_from_lock = (in_manifest || installed) && !in_lock;
+            let missing_from_manifest = (in_lock || installed) && !in_manifest;
+            ListRow {
+                id: id.clone(),
+                version,
+                in_manifest,
+                in_lock,
+                installed,
+                missing_from_folder,
+                missing_from_lock,
+                missing_from_manifest,
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.id.cmp(&b.id));
 
-    // Build reconciliation report
-    let report =
-        build_reconciliation_report(&installed_skills, &project_deps, &lock_deps, skills_dir)
-            .map_err(CliError::Service)?;
-
-    // Format output
     let output_format = if args.json { "json" } else { "grid" };
     match output_format {
         "json" => {
-            let json_output = serde_json::to_string_pretty(&report)
+            let json_output = serde_json::to_string_pretty(&rows)
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
             println!("{}", json_output);
         }
         "grid" => {
-            format_list_grid(&report)?;
+            format_list_grid(&rows)?;
         }
         _ => unreachable!(),
     }
@@ -78,207 +158,81 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
     Ok(())
 }
 
-/// Resolve skill-project.toml path
-fn resolve_project_file(skills_dir: &Path) -> PathBuf {
-    // Try .claude/skill-project.toml first (common location)
-    if let Some(parent) = skills_dir.parent() {
-        let project_file = parent.join("skill-project.toml");
-        if project_file.exists() {
-            return project_file;
-        }
-    }
-
-    // Try current directory
-    let project_file = PathBuf::from("skill-project.toml");
-    if project_file.exists() {
-        return project_file;
-    }
-
-    // Default to .claude/skill-project.toml
-    skills_dir
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("skill-project.toml")
-}
-
-/// Resolve skills.lock path
-fn resolve_lock_file(skills_dir: &Path) -> PathBuf {
-    // Try .claude/skills.lock first (common location)
-    if let Some(parent) = skills_dir.parent() {
-        let lock_file = parent.join("skills.lock");
-        if lock_file.exists() {
-            return lock_file;
-        }
-    }
-
-    // Try current directory
-    let lock_file = PathBuf::from("skills.lock");
-    if lock_file.exists() {
-        return lock_file;
-    }
-
-    // Default to .claude/skills.lock
-    skills_dir
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("skills.lock")
-}
-
-/// Load dependencies from skill-project.toml
-fn load_project_file(path: &Path) -> Result<HashMap<String, Option<String>>, CliError> {
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
-
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| CliError::Config(format!("Failed to read {}: {}", path.display(), e)))?;
-
-    let toml_value: toml::Value = toml::from_str(&content)
-        .map_err(|e| CliError::Config(format!("Failed to parse {}: {}", path.display(), e)))?;
-
-    let mut deps = HashMap::new();
-
-    // Parse [dependencies] section
-    if let Some(deps_section) = toml_value.get("dependencies").and_then(|d| d.as_table()) {
-        for (key, value) in deps_section {
-            let version = value.as_str().map(|version_str| version_str.to_string());
-            deps.insert(key.clone(), version);
-        }
-    }
-
-    Ok(deps)
-}
-
-/// Load locked versions from skills.lock
-fn load_lock_file(path: &Path) -> Result<HashMap<String, String>, CliError> {
-    if !path.exists() {
-        return Ok(HashMap::new());
-    }
-
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| CliError::Config(format!("Failed to read {}: {}", path.display(), e)))?;
-
-    let toml_value: toml::Value = toml::from_str(&content)
-        .map_err(|e| CliError::Config(format!("Failed to parse {}: {}", path.display(), e)))?;
-
-    let mut locked = HashMap::new();
-
-    // Parse [dependencies] section
-    if let Some(deps_section) = toml_value.get("dependencies").and_then(|d| d.as_table()) {
-        for (key, value) in deps_section {
-            if let Some(version_str) = value.get("version").and_then(|v| v.as_str()) {
-                locked.insert(key.clone(), version_str.to_string());
-            }
-        }
-    }
-
-    Ok(locked)
-}
-
-/// Format list output as grid table
-fn format_list_grid(report: &ReconciliationReport) -> CliResult<()> {
-    if report.installed.is_empty() && report.missing.is_empty() && report.extraneous.is_empty() {
-        println!("{}", messages::info("No skills installed"));
+/// Format list output as grid table: one row per skill with In manifest, In lock, Installed, and Flags.
+fn format_list_grid(rows: &[ListRow]) -> CliResult<()> {
+    if rows.is_empty() {
+        println!(
+            "{}",
+            messages::info("No skills (manifest is empty and nothing installed)")
+        );
         return Ok(());
     }
 
-    // Print installed skills
-    if !report.installed.is_empty() {
-        println!("\n{}", messages::info("Installed Skills:"));
-        println!();
-
-        let headers = ["ID", "Version", "Description", "Source", "Status"];
-        let mut col_widths = vec![0; headers.len()];
-
-        // Calculate column widths
-        for (i, header) in headers.iter().enumerate() {
-            col_widths[i] = header.len();
-        }
-
-        for skill in &report.installed {
-            col_widths[0] = col_widths[0].max(skill.id.len());
-            col_widths[1] = col_widths[1].max(skill.version.len());
-            let desc_len = skill.description.len().min(50);
-            col_widths[2] = col_widths[2].max(desc_len);
-            let source = skill.source.as_deref().unwrap_or("local");
-            col_widths[3] = col_widths[3].max(source.len());
-            let status_str = format!("{:?}", skill.status);
-            col_widths[4] = col_widths[4].max(status_str.len());
-        }
-
-        // Print header
-        let header_row: Vec<String> = headers
-            .iter()
-            .enumerate()
-            .map(|(i, h)| format!("{:width$}", h, width = col_widths[i]))
-            .collect();
-        println!("{}", header_row.join("  "));
-        println!("{}", "-".repeat(header_row.join("  ").len()));
-
-        // Print rows
-        for skill in &report.installed {
-            let description = if skill.description.len() > 50 {
-                format!("{}...", &skill.description[..47])
-            } else {
-                skill.description.clone()
-            };
-
-            let source = skill.source.as_deref().unwrap_or("local");
-            let status_str = format!("{:?}", skill.status);
-
-            let row = [
-                format!("{:width$}", skill.id, width = col_widths[0]),
-                format!("{:width$}", skill.version, width = col_widths[1]),
-                format!("{:width$}", description, width = col_widths[2]),
-                format!("{:width$}", source, width = col_widths[3]),
-                format!("{:width$}", status_str, width = col_widths[4]),
-            ];
-            println!("{}", row.join("  "));
-        }
+    let headers = [
+        "ID",
+        "Version",
+        "In manifest",
+        "In lock",
+        "Installed",
+        "Flags",
+    ];
+    let mut col_widths = vec![0; headers.len()];
+    for (i, h) in headers.iter().enumerate() {
+        col_widths[i] = h.len();
+    }
+    for row in rows {
+        col_widths[0] = col_widths[0].max(row.id.len());
+        col_widths[1] = col_widths[1].max(row.version.as_deref().unwrap_or("-").len());
+        col_widths[2] = col_widths[2].max(1);
+        col_widths[3] = col_widths[3].max(1);
+        col_widths[4] = col_widths[4].max(1);
+        let flags = build_flags_str(row);
+        col_widths[5] = col_widths[5].max(flags.len());
     }
 
-    // Print missing dependencies
-    if !report.missing.is_empty() {
-        println!(
-            "\n{}",
-            messages::warning("Missing Dependencies (in skill-project.toml but not installed):")
-        );
-        let mut missing: Vec<_> = report.missing.iter().collect();
-        missing.sort_by_key(|entry| &entry.id);
-        for entry in missing {
-            println!("  • {} (not installed)", entry.id);
-        }
-    }
+    let header_row: Vec<String> = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
+        .collect();
+    println!();
+    println!("{}", header_row.join("  "));
+    println!("{}", "-".repeat(header_row.join("  ").len()));
 
-    // Print extraneous packages
-    if !report.extraneous.is_empty() {
-        println!(
-            "\n{}",
-            messages::warning("Extraneous Packages (installed but not in skill-project.toml):")
-        );
-        let mut extraneous: Vec<_> = report.extraneous.iter().collect();
-        extraneous.sort_by_key(|skill| &skill.id);
-        for skill in extraneous {
-            println!("  • {} v{}", skill.id, skill.version);
-        }
+    for row in rows {
+        let version = row.version.as_deref().unwrap_or("-");
+        let in_manifest = if row.in_manifest { "Y" } else { "-" };
+        let in_lock = if row.in_lock { "Y" } else { "-" };
+        let installed = if row.installed { "Y" } else { "-" };
+        let flags = build_flags_str(row);
+        let line = [
+            format!("{:width$}", row.id, width = col_widths[0]),
+            format!("{:width$}", version, width = col_widths[1]),
+            format!("{:width$}", in_manifest, width = col_widths[2]),
+            format!("{:width$}", in_lock, width = col_widths[3]),
+            format!("{:width$}", installed, width = col_widths[4]),
+            format!("{:width$}", flags, width = col_widths[5]),
+        ];
+        println!("{}", line.join("  "));
     }
-
-    // Print version mismatches
-    if !report.version_mismatches.is_empty() {
-        println!(
-            "\n{}",
-            messages::warning("Version Mismatches (installed version differs from skills.lock):")
-        );
-        let mut mismatches: Vec<_> = report.version_mismatches.iter().collect();
-        mismatches.sort_by_key(|mismatch| &mismatch.id);
-        for mismatch in mismatches {
-            println!(
-                "  • {}: installed={}, locked={}",
-                mismatch.id, mismatch.installed_version, mismatch.locked_version
-            );
-        }
-    }
-
     println!();
     Ok(())
+}
+
+fn build_flags_str(row: &ListRow) -> String {
+    let mut parts = Vec::new();
+    if row.missing_from_folder {
+        parts.push("missing from folder");
+    }
+    if row.missing_from_lock {
+        parts.push("missing from lock");
+    }
+    if row.missing_from_manifest {
+        parts.push("missing from manifest");
+    }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join("; ")
+    }
 }

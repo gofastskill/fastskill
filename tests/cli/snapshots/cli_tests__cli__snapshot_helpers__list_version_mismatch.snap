@@ -4,8 +4,7 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-[INFO] Installed Skills:
+ID          Version  In manifest  In lock  Installed  Flags            
+-----------------------------------------------------------------------
+test-skill  [VERSION]    Y            -        Y          missing from lock
 
-ID          Version  Description  Source  Status
-------------------------------------------------
-test-skill  [VERSION]    Test skill   local   Ok

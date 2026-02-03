@@ -1,6 +1,6 @@
 //! Add command implementation
 
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::error::{manifest_required_for_add_message, CliError, CliResult};
 use crate::cli::utils::manifest_utils;
 use crate::cli::utils::{
     detect_skill_source, parse_git_url, parse_skill_id, validate_skill_structure, SkillSource,
@@ -82,6 +82,16 @@ pub async fn execute_add(
     args: AddArgs,
     verbose: bool,
 ) -> CliResult<()> {
+    // Require manifest before any install work
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let project_file_result = resolve_project_file(&current_dir);
+    if !project_file_result.found {
+        return Err(CliError::Config(
+            manifest_required_for_add_message().to_string(),
+        ));
+    }
+
     let groups = args.group.map(|g| vec![g]).unwrap_or_default();
 
     // Check if source type is overridden
@@ -977,5 +987,55 @@ mod tests {
         // Should still fail because source doesn't exist, but force flag is accepted
         let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_add_no_manifest_fails_with_instructions() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let original_dir = std::env::current_dir().ok();
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+        // No skill-project.toml in temp_dir
+
+        let args = AddArgs {
+            source: "scope/some-skill".to_string(),
+            source_type: Some("registry".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+        };
+
+        let result = execute_add(&service, args, false).await;
+        assert!(
+            result.is_err(),
+            "Expected error when no manifest: {:?}",
+            result
+        );
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("skill-project.toml not found") && msg.contains("fastskill init"),
+                "Error must mention skill-project.toml and fastskill init: '{}'",
+                msg
+            );
+        } else {
+            panic!("Expected Config error");
+        }
     }
 }

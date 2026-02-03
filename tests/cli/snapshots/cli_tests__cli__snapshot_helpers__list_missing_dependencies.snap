@@ -5,6 +5,8 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-[WARNING] Missing Dependencies (in skill-project.toml but not installed):
-  • dev-tools (not installed)
-  • web-scraper (not installed)
+ID           Version  In manifest  In lock  Installed  Flags                                 
+---------------------------------------------------------------------------------------------
+dev-tools    -        Y            -        -          missing from folder; missing from lock
+web-scraper  -        Y            -        -          missing from folder; missing from lock
+

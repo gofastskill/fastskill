@@ -55,7 +55,8 @@ pub fn update_lock_file(
     Ok(())
 }
 
-/// T028: Add skill to skill-project.toml [dependencies] section
+/// T028: Add skill to skill-project.toml [dependencies] section.
+/// Fails if skill-project.toml is not found in the hierarchy (we never auto-create it).
 pub fn add_skill_to_project_toml(
     skill: &SkillDefinition,
     groups: Vec<String>,
@@ -67,44 +68,38 @@ pub fn add_skill_to_project_toml(
     let project_file_result = resolve_project_file(&current_dir);
     let project_file_path = project_file_result.path;
 
-    // T032: Create file if it doesn't exist
-    let mut project = if project_file_result.found {
-        let loaded_project = SkillProjectToml::load_from_file(&project_file_path)
-            .map_err(|e| format!("Failed to load skill-project.toml: {}", e))?;
+    if !project_file_result.found {
+        return Err(
+            "skill-project.toml not found in this directory or any parent. \
+             Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
+             then run 'fastskill add <skill>' from your project."
+                .to_string()
+                .into(),
+        );
+    }
 
-        // T052: Validate context - add command requires project-level context
-        let mut context = project_file_result.context;
-        if context == fastskill::core::manifest::ProjectContext::Ambiguous {
-            // Use content-based detection for ambiguous cases
-            context = fastskill::core::project::detect_context_from_content(&loaded_project);
-        }
+    let mut project = SkillProjectToml::load_from_file(&project_file_path)
+        .map_err(|e| format!("Failed to load skill-project.toml: {}", e))?;
 
-        // Validate that we're in project context (not skill context)
-        if context == fastskill::core::manifest::ProjectContext::Skill {
-            return Err(
-                "Cannot add dependencies to skill-level skill-project.toml. \
-                This file is in a skill directory (contains SKILL.md). \
-                Use 'fastskill add' from the project root instead."
-                    .to_string()
-                    .into(),
-            );
-        }
+    // T052: Validate context - add command requires project-level context
+    let mut context = project_file_result.context;
+    if context == fastskill::core::manifest::ProjectContext::Ambiguous {
+        context = fastskill::core::project::detect_context_from_content(&project);
+    }
 
-        loaded_project
-            .validate_for_context(context)
-            .map_err(|e| format!("skill-project.toml validation failed: {}", e))?;
+    if context == fastskill::core::manifest::ProjectContext::Skill {
+        return Err(
+            "Cannot add dependencies to skill-level skill-project.toml. \
+            This file is in a skill directory (contains SKILL.md). \
+            Use 'fastskill add' from the project root instead."
+                .to_string()
+                .into(),
+        );
+    }
 
-        loaded_project
-    } else {
-        // Create new project file (defaults to project context)
-        SkillProjectToml {
-            metadata: None,
-            dependencies: Some(DependenciesSection {
-                dependencies: HashMap::new(),
-            }),
-            tool: None,
-        }
-    };
+    project
+        .validate_for_context(context)
+        .map_err(|e| format!("skill-project.toml validation failed: {}", e))?;
 
     // Ensure dependencies section exists
     if project.dependencies.is_none() {
