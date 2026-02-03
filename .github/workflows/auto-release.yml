@@ -131,17 +131,35 @@ jobs:
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           TAG="v$VERSION"
-          
+
           # Check if tag already exists
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists, skipping"
             exit 0
           fi
-          
+
           git tag "$TAG"
           git push origin "$TAG"
-          
-          echo "::notice::Created and pushed tag $TAG - release workflow will be triggered"
+
+          echo "::notice::Created and pushed tag $TAG"
+
+      - name: Trigger release workflow
+        if: steps.check-label.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          TAG="v$VERSION"
+
+          echo "Triggering release workflow for version $VERSION..."
+
+          # Wait briefly to ensure tag is available on remote
+          sleep 2
+
+          # Trigger release workflow via workflow_dispatch
+          gh workflow run release.yml --ref "$TAG" -f version="$VERSION"
+
+          echo "::notice::Release workflow triggered for $TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Skip notice
         if: steps.check-label.outputs.skip == 'true'
