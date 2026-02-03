@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Get repositories from skill-project.toml
-fn get_repositories(
+pub(crate) fn get_repositories(
     project: &SkillProjectToml,
 ) -> Vec<crate::core::repository::RepositoryDefinition> {
     use crate::core::repository::{
@@ -98,6 +98,110 @@ fn get_lock_path(project_path: &std::path::Path) -> PathBuf {
     } else {
         PathBuf::from("skills.lock")
     }
+}
+
+/// GET /api/project - Full skill-project.toml view (metadata, skills_directory, skills with type/location)
+pub async fn get_project(
+    State(state): State<AppState>,
+) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
+    let project_path = &state.project_file_path;
+
+    if !project_path.exists() {
+        return Ok(Json(ApiResponse::success(serde_json::json!({
+            "metadata": null,
+            "skills_directory": null,
+            "skills": []
+        }))));
+    }
+
+    let project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    })?;
+
+    let metadata = project.metadata.as_ref().map(|m| {
+        serde_json::json!({
+            "id": m.id,
+            "version": m.version,
+            "description": m.description,
+            "author": m.author,
+            "name": m.name
+        })
+    });
+
+    let skills_directory = project
+        .tool
+        .as_ref()
+        .and_then(|t| t.fastskill.as_ref())
+        .and_then(|f| f.skills_directory.as_ref())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".claude/skills".to_string());
+
+    let skills: Vec<serde_json::Value> = project
+        .dependencies
+        .as_ref()
+        .map(|deps| {
+            deps.dependencies
+                .iter()
+                .map(|(id, spec)| {
+                    let (typ, location) = match spec {
+                        DependencySpec::Version(v) => {
+                            ("source".to_string(), format!("version {}", v))
+                        }
+                        DependencySpec::Inline {
+                            source,
+                            source_specific,
+                            ..
+                        } => {
+                            let typ = match source {
+                                DependencySource::Git => "git",
+                                DependencySource::Local => "local",
+                                DependencySource::ZipUrl => "zip-url",
+                                DependencySource::Source => "source",
+                            }
+                            .to_string();
+                            let location = match source {
+                                DependencySource::Git => source_specific
+                                    .url
+                                    .clone()
+                                    .map(|u| {
+                                        source_specific
+                                            .branch
+                                            .as_ref()
+                                            .map(|b| format!("{} (branch: {})", u, b))
+                                            .unwrap_or(u)
+                                    })
+                                    .unwrap_or_else(|| "—".to_string()),
+                                DependencySource::Local => source_specific
+                                    .path
+                                    .clone()
+                                    .unwrap_or_else(|| "—".to_string()),
+                                DependencySource::ZipUrl => source_specific
+                                    .zip_url
+                                    .clone()
+                                    .unwrap_or_else(|| "—".to_string()),
+                                DependencySource::Source => source_specific
+                                    .name
+                                    .as_ref()
+                                    .zip(source_specific.skill.as_ref())
+                                    .map(|(n, s)| format!("{} / {}", n, s))
+                                    .unwrap_or_else(|| "—".to_string()),
+                            };
+                            (typ, location)
+                        }
+                    };
+                    serde_json::json!({ "id": id, "type": typ, "location": location })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let data = serde_json::json!({
+        "metadata": metadata,
+        "skills_directory": skills_directory,
+        "skills": skills
+    });
+
+    Ok(Json(ApiResponse::success(data)))
 }
 
 /// GET /api/manifest/skills - List all skills from skill-project.toml
@@ -227,13 +331,6 @@ pub async fn add_skill_to_manifest(
         HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
     })?;
 
-    // Generate skills.mdc if enabled
-    if state.auto_generate_mdc {
-        if let Err(e) = generate_skills_mdc(&state).await {
-            tracing::warn!("Failed to generate skills.mdc: {}", e);
-        }
-    }
-
     let response = ManifestSkillResponse {
         id: request.skill_id.clone(),
         version: Some(marketplace_skill.version),
@@ -282,13 +379,6 @@ pub async fn remove_skill_from_manifest(
         lock.save_to_file(&lock_path).map_err(|e| {
             HttpError::InternalServerError(format!("Failed to save lock file: {}", e))
         })?;
-    }
-
-    // Generate skills.mdc if enabled
-    if state.auto_generate_mdc {
-        if let Err(e) = generate_skills_mdc(&state).await {
-            tracing::warn!("Failed to generate skills.mdc: {}", e);
-        }
     }
 
     Ok(Json(ApiResponse::success(())))
@@ -340,13 +430,6 @@ pub async fn update_skill_in_manifest(
     project.save_to_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
     })?;
-
-    // Generate skills.mdc if enabled
-    if state.auto_generate_mdc {
-        if let Err(e) = generate_skills_mdc(&state).await {
-            tracing::warn!("Failed to generate skills.mdc: {}", e);
-        }
-    }
 
     let response = ManifestSkillResponse {
         id: skill_id,
