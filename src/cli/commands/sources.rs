@@ -7,6 +7,9 @@ use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  fastskill sources list\n  fastskill sources add local-skills --repo-type local /path/to/skills"
+)]
 pub struct SourcesArgs {
     #[command(subcommand)]
     pub command: SourcesCommand,
@@ -15,6 +18,7 @@ pub struct SourcesArgs {
 #[derive(Debug, Subcommand)]
 pub enum SourcesCommand {
     /// List all configured repositories
+    #[command(after_help = "Examples:\n  fastskill sources list\n  fastskill sources list --json")]
     List {
         /// Output in JSON format
         #[arg(long)]
@@ -22,6 +26,9 @@ pub enum SourcesCommand {
     },
 
     /// Add a new repository
+    #[command(
+        after_help = "Examples:\n  fastskill sources add my-repo --repo-type local /path/to/skills"
+    )]
     Add {
         /// Repository name
         name: String,
@@ -54,12 +61,14 @@ pub enum SourcesCommand {
     },
 
     /// Remove a repository
+    #[command(after_help = "Examples:\n  fastskill sources remove my-repo")]
     Remove {
         /// Repository name to remove
         name: String,
     },
 
     /// Show repository details
+    #[command(after_help = "Examples:\n  fastskill sources show my-repo")]
     Show {
         /// Repository name
         name: String,
@@ -69,6 +78,7 @@ pub enum SourcesCommand {
     },
 
     /// Update repository metadata
+    #[command(after_help = "Examples:\n  fastskill sources update my-repo --priority 1")]
     Update {
         /// Repository name to update
         name: String,
@@ -81,18 +91,25 @@ pub enum SourcesCommand {
     },
 
     /// Test repository connectivity
+    #[command(after_help = "Examples:\n  fastskill sources test my-repo")]
     Test {
         /// Repository name to test
         name: String,
     },
 
     /// Refresh repository cache
+    #[command(
+        after_help = "Examples:\n  fastskill sources refresh\n  fastskill sources refresh my-repo"
+    )]
     Refresh {
         /// Repository name to refresh (if not specified, refreshes all)
         name: Option<String>,
     },
 
     /// Create marketplace.json from a directory containing skills
+    #[command(
+        after_help = "Examples:\n  fastskill sources create\n  fastskill sources create --path ./skills --name my-marketplace"
+    )]
     Create {
         /// Directory containing skills to scan
         #[arg(short, long, default_value = ".")]

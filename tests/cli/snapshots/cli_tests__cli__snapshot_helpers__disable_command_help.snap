@@ -11,3 +11,6 @@ Arguments:
 
 Options:
   -h, --help  Print help
+
+Examples:
+  fastskill disable my-skill-id
