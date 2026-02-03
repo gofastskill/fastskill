@@ -117,7 +117,7 @@ impl Cli {
 
         // Handle commands
         match command {
-            Some(Commands::Add(args)) => add::execute_add(&service, args).await,
+            Some(Commands::Add(args)) => add::execute_add(&service, args, self.verbose).await,
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
             Some(Commands::List(args)) => list::execute_list(&service, args).await,
             Some(Commands::Read(args)) => read::execute_read(Arc::new(service), args).await,

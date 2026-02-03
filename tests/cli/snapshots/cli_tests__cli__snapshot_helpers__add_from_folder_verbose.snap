@@ -1,0 +1,9 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Using skills directory: [TEMP_DIR]
+Successfully added skill: test-skill-minimal (v[VERSION])
+[OK] Updated skill-project.toml and skills.lock
+⚠ No compatibility field specified
