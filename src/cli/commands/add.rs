@@ -77,7 +77,11 @@ pub struct AddArgs {
     pub group: Option<String>,
 }
 
-pub async fn execute_add(service: &FastSkillService, args: AddArgs) -> CliResult<()> {
+pub async fn execute_add(
+    service: &FastSkillService,
+    args: AddArgs,
+    verbose: bool,
+) -> CliResult<()> {
     let groups = args.group.map(|g| vec![g]).unwrap_or_default();
 
     // Check if source type is overridden
@@ -101,10 +105,10 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs) -> CliResult
 
     match source {
         SkillSource::ZipFile(path) => {
-            add_from_zip(service, &path, args.force, args.editable, groups).await
+            add_from_zip(service, &path, args.force, args.editable, groups, verbose).await
         }
         SkillSource::Folder(path) => {
-            add_from_folder(service, &path, args.force, args.editable, groups).await
+            add_from_folder(service, &path, args.force, args.editable, groups, verbose).await
         }
         SkillSource::GitUrl(url) => {
             add_from_git(
@@ -115,11 +119,20 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs) -> CliResult
                 args.force,
                 args.editable,
                 groups,
+                verbose,
             )
             .await
         }
         SkillSource::SkillId(skill_id) => {
-            add_from_registry(service, &skill_id, args.force, args.editable, groups).await
+            add_from_registry(
+                service,
+                &skill_id,
+                args.force,
+                args.editable,
+                groups,
+                verbose,
+            )
+            .await
         }
     }
 }
@@ -130,6 +143,7 @@ async fn add_from_zip(
     force: bool,
     editable: bool,
     groups: Vec<String>,
+    verbose: bool,
 ) -> CliResult<()> {
     info!("Adding skill from zip file: {}", zip_path.display());
 
@@ -171,7 +185,7 @@ async fn add_from_zip(
 
     // Find SKILL.md in extracted directory
     let skill_path = find_skill_in_directory(extract_path)?;
-    validate_skill_structure(&skill_path)?;
+    validate_skill_structure(&skill_path, verbose)?;
 
     // Read and parse SKILL.md to create skill definition
     // Skill ID will be read from skill-project.toml (mandatory)
@@ -272,11 +286,12 @@ async fn add_from_folder(
     force: bool,
     editable: bool,
     groups: Vec<String>,
+    verbose: bool,
 ) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
 
     // Validate folder structure
-    validate_skill_structure(folder_path)?;
+    validate_skill_structure(folder_path, verbose)?;
 
     // Read and parse SKILL.md to create skill definition
     // Skill ID will be read from skill-project.toml (mandatory)
@@ -379,6 +394,7 @@ async fn add_from_git(
     force: bool,
     editable: bool,
     groups: Vec<String>,
+    verbose: bool,
 ) -> CliResult<()> {
     info!("Adding skill from git URL: {}", git_url);
 
@@ -413,7 +429,7 @@ async fn add_from_git(
             .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
 
         // Validate skill structure
-        validate_skill_structure(&skill_path)?;
+        validate_skill_structure(&skill_path, verbose)?;
 
         // Read and parse SKILL.md to create skill definition
         // Skill ID will be read from skill-project.toml (mandatory)
@@ -523,6 +539,7 @@ async fn add_from_registry(
     force: bool,
     editable: bool,
     groups: Vec<String>,
+    verbose: bool,
 ) -> CliResult<()> {
     info!("Adding skill from registry: {}", skill_id_input);
 
@@ -656,7 +673,7 @@ async fn add_from_registry(
 
     // Find SKILL.md in extracted directory
     let skill_path = find_skill_in_directory(&extract_path)?;
-    validate_skill_structure(&skill_path)?;
+    validate_skill_structure(&skill_path, verbose)?;
 
     // Read and parse SKILL.md to create skill definition
     // Skill ID will be read from skill-project.toml in the extracted package (mandatory)
@@ -906,7 +923,7 @@ mod tests {
             group: None,
         };
 
-        let result = execute_add(&service, args).await;
+        let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
     }
 
@@ -931,7 +948,7 @@ mod tests {
             group: None,
         };
 
-        let result = execute_add(&service, args).await;
+        let result = execute_add(&service, args, false).await;
         // May fail due to invalid format or missing registry
         assert!(result.is_err());
     }
@@ -958,7 +975,7 @@ mod tests {
         };
 
         // Should still fail because source doesn't exist, but force flag is accepted
-        let result = execute_add(&service, args).await;
+        let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
     }
 }

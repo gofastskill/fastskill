@@ -1,0 +1,5 @@
+[metadata]
+id = "test-minimal"
+version = "1.0.0"
+name = "test-skill-minimal"
+description = "A minimal test skill for E2E testing"

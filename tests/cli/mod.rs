@@ -2,6 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
+pub mod add_e2e_tests;
 pub mod add_tests;
 pub mod auth_e2e_tests;
 pub mod config_tests;

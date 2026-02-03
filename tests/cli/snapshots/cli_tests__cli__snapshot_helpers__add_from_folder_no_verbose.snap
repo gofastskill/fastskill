@@ -1,0 +1,7 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+Successfully added skill: test-skill-minimal (v[VERSION])
+[OK] Updated skill-project.toml and skills.lock

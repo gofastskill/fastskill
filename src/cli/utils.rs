@@ -137,8 +137,25 @@ pub fn parse_git_url(git_url: &str) -> CliResult<GitUrlInfo> {
     })
 }
 
-/// Validate skill structure follows Claude Code standard
-pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
+/// Compatibility warning text; only shown when `verbose` is true.
+const COMPATIBILITY_WARNING: &str = "No compatibility field specified";
+
+/// Filter warnings for display: when not verbose, hide the compatibility warning.
+fn filter_warnings(warnings: &[String], verbose: bool) -> Vec<String> {
+    if verbose {
+        warnings.to_vec()
+    } else {
+        warnings
+            .iter()
+            .filter(|w| *w != COMPATIBILITY_WARNING)
+            .cloned()
+            .collect()
+    }
+}
+
+/// Validate skill structure follows Claude Code standard.
+/// When `verbose` is false, the "No compatibility field specified" warning is not shown.
+pub fn validate_skill_structure(skill_path: &Path, verbose: bool) -> CliResult<()> {
     use fastskill::validation::standard_validator::{StandardValidator, ValidationError};
 
     // Use StandardValidator for comprehensive AI Skill standard validation
@@ -146,6 +163,8 @@ pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
 
     match result {
         Ok(validation_result) => {
+            let warnings = filter_warnings(&validation_result.warnings, verbose);
+
             if !validation_result.is_valid {
                 // Format validation errors for CLI display
                 let error_messages: Vec<String> = validation_result
@@ -182,11 +201,8 @@ pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
                     })
                     .collect();
 
-                let warning_messages: Vec<String> = validation_result
-                    .warnings
-                    .iter()
-                    .map(|w| format!("⚠ {}", w))
-                    .collect();
+                let warning_messages: Vec<String> =
+                    warnings.iter().map(|w| format!("⚠ {}", w)).collect();
 
                 let mut all_messages = error_messages;
                 all_messages.extend(warning_messages);
@@ -195,7 +211,7 @@ pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
             }
 
             // Log warnings even if validation passes
-            for warning in &validation_result.warnings {
+            for warning in &warnings {
                 eprintln!("⚠ {}", warning);
             }
 
