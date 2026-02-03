@@ -34,10 +34,20 @@ fn test_init_command_in_empty_directory() {
     std::env::set_current_dir(&skill_dir).unwrap();
 
     let binary = get_binary_path();
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let output = if binary == "cargo" {
         Command::new("cargo")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .args(&["run", "--bin", "fastskill", "--", "init", "--yes"])
+            .current_dir(&skill_dir)
+            .args(&[
+                "run",
+                "--manifest-path",
+                manifest_path.to_str().unwrap(),
+                "--bin",
+                "fastskill",
+                "--",
+                "init",
+                "--yes",
+            ])
             .output()
             .expect("Failed to execute init command")
     } else {
@@ -98,10 +108,20 @@ fn test_init_command_with_existing_file() {
     fs::write("skill-project.toml", "[metadata]\nversion = \"0.1.0\"\n").unwrap();
 
     let binary = get_binary_path();
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let output = if binary == "cargo" {
         Command::new("cargo")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .args(&["run", "--bin", "fastskill", "--", "init", "--yes"])
+            .current_dir(&skill_dir)
+            .args(&[
+                "run",
+                "--manifest-path",
+                manifest_path.to_str().unwrap(),
+                "--bin",
+                "fastskill",
+                "--",
+                "init",
+                "--yes",
+            ])
             .output()
             .expect("Failed to execute init command")
     } else {
@@ -151,11 +171,14 @@ fn test_init_command_with_force_flag() {
     fs::write("skill-project.toml", "[metadata]\nversion = \"0.1.0\"\n").unwrap();
 
     let binary = get_binary_path();
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let output = if binary == "cargo" {
         Command::new("cargo")
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .current_dir(&skill_dir)
             .args(&[
                 "run",
+                "--manifest-path",
+                manifest_path.to_str().unwrap(),
                 "--bin",
                 "fastskill",
                 "--",
