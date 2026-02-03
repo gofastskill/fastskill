@@ -23,8 +23,11 @@ pub struct SearchArgs {
 }
 
 pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> CliResult<()> {
-    // Always use embedding search - fail if not configured
-    let results = perform_embedding_search(service, &args.query, args.limit).await?;
+    let results = match perform_embedding_search(service, &args.query, args.limit).await {
+        Ok(r) => r,
+        Err(CliError::Config(_)) => perform_text_search(service, &args.query, args.limit).await?,
+        Err(e) => return Err(e),
+    };
 
     if results.is_empty() {
         println!("No skills found matching '{}'", args.query);
@@ -201,6 +204,53 @@ fn format_results_as_table(results: &[SearchResult]) -> String {
     output
 }
 
+/// Text/fuzzy search fallback when embedding or OPENAI_API_KEY is not available.
+async fn perform_text_search(
+    service: &FastSkillService,
+    query: &str,
+    limit: usize,
+) -> CliResult<Vec<SearchResult>> {
+    let meta_list = service
+        .metadata_service()
+        .search_skills(query)
+        .await
+        .map_err(|e| CliError::Validation(format!("Text search failed: {}", e)))?;
+
+    let mut results = Vec::new();
+    for meta in meta_list.into_iter().take(limit) {
+        let Some(skill_def) = service
+            .skill_manager()
+            .get_skill(&meta.id)
+            .await
+            .map_err(|e| CliError::Validation(format!("Lookup failed: {}", e)))?
+        else {
+            continue;
+        };
+        let skill_path = skill_def
+            .skill_file
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| skill_def.skill_file.clone());
+        let frontmatter_json = serde_json::json!({
+            "name": meta.name,
+            "description": meta.description
+        });
+        let indexed = fastskill::IndexedSkill {
+            id: meta.id.as_str().to_string(),
+            skill_path,
+            frontmatter_json,
+            embedding: vec![],
+            file_hash: String::new(),
+            updated_at: meta.last_updated,
+        };
+        results.push(fastskill::SkillMatch {
+            skill: indexed,
+            similarity: 1.0,
+        });
+    }
+    Ok(results)
+}
+
 /// Perform embedding-based search
 async fn perform_embedding_search(
     service: &FastSkillService,
@@ -370,11 +420,15 @@ mod tests {
         };
 
         let result = execute_search(&service, args).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("Embedding configuration required"));
-        } else {
-            panic!("Expected Config error");
+        // Without embedding config, search falls back to text search; may succeed with no results or error
+        match &result {
+            Ok(()) => {}
+            Err(CliError::Config(msg)) => assert!(
+                msg.contains("Embedding configuration required"),
+                "Unexpected Config error: {}",
+                msg
+            ),
+            Err(e) => panic!("Unexpected error: {:?}", e),
         }
     }
 }

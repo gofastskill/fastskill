@@ -1,7 +1,7 @@
 //! Install command - installs skills from skill-project.toml to .claude/skills/ registry
 
 use crate::cli::config::create_service_config;
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
@@ -44,6 +44,11 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let project_file_result = resolve_project_file(&current_dir);
     let project_file_path = project_file_result.path;
+
+    // Require manifest unless installing from lock
+    if !args.lock && !project_file_result.found {
+        return Err(CliError::Config(manifest_required_message().to_string()));
+    }
 
     // T033: Lock file at project root (skills.lock)
     let lock_path = if let Some(parent) = project_file_path.parent() {
@@ -112,14 +117,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         // For now, we'll install from lock file
         vec![] // TODO: Convert lock entries to install format
     } else {
-        // Load from skill-project.toml
-        if !project_file_result.found {
-            return Err(CliError::Config(
-                "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
-                    .to_string(),
-            ));
-        }
-
+        // Load from skill-project.toml (manifest already required above when !args.lock)
         let project = SkillProjectToml::load_from_file(&project_file_path)
             .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
 
@@ -380,17 +378,11 @@ mod tests {
         let result = execute_install(args).await;
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
-            // Accept either "not found" error, parse error, repository error, directory creation error, or current directory error
             assert!(
-                msg.contains("skill-project.toml not found")
-                    || msg.contains("skills.toml not found")
-                    || msg.contains("Failed to load skill-project.toml")
-                    || msg.contains("Failed to load manifest")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("Failed to create .claude directory")
-                    || msg.contains("Failed to get current directory")
-                    || msg.contains("Failed to find repositories.toml"),
-                "Error message '{}' does not contain expected text",
+                (msg.contains("skill-project.toml not found") && msg.contains("fastskill init"))
+                    || msg.contains("skill-project.toml")
+                        && (msg.contains("not found") || msg.contains("Manifest file not found")),
+                "Error message must mention skill-project.toml and creation/init: '{}'",
                 msg
             );
         } else {
@@ -466,11 +458,9 @@ mod tests {
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        // Create .claude directory and empty skills.toml using absolute paths
-        let claude_dir = temp_dir.path().join(".claude");
-        let skills_toml = claude_dir.join("skills.toml");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(&skills_toml, "[skills]").unwrap();
+        // Create skill-project.toml at project root with empty [dependencies]
+        let project_toml = temp_dir.path().join("skill-project.toml");
+        fs::write(&project_toml, "[dependencies]\n").unwrap();
 
         let args = InstallArgs {
             without: None,
@@ -478,12 +468,8 @@ mod tests {
             lock: false,
         };
 
-        // Should succeed with empty manifest (no skills to install)
+        // Should succeed with empty manifest (no skills to install) or fail on service/repos; shouldn't panic
         let result = execute_install(args).await;
-        // May succeed or fail depending on service initialization, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
-
-        // Cleanup
-        fs::remove_dir_all(".claude").ok();
     }
 }

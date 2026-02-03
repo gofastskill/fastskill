@@ -45,16 +45,16 @@ web-scraper = "1.0.0"
     assert!(updated_deps.dependencies.contains_key("dev-tools"));
 }
 
+/// Resolution returns path at project root when file is missing; user can create file there (e.g. fastskill init).
+/// Add command no longer auto-creates skill-project.toml; user must run fastskill init first.
 #[test]
-fn test_add_creates_skill_project_toml_if_missing() {
+fn test_resolve_project_file_returns_path_user_can_create_manifest() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();
 
-    // No skill-project.toml exists
     let result = resolve_project_file(project_root);
     assert!(!result.found);
 
-    // Create new project file (what add command would do)
     let project_toml = result.path;
     let new_project = SkillProjectToml {
         metadata: None,
@@ -65,7 +65,6 @@ fn test_add_creates_skill_project_toml_if_missing() {
     };
     new_project.save_to_file(&project_toml).unwrap();
 
-    // Verify file was created
     assert!(project_toml.exists());
     let loaded = SkillProjectToml::load_from_file(&project_toml).unwrap();
     assert!(loaded.dependencies.is_some());

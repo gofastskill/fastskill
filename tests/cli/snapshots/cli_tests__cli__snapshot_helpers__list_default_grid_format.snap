@@ -3,4 +3,4 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-[INFO] No skills installed
+[INFO] No skills (manifest is empty and nothing installed)

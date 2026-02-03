@@ -1,7 +1,7 @@
 //! Update command - updates skills in .claude/skills/ registry
 
 use crate::cli::config::create_service_config;
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
@@ -59,10 +59,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
     let project_file_path = project_file_result.path;
 
     if !project_file_result.found {
-        return Err(CliError::Config(
-            "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
-                .to_string(),
-        ));
+        return Err(CliError::Config(manifest_required_message().to_string()));
     }
 
     let project = SkillProjectToml::load_from_file(&project_file_path)
@@ -386,7 +383,11 @@ mod tests {
         let result = execute_update(args).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("skill-project.toml not found"));
+            assert!(
+                msg.contains("skill-project.toml not found") && msg.contains("fastskill init"),
+                "Error message must mention skill-project.toml and fastskill init: '{}'",
+                msg
+            );
         } else {
             panic!("Expected Config error");
         }
