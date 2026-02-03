@@ -16,6 +16,9 @@ use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  fastskill registry list-skills\n  fastskill registry search \"query\""
+)]
 pub struct RegistryArgs {
     #[command(subcommand)]
     pub command: RegistryCommand,
@@ -24,6 +27,9 @@ pub struct RegistryArgs {
 #[derive(Debug, Subcommand)]
 pub enum RegistryCommand {
     /// List skills in registry catalog
+    #[command(
+        after_help = "Examples:\n  fastskill registry list-skills\n  fastskill registry list-skills --json"
+    )]
     ListSkills {
         /// Repository name to list skills from (defaults to default repository if not specified)
         #[arg(long)]
@@ -46,6 +52,7 @@ pub enum RegistryCommand {
     },
 
     /// Show skill details
+    #[command(after_help = "Examples:\n  fastskill registry show-skill pptx")]
     ShowSkill {
         /// Skill ID
         skill_id: String,
@@ -55,6 +62,7 @@ pub enum RegistryCommand {
     },
 
     /// List available versions for a skill
+    #[command(after_help = "Examples:\n  fastskill registry versions pptx")]
     Versions {
         /// Skill ID
         skill_id: String,
@@ -64,6 +72,7 @@ pub enum RegistryCommand {
     },
 
     /// Search skills in registry catalog (remote)
+    #[command(after_help = "Examples:\n  fastskill registry search \"text processing\"")]
     Search {
         /// Search query
         query: String,

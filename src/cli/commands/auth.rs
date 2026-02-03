@@ -7,6 +7,7 @@ use clap::{Args, Subcommand};
 
 /// Authentication command arguments
 #[derive(Debug, Args)]
+#[command(after_help = "Examples:\n  fastskill auth login\n  fastskill auth whoami")]
 pub struct AuthArgs {
     #[command(subcommand)]
     pub command: AuthCommand,
@@ -15,10 +16,17 @@ pub struct AuthArgs {
 #[derive(Debug, Subcommand)]
 pub enum AuthCommand {
     /// Login to a registry and store authentication token
+    #[command(
+        after_help = "Examples:\n  fastskill auth login\n  fastskill auth login --registry https://registry.example.com"
+    )]
     Login(LoginArgs),
     /// Logout from a registry (remove stored token)
+    #[command(
+        after_help = "Examples:\n  fastskill auth logout\n  fastskill auth logout --registry https://registry.example.com"
+    )]
     Logout(LogoutArgs),
     /// Show current authentication status
+    #[command(after_help = "Examples:\n  fastskill auth whoami")]
     Whoami(WhoamiArgs),
 }
 

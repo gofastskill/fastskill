@@ -17,3 +17,7 @@ Options:
   -e, --editable                   Install skill in editable mode (for local development, like poetry add -e)
       --group <GROUP>              Add skill to a specific group (like poetry add --group dev)
   -h, --help                       Print help
+
+Examples:
+  fastskill add ./my-skill
+  fastskill add pptx@[VERSION]

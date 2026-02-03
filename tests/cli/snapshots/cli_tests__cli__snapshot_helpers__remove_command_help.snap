@@ -12,3 +12,7 @@ Arguments:
 Options:
   -f, --force  Force removal without confirmation
   -h, --help   Print help
+
+Examples:
+  fastskill remove my-skill-id
+  fastskill remove skill-a skill-b --force
