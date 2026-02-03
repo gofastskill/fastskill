@@ -25,27 +25,10 @@ pub fn resolve_project_file(start_path: &Path) -> FileResolutionResult {
             // First, detect context from file location
             let file_context = detect_context(&project_file);
 
-            // If context is ambiguous or we want to verify, use content-based detection
-            let final_context = if file_context == ProjectContext::Project {
-                // For project context, verify with content-based detection if possible
-                // Load the file and check content
-                if let Ok(project) =
-                    super::manifest::SkillProjectToml::load_from_file(&project_file)
-                {
-                    let content_context = detect_context_from_content(&project);
-                    // If content suggests skill context, use that (more specific)
-                    // Otherwise, use file context
-                    if content_context == ProjectContext::Skill {
-                        content_context
-                    } else {
-                        file_context
-                    }
-                } else {
-                    file_context
-                }
-            } else {
-                file_context
-            };
+            // File location is authoritative: SKILL.md in same dir = skill-level, else project-level.
+            // Do not override to Skill from content when there is no SKILL.md, since project-level
+            // manifests may also have [metadata].id (e.g. workspace id).
+            let final_context = file_context;
 
             return FileResolutionResult {
                 path: project_file,
