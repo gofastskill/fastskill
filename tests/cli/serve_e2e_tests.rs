@@ -25,11 +25,14 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
     false
 }
 
+const PROJECT_TOML: &str = "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n";
+
 #[test]
 fn test_serve_invalid_port_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     let result = run_fastskill_command(&["serve", "--port", "99999"], Some(temp_dir.path()));
 
@@ -48,6 +51,7 @@ fn test_serve_default_host_port() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
@@ -77,6 +81,7 @@ fn test_serve_custom_port() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
@@ -106,6 +111,7 @@ fn test_serve_custom_host() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
@@ -135,6 +141,7 @@ fn test_serve_starts_without_registry_config() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     // serve no longer has --enable-registry; server starts and UI/API are always available
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
@@ -152,6 +159,7 @@ fn test_serve_port_already_in_use_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     // Start first server
     let mut child1 = Command::new(env!("CARGO_BIN_EXE_fastskill"))

@@ -33,7 +33,12 @@ fn test_sources_list_with_repositories() {
     let temp_dir = TempDir::new().unwrap();
 
     // Create skill-project.toml with repositories
-    let project_content = r#"[[tool.fastskill.repositories]]
+    let project_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".cursor/skills"
+
+[[tool.fastskill.repositories]]
 name = "local-skills"
 type = "local"
 path = "/path/to/local/skills"
@@ -69,7 +74,7 @@ fn test_sources_add_local_repository() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -102,7 +107,7 @@ fn test_sources_add_with_priority() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -137,7 +142,7 @@ fn test_sources_add_git_marketplace() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -187,7 +192,7 @@ fn test_sources_add_duplicate_name_error() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -235,7 +240,7 @@ fn test_sources_remove_existing_repo() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -295,7 +300,7 @@ fn test_sources_show_repository_details() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -336,7 +341,7 @@ fn test_sources_update_branch() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -385,7 +390,7 @@ fn test_sources_update_priority() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -432,7 +437,7 @@ async fn test_sources_test_connectivity() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -479,7 +484,7 @@ fn test_sources_test_unreachable_error() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -521,7 +526,7 @@ fn test_sources_refresh_single_repo() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
@@ -562,7 +567,7 @@ fn test_sources_refresh_all_repos() {
     // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[project]\nname = \"test\"\nversion = \"1.0.0\"\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 

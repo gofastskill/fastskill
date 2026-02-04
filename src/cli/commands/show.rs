@@ -197,7 +197,8 @@ mod tests {
                 assert!(
                     msg.contains("not found")
                         || msg.contains("Failed to get current directory")
-                        || msg.contains("Failed to load lock file"),
+                        || msg.contains("Failed to load lock file")
+                        || msg.contains("skills_directory"),
                     "Error message '{}' does not contain expected text",
                     msg
                 );

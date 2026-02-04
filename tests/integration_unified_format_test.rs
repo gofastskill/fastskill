@@ -57,6 +57,9 @@ fn test_context_detection_at_project_root() {
         r#"
 [dependencies]
 web-scraper = "1.0.0"
+
+[tool.fastskill]
+skills_directory = ".cursor/skills"
 "#,
     )
     .unwrap();
