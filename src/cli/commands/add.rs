@@ -208,10 +208,13 @@ pub async fn execute_add(
                 path.display()
             );
 
-            // Add each skill directory
+            // Add each skill directory, collecting failures but continuing
+            let mut failed: Vec<(PathBuf, CliError)> = Vec::new();
+            let mut success_count = 0;
+
             for skill_path in skill_dirs {
                 // Use the same logic as single folder add
-                add_from_folder(
+                match add_from_folder(
                     service,
                     &skill_path,
                     args.force,
@@ -219,7 +222,29 @@ pub async fn execute_add(
                     groups.clone(),
                     verbose,
                 )
-                .await?;
+                .await
+                {
+                    Ok(()) => success_count += 1,
+                    Err(e) => {
+                        eprintln!("Skill at {}: {}", skill_path.display(), e);
+                        failed.push((skill_path, e));
+                    }
+                }
+            }
+
+            // Report results
+            if !failed.is_empty() {
+                let total = success_count + failed.len();
+                return Err(CliError::Validation(format!(
+                    "{} of {} skills failed:\n{}",
+                    failed.len(),
+                    total,
+                    failed
+                        .iter()
+                        .map(|(path, err)| format!("  - {}: {}", path.display(), err))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )));
             }
 
             return Ok(());
@@ -235,6 +260,25 @@ pub async fn execute_add(
             add_from_zip(service, &path, args.force, args.editable, groups, verbose).await
         }
         SkillSource::Folder(path) => {
+            // Check if the folder has a SKILL.md at the root
+            if !path.join("SKILL.md").exists() {
+                // No SKILL.md at root - check if there are skills in subdirectories
+                match get_skill_dirs_recursive(&path) {
+                    Ok(skill_dirs) if !skill_dirs.is_empty() => {
+                        return Err(CliError::Validation(format!(
+                            "This directory has no SKILL.md at the root but contains {} skill(s) in subdirectories. Add them all with: fastskill add {} --recursive",
+                            skill_dirs.len(),
+                            path.display()
+                        )));
+                    }
+                    _ => {
+                        return Err(CliError::Validation(format!(
+                            "No SKILL.md found in {}. A skill directory must contain a SKILL.md file. If this folder has multiple skills in subdirectories, use --recursive.",
+                            path.display()
+                        )));
+                    }
+                }
+            }
             add_from_folder(service, &path, args.force, args.editable, groups, verbose).await
         }
         SkillSource::GitUrl(url) => {
