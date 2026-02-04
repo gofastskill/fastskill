@@ -17,6 +17,7 @@ Quick reference for common FastSkill operations.
 | Git repo | `fastskill add https://github.com/org/skill.git` | Git URL is the source (no package name needed), clones repository, validates skill structure, registers and installs to skills directory |
 | Network share | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Installs from corporate network file share, copies skill to local skills directory, enables team-wide skill distribution |
 | Editable install | `fastskill add ./dev-skill -e` | Creates symlink/reference to local path, changes reflect immediately without reinstall |
+| Folder of skills | `fastskill add ./skills -r` | Adds all skills under directory (each dir with SKILL.md); only for local directory |
 | Read skill | `fastskill read my-skill-id` | Retrieves skill documentation and base directory path in agent-optimized format |
 | List installed | `fastskill list` | Lists locally installed skills with reconciliation status (grid format) |
 | List installed (JSON) | `fastskill list --json` | Lists locally installed skills in JSON format with reconciliation status |

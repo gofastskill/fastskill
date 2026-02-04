@@ -16,6 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::info;
+use walkdir::WalkDir;
 
 /// T028: Helper to update skill-project.toml and skills.lock
 fn update_project_files(
@@ -40,6 +41,71 @@ fn update_project_files(
         .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
 
     Ok(())
+}
+
+/// Discover all directories containing SKILL.md under the given base directory
+/// Skips hidden directories (those starting with '.')
+fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
+    if !base.exists() {
+        return Err(CliError::InvalidSource(format!(
+            "Directory does not exist: {}",
+            base.display()
+        )));
+    }
+
+    if !base.is_dir() {
+        return Err(CliError::InvalidSource(format!(
+            "Path is not a directory: {}",
+            base.display()
+        )));
+    }
+
+    let mut skill_dirs = Vec::new();
+    let base_canonical = base.canonicalize().map_err(CliError::Io)?;
+
+    for entry in WalkDir::new(base)
+        .min_depth(1)
+        .max_depth(usize::MAX)
+        .follow_links(false)
+    {
+        let entry = entry.map_err(|e| {
+            CliError::Io(
+                e.into_io_error()
+                    .unwrap_or_else(|| std::io::Error::other("WalkDir error")),
+            )
+        })?;
+        let path = entry.path();
+
+        // Check if this directory contains SKILL.md
+        if path.is_dir() && path.join("SKILL.md").exists() {
+            // Canonicalize to check relative path from base
+            let path_canonical = path.canonicalize().map_err(CliError::Io)?;
+
+            // Compute relative path to check for hidden directories
+            let relative_path = path_canonical.strip_prefix(&base_canonical).map_err(|_| {
+                CliError::Validation(format!(
+                    "Failed to compute relative path for: {}",
+                    path.display()
+                ))
+            })?;
+
+            // Skip hidden directories (check if any component of relative path starts with '.')
+            let should_skip = relative_path.components().any(|c| {
+                if let std::path::Component::Normal(name) = c {
+                    name.to_string_lossy().starts_with('.')
+                } else {
+                    false
+                }
+            });
+            if should_skip {
+                continue;
+            }
+
+            skill_dirs.push(path_canonical);
+        }
+    }
+
+    Ok(skill_dirs)
 }
 
 /// Add a new skill and update skill-project.toml [dependencies]
@@ -75,6 +141,10 @@ pub struct AddArgs {
     /// Add skill to a specific group (like poetry add --group dev)
     #[arg(long)]
     pub group: Option<String>,
+
+    /// Add all skills found under the directory (only for local folders)
+    #[arg(short = 'r', long)]
+    pub recursive: bool,
 }
 
 pub async fn execute_add(
@@ -112,6 +182,53 @@ pub async fn execute_add(
     } else {
         detect_skill_source(&args.source)
     };
+
+    // Handle recursive add
+    if args.recursive {
+        // Recursive only works with local folders
+        if let SkillSource::Folder(ref path) = source {
+            info!(
+                "Adding skills recursively from directory: {}",
+                path.display()
+            );
+
+            // Discover all skill directories
+            let skill_dirs = get_skill_dirs_recursive(path)?;
+
+            if skill_dirs.is_empty() {
+                return Err(CliError::Validation(format!(
+                    "No skill directories found under {}",
+                    path.display()
+                )));
+            }
+
+            println!(
+                "Found {} skill(s) in directory {}",
+                skill_dirs.len(),
+                path.display()
+            );
+
+            // Add each skill directory
+            for skill_path in skill_dirs {
+                // Use the same logic as single folder add
+                add_from_folder(
+                    service,
+                    &skill_path,
+                    args.force,
+                    args.editable,
+                    groups.clone(),
+                    verbose,
+                )
+                .await?;
+            }
+
+            return Ok(());
+        } else {
+            return Err(CliError::Config(
+                "Recursive add is only valid when source is a local directory".to_string(),
+            ));
+        }
+    }
 
     match source {
         SkillSource::ZipFile(path) => {
@@ -951,6 +1068,7 @@ mod tests {
             force: false,
             editable: false,
             group: None,
+            recursive: false,
         };
 
         let result = execute_add(&service, args, false).await;
@@ -976,6 +1094,7 @@ mod tests {
             force: false,
             editable: false,
             group: None,
+            recursive: false,
         };
 
         let result = execute_add(&service, args, false).await;
@@ -1002,6 +1121,7 @@ mod tests {
             force: true,
             editable: false,
             group: None,
+            recursive: false,
         };
 
         // Should still fail because source doesn't exist, but force flag is accepted
@@ -1040,6 +1160,7 @@ mod tests {
             force: false,
             editable: false,
             group: None,
+            recursive: false,
         };
 
         let result = execute_add(&service, args, false).await;
