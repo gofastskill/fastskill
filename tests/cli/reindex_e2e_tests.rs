@@ -17,7 +17,12 @@ fn test_reindex_default_directory() {
     fs::create_dir_all(&skills_dir).unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -44,7 +49,12 @@ fn test_reindex_custom_directory() {
     fs::create_dir_all(&custom_skills_dir).unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -72,7 +82,9 @@ embedding_model = "text-embedding-3-small"
     );
 }
 
+/// Requires valid OPENAI_API_KEY; run with `cargo test -- --ignored` when key is set.
 #[test]
+#[ignore]
 fn test_reindex_with_force_flag() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
@@ -91,7 +103,12 @@ version: 1.0.0
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -115,7 +132,12 @@ fn test_reindex_max_concurrent() {
     fs::create_dir_all(&skills_dir).unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -146,7 +168,12 @@ fn test_reindex_empty_directory() {
     fs::create_dir_all(&skills_dir).unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -171,7 +198,12 @@ fn test_reindex_invalid_directory_error() {
     let temp_dir = TempDir::new().unwrap();
 
     // Create config for reindex
-    let config_content = r#"[tool.fastskill.embedding]
+    let config_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
