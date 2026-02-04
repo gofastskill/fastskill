@@ -168,13 +168,33 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         .and_then(|v| serde_yaml::from_value(v).ok())
         .unwrap_or_else(|| "No description".to_string());
 
-    let version = frontmatter
+    // Parse metadata first to use as fallback for version/author
+    let metadata_value = frontmatter.remove("metadata");
+    let metadata: Option<std::collections::HashMap<String, serde_yaml::Value>> = metadata_value
+        .as_ref()
+        .and_then(|v| serde_yaml::from_value(v.clone()).ok());
+
+    // Get top-level version/author
+    let top_level_version = frontmatter
         .remove("version")
         .and_then(|v| serde_yaml::from_value(v).ok());
 
-    let author = frontmatter
+    let top_level_author = frontmatter
         .remove("author")
         .and_then(|v| serde_yaml::from_value(v).ok());
+
+    // Use metadata as fallback for version/author
+    let version = top_level_version.or_else(|| {
+        metadata
+            .as_ref()
+            .and_then(|m| m.get("version").and_then(|v| v.as_str().map(String::from)))
+    });
+
+    let author = top_level_author.or_else(|| {
+        metadata
+            .as_ref()
+            .and_then(|m| m.get("author").and_then(|v| v.as_str().map(String::from)))
+    });
 
     Ok(SkillFrontmatter {
         name,
@@ -187,9 +207,18 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
         compatibility: frontmatter
             .remove("compatibility")
             .and_then(|v| serde_yaml::from_value(v).ok()),
-        metadata: frontmatter
-            .remove("metadata")
-            .and_then(|v| serde_yaml::from_value(v).ok()),
+        metadata: metadata.and_then(|m| {
+            // Convert HashMap<String, Value> to HashMap<String, String> for SkillFrontmatter
+            let string_map: std::collections::HashMap<String, String> = m
+                .into_iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                .collect();
+            if string_map.is_empty() {
+                None
+            } else {
+                Some(string_map)
+            }
+        }),
         allowed_tools: frontmatter
             .remove("allowed_tools")
             .and_then(|v| serde_yaml::from_value(v).ok()),
