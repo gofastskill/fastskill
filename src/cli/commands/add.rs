@@ -274,7 +274,12 @@ async fn add_from_zip(
             },
         )
         .await
-        .map_err(CliError::Service)?;
+        .map_err(|e| {
+            crate::cli::utils::service_error_to_cli(
+                e,
+                service.config().skill_storage_path.as_path(),
+            )
+        })?;
 
     // T028: Update skill-project.toml and skills.lock
     update_project_files(&skill_def, groups.clone(), editable)?;
@@ -380,7 +385,12 @@ async fn add_from_folder(
             },
         )
         .await
-        .map_err(CliError::Service)?;
+        .map_err(|e| {
+            crate::cli::utils::service_error_to_cli(
+                e,
+                service.config().skill_storage_path.as_path(),
+            )
+        })?;
 
     // T028: Update skill-project.toml and skills.lock
     update_project_files(&skill_def, groups.clone(), editable)?;
@@ -525,7 +535,12 @@ async fn add_from_git(
                 },
             )
             .await
-            .map_err(CliError::Service)?;
+            .map_err(|e| {
+                crate::cli::utils::service_error_to_cli(
+                    e,
+                    service.config().skill_storage_path.as_path(),
+                )
+            })?;
 
         // T028: Update skill-project.toml and skills.lock
         update_project_files(&skill_def, groups.clone(), editable)?;
@@ -772,7 +787,12 @@ async fn add_from_registry(
             },
         )
         .await
-        .map_err(CliError::Service)?;
+        .map_err(|e| {
+            crate::cli::utils::service_error_to_cli(
+                e,
+                service.config().skill_storage_path.as_path(),
+            )
+        })?;
 
     // T028: Update skill-project.toml and skills.lock
     update_project_files(&skill_def, groups.clone(), editable)?;

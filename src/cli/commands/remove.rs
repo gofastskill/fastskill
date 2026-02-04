@@ -1,6 +1,7 @@
 //! Remove command implementation
 
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::config::get_skill_search_locations_for_display;
+use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
 use crate::cli::utils::manifest_utils;
 use clap::Args;
 use fastskill::core::project::resolve_project_file;
@@ -72,12 +73,17 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
 
     // Return error if any skills don't exist (before showing confirmation)
     if !nonexistent_skills.is_empty() {
-        let error_msg = if nonexistent_skills.len() == 1 {
-            format!("Skill '{}' not found", nonexistent_skills[0])
-        } else {
-            format!("Skills not found: {}", nonexistent_skills.join(", "))
-        };
-        return Err(CliError::Validation(error_msg));
+        let skill_id_display = nonexistent_skills.join(", ");
+        let searched_paths = get_skill_search_locations_for_display().unwrap_or_else(|_| {
+            vec![(
+                service.config().skill_storage_path.clone(),
+                "project".to_string(),
+            )]
+        });
+        return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
+            skill_id_display,
+            searched_paths,
+        )));
     }
 
     // Confirm removal unless force flag is set (only for existing skills)

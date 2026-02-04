@@ -33,10 +33,59 @@
 //! - `ValidationError`: TOML validation and context-specific errors
 //! - All errors implement `std::error::Error` via `thiserror`
 
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 // Import ProjectContext from manifest module
 use fastskill::core::manifest::ProjectContext;
+
+/// Rich "skill not found" message with searched locations and Try suggestions.
+/// Rendered as a multi-line block by Display.
+#[derive(Debug)]
+pub struct SkillNotFoundMessage {
+    pub skill_id: String,
+    pub searched_paths: Vec<(PathBuf, String)>,
+    pub suggestions: Vec<String>,
+}
+
+impl std::fmt::Display for SkillNotFoundMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Skill '{}' not found", self.skill_id)?;
+        writeln!(f)?;
+        writeln!(f, "Searched locations:")?;
+        for (path, label) in &self.searched_paths {
+            writeln!(f, "  \u{2713} {} ({})", path.display(), label)?;
+        }
+        writeln!(f)?;
+        writeln!(f, "Try:")?;
+        for line in &self.suggestions {
+            writeln!(f, "  {}", line)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SkillNotFoundMessage {}
+
+impl SkillNotFoundMessage {
+    /// Build a skill-not-found message with searched paths and standard Try suggestions.
+    pub fn new(skill_id: impl Into<String>, searched_paths: Vec<(PathBuf, String)>) -> Self {
+        Self {
+            skill_id: skill_id.into(),
+            searched_paths,
+            suggestions: skill_not_found_try_suggestions(),
+        }
+    }
+}
+
+/// Standard "Try" lines shown when a skill is not found.
+pub fn skill_not_found_try_suggestions() -> Vec<String> {
+    vec![
+        "fastskill install owner/repo".to_string(),
+        "fastskill list                    # See available skills".to_string(),
+    ]
+}
 
 #[derive(Debug, Error)]
 pub enum CliError {
@@ -77,6 +126,9 @@ pub enum CliError {
     #[error("Duplicate skill: {0}@{1} already exists\n  Each skill must have a unique combination of name and version\n  Consider bumping the version or using a different name")]
     #[allow(dead_code)]
     DuplicateSkill(String, String),
+
+    #[error(transparent)]
+    SkillNotFound(#[from] SkillNotFoundMessage),
 }
 
 /// Validation error for TOML validation failures
@@ -173,6 +225,8 @@ impl CliError {
         match self {
             // Validation errors (not found, invalid format) -> exit code 1
             CliError::Validation(_) => 1,
+            // Skill not found -> exit code 1
+            CliError::SkillNotFound(_) => 1,
             // System errors (IO, config, service) -> exit code 2
             CliError::Io(_) | CliError::Config(_) | CliError::Service(_) => 2,
             // Other errors default to 1

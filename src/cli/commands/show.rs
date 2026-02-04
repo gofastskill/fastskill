@@ -6,8 +6,8 @@
 //! With no skill_id argument, lists all installed skills with minimal details.
 //! With a skill_id, shows detailed metadata for that specific skill.
 
-use crate::cli::config::create_service_config;
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::config::{create_service_config, get_skill_search_locations_for_display};
+use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
 use clap::Args;
 use fastskill::core::lock::SkillsLock;
 use fastskill::FastSkillService;
@@ -47,7 +47,12 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                     println!("   (Dependency tree not yet implemented)");
                 }
             } else {
-                return Err(CliError::Config(format!("Skill '{}' not found", skill_id)));
+                let searched_paths = get_skill_search_locations_for_display()
+                    .unwrap_or_else(|_| vec![(skills_dir.clone(), "project".to_string())]);
+                return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
+                    skill_id.clone(),
+                    searched_paths,
+                )));
             }
         } else {
             println!("Installed Skills ({}):\n", lock.skills.len());
@@ -89,7 +94,17 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                     println!("  Source URL: {}", source_url);
                 }
             } else {
-                return Err(CliError::Config(format!("Skill '{}' not found", skill_id)));
+                let searched_paths =
+                    get_skill_search_locations_for_display().unwrap_or_else(|_| {
+                        vec![(
+                            service.config().skill_storage_path.clone(),
+                            "project".to_string(),
+                        )]
+                    });
+                return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
+                    skill_id.clone(),
+                    searched_paths,
+                )));
             }
         } else {
             let skills = service
@@ -176,6 +191,7 @@ mod tests {
         // Should fail because skill doesn't exist or invalid format
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         match &result {
+            Err(CliError::SkillNotFound(_)) => {}
             Err(CliError::Config(msg)) => {
                 assert!(
                     msg.contains("not found")

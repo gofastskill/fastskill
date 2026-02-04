@@ -6,11 +6,10 @@ expression: normalized
 FastSkill [VERSION]
 Error: Skill 'nonexistent-skill' not found
 
-Searched:
-  [TEMP_DIR]
+Searched locations:
+  ✓ [TEMP_DIR] (project)
+  ✓ [HOME_DIR]/.claude/skills (global)
 
 Try:
-  fastskill list
-  fastskill add <source>
-  fastskill install
-Error: Validation error: Skill 'nonexistent-skill' not found
+  fastskill install owner/repo
+  fastskill list                    # See available skills

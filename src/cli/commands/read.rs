@@ -3,7 +3,8 @@
 //! Reads and outputs the full SKILL.md content. For metadata only (name, version, description),
 //! use `show`.
 
-use crate::cli::error::{CliError, CliResult};
+use crate::cli::config;
+use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
 use clap::Args;
 use fastskill::FastSkillService;
 use std::sync::Arc;
@@ -75,19 +76,16 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
             // If single match found, use it; otherwise return not found error
             if matching_skills.is_empty() {
-                // T023: Implement error message formatting with "Searched:" and "Try:" sections
-                eprintln!("Error: Skill '{}' not found", args.skill_id);
-                eprintln!();
-                eprintln!("Searched:");
-                eprintln!("  {}", service.config().skill_storage_path.display());
-                eprintln!();
-                eprintln!("Try:");
-                eprintln!("  fastskill list");
-                eprintln!("  fastskill add <source>");
-                eprintln!("  fastskill install");
-                return Err(CliError::Validation(format!(
-                    "Skill '{}' not found",
-                    args.skill_id
+                let searched_paths = config::get_skill_search_locations_for_display()
+                    .unwrap_or_else(|_| {
+                        vec![(
+                            service.config().skill_storage_path.clone(),
+                            "project".to_string(),
+                        )]
+                    });
+                return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
+                    args.skill_id.clone(),
+                    searched_paths,
                 )));
             }
 
