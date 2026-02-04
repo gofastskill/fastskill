@@ -129,6 +129,14 @@ pub enum CliError {
 
     #[error(transparent)]
     SkillNotFound(#[from] SkillNotFoundMessage),
+
+    #[error("Symlink creation failed on Windows: {0}\n  Administrator privileges or Developer Mode is required to create symlinks\n  To install without editable mode (as a copy), run the same command without -e")]
+    #[allow(dead_code)] // Only used on Windows
+    WindowsSymlinkPermission(String),
+
+    #[error("Editable install (-e) is not supported on this platform")]
+    #[allow(dead_code)] // Only used on non-Unix, non-Windows platforms
+    EditableNotSupported,
 }
 
 /// Validation error for TOML validation failures
@@ -229,6 +237,10 @@ impl CliError {
             CliError::SkillNotFound(_) => 1,
             // System errors (IO, config, service) -> exit code 2
             CliError::Io(_) | CliError::Config(_) | CliError::Service(_) => 2,
+            // Windows symlink permission error -> exit code 2
+            CliError::WindowsSymlinkPermission(_) => 2,
+            // Editable not supported -> exit code 2
+            CliError::EditableNotSupported => 2,
             // Other errors default to 1
             _ => 1,
         }
