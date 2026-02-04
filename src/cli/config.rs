@@ -118,6 +118,16 @@ pub fn convert_repository_definition(
     }
 }
 
+/// Return the list of paths (and labels) used when resolving skills, for display in "skill not found" errors.
+pub fn get_skill_search_locations_for_display() -> CliResult<Vec<(PathBuf, String)>> {
+    let project = resolve_skills_storage_directory()?;
+    let mut out = vec![(project, "project".to_string())];
+    if let Some(home) = env::home_dir() {
+        out.push((home.join(".claude/skills"), "global".to_string()));
+    }
+    Ok(out)
+}
+
 /// Resolve skills storage directory
 /// Priority:
 /// 1. skills_directory from skill-project.toml [tool.fastskill] (if exists)
