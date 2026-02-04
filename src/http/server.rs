@@ -53,20 +53,6 @@ async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-/// Resolve skill-project.toml path (similar to CLI config resolution)
-fn resolve_project_file_path() -> PathBuf {
-    // Walk up directory tree to find skill-project.toml
-    if let Ok(current_dir) = env::current_dir() {
-        let project_file = crate::core::project::resolve_project_file(&current_dir);
-        if project_file.found {
-            return project_file.path;
-        }
-    }
-
-    // Default to current directory
-    PathBuf::from("skill-project.toml")
-}
-
 /// Validate registry configuration and return detailed error message if invalid
 fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
     let mut missing = Vec::new();
@@ -324,10 +310,16 @@ impl FastSkillServer {
 
     /// Create the Axum router with all routes
     fn create_router(&self) -> Result<Router, Box<dyn std::error::Error>> {
-        // Resolve skill-project.toml path
-        let project_file_path = resolve_project_file_path();
+        // Load project configuration
+        let current_dir = env::current_dir()?;
+        let config = crate::core::load_project_config(&current_dir)
+            .map_err(|e| format!("Failed to load project config: {}", e))?;
 
-        let state = AppState::new(self.service.clone()).with_project_file_path(project_file_path);
+        let state = AppState::new(self.service.clone()).with_project_config(
+            config.project_root,
+            config.project_file_path,
+            config.skills_directory,
+        );
 
         let mut router = Router::new()
             // Skills CRUD endpoints

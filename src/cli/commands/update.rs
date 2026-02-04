@@ -1,4 +1,4 @@
-//! Update command - updates skills in .claude/skills/ registry
+//! Update command - updates skills in the configured skills directory
 
 use crate::cli::config::create_service_config;
 use crate::cli::error::{manifest_required_message, CliError, CliResult};
@@ -533,8 +533,5 @@ version = "1.0.0"
         let result = execute_update(args).await;
         // May succeed or fail depending on lock file, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
-
-        // Cleanup
-        fs::remove_dir_all(".claude").ok();
     }
 }

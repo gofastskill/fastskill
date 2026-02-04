@@ -11,7 +11,6 @@ use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
 use clap::Args;
 use fastskill::core::lock::SkillsLock;
 use fastskill::FastSkillService;
-use std::path::PathBuf;
 
 /// Show skill details
 #[derive(Debug, Args)]
@@ -28,12 +27,12 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
     println!("Skill Information");
     println!();
 
-    // Derive lock path from skills directory
-    let skills_dir = crate::cli::config::resolve_skills_storage_directory()?;
-    let lock_path = skills_dir
-        .parent()
-        .unwrap_or(&PathBuf::from(".claude"))
-        .join("skills.lock");
+    // Load project config to get project root for lock file
+    let current_dir = std::env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let config = fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
+
+    let lock_path = config.project_root.join("skills.lock");
 
     if lock_path.exists() {
         let lock = SkillsLock::load_from_file(&lock_path)
@@ -47,8 +46,10 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                     println!("   (Dependency tree not yet implemented)");
                 }
             } else {
-                let searched_paths = get_skill_search_locations_for_display()
-                    .unwrap_or_else(|_| vec![(skills_dir.clone(), "project".to_string())]);
+                let searched_paths =
+                    get_skill_search_locations_for_display().unwrap_or_else(|_| {
+                        vec![(config.skills_directory.clone(), "project".to_string())]
+                    });
                 return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
                     skill_id.clone(),
                     searched_paths,

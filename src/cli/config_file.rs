@@ -24,7 +24,7 @@ pub struct FastSkillConfig {
     /// Embedding service configuration
     pub embedding: Option<EmbeddingConfig>,
     /// Skills storage directory (where installed skills are stored)
-    /// Default: ".claude/skills"
+    /// Required in project-level skill-project.toml; no default.
     #[serde(default)]
     pub skills_directory: Option<PathBuf>,
 }
