@@ -96,6 +96,8 @@ pub fn init_logging() {
     });
 }
 
+pub mod test_utils;
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

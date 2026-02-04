@@ -1175,6 +1175,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_add_no_manifest_fails_with_instructions() {
+        // Use a shared mutex to serialize directory changes across parallel tests
+        let _lock = fastskill::test_utils::DIR_MUTEX.lock().unwrap();
+
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
             skill_storage_path: temp_dir.path().to_path_buf(),
