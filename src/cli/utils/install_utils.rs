@@ -128,7 +128,9 @@ async fn install_from_git(
                 },
             )
             .await
-            .map_err(CliError::Service)?;
+            .map_err(|e| {
+                super::service_error_to_cli(e, service.config().skill_storage_path.as_path())
+            })?;
 
         Ok(skill_def)
     }
@@ -216,7 +218,9 @@ async fn install_from_local(
             },
         )
         .await
-        .map_err(CliError::Service)?;
+        .map_err(|e| {
+            super::service_error_to_cli(e, service.config().skill_storage_path.as_path())
+        })?;
 
     Ok(skill_def)
 }
