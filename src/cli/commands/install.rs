@@ -409,7 +409,12 @@ mod tests {
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        // No skill-project.toml created - should fail with project config error
+        // Create skill-project.toml but no lock file
+        fs::write(
+            temp_dir.path().join("skill-project.toml"),
+            "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+        )
+        .unwrap();
 
         let args = InstallArgs {
             without: None,
@@ -420,9 +425,9 @@ mod tests {
         let result = execute_install(args).await;
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
-            // Should fail because skill-project.toml not found
+            // Should fail because skills.lock not found
             assert!(
-                msg.contains("skill-project.toml not found"),
+                msg.contains("skills.lock not found"),
                 "Error message '{}' does not contain expected text",
                 msg
             );
