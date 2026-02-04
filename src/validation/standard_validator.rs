@@ -121,11 +121,6 @@ impl StandardValidator {
             warnings.push("No compatibility field specified".to_string());
         }
 
-        // Check for missing required fields
-        if frontmatter.version.as_ref().is_none_or(|v| v.is_empty()) {
-            errors.push(ValidationError::MissingRequiredField("version".to_string()));
-        }
-
         // Validate file references
         Self::validate_file_references(skill_path, &frontmatter, &mut errors);
 
@@ -288,8 +283,9 @@ description: A test skill
         let temp_dir = TempDir::new().unwrap();
         let skill_path = temp_dir.path();
 
+        // Test with empty name (name is still required)
         let skill_md_content = r#"---
-name: test-skill
+name: ""
 description: A test skill
 ---
 "#;
