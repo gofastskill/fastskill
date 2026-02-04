@@ -91,7 +91,7 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill add" icon="plus">
-    Add skills from registry ID, git, zip, or local folder (supports `--branch`, `--tag`, `-e`, `--group`). See [skill commands](/cli-reference/skill-commands#add).
+    Add skills from registry ID, git, zip, or local folder (supports `-r` for recursive folder add, `--branch`, `--tag`, `-e`, `--group`). See [skill commands](/cli-reference/skill-commands#add).
   </Card>
   <Card title="fastskill read" icon="book-open">
     Retrieve skill documentation and base directory path in agent-optimized format. See [skill commands](/cli-reference/skill-commands#fastskill-read).
@@ -225,6 +225,9 @@ The CLI is designed for scripting and CI/CD integration:
 for dir in ./skills/*; do
   fastskill add "$dir" -e --group dev
 done
+
+# Alternative: use recursive add for all skills under a directory
+fastskill add ./skills -r -e --group dev
 
 fastskill install
 fastskill reindex
