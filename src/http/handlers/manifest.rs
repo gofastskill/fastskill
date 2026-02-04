@@ -128,13 +128,8 @@ pub async fn get_project(
         })
     });
 
-    let skills_directory = project
-        .tool
-        .as_ref()
-        .and_then(|t| t.fastskill.as_ref())
-        .and_then(|f| f.skills_directory.as_ref())
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".claude/skills".to_string());
+    // Use skills_directory from validated config loaded at server startup
+    let skills_directory = state.skills_directory.to_string_lossy().to_string();
 
     let skills: Vec<serde_json::Value> = project
         .dependencies
@@ -498,7 +493,7 @@ async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error:
 
     // Simple Rust implementation: scan skills directory and generate markdown
     let mut output = String::from("---\nalwaysApply: true\n---\n# Skills Registry\n\n");
-    output.push_str("Skills are modular packages in `.claude/skills/<category>/<skill-name>/SKILL.md` that provide specialized workflows, tool integrations, and domain knowledge. Each SKILL.md contains YAML frontmatter (shown here: name, description) and full instructions with optional scripts/references/assets. Use the `description` field to identify relevant skills, then read the full SKILL.md at the path shown.\n\n");
+    output.push_str("Skills are modular packages in `<skills-directory>/<category>/<skill-name>/SKILL.md` that provide specialized workflows, tool integrations, and domain knowledge. Each SKILL.md contains YAML frontmatter (shown here: name, description) and full instructions with optional scripts/references/assets. Use the `description` field to identify relevant skills, then read the full SKILL.md at the path shown.\n\n");
 
     // Find all SKILL.md files
     let skill_files = find_skill_files(&skills_dir)?;
@@ -515,8 +510,12 @@ async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error:
             let relative_path_str = if let Ok(rel) = skill_file.strip_prefix(workspace_root) {
                 rel.to_string_lossy().to_string()
             } else if let Ok(rel) = skill_file.strip_prefix(&skills_dir) {
-                // Fallback: relative to skills directory, prepend .claude/skills
-                format!(".claude/skills/{}", rel.to_string_lossy())
+                // Fallback: relative to skills directory
+                let skills_dir_name = skills_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "skills".to_string());
+                format!("{}/{}", skills_dir_name, rel.to_string_lossy())
             } else {
                 skill_file.to_string_lossy().to_string()
             };

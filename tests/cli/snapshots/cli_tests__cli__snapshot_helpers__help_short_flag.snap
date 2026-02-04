@@ -11,7 +11,7 @@ Commands:
   auth      Manage authentication for registries
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
-  install   Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+  install   Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock
   list      List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
   reindex   Reindex the vector index for semantic search
   remove    Remove skills from the skills database
@@ -31,7 +31,7 @@ Arguments:
   [QUERY]  Search query string (used when no subcommand is specified)
 
 Options:
-      --repositories-path <REPOSITORIES_PATH>  Path to .claude/repositories.toml file
+      --repositories-path <REPOSITORIES_PATH>  Path to repositories.toml file
   -v, --verbose                                Enable verbose output
   -h, --help                                   Print help (see more with '--help')
   -V, --version                                Print version

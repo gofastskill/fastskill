@@ -13,6 +13,8 @@ pub struct AppState {
     pub service: Arc<FastSkillService>,
     pub start_time: SystemTime,
     pub project_file_path: std::path::PathBuf,
+    pub project_root: std::path::PathBuf,
+    pub skills_directory: std::path::PathBuf,
 }
 
 impl AppState {
@@ -21,11 +23,25 @@ impl AppState {
             service,
             start_time: SystemTime::now(),
             project_file_path: std::path::PathBuf::from("skill-project.toml"),
+            project_root: std::path::PathBuf::from("."),
+            skills_directory: std::path::PathBuf::from(".claude/skills"),
         }
     }
 
     pub fn with_project_file_path(mut self, path: std::path::PathBuf) -> Self {
         self.project_file_path = path;
+        self
+    }
+
+    pub fn with_project_config(
+        mut self,
+        project_root: std::path::PathBuf,
+        project_file_path: std::path::PathBuf,
+        skills_directory: std::path::PathBuf,
+    ) -> Self {
+        self.project_root = project_root;
+        self.project_file_path = project_file_path;
+        self.skills_directory = skills_directory;
         self
     }
 

@@ -445,6 +445,21 @@ impl SkillProjectToml {
                         Use 'fastskill add <skill-id>' to add skills.".to_string()
                     );
                 }
+
+                // Project-level: skills_directory in [tool.fastskill] required
+                let has_skills_directory = self
+                    .tool
+                    .as_ref()
+                    .and_then(|t| t.fastskill.as_ref())
+                    .and_then(|f| f.skills_directory.as_ref())
+                    .is_some();
+
+                if !has_skills_directory {
+                    return Err(
+                        "Project-level skill-project.toml requires [tool.fastskill] with skills_directory. \
+                        Run 'fastskill init --skills-dir <path>' or add [tool.fastskill] with skills_directory = \"...\".".to_string()
+                    );
+                }
             }
             ProjectContext::Ambiguous => {
                 // Ambiguous: cannot validate without clear context

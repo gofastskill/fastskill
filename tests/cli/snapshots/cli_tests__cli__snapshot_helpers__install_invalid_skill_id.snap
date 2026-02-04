@@ -5,10 +5,4 @@ expression: normalized
 FastSkill [VERSION]
 Installing skills...
 
-Found 1 skills to install
-  Installing invalid skill id!...
-
-[OK] Installation complete
-   Updated skills.lock
-  [ERROR] Failed to install invalid skill id!: Configuration error: Sources manager required for source-based installation
-Error: Configuration error: Failed to install 1 skill(s): invalid skill id!
+Error: Configuration error: project-level skill-project.toml requires [tool.fastskill] with skills_directory. Run 'fastskill init --skills-dir <path>' at project root or add it manually.

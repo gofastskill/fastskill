@@ -1,17 +1,8 @@
 ---
 source: tests/cli/snapshot_helpers.rs
-assertion_line: 195
 expression: normalized
 ---
 FastSkill [VERSION]
 Skill Information
 
-Error: Skill 'nonexistent-skill' not found
-
-Searched locations:
-  ✓ [TEMP_DIR] (project)
-  ✓ [HOME_DIR]/.claude/skills (global)
-
-Try:
-  fastskill install owner/repo
-  fastskill list                    # See available skills
+Error: Configuration error: skill-project.toml not found in this directory or any parent. Create it at the top level of your workspace (e.g. run 'fastskill init' there), then run this command again.

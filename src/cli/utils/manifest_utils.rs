@@ -20,7 +20,7 @@ pub fn update_lock_file(
     skill: &SkillDefinition,
     groups: Vec<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure .claude directory exists
+    // Ensure parent directory of lock file exists
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }

@@ -52,9 +52,9 @@ pub enum Commands {
     )]
     Init(init::InitArgs),
 
-    /// Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+    /// Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock
     #[command(
-        about = "Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock",
+        about = "Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock",
         after_help = "Examples:\n  fastskill install\n  fastskill install --lock"
     )]
     Install(install::InstallArgs),

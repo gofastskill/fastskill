@@ -17,10 +17,10 @@ use crate::cli::error::{CliError, CliResult};
 #[command(version = fastskill::VERSION)]
 #[command(about = "FastSkill CLI - Manage skills and run operations")]
 #[command(long_about = "FastSkill provides skill management through CLI.\n\n\
-                         Skills directory is resolved using this priority:\n\
-                         1. skills_directory from .fastskill.yaml (if exists)\n\
-                         2. Walk up directory tree to find existing .claude/skills/\n\
-                         3. Default to .claude/skills/ in current directory\n\n\
+                         Skills directory is configured in skill-project.toml:\n\
+                         [tool.fastskill]\n\
+                         skills_directory = \"path/to/skills\"\n\n\
+                         Run 'fastskill init --skills-dir <path>' to create a new project.\n\n\
                          Examples:\n\
                            fastskill add ./my-skill           # Add skill from folder\n\
                            fastskill registry add local-skills --repo-type local /path/to/skills  # Add local repository\n\
@@ -32,7 +32,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 
     /// Path to repositories.toml file (overrides default location)
-    #[arg(long, help = "Path to .claude/repositories.toml file")]
+    #[arg(long, help = "Path to repositories.toml file")]
     pub repositories_path: Option<std::path::PathBuf>,
 
     /// Enable verbose output

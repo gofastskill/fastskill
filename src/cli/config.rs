@@ -6,27 +6,8 @@ use fastskill::core::project;
 use fastskill::core::repository::RepositoryDefinition;
 use fastskill::{core::BlobStorageConfig, ServiceConfig};
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::debug;
-
-/// Walk up the directory tree searching for existing .claude/skills/ folder
-fn walk_up_for_skills_dir(start_path: &Path) -> Option<PathBuf> {
-    let mut current = start_path.to_path_buf();
-
-    loop {
-        let skills_dir = current.join(".claude/skills");
-        if skills_dir.is_dir() {
-            return Some(skills_dir.canonicalize().unwrap_or(skills_dir));
-        }
-
-        // Check if we've reached the filesystem root
-        if !current.pop() {
-            break;
-        }
-    }
-
-    None
-}
 
 /// Load repositories from skill-project.toml [tool.fastskill.repositories]
 /// Returns empty vector if skill-project.toml not found or no repositories configured
@@ -119,74 +100,36 @@ pub fn convert_repository_definition(
 }
 
 /// Return the list of paths (and labels) used when resolving skills, for display in "skill not found" errors.
+///
+/// Returns the skills directory from skill-project.toml [tool.fastskill].skills_directory.
+/// No fallbacks or global directories - only the configured project directory.
 pub fn get_skill_search_locations_for_display() -> CliResult<Vec<(PathBuf, String)>> {
-    let project = resolve_skills_storage_directory()?;
-    let mut out = vec![(project, "project".to_string())];
-    if let Some(home) = env::home_dir() {
-        out.push((home.join(".claude/skills"), "global".to_string()));
-    }
-    Ok(out)
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+
+    // Use the single loader
+    let config = fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
+
+    Ok(vec![(config.skills_directory, "project".to_string())])
 }
 
-/// Resolve skills storage directory
-/// Priority:
-/// 1. skills_directory from skill-project.toml [tool.fastskill] (if exists)
-/// 2. Walk up directory tree to find existing .claude/skills/
-/// 3. Default to .claude/skills/ in current directory
+/// Resolve skills storage directory from skill-project.toml [tool.fastskill]
+///
+/// This function requires a valid skill-project.toml with [tool.fastskill].skills_directory.
+/// No fallbacks - the project file must exist and be properly configured.
 pub fn resolve_skills_storage_directory() -> CliResult<PathBuf> {
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Priority 1: Check if skills_directory is configured in skill-project.toml [tool.fastskill]
-    let project_file = project::resolve_project_file(&current_dir);
-    if project_file.found {
-        let project_path = project_file.path;
-        if let Ok(project) = SkillProjectToml::load_from_file(&project_path) {
-            if let Some(tool_config) = project.tool.and_then(|t| t.fastskill) {
-                if let Some(skills_dir) = tool_config.skills_directory {
-                    let path = if skills_dir.is_absolute() {
-                        skills_dir.clone()
-                    } else {
-                        // Resolve relative to skill-project.toml location
-                        project_path
-                            .parent()
-                            .unwrap_or(&current_dir)
-                            .join(&skills_dir)
-                    };
+    // Load project config using the single loader
+    let config = fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
 
-                    // If the directory exists, use it
-                    if path.is_dir() {
-                        debug!(
-                            "Using skills_directory from skill-project.toml: {}",
-                            path.display()
-                        );
-                        return Ok(path.canonicalize().unwrap_or(path));
-                    }
+    debug!(
+        "Using skills_directory from skill-project.toml: {}",
+        config.skills_directory.display()
+    );
 
-                    // If it doesn't exist but is explicitly configured, still return it
-                    debug!(
-                        "Using configured skills_directory (may not exist yet): {}",
-                        path.display()
-                    );
-                    return Ok(path);
-                }
-            }
-        }
-    }
-
-    // Priority 2: Walk up directory tree to find existing .claude/skills/
-    if let Some(found_dir) = walk_up_for_skills_dir(current_dir.as_path()) {
-        debug!(
-            "Found .claude/skills by walking up: {}",
-            found_dir.display()
-        );
-        return Ok(found_dir);
-    }
-
-    // Priority 3: Default to .claude/skills/ in current directory
-    let default_dir = current_dir.join(".claude/skills");
-    debug!("Using default skills directory: {}", default_dir.display());
-    Ok(default_dir)
+    Ok(config.skills_directory)
 }
 
 /// Create service configuration with resolved skills directory

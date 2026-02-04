@@ -4,7 +4,8 @@ use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
 use clap::Args;
 use fastskill::core::manifest::{
-    DependenciesSection, DependencySpec, MetadataSection, SkillProjectToml,
+    DependenciesSection, DependencySpec, FastSkillToolConfig, MetadataSection, SkillProjectToml,
+    ToolSection,
 };
 use fastskill::core::metadata::parse_yaml_frontmatter;
 use fastskill::core::validation::{
@@ -41,6 +42,10 @@ pub struct InitArgs {
     /// Set download URL
     #[arg(long)]
     download_url: Option<String>,
+
+    /// Skills directory path (required for project-level, optional for skill-level)
+    #[arg(long)]
+    skills_dir: Option<String>,
 }
 
 pub async fn execute_init(args: InitArgs) -> CliResult<()> {
@@ -56,10 +61,8 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     }
 
     // Detect context: skill-level if SKILL.md exists, otherwise project-level (T040)
-    let _context = fastskill::core::project::detect_context(skill_project_path);
-
-    // SKILL.md is optional - check if it exists
     let skill_md_exists = Path::new("SKILL.md").exists();
+    let is_skill_level = skill_md_exists;
 
     // Read SKILL.md if it exists to extract metadata from frontmatter
     let (skill_md_content, frontmatter) = if skill_md_exists {
@@ -145,6 +148,26 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         None
     };
 
+    // Extract skills_directory for project-level init (required)
+    let skills_directory = if !is_skill_level {
+        // Project-level: skills_directory is required
+        if let Some(dir_arg) = args.skills_dir {
+            Some(dir_arg)
+        } else if !args.yes {
+            // Prompt for skills directory
+            prompt_for_field("Skills directory", Some(".claude/skills"))?
+                .or(Some(".claude/skills".to_string()))
+        } else {
+            // Error: --skills-dir is required for project-level init with --yes
+            return Err(CliError::Config(
+                "Project-level init requires --skills-dir <path>. Provide --skills-dir or remove --yes to be prompted.".to_string()
+            ));
+        }
+    } else {
+        // Skill-level: skills_directory is optional
+        args.skills_dir
+    };
+
     // Extract skill ID from current directory name
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -173,9 +196,19 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         name: None,
     });
 
-    // Create empty dependencies section (optional, but we'll create it for consistency)
+    // Create dependencies section based on context
+    // For project-level, create [dependencies]; for skill-level, also create it for consistency
     let dependencies = Some(DependenciesSection {
         dependencies: HashMap::<String, DependencySpec>::new(),
+    });
+
+    // Build tool section with skills_directory if provided
+    let tool = skills_directory.as_ref().map(|dir| ToolSection {
+        fastskill: Some(FastSkillToolConfig {
+            skills_directory: Some(std::path::PathBuf::from(dir)),
+            embedding: None,
+            repositories: None,
+        }),
     });
 
     // Metadata is now always required (must have id and version)
@@ -186,7 +219,7 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     let skill_project = SkillProjectToml {
         metadata,
         dependencies,
-        tool: None, // Will be added as comments below
+        tool,
     };
 
     // Save to file first with basic structure
@@ -194,9 +227,10 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         .save_to_file(skill_project_path)
         .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
 
-    // Append commented [tool.fastskill] section as examples
-    let tool_section_comment = r#"
-# Optional: FastSkill configuration
+    // Append commented [tool.fastskill] section only for skill-level (project-level has real tool section)
+    if is_skill_level {
+        let tool_section_comment = r#"
+# Optional: FastSkill configuration for skill authors
 # Uncomment and configure as needed
 
 # [tool.fastskill]
@@ -213,11 +247,33 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
 # priority = 0
 "#;
 
-    let mut content = fs::read_to_string(skill_project_path)
-        .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
-    content.push_str(tool_section_comment);
-    fs::write(skill_project_path, content)
-        .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+        let mut content = fs::read_to_string(skill_project_path)
+            .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
+        content.push_str(tool_section_comment);
+        fs::write(skill_project_path, content)
+            .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+    } else {
+        // For project-level, optionally add comments about additional config
+        let config_comment = r#"
+# Additional configuration options for [tool.fastskill]:
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
+"#;
+
+        let mut content = fs::read_to_string(skill_project_path)
+            .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
+        content.push_str(config_comment);
+        fs::write(skill_project_path, content)
+            .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+    }
 
     // T058: Validate context after creation
     let context = fastskill::core::project::detect_context(skill_project_path);
@@ -228,19 +284,39 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         ))
     })?;
 
-    println!(
-        "{}",
-        messages::ok(&format!(
-            "Created skill-project.toml with version: {}",
-            version_clone
-        ))
-    );
-    println!();
-    println!(
-        "{}",
-        messages::info("This file contains author-provided metadata for your skill.")
-    );
-    println!("   It will be used by fastskill for version management.");
+    if is_skill_level {
+        println!(
+            "{}",
+            messages::ok(&format!(
+                "Created skill-project.toml with version: {}",
+                version_clone
+            ))
+        );
+        println!();
+        println!(
+            "{}",
+            messages::info("This file contains author-provided metadata for your skill.")
+        );
+        println!("   It will be used by fastskill for version management.");
+    } else {
+        println!(
+            "{}",
+            messages::ok(&format!(
+                "Created skill-project.toml with version: {}",
+                version_clone
+            ))
+        );
+        if let Some(ref dir) = skills_directory {
+            println!();
+            println!("{}", messages::info(&format!("Skills directory: {}", dir)));
+        }
+        println!();
+        println!(
+            "{}",
+            messages::info("This file configures your project's skill dependencies.")
+        );
+        println!("   Add skills with: fastskill add <skill-id>");
+    }
 
     Ok(())
 }
@@ -390,6 +466,7 @@ mod tests {
             description: Some("Test description".to_string()),
             author: Some("Test Author".to_string()),
             download_url: Some("https://example.com".to_string()),
+            skills_dir: Some(".claude/skills".to_string()),
         };
 
         let result = execute_init(args).await;
@@ -414,6 +491,7 @@ mod tests {
             description: None,
             author: None,
             download_url: None,
+            skills_dir: Some(".claude/skills".to_string()),
         };
 
         let result = execute_init(args).await;
@@ -440,6 +518,7 @@ mod tests {
             description: None,
             author: None,
             download_url: None,
+            skills_dir: Some(".claude/skills".to_string()),
         };
 
         // This test now just verifies the function doesn't panic

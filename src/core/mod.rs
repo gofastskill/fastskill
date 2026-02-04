@@ -11,6 +11,7 @@ pub mod manifest;
 pub mod metadata;
 pub mod packaging;
 pub mod project;
+pub mod project_config;
 pub mod reconciliation;
 pub mod registry;
 pub mod registry_index;
@@ -44,6 +45,7 @@ pub use packaging::{
     calculate_checksum, create_build_metadata, package_skill, package_skill_with_id,
     BuildEnvironment, BuildMetadata,
 };
+pub use project_config::{load_project_config, ProjectConfig};
 pub use registry::{
     AuthConfig, IndexEntry, RegistryClient, RegistryConfig, RegistryConfigManager, StorageConfig,
 };

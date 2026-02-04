@@ -35,7 +35,7 @@ fn test_list_default_grid_format() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
@@ -58,7 +58,7 @@ fn test_list_json_format() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
@@ -78,7 +78,7 @@ fn test_list_empty_skills_directory() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
@@ -107,6 +107,9 @@ fn test_list_missing_dependencies() {
     let project_content = r#"[dependencies]
 web-scraper = "1.2.3"
 dev-tools = "2.0.0"
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
@@ -148,6 +151,9 @@ tags: [test]
 
     let project_content = r#"[dependencies]
 test-skill = "2.0.0"
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
@@ -170,7 +176,7 @@ fn test_list_conflicting_flags_error() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 

@@ -4,10 +4,11 @@ expression: normalized
 ---
 FastSkill provides skill management through CLI.
 
-Skills directory is resolved using this priority:
-1. skills_directory from .fastskill.yaml (if exists)
-2. Walk up directory tree to find existing .claude/skills/
-3. Default to .claude/skills/ in current directory
+Skills directory is configured in skill-project.toml:
+[tool.fastskill]
+skills_directory = "path/to/skills"
+
+Run 'fastskill init --skills-dir <path>' to create a new project.
 
 Examples:
 fastskill add ./my-skill           # Add skill from folder
@@ -22,7 +23,7 @@ Commands:
   auth      Manage authentication for registries
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
-  install   Install skills from skill-project.toml [dependencies] into .claude/skills/; creates or updates skills.lock
+  install   Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock
   list      List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
   reindex   Reindex the vector index for semantic search
   remove    Remove skills from the skills database
@@ -44,7 +45,7 @@ Arguments:
 
 Options:
       --repositories-path <REPOSITORIES_PATH>
-          Path to .claude/repositories.toml file
+          Path to repositories.toml file
 
   -v, --verbose
           Enable verbose output
