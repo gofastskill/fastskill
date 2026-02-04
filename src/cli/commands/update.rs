@@ -355,6 +355,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_update_no_manifest() {
+        // Use a shared mutex to serialize directory changes across parallel tests
+        let _lock = fastskill::test_utils::DIR_MUTEX.lock().unwrap();
+
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
@@ -494,15 +497,11 @@ version = "1.0.0"
 
     #[tokio::test]
     async fn test_execute_update_check_mode() {
-        // Use a static mutex to serialize directory changes across parallel tests
-        use std::sync::Mutex;
-        static DIR_MUTEX: Mutex<()> = Mutex::new(());
+        // Use a shared mutex to serialize directory changes across parallel tests
+        let _lock = fastskill::test_utils::DIR_MUTEX.lock().unwrap();
 
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
-
-        // Lock the mutex for the duration of directory change
-        let _lock = DIR_MUTEX.lock().unwrap();
 
         // Helper struct to ensure directory is restored even if test panics
         struct DirGuard(Option<std::path::PathBuf>);
