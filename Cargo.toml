@@ -93,6 +93,9 @@ tempfile = "3.0"
 # Directory utilities
 dirs = "5.0"
 
+# Embed static assets for installed binary (no filesystem static dir)
+include_dir = "0.7"
+
 # Semantic versioning
 semver = "1.0"
 
