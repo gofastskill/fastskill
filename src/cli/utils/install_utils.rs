@@ -8,6 +8,27 @@ use fastskill::core::{manifest::SkillEntry, manifest::SkillSource, skill_manager
 use fastskill::{FastSkillService, SkillDefinition};
 use std::path::PathBuf;
 
+/// Create a symlink for editable installs
+/// This is platform-specific: Unix uses tokio::fs::symlink, Windows uses std::os::windows::fs::symlink_dir
+/// On unsupported platforms, returns EditableNotSupported error
+async fn create_editable_symlink(src: &PathBuf, dst: &PathBuf) -> CliResult<()> {
+    #[cfg(unix)]
+    {
+        tokio::fs::symlink(src, dst).await.map_err(CliError::Io)
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::symlink_dir;
+        symlink_dir(src, dst).map_err(|e| CliError::WindowsSymlinkPermission(e.to_string()))
+    }
+
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        Err(CliError::EditableNotSupported)
+    }
+}
+
 /// Install a single skill from a SkillEntry
 pub async fn install_skill_from_entry(
     service: &FastSkillService,
@@ -163,26 +184,16 @@ async fn install_from_local(
         .join(skill_def.id.as_str());
 
     if editable {
-        // Create symlink for editable installs
+        // Editable installs use symlinks only - no copy fallback
         if skill_storage_dir.exists() {
             tokio::fs::remove_dir_all(&skill_storage_dir)
                 .await
                 .map_err(CliError::Io)?;
         }
-        #[cfg(unix)]
-        {
-            tokio::fs::symlink(&skill_path, &skill_storage_dir)
-                .await
-                .map_err(CliError::Io)?;
-        }
-        #[cfg(not(unix))]
-        {
-            // On Windows, fall back to copying
-            copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
-        }
+        create_editable_symlink(&skill_path, &skill_storage_dir).await?;
         skill_def.skill_file = skill_storage_dir.join("SKILL.md");
     } else {
-        // Copy to storage
+        // Non-editable installs: copy to storage
         if skill_storage_dir.exists() {
             tokio::fs::remove_dir_all(&skill_storage_dir)
                 .await
