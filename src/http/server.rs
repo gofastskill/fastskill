@@ -7,10 +7,14 @@ use crate::http::handlers::{
     AppState,
 };
 use axum::{
-    http::Method,
+    body::Body,
+    extract::Request,
+    http::{header, HeaderValue, Method, StatusCode},
+    response::Response,
     routing::{delete, get, post, put},
     Router,
 };
+use include_dir::{include_dir, Dir};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -19,6 +23,35 @@ use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::{compression::CompressionLayer, services::ServeDir, trace::TraceLayer};
 use tracing::{info, warn};
+
+/// Static assets embedded at compile time (used when filesystem static dir is not found, e.g. installed binary).
+static EMBEDDED_STATIC: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/http/static");
+
+/// Serves embedded static files when filesystem static dir is not found (e.g. installed binary).
+async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
+    let path = req.uri().path().trim_start_matches('/');
+    let name = match path {
+        "" | "index.html" => "index.html",
+        "app.js" => "app.js",
+        "styles.css" => "styles.css",
+        _ => return Err(StatusCode::NOT_FOUND),
+    };
+    let file = EMBEDDED_STATIC
+        .get_file(name)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let body = file.contents();
+    let content_type: HeaderValue = match name {
+        "index.html" => HeaderValue::from_static("text/html; charset=utf-8"),
+        "app.js" => HeaderValue::from_static("application/javascript; charset=utf-8"),
+        "styles.css" => HeaderValue::from_static("text/css; charset=utf-8"),
+        _ => HeaderValue::from_static("application/octet-stream"),
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
 
 /// Resolve skill-project.toml path (similar to CLI config resolution)
 fn resolve_project_file_path() -> PathBuf {
@@ -345,8 +378,13 @@ impl FastSkillServer {
                 .route("/dashboard", get(status::root))
                 .nest_service("/", ServeDir::new(static_dir));
         } else {
-            router = router.route("/", get(status::root));
-            warn!("Static dir not found, serving dashboard at /");
+            info!("Serving UI at / from embedded static (filesystem static dir not found)");
+            router = router
+                .route("/dashboard", get(status::root))
+                .route("/", get(serve_embedded_static))
+                .route("/index.html", get(serve_embedded_static))
+                .route("/app.js", get(serve_embedded_static))
+                .route("/styles.css", get(serve_embedded_static));
         }
 
         // Registry and manifest API routes (always available)
