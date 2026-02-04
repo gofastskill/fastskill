@@ -50,6 +50,13 @@ This skill provides comprehensive web scraping functionality.
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
+    // Create skill-project.toml
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
     let result = run_fastskill_command(&["read", "web-scraper"], Some(temp_dir.path()));
 
     assert!(result.success);
@@ -87,6 +94,13 @@ This skill tests metadata display functionality.
 Used for testing metadata display.
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+    // Create skill-project.toml
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["read", "test-skill"], Some(temp_dir.path()));
 
@@ -140,6 +154,13 @@ Example usage showing that the skill body should be displayed correctly.
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
+    // Create skill-project.toml
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
     let result = run_fastskill_command(&["read", "body-skill"], Some(temp_dir.path()));
 
     assert!(result.success);
@@ -154,6 +175,13 @@ fn test_read_nonexistent_skill_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+
+    // Create skill-project.toml
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["read", "nonexistent-skill"], Some(temp_dir.path()));
 
@@ -172,6 +200,13 @@ fn test_read_invalid_skill_id_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
+
+    // Create skill-project.toml
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n",
+    )
+    .unwrap();
 
     let result = run_fastskill_command(&["read", "invalid skill id!"], Some(temp_dir.path()));
 

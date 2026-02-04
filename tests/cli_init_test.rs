@@ -47,13 +47,15 @@ fn test_init_command_in_empty_directory() {
                 "--",
                 "init",
                 "--yes",
+                "--skills-dir",
+                ".claude/skills",
             ])
             .output()
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
             .current_dir(&skill_dir)
-            .args(&["init", "--yes"])
+            .args(&["init", "--yes", "--skills-dir", ".claude/skills"])
             .output()
             .expect("Failed to execute init command")
     };
@@ -121,13 +123,15 @@ fn test_init_command_with_existing_file() {
                 "--",
                 "init",
                 "--yes",
+                "--skills-dir",
+                ".claude/skills",
             ])
             .output()
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
             .current_dir(&skill_dir)
-            .args(&["init", "--yes"])
+            .args(&["init", "--yes", "--skills-dir", ".claude/skills"])
             .output()
             .expect("Failed to execute init command")
     };
@@ -187,13 +191,23 @@ fn test_init_command_with_force_flag() {
                 "--force",
                 "--version",
                 "2.0.0",
+                "--skills-dir",
+                ".claude/skills",
             ])
             .output()
             .expect("Failed to execute init command")
     } else {
         Command::new(&binary)
             .current_dir(&skill_dir)
-            .args(&["init", "--yes", "--force", "--version", "2.0.0"])
+            .args(&[
+                "init",
+                "--yes",
+                "--force",
+                "--version",
+                "2.0.0",
+                "--skills-dir",
+                ".claude/skills",
+            ])
             .output()
             .expect("Failed to execute init command")
     };

@@ -1,4 +1,4 @@
-//! Install command - installs skills from skill-project.toml to .claude/skills/ registry
+//! Install command - installs skills from skill-project.toml dependencies
 
 use crate::cli::config::create_service_config;
 use crate::cli::error::{manifest_required_message, CliError, CliResult};
@@ -16,9 +16,10 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-/// Install skills from skill-project.toml [dependencies] to .claude/skills/ registry
+/// Install skills from skill-project.toml [dependencies]
 ///
 /// Reads dependencies from skill-project.toml at the project root.
+/// Installs to the skills directory configured in [tool.fastskill].skills_directory.
 /// Creates or updates skills.lock for reproducible installations.
 #[derive(Debug, Args)]
 pub struct InstallArgs {
@@ -408,8 +409,7 @@ mod tests {
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        // Create .claude directory but no lock file
-        fs::create_dir_all(".claude").unwrap();
+        // No skill-project.toml created - should fail with project config error
 
         let args = InstallArgs {
             without: None,
@@ -420,11 +420,9 @@ mod tests {
         let result = execute_install(args).await;
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
-            // Accept either "lock not found" error, repository error, or directory creation error (if files exist from other tests)
+            // Should fail because skill-project.toml not found
             assert!(
-                msg.contains("skills.lock not found")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("Failed to create .claude directory"),
+                msg.contains("skill-project.toml not found"),
                 "Error message '{}' does not contain expected text",
                 msg
             );

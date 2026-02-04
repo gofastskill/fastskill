@@ -1,6 +1,5 @@
 ---
 source: tests/cli/snapshot_helpers.rs
-assertion_line: 195
 expression: normalized
 ---
 FastSkill [VERSION]
@@ -8,7 +7,6 @@ Error: Skill 'nonexistent-skill' not found
 
 Searched locations:
   ✓ [TEMP_DIR] (project)
-  ✓ [HOME_DIR]/.claude/skills (global)
 
 Try:
   fastskill install owner/repo

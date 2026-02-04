@@ -3,4 +3,4 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-Error: Configuration error: Skills directory does not exist: /nonexistent/path
+Error: Configuration error: project-level skill-project.toml requires [tool.fastskill] with skills_directory. Run 'fastskill init --skills-dir <path>' at project root or add it manually.

@@ -17,3 +17,6 @@ remote-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
 
 [dev-dependencies]
 test-utils = "0.1.0"
+
+[tool.fastskill]
+skills_directory = ".skills"
