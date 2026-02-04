@@ -471,7 +471,7 @@ version = "1.0.0"
         };
 
         let result = execute_update(args).await;
-        // Should fail for invalid strategy
+        // Should fail for invalid strategy or missing skills_directory
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
             assert!(
@@ -479,7 +479,8 @@ version = "1.0.0"
                     || msg.contains("latest, patch, minor, major")
                     || msg.contains("strategy")
                     || msg.contains("Failed to load repositories")
-                    || msg.contains("skill-project.toml not found"),
+                    || msg.contains("skill-project.toml not found")
+                    || msg.contains("requires [tool.fastskill] with skills_directory"),
                 "Error message '{}' does not contain expected text",
                 msg
             );
