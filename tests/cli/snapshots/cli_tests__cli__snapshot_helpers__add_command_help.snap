@@ -16,6 +16,7 @@ Options:
   -f, --force                      Force registration even if skill already exists
   -e, --editable                   Install skill in editable mode (for local development, like poetry add -e)
       --group <GROUP>              Add skill to a specific group (like poetry add --group dev)
+  -r, --recursive                  Add all skills found under the directory (only for local folders)
   -h, --help                       Print help
 
 Examples:

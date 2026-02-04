@@ -265,6 +265,12 @@ fastskill add https://github.com/org/skill.git --group dev
 
 # Add editable skill to dev group
 fastskill add ./local-skill -e --group dev
+
+# Add all skills under a directory recursively
+fastskill add ./skills -r
+
+# Add all skills recursively with editable mode and group
+fastskill add ./skills -r -e --group dev
 ```
 
 **Git URL formats:**
@@ -273,6 +279,7 @@ fastskill add ./local-skill -e --group dev
 
 **Options:**
 - `-e, --editable`: Install skill in editable mode (symlink/reference for local development)
+- `-r, --recursive`: Add all skills found under the directory (discovers directories containing SKILL.md). Only valid when source is a local directory
 - `--group <GROUP>`: Add skill to a specific group (e.g., "dev", "prod")
 - `--branch <BRANCH>`: Git branch to checkout (for git URLs)
 - `--tag <TAG>`: Git tag to checkout (for git URLs)

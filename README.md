@@ -210,6 +210,9 @@ fastskill add ./local-skill
 
 # Add skill in editable mode (for local development)
 fastskill add ./local-skill -e
+
+# Add all skills under a directory (recursive)
+fastskill add ./skills -r
 ```
 
 ### 3. Index and Search
@@ -228,7 +231,7 @@ fastskill search "data processing" --limit 5
 ### Skill Management
 
 ```bash
-fastskill add <source>              # Add skill (git URL, tree URL for subdir, local path, or ZIP)
+fastskill add <source>              # Add skill (git URL, tree URL for subdir, local path, or ZIP). Use -r for recursive folder add
 fastskill remove <skill-id>          # Remove skill
 fastskill show                       # List installed skills
 fastskill update                     # Update skills to latest versions

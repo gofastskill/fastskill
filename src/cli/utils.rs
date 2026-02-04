@@ -30,9 +30,9 @@ pub struct GitUrlInfo {
 
 /// Detect if input is a skill ID (format: skillid@version, skillid, or scope/skillid@version)
 pub fn is_skill_id(input: &str) -> bool {
-    // Skill ID format: alphanumeric with dashes/underscores, optionally followed by @version
+    // Skill ID format: alphanumeric with dashes/underscores, optionally followed by @version or @tag
     // Can also be scoped: scope/skillid or scope/skillid@version
-    // Examples: pptx@1.2.3, web-scraper, my_skill@2.0.0, dev-user/test-skill, org/my-skill@1.0.0
+    // Examples: pptx@1.2.3, web-scraper, my_skill@2.0.0, aroff@teste, dev-user/test-skill, org/my-skill@1.0.0
     // Must not contain backslashes or colons (URL schemes)
     if input.contains('\\') || input.contains(':') {
         return false;
@@ -40,10 +40,11 @@ pub fn is_skill_id(input: &str) -> bool {
 
     // Check if it looks like a skill ID (not a file path)
     // Supports both unscoped (skillid) and scoped (scope/skillid) formats
+    // The @suffix can be a version (1.2.3) or any identifier (teste, label, etc.)
     // This regex is a compile-time constant pattern, so it should never fail
     #[allow(clippy::expect_used)]
     let skill_id_pattern =
-        regex::Regex::new(r"^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)?(@[0-9]+\.[0-9]+(\.[0-9]+)?.*)?$")
+        regex::Regex::new(r"^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)?(@[a-zA-Z0-9_.-]+)?$")
             .expect("Invalid regex pattern");
     skill_id_pattern.is_match(input)
 }
