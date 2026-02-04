@@ -60,7 +60,7 @@ fn test_list_default_grid_format() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
@@ -89,7 +89,7 @@ fn test_list_json_format() {
     fs::create_dir_all(temp_dir.path().join(".claude").join("skills")).unwrap();
     fs::write(
         temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n",
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
@@ -116,7 +116,12 @@ fn test_reindex_empty_directory() {
     fs::create_dir_all(&skills_dir).unwrap();
 
     // Create skill-project.toml with tool.fastskill.embedding config
-    let project_content = r#"[tool.fastskill.embedding]
+    let project_content = r#"[dependencies]
+
+[tool.fastskill]
+skills_directory = ".skills"
+
+[tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 "#;
@@ -182,9 +187,15 @@ fn test_show_nonexistent_skill_error() {
 
 #[test]
 fn test_show_invalid_skill_id_format() {
+    use std::fs;
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
         &["show", "invalid skill id!"],
@@ -224,9 +235,15 @@ fn test_read_nonexistent_skill_error() {
 
 #[test]
 fn test_read_invalid_skill_id_format() {
+    use std::fs;
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
         &["read", "invalid skill id!"],

@@ -36,6 +36,11 @@ Usage example for show command.
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
     let result = run_fastskill_command(&["show"], Some(temp_dir.path()));
 
     assert!(result.success);
@@ -72,6 +77,11 @@ Advanced web scraping capabilities.
 "#;
     fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
 
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
     let result = run_fastskill_command(&["show", "web-scraper"], Some(temp_dir.path()));
 
     assert!(result.success);
@@ -136,6 +146,11 @@ version: 1.0.0
 "#;
     fs::write(dep2_dir.join("SKILL.md"), dep2_content).unwrap();
 
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
     let result = run_fastskill_command(&["show", "--tree", "complex-skill"], Some(temp_dir.path()));
 
     assert!(result.success);

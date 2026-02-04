@@ -1,10 +1,11 @@
 //! Unit tests for TOML parsing, serialization, and context detection
 
 use fastskill::core::manifest::{
-    DependenciesSection, DependencySource, DependencySpec, MetadataSection, ProjectContext,
-    SkillProjectToml,
+    DependenciesSection, DependencySource, DependencySpec, FastSkillToolConfig, MetadataSection,
+    ProjectContext, SkillProjectToml, ToolSection,
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[test]
 fn test_toml_parsing_basic() {
@@ -160,7 +161,13 @@ fn test_validation_project_level() {
     let project = SkillProjectToml {
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
-        tool: None,
+        tool: Some(ToolSection {
+            fastskill: Some(FastSkillToolConfig {
+                skills_directory: Some(PathBuf::from(".cursor/skills")),
+                embedding: None,
+                repositories: None,
+            }),
+        }),
     };
 
     let result = project.validate_for_context(ProjectContext::Project);
