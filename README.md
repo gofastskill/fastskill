@@ -4,11 +4,19 @@ Package manager and operational toolkit for Claude Code-compatible skills. FastS
 
 [![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml)
 
+## Add a skill
+
+```bash
+fastskill add https://github.com/org/skill-repo
+```
+
+Quickly add skills from Git, local folders, or registries to extend your AI agent's capabilities.
+
 ## What is FastSkill?
 
 FastSkill is a skill package manager and operational toolkit for the AI agent ecosystem. It builds on Anthropic's standardized Skills format, adding registry services, semantic search, version management, and deployment tooling.
 
-Skills are recipes that extend AI Agent capabilities with specialized procedures, tool integrations, and domain knowledge. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
+**What are skills?** Skills are reusable instruction sets in SKILL.md that extend an AI agent's capabilities with specialized procedures, tool integrations, and domain knowledge. Examples include creating pull requests, integrating cloud services, automating CI/CD workflows, and domain-specific data processing. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
 
 ## Key Capabilities
 
@@ -18,6 +26,10 @@ Skills are recipes that extend AI Agent capabilities with specialized procedures
 - **Manifest System**: Declarative dependency management with lock files for reproducible installations
 - **HTTP API**: RESTful service layer for agent integration
 - **Web UI**: Browse and manage skills through web interface
+
+## Compatible Agents
+
+Optimized for Claude Code. Skills follow the same SKILL.md format used by Cursor and other AI agents.
 
 ## Core Use Cases
 
@@ -198,6 +210,28 @@ export OPENAI_API_KEY="your-key-here"
 
 ### 2. Add Skills
 
+**Source formats**
+
+| Source | Example |
+|--------|---------|
+| Git URL | `https://github.com/org/skill.git` |
+| Tree URL (subdir) | `https://github.com/org/repo/tree/main/path/to/skill` |
+| Local path | `./local-skill` |
+| Recursive directory | `./skills -r` |
+| Editable (dev) | `./local-skill -e` |
+
+**Options**
+
+| Flag | Description |
+|------|-------------|
+| `-r, --recursive` | Add all skills under directory (local folders only) |
+| `-e, --editable` | Install in editable mode for local development |
+| `-f, --force` | Force registration even if skill exists |
+| `--branch <BRANCH>` | Git branch to checkout (git URLs only) |
+| `--tag <TAG>` | Git tag to checkout (git URLs only) |
+| `--source-type <TYPE>` | Override source type (registry, github, local) |
+| `--group <GROUP>` | Add skill to a specific group |
+
 ```bash
 # Add skill from git URL
 fastskill add https://github.com/org/skill.git
@@ -227,6 +261,18 @@ fastskill search "data processing" --limit 5
 ```
 
 ## Essential Commands
+
+| Command | Description |
+|---------|-------------|
+| `fastskill add <source>` | Add skill from Git, local, or registry |
+| `fastskill remove <skill-id>` | Remove skill from database |
+| `fastskill show` | List installed skills and metadata |
+| `fastskill update` | Update skills to latest versions |
+| `fastskill search "query"` | Semantic search for skills |
+| `fastskill reindex` | Rebuild vector index for search |
+| `fastskill serve` | Start HTTP API server |
+| `fastskill init` | Initialize skill-project.toml |
+| `fastskill package` | Package skills into ZIP artifacts |
 
 ### Skill Management
 
@@ -310,6 +356,36 @@ The CLI resolves configuration from `skill-project.toml`:
 3. Extracts `[tool.fastskill.repositories]` for repository sources
 4. Defaults to `.claude/skills/` if no skills_directory is configured
 
+### Installation Scope
+
+FastSkill is project-scoped. Configuration and skills are managed per project using `skill-project.toml` in the project root. There is no global/user-level mode; each project maintains its own skills directory and dependencies.
+
+### Skill Discovery
+
+FastSkill looks for skills in the following locations:
+
+- **skills_directory** - Configured path in `[tool.fastskill.skills_directory]`
+- **Default** - `.claude/skills/` if not specified
+- **Repositories** - All sources from `[[tool.fastskill.repositories]]` including:
+  - Git marketplace repos with marketplace.json
+  - HTTP registries with flat index
+  - ZIP URL sources with marketplace.json
+  - Local filesystem paths
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key for semantic search and embeddings (required) |
+| `RUST_LOG` | Logging level (e.g., `fastskill=debug`, `fastskill=trace`) |
+| `FASTSKILL_API_URL` | Base URL for registry API |
+| `FASTSKILL_API_TOKEN` | Authentication token for registry API |
+| `FASTSKILL_CONFIG_DIR` | Path to FastSkill configuration directory |
+| `FASTSKILL_JWT_SECRET` | Secret for JWT token generation (HTTP API) |
+| `FASTSKILL_JWT_ISSUER` | JWT issuer claim (default: `fastskill`) |
+| `FASTSKILL_JWT_EXPIRY` | JWT token expiry in seconds |
+| `FASTSKILL_STATIC_DIR` | Path to static files for HTTP server |
+
 ### Quick Setup
 
 ```bash
@@ -337,6 +413,31 @@ export OPENAI_API_KEY="your-openai-api-key-here"
 ```
 
 For persistent setup, add this to your shell profile (`.bashrc`, `.zshrc`, etc.).
+
+### Add fails (git or network)
+
+If `fastskill add` fails with git or network errors:
+
+1. Verify the Git URL is accessible and public (or configured with auth)
+2. Check network connectivity and proxy settings
+3. For private repos, ensure credentials are configured
+4. Use `fastskill add --verbose` for detailed error messages
+
+### Search returns no results
+
+If `fastskill search` returns no results:
+
+1. Run `fastskill reindex` to rebuild the search index
+2. Verify `OPENAI_API_KEY` is set and valid
+3. Check embedding configuration in `[tool.fastskill.embedding]`
+4. Ensure skills are installed (`fastskill show`)
+
+## Documentation
+
+- [Registry Setup](docs/REGISTRY.md) - Detailed registry configuration and management
+- [Kubernetes Deployment](integration/kubernetes-deployment) - Production deployment guide
+- [Security Policy](SECURITY.md) - Security guidelines and vulnerability reporting
+- [GitHub Releases](https://github.com/gofastskill/fastskill/releases) - Latest versions and changelog
 
 ## License
 
