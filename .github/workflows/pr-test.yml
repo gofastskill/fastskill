@@ -38,9 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
+      - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --profile ci
 
   test-all-features:
@@ -49,9 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
+      - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --all-features --profile ci
 
   snapshot-test:
@@ -60,7 +56,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest,cargo-insta
+      - run: cargo install cargo-nextest cargo-insta --locked
       - run: cargo insta test --test-runner nextest
