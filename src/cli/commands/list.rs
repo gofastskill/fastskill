@@ -11,7 +11,7 @@ use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::messages;
 use clap::Args;
 use fastskill::core::lock::SkillsLock;
-use fastskill::core::manifest::SkillProjectToml;
+use fastskill::core::manifest::{SkillProjectToml, SkillSource};
 use fastskill::core::project::resolve_project_file;
 use fastskill::core::service::FastSkillService;
 use std::collections::{HashMap, HashSet};
@@ -22,10 +22,14 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ListRow {
     pub id: String,
+    pub name: String,
+    pub description: String,
     pub version: Option<String>,
     pub in_manifest: bool,
     pub in_lock: bool,
     pub installed: bool,
+    pub source_path: Option<String>,
+    pub source_type: Option<String>,
     pub missing_from_folder: bool,
     pub missing_from_lock: bool,
     pub missing_from_manifest: bool,
@@ -41,6 +45,24 @@ pub struct ListArgs {
     /// Output in grid format (default)
     #[arg(long)]
     pub grid: bool,
+
+    /// Show detailed information (version, manifest/lock/installed status, source path, type)
+    #[arg(long)]
+    pub details: bool,
+}
+
+/// Extract source path and type from SkillSource
+fn format_source_info(source: &SkillSource) -> (Option<String>, Option<String>) {
+    match source {
+        SkillSource::Git { url, .. } => (Some(url.clone()), Some("git".to_string())),
+        SkillSource::Local { path, .. } => {
+            (Some(path.display().to_string()), Some("local".to_string()))
+        }
+        SkillSource::ZipUrl { base_url, .. } => {
+            (Some(base_url.clone()), Some("zip-url".to_string()))
+        }
+        SkillSource::Source { name, .. } => (Some(name.clone()), Some("source".to_string())),
+    }
 }
 
 /// Execute the list command
@@ -88,10 +110,17 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
             skills: Vec::new(),
         }
     };
-    let lock_map: HashMap<String, String> = lock
+
+    // Build lock map with additional metadata
+    let lock_map: HashMap<String, (String, String, SkillSource)> = lock
         .skills
         .iter()
-        .map(|s| (s.id.clone(), s.version.clone()))
+        .map(|s| {
+            (
+                s.id.clone(),
+                (s.version.clone(), s.name.clone(), s.source.clone()),
+            )
+        })
         .collect();
 
     // Installed skills from service
@@ -102,10 +131,13 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
             e
         )))
     })?;
-    let installed_map: HashMap<String, String> = installed_skills
-        .iter()
-        .map(|s| (s.id.to_string(), s.version.clone()))
-        .collect();
+
+    // Build installed map with full skill definitions
+    let installed_map: HashMap<String, fastskill::core::skill_manager::SkillDefinition> =
+        installed_skills
+            .into_iter()
+            .map(|s| (s.id.to_string(), s))
+            .collect();
 
     // Union of all skill IDs
     let all_ids: HashSet<String> = manifest_ids
@@ -121,19 +153,62 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
             let in_manifest = manifest_ids.contains_key(&id);
             let in_lock = lock_map.contains_key(&id);
             let installed = installed_map.contains_key(&id);
-            let version = installed_map
-                .get(&id)
-                .or_else(|| lock_map.get(&id))
-                .cloned();
+
+            // Get name: prefer installed, fallback to lock, fallback to id
+            let name = if let Some(skill) = installed_map.get(&id) {
+                skill.name.clone()
+            } else if let Some((_, lock_name, _)) = lock_map.get(&id) {
+                lock_name.clone()
+            } else {
+                id.clone()
+            };
+
+            // Get description: prefer installed, fallback to "-"
+            let description = if let Some(skill) = installed_map.get(&id) {
+                skill.description.clone()
+            } else {
+                "-".to_string()
+            };
+
+            // Get version: prefer installed, fallback to lock
+            let version = if let Some(skill) = installed_map.get(&id) {
+                Some(skill.version.clone())
+            } else {
+                lock_map.get(&id).map(|(v, _, _)| v.clone())
+            };
+
+            // Get source path and type
+            let (source_path, source_type) = if let Some(skill) = installed_map.get(&id) {
+                // For installed skills, use skill_file path and source_type
+                let path = Some(skill.skill_file.display().to_string());
+                let stype = skill.source_type.as_ref().map(|st| match st {
+                    fastskill::core::skill_manager::SourceType::GitUrl => "git".to_string(),
+                    fastskill::core::skill_manager::SourceType::LocalPath => "local".to_string(),
+                    fastskill::core::skill_manager::SourceType::ZipFile => "zip-url".to_string(),
+                    fastskill::core::skill_manager::SourceType::Source => "source".to_string(),
+                });
+                (path, stype)
+            } else if let Some((_, _, source)) = lock_map.get(&id) {
+                // For lock-only skills, extract from SkillSource
+                format_source_info(source)
+            } else {
+                (None, None)
+            };
+
             let missing_from_folder = (in_manifest || in_lock) && !installed;
             let missing_from_lock = (in_manifest || installed) && !in_lock;
             let missing_from_manifest = (in_lock || installed) && !in_manifest;
+
             ListRow {
                 id: id.clone(),
+                name,
+                description,
                 version,
                 in_manifest,
                 in_lock,
                 installed,
+                source_path,
+                source_type,
                 missing_from_folder,
                 missing_from_lock,
                 missing_from_manifest,
@@ -150,7 +225,7 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
             println!("{}", json_output);
         }
         "grid" => {
-            format_list_grid(&rows)?;
+            format_list_grid(&rows, args.details)?;
         }
         _ => unreachable!(),
     }
@@ -159,7 +234,7 @@ pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResu
 }
 
 /// Format list output as grid table: one row per skill with In manifest, In lock, Installed, and Flags.
-fn format_list_grid(rows: &[ListRow]) -> CliResult<()> {
+fn format_list_grid(rows: &[ListRow], details: bool) -> CliResult<()> {
     if rows.is_empty() {
         println!(
             "{}",
@@ -168,53 +243,100 @@ fn format_list_grid(rows: &[ListRow]) -> CliResult<()> {
         return Ok(());
     }
 
-    let headers = [
-        "ID",
-        "Version",
-        "In manifest",
-        "In lock",
-        "Installed",
-        "Flags",
-    ];
-    let mut col_widths = vec![0; headers.len()];
-    for (i, h) in headers.iter().enumerate() {
-        col_widths[i] = h.len();
-    }
-    for row in rows {
-        col_widths[0] = col_widths[0].max(row.id.len());
-        col_widths[1] = col_widths[1].max(row.version.as_deref().unwrap_or("-").len());
-        col_widths[2] = col_widths[2].max(1);
-        col_widths[3] = col_widths[3].max(1);
-        col_widths[4] = col_widths[4].max(1);
-        let flags = build_flags_str(row);
-        col_widths[5] = col_widths[5].max(flags.len());
-    }
-
-    let header_row: Vec<String> = headers
-        .iter()
-        .enumerate()
-        .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
-        .collect();
-    println!();
-    println!("{}", header_row.join("  "));
-    println!("{}", "-".repeat(header_row.join("  ").len()));
-
-    for row in rows {
-        let version = row.version.as_deref().unwrap_or("-");
-        let in_manifest = if row.in_manifest { "Y" } else { "-" };
-        let in_lock = if row.in_lock { "Y" } else { "-" };
-        let installed = if row.installed { "Y" } else { "-" };
-        let flags = build_flags_str(row);
-        let line = [
-            format!("{:width$}", row.id, width = col_widths[0]),
-            format!("{:width$}", version, width = col_widths[1]),
-            format!("{:width$}", in_manifest, width = col_widths[2]),
-            format!("{:width$}", in_lock, width = col_widths[3]),
-            format!("{:width$}", installed, width = col_widths[4]),
-            format!("{:width$}", flags, width = col_widths[5]),
+    if details {
+        // Details view: Name, Description, Version, In manifest, In lock, Installed, Source path, Type, Flags
+        let headers = [
+            "Name",
+            "Description",
+            "Version",
+            "In manifest",
+            "In lock",
+            "Installed",
+            "Source path",
+            "Type",
+            "Flags",
         ];
-        println!("{}", line.join("  "));
+        let mut col_widths = vec![0; headers.len()];
+        for (i, h) in headers.iter().enumerate() {
+            col_widths[i] = h.len();
+        }
+        for row in rows {
+            col_widths[0] = col_widths[0].max(row.name.len());
+            col_widths[1] = col_widths[1].max(row.description.len());
+            col_widths[2] = col_widths[2].max(row.version.as_deref().unwrap_or("-").len());
+            col_widths[3] = col_widths[3].max(1);
+            col_widths[4] = col_widths[4].max(1);
+            col_widths[5] = col_widths[5].max(1);
+            col_widths[6] = col_widths[6].max(row.source_path.as_deref().unwrap_or("-").len());
+            col_widths[7] = col_widths[7].max(row.source_type.as_deref().unwrap_or("-").len());
+            let flags = build_flags_str(row);
+            col_widths[8] = col_widths[8].max(flags.len());
+        }
+
+        let header_row: Vec<String> = headers
+            .iter()
+            .enumerate()
+            .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
+            .collect();
+        println!();
+        println!("{}", header_row.join("  "));
+        println!("{}", "-".repeat(header_row.join("  ").len()));
+
+        for row in rows {
+            let version = row.version.as_deref().unwrap_or("-");
+            let in_manifest = if row.in_manifest { "Y" } else { "-" };
+            let in_lock = if row.in_lock { "Y" } else { "-" };
+            let installed = if row.installed { "Y" } else { "-" };
+            let source_path = row.source_path.as_deref().unwrap_or("-");
+            let source_type = row.source_type.as_deref().unwrap_or("-");
+            let flags = build_flags_str(row);
+            let line = [
+                format!("{:width$}", row.name, width = col_widths[0]),
+                format!("{:width$}", row.description, width = col_widths[1]),
+                format!("{:width$}", version, width = col_widths[2]),
+                format!("{:width$}", in_manifest, width = col_widths[3]),
+                format!("{:width$}", in_lock, width = col_widths[4]),
+                format!("{:width$}", installed, width = col_widths[5]),
+                format!("{:width$}", source_path, width = col_widths[6]),
+                format!("{:width$}", source_type, width = col_widths[7]),
+                format!("{:width$}", flags, width = col_widths[8]),
+            ];
+            println!("{}", line.join("  "));
+        }
+    } else {
+        // Default view: Name, Description, Flags
+        let headers = ["Name", "Description", "Flags"];
+        let mut col_widths = vec![0; headers.len()];
+        for (i, h) in headers.iter().enumerate() {
+            col_widths[i] = h.len();
+        }
+        for row in rows {
+            col_widths[0] = col_widths[0].max(row.name.len());
+            col_widths[1] = col_widths[1].max(row.description.len());
+            let flags = build_flags_str(row);
+            col_widths[2] = col_widths[2].max(flags.len());
+        }
+
+        let header_row: Vec<String> = headers
+            .iter()
+            .enumerate()
+            .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
+            .collect();
+        println!();
+        println!("{}", header_row.join("  "));
+        println!("{}", "-".repeat(header_row.join("  ").len()));
+
+        for row in rows {
+            let flags = build_flags_str(row);
+            let line = [
+                format!("{:width$}", row.name, width = col_widths[0]),
+                format!("{:width$}", row.description, width = col_widths[1]),
+                format!("{:width$}", flags, width = col_widths[2]),
+            ];
+            println!("{}", line.join("  "));
+        }
     }
+
     println!();
     Ok(())
 }

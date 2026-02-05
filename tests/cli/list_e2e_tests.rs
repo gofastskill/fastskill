@@ -157,14 +157,29 @@ skills_directory = ".claude/skills"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
+    // Test default view (should show name and description, but not version)
     let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
 
     assert!(result.success);
-    assert!(result.stdout.contains("test-skill") && result.stdout.contains("1.0.0"));
+    assert!(result.stdout.contains("test-skill"));
 
     assert_snapshot_with_settings(
         "list_version_mismatch",
         &result.stdout,
+        &cli_snapshot_settings(),
+    );
+
+    // Test details view (should show version)
+    let result_details = run_fastskill_command(&["list", "--details"], Some(temp_dir.path()));
+
+    assert!(result_details.success);
+    assert!(
+        result_details.stdout.contains("test-skill") && result_details.stdout.contains("1.0.0")
+    );
+
+    assert_snapshot_with_settings(
+        "list_version_mismatch_details",
+        &result_details.stdout,
         &cli_snapshot_settings(),
     );
 }
