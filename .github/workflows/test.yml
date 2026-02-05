@@ -57,11 +57,10 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.10.16
-
       - name: Install cargo-nextest
-        run: cargo binstall --no-confirm cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: Run tests
         run: cargo nextest run --profile ci --locked
@@ -75,11 +74,10 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.10.16
-
       - name: Install cargo-nextest
-        run: cargo binstall --no-confirm cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: Run tests with all features
         run: cargo nextest run --all-features --profile ci --locked
@@ -93,13 +91,10 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.10.16
-
       - name: Install cargo-nextest and cargo-insta
-        run: |
-          cargo binstall --no-confirm cargo-nextest
-          cargo binstall --no-confirm cargo-insta
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-insta
 
       - name: Run snapshot tests
         run: cargo insta test --test-runner nextest --locked
