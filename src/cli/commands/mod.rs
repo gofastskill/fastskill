@@ -59,10 +59,10 @@ pub enum Commands {
     )]
     Install(install::InstallArgs),
 
-    /// List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
+    /// List installed skills and reconcile with skill-project.toml and skills.lock (shows name, description, and flags by default; use --details for full info)
     #[command(
-        about = "List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)",
-        after_help = "Examples:\n  fastskill list\n  fastskill list --json"
+        about = "List installed skills and reconcile with skill-project.toml and skills.lock (shows name, description, and flags by default; use --details for full info)",
+        after_help = "Examples:\n  fastskill list\n  fastskill list --details\n  fastskill list --json"
     )]
     List(list::ListArgs),
 

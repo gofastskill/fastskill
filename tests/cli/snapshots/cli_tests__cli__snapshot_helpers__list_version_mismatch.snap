@@ -4,7 +4,6 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-ID          Version  In manifest  In lock  Installed  Flags            
------------------------------------------------------------------------
-test-skill  [VERSION]    Y            -        Y          missing from lock
-
+Name        Description  Flags            
+------------------------------------------
+test-skill  Test skill   missing from lock

@@ -1,12 +1,10 @@
 ---
 source: tests/cli/snapshot_helpers.rs
-assertion_line: 195
 expression: normalized
 ---
 FastSkill [VERSION]
 
-ID           Version  In manifest  In lock  Installed  Flags                                 
----------------------------------------------------------------------------------------------
-dev-tools    -        Y            -        -          missing from folder; missing from lock
-web-scraper  -        Y            -        -          missing from folder; missing from lock
-
+Name         Description  Flags                                 
+----------------------------------------------------------------
+dev-tools    -            missing from folder; missing from lock
+web-scraper  -            missing from folder; missing from lock
