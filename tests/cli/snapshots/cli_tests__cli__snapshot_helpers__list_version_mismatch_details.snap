@@ -1,0 +1,9 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+
+Name        Description  Version  In manifest  In lock  Installed  Source path                                         Type  Flags            
+----------------------------------------------------------------------------------------------------------------------------------------------
+test-skill  Test skill   [VERSION]    Y            -        Y          [TEMP_DIR]  -     missing from lock

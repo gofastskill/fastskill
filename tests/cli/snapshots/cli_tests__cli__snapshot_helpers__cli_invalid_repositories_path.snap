@@ -24,7 +24,7 @@ Commands:
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
   install   Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock
-  list      List installed skills and reconcile with skill-project.toml and skills.lock (shows installed, missing, extraneous, version mismatches)
+  list      List installed skills and reconcile with skill-project.toml and skills.lock (shows name, description, and flags by default; use --details for full info)
   reindex   Reindex the vector index for semantic search
   remove    Remove skills from the skills database
   package   Package skills into ZIP artifacts with versioning
