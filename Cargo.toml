@@ -79,7 +79,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
-config = "0.14"
+config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
 
 # Git support removed - now uses system git binary
