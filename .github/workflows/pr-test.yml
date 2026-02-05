@@ -20,5 +20,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fetch --locked
-      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: cargo fetch       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
