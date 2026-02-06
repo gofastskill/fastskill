@@ -206,3 +206,146 @@ pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
     }
     Ok(())
 }
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_list_with_json_empty() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let result = execute_list_with_json(false).await;
+        assert!(result.is_ok());
+
+        let result_json = execute_list_with_json(true).await;
+        assert!(result_json.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_add_then_list() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let repo_path = temp_dir.path().join("test-repo-path");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let result = execute_add(
+            "test-repo".to_string(),
+            "local".to_string(),
+            repo_path.display().to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let list_result = execute_list_with_json(false).await;
+        assert!(list_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_show_then_remove() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let repo_path = temp_dir.path().join("test-repo-path");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let add_result = execute_add(
+            "test-repo".to_string(),
+            "local".to_string(),
+            repo_path.display().to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(add_result.is_ok());
+
+        let show_result = execute_show("test-repo".to_string()).await;
+        assert!(show_result.is_ok());
+
+        let remove_result = execute_remove("test-repo".to_string()).await;
+        assert!(remove_result.is_ok());
+
+        let list_result = execute_list_with_json(false).await;
+        assert!(list_result.is_ok());
+    }
+}

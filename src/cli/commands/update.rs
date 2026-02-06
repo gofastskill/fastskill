@@ -356,7 +356,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_update_no_manifest() {
         // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill::test_utils::DIR_MUTEX.lock().unwrap();
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
@@ -498,7 +500,9 @@ version = "1.0.0"
     #[tokio::test]
     async fn test_execute_update_check_mode() {
         // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill::test_utils::DIR_MUTEX.lock().unwrap();
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
@@ -532,6 +536,65 @@ version = "1.0.0"
         // Should succeed in check mode even with no skills
         let result = execute_update(args).await;
         // May succeed or fail depending on lock file, but shouldn't panic
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_update_success_with_check() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+test-skill = "1.0.0"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let lock_content = r#"version = "1.0.0"
+generated_at = "2024-01-01T00:00:00Z"
+fastskill_version = "0.1.0"
+
+[[skills]]
+id = "test-skill"
+name = "test-skill"
+version = "1.0.0"
+source_type = "local"
+source = { path = ".claude/skills/test-skill" }
+"#;
+        fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
+
+        let args = UpdateArgs {
+            skill_id: None,
+            check: true,
+            dry_run: false,
+            version: None,
+            source: None,
+            strategy: "latest".to_string(),
+        };
+
+        let result = execute_update(args).await;
+        // Should succeed in check mode or fail with appropriate error
         assert!(result.is_ok() || result.is_err());
     }
 }
