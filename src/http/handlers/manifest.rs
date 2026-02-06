@@ -100,71 +100,11 @@ fn get_lock_path(project_path: &std::path::Path) -> PathBuf {
     }
 }
 
-/// Resolve and validate project file path: must be under project_root to prevent path traversal.
-/// Returns canonical path for existing files; for non-existing paths, validates parent is under root.
-pub(crate) fn validate_project_path(state: &AppState) -> HttpResult<PathBuf> {
-    let project_root = state.project_root.clone();
-    let project_file_path = state.project_file_path.clone();
-    let canonical_root = project_root.canonicalize().map_err(|e| {
-        HttpError::InternalServerError(format!(
-            "Failed to resolve project root {}: {}",
-            project_root.display(),
-            e
-        ))
-    })?;
-    let full_path = if project_file_path.is_absolute() {
-        project_file_path
-    } else {
-        canonical_root.join(project_file_path)
-    };
-    if full_path.exists() {
-        let canonical = full_path.canonicalize().map_err(|e| {
-            HttpError::InternalServerError(format!(
-                "Failed to resolve project path {}: {}",
-                full_path.display(),
-                e
-            ))
-        })?;
-        if !canonical.starts_with(&canonical_root) {
-            return Err(HttpError::BadRequest(format!(
-                "Project path {} is not within project root {}",
-                canonical.display(),
-                canonical_root.display()
-            )));
-        }
-        Ok(canonical)
-    } else {
-        let parent = full_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-        let canonical_parent = parent.canonicalize().map_err(|e| {
-            HttpError::InternalServerError(format!(
-                "Failed to resolve project path parent {}: {}",
-                parent.display(),
-                e
-            ))
-        })?;
-        if !canonical_parent.starts_with(&canonical_root) {
-            return Err(HttpError::BadRequest(format!(
-                "Project path {} is not within project root {}",
-                full_path.display(),
-                canonical_root.display()
-            )));
-        }
-        Ok(canonical_parent.join(
-            full_path
-                .file_name()
-                .unwrap_or(std::ffi::OsStr::new("skill-project.toml")),
-        ))
-    }
-}
-
 /// GET /api/project - Full skill-project.toml view (metadata, skills_directory, skills with type/location)
 pub async fn get_project(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
-    let project_path = validate_project_path(&state)?;
+    let project_path = &state.project_file_path;
 
     if !project_path.exists() {
         return Ok(Json(ApiResponse::success(serde_json::json!({
@@ -174,7 +114,7 @@ pub async fn get_project(
         }))));
     }
 
-    let project = SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+    let project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
     })?;
 
@@ -263,11 +203,11 @@ pub async fn get_project(
 pub async fn list_manifest_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<Vec<ManifestSkillResponse>>>> {
-    let project_path = validate_project_path(&state)?;
+    let project_path = &state.project_file_path;
 
     // Load project
     let project = if project_path.exists() {
-        SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+        SkillProjectToml::load_from_file(project_path).map_err(|e| {
             HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
         })?
     } else {
@@ -318,12 +258,12 @@ pub async fn add_skill_to_manifest(
     State(state): State<AppState>,
     Json(request): Json<AddSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
-    let project_path = validate_project_path(&state)?;
-    let _lock_path = get_lock_path(&project_path);
+    let project_path = &state.project_file_path;
+    let _lock_path = get_lock_path(project_path);
 
     // Load project or create new
     let mut project = if project_path.exists() {
-        SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+        SkillProjectToml::load_from_file(project_path).map_err(|e| {
             HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
         })?
     } else {
@@ -382,7 +322,7 @@ pub async fn add_skill_to_manifest(
     }
 
     // Save project
-    project.save_to_file(&project_path).map_err(|e| {
+    project.save_to_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
     })?;
 
@@ -402,8 +342,8 @@ pub async fn remove_skill_from_manifest(
     Path(skill_id): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<()>>> {
-    let project_path = validate_project_path(&state)?;
-    let lock_path = get_lock_path(&project_path);
+    let project_path = &state.project_file_path;
+    let lock_path = get_lock_path(project_path);
 
     if !project_path.exists() {
         return Err(HttpError::NotFound(
@@ -412,7 +352,7 @@ pub async fn remove_skill_from_manifest(
     }
 
     // Remove from project
-    let mut project = SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
     })?;
 
@@ -420,7 +360,7 @@ pub async fn remove_skill_from_manifest(
         deps.dependencies.remove(&skill_id);
     }
 
-    project.save_to_file(&project_path).map_err(|e| {
+    project.save_to_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
     })?;
 
@@ -445,7 +385,7 @@ pub async fn update_skill_in_manifest(
     State(state): State<AppState>,
     Json(request): Json<UpdateSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
-    let project_path = validate_project_path(&state)?;
+    let project_path = &state.project_file_path;
 
     if !project_path.exists() {
         return Err(HttpError::NotFound(
@@ -453,7 +393,7 @@ pub async fn update_skill_in_manifest(
         ));
     }
 
-    let mut project = SkillProjectToml::load_from_file(&project_path).map_err(|e| {
+    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
     })?;
 
@@ -482,7 +422,7 @@ pub async fn update_skill_in_manifest(
     };
 
     // Save project
-    project.save_to_file(&project_path).map_err(|e| {
+    project.save_to_file(project_path).map_err(|e| {
         HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
     })?;
 
@@ -534,8 +474,8 @@ async fn find_skill_in_sources(
 async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error::Error>> {
     let skills_dir = state.service.config().skill_storage_path.clone();
 
-    let project_path =
-        validate_project_path(state).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+    // Find workspace root by walking up from skill-project.toml path
+    let project_path = &state.project_file_path;
     let workspace_root = project_path
         .parent()
         .and_then(|p| p.parent())
