@@ -205,3 +205,45 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
         }
     }
 }
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_sources_list() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let args = SourcesArgs {
+            command: SourcesCommand::List { json: false },
+        };
+
+        let result = execute_sources(args).await;
+        assert!(result.is_ok());
+    }
+}

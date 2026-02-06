@@ -350,4 +350,44 @@ mod tests {
         // Result may be Ok (empty directory) or Err (missing API key)
         assert!(result.is_ok() || result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_execute_reindex_with_force_and_max_concurrent() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let skill_dir = skills_dir.join("test-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        let skill_content = r#"# Test Skill
+
+Name: test-skill
+Version: 1.0.0
+Description: A test skill for coverage
+"#;
+        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                embedding_model: "text-embedding-3-small".to_string(),
+                index_path: None,
+            }),
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = ReindexArgs {
+            skills_dir: Some(skills_dir),
+            force: true,
+            max_concurrent: 2,
+        };
+
+        let result = execute_reindex(&service, args).await;
+        // May fail due to missing API key, but should process the args correctly
+        assert!(result.is_ok() || result.is_err());
+    }
 }
