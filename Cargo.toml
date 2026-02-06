@@ -56,7 +56,7 @@ multer = "3.1"
 
 # HTTP server
 axum = { version = "0.7", features = ["macros", "json", "multipart"] }
-tower = { version = "0.4", features = ["util", "timeout", "limit"] }
+tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # JWT authentication
