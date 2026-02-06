@@ -2,7 +2,7 @@
 
 use crate::http::auth::roles::EndpointPermissions;
 use crate::http::errors::{HttpError, HttpResult};
-use crate::http::handlers::AppState;
+use crate::http::handlers::{manifest, AppState};
 use crate::http::models::*;
 use axum::{
     extract::{Path, State},
@@ -188,7 +188,7 @@ pub async fn delete_skill(
         .find(|s| s.id == skill_id_parsed)
         .ok_or_else(|| HttpError::NotFound(format!("Skill not found: {}", skill_id)))?;
 
-    let project_path = &state.project_file_path;
+    let project_path = manifest::validate_project_path(&state)?;
     let lock_path = if let Some(parent) = project_path.parent() {
         parent.join("skills.lock")
     } else {
@@ -196,14 +196,14 @@ pub async fn delete_skill(
     };
 
     if project_path.exists() {
-        let mut project = crate::core::manifest::SkillProjectToml::load_from_file(project_path)
+        let mut project = crate::core::manifest::SkillProjectToml::load_from_file(&project_path)
             .map_err(|e| {
                 HttpError::InternalServerError(format!("Failed to load project: {}", e))
             })?;
         if let Some(ref mut deps) = project.dependencies {
             deps.dependencies.remove(&skill_id);
         }
-        project.save_to_file(project_path).map_err(|e| {
+        project.save_to_file(&project_path).map_err(|e| {
             HttpError::InternalServerError(format!("Failed to save project: {}", e))
         })?;
         if lock_path.exists() {
@@ -246,7 +246,7 @@ pub async fn upgrade_skills(
 ) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
     let _check = EndpointPermissions::SKILLS_UPDATE.check(None);
 
-    let project_path = state.project_file_path.clone();
+    let project_path = manifest::validate_project_path(&state)?;
     let filter_id = payload
         .and_then(|p| p.skill_id)
         .filter(|s| !s.is_empty() && s != "all");
