@@ -1,3 +1,8 @@
+# Comprehensive test workflow for pull requests and main branch
+# Runs format checks, linting, build validation, and test suite
+#
+# Note: E2E snapshot tests (install_e2e_tests) are excluded in CI due to
+# environment-specific git authentication behavior. These should be run locally.
 name: PR Tests
 
 permissions:
