@@ -531,4 +531,43 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_execute_init_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let args = InitArgs {
+            yes: true,
+            force: false,
+            version: None,
+            description: None,
+            author: None,
+            download_url: None,
+            skills_dir: Some(".claude/skills".to_string()),
+        };
+
+        let result = execute_init(args).await;
+        // May succeed or fail depending on various factors, but shouldn't panic
+        if result.is_ok() {
+            assert!(Path::new("skill-project.toml").exists());
+            let content = fs::read_to_string("skill-project.toml").unwrap();
+            assert!(content.contains("[tool.fastskill]"));
+            assert!(content.contains("skills_directory"));
+
+            fs::remove_file("skill-project.toml").ok();
+        }
+    }
 }

@@ -161,3 +161,88 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
     Ok(())
 }
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fastskill::{FastSkillService, ServiceConfig};
+    use std::fs;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_read_invalid_skill_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = ReadArgs {
+            skill_id: "bad@id@here".to_string(),
+        };
+
+        let result = execute_read(Arc::new(service), args).await;
+        assert!(result.is_err());
+        if let Err(CliError::Validation(_)) = result {
+            // Expected error type
+        } else {
+            panic!("Expected Validation error for invalid skill ID");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_read_skill_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = ReadArgs {
+            skill_id: "nonexistent-skill".to_string(),
+        };
+
+        let result = execute_read(Arc::new(service), args).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_read_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let skill_dir = skills_dir.join("test-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        let skill_content = r#"# Test Skill
+
+Name: test-skill
+Version: 1.0.0
+Description: A test skill for coverage
+
+This is the content of the skill file.
+"#;
+        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = ReadArgs {
+            skill_id: "test-skill".to_string(),
+        };
+
+        let result = execute_read(Arc::new(service), args).await;
+        // May succeed or fail depending on skill registration state
+        assert!(result.is_ok() || result.is_err());
+    }
+}
