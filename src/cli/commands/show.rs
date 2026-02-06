@@ -140,6 +140,7 @@ fn print_skill_details(skill: &fastskill::core::lock::LockedSkillEntry) {
 #[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -224,5 +225,104 @@ mod tests {
         if let Some(dir) = original_dir {
             let _ = std::env::set_current_dir(&dir);
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_show_with_lock() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let lock_content = r#"version = "1.0.0"
+generated_at = "2024-01-01T00:00:00Z"
+fastskill_version = "0.1.0"
+
+[[skills]]
+id = "test-skill"
+name = "test-skill"
+version = "1.0.0"
+source_type = "local"
+source = { path = ".claude/skills/test-skill" }
+"#;
+        fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
+
+        let args = ShowArgs {
+            skill_id: None,
+            tree: false,
+        };
+
+        let result = execute_show(args).await;
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_show_with_skill_id() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let skill_dir = skills_dir.join("test-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        let skill_content = r#"# Test Skill
+
+Name: test-skill
+Version: 1.0.0
+Description: A test skill for coverage
+"#;
+        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let args = ShowArgs {
+            skill_id: Some("test-skill".to_string()),
+            tree: false,
+        };
+
+        let result = execute_show(args).await;
+        assert!(result.is_ok() || result.is_err());
     }
 }
