@@ -1,0 +1,56 @@
+# Comprehensive test workflow for pull requests and main branch
+# Runs format checks, linting, build validation, and test suite
+#
+# Note: E2E snapshot tests (install_e2e_tests) are excluded in CI due to
+# environment-specific git authentication behavior. These should be run locally.
+name: PR Tests
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy Lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --all-features
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-nextest --locked
+      - run: cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
+
+  test-all-features:
+    name: Test (All Features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-nextest --locked
+      - run: cargo nextest run --all-features --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
