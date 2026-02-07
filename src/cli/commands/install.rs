@@ -66,11 +66,11 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     }
 
     // Resolve skills directory from config
-    let skills_dir = crate::cli::config::resolve_skills_storage_directory()?;
+    let skills_dir = crate::cli::config::resolve_skills_storage_directory(false)?;
 
     // Initialize service
     // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(None, None)?;
+    let config = create_service_config(false, None, None)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;

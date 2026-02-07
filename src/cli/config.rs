@@ -1,6 +1,7 @@
 //! Configuration and skills directory resolution for CLI
 
 use crate::cli::error::{CliError, CliResult};
+use dirs;
 use fastskill::core::manifest::SkillProjectToml;
 use fastskill::core::project;
 use fastskill::core::repository::RepositoryDefinition;
@@ -101,44 +102,65 @@ pub fn convert_repository_definition(
 
 /// Return the list of paths (and labels) used when resolving skills, for display in "skill not found" errors.
 ///
-/// Returns the skills directory from skill-project.toml [tool.fastskill].skills_directory.
-/// No fallbacks or global directories - only the configured project directory.
-pub fn get_skill_search_locations_for_display() -> CliResult<Vec<(PathBuf, String)>> {
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+/// If global is true, returns global directory path. Otherwise, returns the skills directory from
+/// skill-project.toml [tool.fastskill].skills_directory.
+pub fn get_skill_search_locations_for_display(global: bool) -> CliResult<Vec<(PathBuf, String)>> {
+    if global {
+        let config_dir = dirs::config_dir().ok_or_else(|| {
+            CliError::Config("Failed to determine system config directory".to_string())
+        })?;
+        let global_dir = config_dir.join("fastskill").join("skills");
+        Ok(vec![(global_dir, "global".to_string())])
+    } else {
+        let current_dir = env::current_dir()
+            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Use the single loader
-    let config = fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
+        // Use the single loader
+        let config =
+            fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
 
-    Ok(vec![(config.skills_directory, "project".to_string())])
+        Ok(vec![(config.skills_directory, "project".to_string())])
+    }
 }
 
-/// Resolve skills storage directory from skill-project.toml [tool.fastskill]
+/// Resolve skills storage directory from skill-project.toml [tool.fastskill] or global directory
 ///
-/// This function requires a valid skill-project.toml with [tool.fastskill].skills_directory.
-/// No fallbacks - the project file must exist and be properly configured.
-pub fn resolve_skills_storage_directory() -> CliResult<PathBuf> {
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+/// If global is true, uses XDG config directory (~/.config/fastskill/skills).
+/// Otherwise, requires a valid skill-project.toml with [tool.fastskill].skills_directory.
+pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
+    if global {
+        // Use global XDG-compliant path
+        let config_dir = dirs::config_dir().ok_or_else(|| {
+            CliError::Config("Failed to determine system config directory".to_string())
+        })?;
+        let global_dir = config_dir.join("fastskill").join("skills");
+        debug!("Using global skills directory: {}", global_dir.display());
+        Ok(global_dir)
+    } else {
+        let current_dir = env::current_dir()
+            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Load project config using the single loader
-    let config = fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
+        // Load project config using single loader
+        let config =
+            fastskill::core::load_project_config(&current_dir).map_err(CliError::Config)?;
 
-    debug!(
-        "Using skills_directory from skill-project.toml: {}",
-        config.skills_directory.display()
-    );
+        debug!(
+            "Using skills_directory from skill-project.toml: {}",
+            config.skills_directory.display()
+        );
 
-    Ok(config.skills_directory)
+        Ok(config.skills_directory)
+    }
 }
 
 /// Create service configuration with resolved skills directory
 pub fn create_service_config(
+    global: bool,
     _skills_dir_override: Option<PathBuf>,
     _sources_path_override: Option<PathBuf>,
 ) -> CliResult<ServiceConfig> {
-    // Resolve skills storage directory from skill-project.toml or default location
-    let resolved_dir = resolve_skills_storage_directory()?;
+    // Resolve skills storage directory from skill-project.toml or global location
+    let resolved_dir = resolve_skills_storage_directory(global)?;
 
     // Load configuration from file if available
     let config_file = crate::cli::config_file::load_config()?;

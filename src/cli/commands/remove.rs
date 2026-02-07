@@ -25,7 +25,11 @@ pub struct RemoveArgs {
     pub force: bool,
 }
 
-pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> CliResult<()> {
+pub async fn execute_remove(
+    service: &FastSkillService,
+    args: RemoveArgs,
+    global: bool,
+) -> CliResult<()> {
     if args.skill_ids.is_empty() {
         return Err(CliError::Config("No skill IDs provided".to_string()));
     }
@@ -74,10 +78,10 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
     // Return error if any skills don't exist (before showing confirmation)
     if !nonexistent_skills.is_empty() {
         let skill_id_display = nonexistent_skills.join(", ");
-        let searched_paths = get_skill_search_locations_for_display().unwrap_or_else(|_| {
+        let searched_paths = get_skill_search_locations_for_display(global).unwrap_or_else(|_| {
             vec![(
                 service.config().skill_storage_path.clone(),
-                "project".to_string(),
+                if global { "global" } else { "project" }.to_string(),
             )]
         });
         return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(

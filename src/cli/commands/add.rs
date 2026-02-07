@@ -151,6 +151,7 @@ pub async fn execute_add(
     service: &FastSkillService,
     args: AddArgs,
     verbose: bool,
+    global: bool,
 ) -> CliResult<()> {
     // Require manifest before any install work
     let current_dir = env::current_dir()
@@ -221,6 +222,7 @@ pub async fn execute_add(
                     args.editable,
                     groups.clone(),
                     verbose,
+                    global,
                 )
                 .await
                 {
@@ -257,7 +259,16 @@ pub async fn execute_add(
 
     match source {
         SkillSource::ZipFile(path) => {
-            add_from_zip(service, &path, args.force, args.editable, groups, verbose).await
+            add_from_zip(
+                service,
+                &path,
+                args.force,
+                args.editable,
+                groups,
+                verbose,
+                global,
+            )
+            .await
         }
         SkillSource::Folder(path) => {
             // Check if the folder has a SKILL.md at the root
@@ -279,7 +290,16 @@ pub async fn execute_add(
                     }
                 }
             }
-            add_from_folder(service, &path, args.force, args.editable, groups, verbose).await
+            add_from_folder(
+                service,
+                &path,
+                args.force,
+                args.editable,
+                groups,
+                verbose,
+                global,
+            )
+            .await
         }
         SkillSource::GitUrl(url) => {
             add_from_git(
@@ -291,6 +311,7 @@ pub async fn execute_add(
                 args.editable,
                 groups,
                 verbose,
+                global,
             )
             .await
         }
@@ -302,6 +323,7 @@ pub async fn execute_add(
                 args.editable,
                 groups,
                 verbose,
+                global,
             )
             .await
         }
@@ -315,6 +337,7 @@ async fn add_from_zip(
     editable: bool,
     groups: Vec<String>,
     verbose: bool,
+    global: bool,
 ) -> CliResult<()> {
     info!("Adding skill from zip file: {}", zip_path.display());
 
@@ -431,6 +454,7 @@ async fn add_from_zip(
             crate::cli::utils::service_error_to_cli(
                 e,
                 service.config().skill_storage_path.as_path(),
+                global,
             )
         })?;
 
@@ -455,6 +479,7 @@ async fn add_from_folder(
     editable: bool,
     groups: Vec<String>,
     verbose: bool,
+    global: bool,
 ) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
 
@@ -542,6 +567,7 @@ async fn add_from_folder(
             crate::cli::utils::service_error_to_cli(
                 e,
                 service.config().skill_storage_path.as_path(),
+                global,
             )
         })?;
 
@@ -568,6 +594,7 @@ async fn add_from_git(
     editable: bool,
     groups: Vec<String>,
     verbose: bool,
+    global: bool,
 ) -> CliResult<()> {
     info!("Adding skill from git URL: {}", git_url);
 
@@ -692,6 +719,7 @@ async fn add_from_git(
                 crate::cli::utils::service_error_to_cli(
                     e,
                     service.config().skill_storage_path.as_path(),
+                    global,
                 )
             })?;
 
@@ -718,6 +746,7 @@ async fn add_from_registry(
     editable: bool,
     groups: Vec<String>,
     verbose: bool,
+    global: bool,
 ) -> CliResult<()> {
     info!("Adding skill from registry: {}", skill_id_input);
 
@@ -936,6 +965,7 @@ async fn add_from_registry(
             crate::cli::utils::service_error_to_cli(
                 e,
                 service.config().skill_storage_path.as_path(),
+                global,
             )
         })?;
 

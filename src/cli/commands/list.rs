@@ -66,7 +66,11 @@ fn format_source_info(source: &SkillSource) -> (Option<String>, Option<String>) 
 }
 
 /// Execute the list command
-pub async fn execute_list(service: &FastSkillService, args: ListArgs) -> CliResult<()> {
+pub async fn execute_list(
+    service: &FastSkillService,
+    args: ListArgs,
+    _global: bool,
+) -> CliResult<()> {
     // Validate conflicting flags
     if args.json && args.grid {
         return Err(CliError::Config(
