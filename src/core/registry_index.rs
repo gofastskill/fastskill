@@ -48,14 +48,6 @@ pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> PathBuf {
     // Organization is the authenticated user's username (lowercase, filesystem-safe)
     let parts: Vec<&str> = skill_id.split('/').collect();
 
-    // Validate each path component to prevent traversal
-    for part in &parts {
-        if validate_path_component(part).is_err() {
-            // If validation fails, return a safe fallback path that won't match anything
-            return registry_path.join("invalid");
-        }
-    }
-
     // Enforce that skill_id must have exactly 2 parts (org/package)
     // This is a programming error check - skill_id format is enforced at publish time
     #[allow(clippy::panic)]
@@ -66,10 +58,23 @@ pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> PathBuf {
         );
     }
 
-    let org = parts[0]; // Already lowercase and filesystem-safe from publish
-    let package = parts[1];
+    // Validate and get safe strings for path construction
+    let org = match validate_path_component(parts[0]) {
+        Ok(safe_org) => safe_org,
+        Err(_) => {
+            // If validation fails, return a safe fallback path that won't match anything
+            return registry_path.join("invalid");
+        }
+    };
+    let package = match validate_path_component(parts[1]) {
+        Ok(safe_package) => safe_package,
+        Err(_) => {
+            // If validation fails, return a safe fallback path that won't match anything
+            return registry_path.join("invalid");
+        }
+    };
 
-    registry_path.join(org).join(package)
+    registry_path.join(&org).join(&package)
 }
 
 /// Update registry index with a new skill version

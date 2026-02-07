@@ -109,33 +109,72 @@ FULL_EXIT_CODE=$?
 # Check if security tests ran and passed
 SECURITY_TESTS_PASSED=true
 SECURITY_TESTS_FOUND=false
+ZIP_SLIP_TESTS_FOUND=false
+ZIP_SLIP_TESTS_PASSED=true
+PATH_SECURITY_TESTS_FOUND=false
+PATH_SECURITY_TESTS_PASSED=true
 
-# Check for specific security test patterns
+# Check for ZIP slip security test patterns
 if echo "$FULL_TEST_OUTPUT" | grep -q "safe_extract"; then
-    SECURITY_TESTS_FOUND=true
-    # Check if any of the security tests failed
+    ZIP_SLIP_TESTS_FOUND=true
+    # Check if any of the ZIP slip tests failed
     if echo "$FULL_TEST_OUTPUT" | grep "safe_extract" | grep -q "FAIL"; then
+        ZIP_SLIP_TESTS_PASSED=false
         SECURITY_TESTS_PASSED=false
     fi
 fi
 
 if echo "$FULL_TEST_OUTPUT" | grep -q "test_add_from_zip_rejects_path_traversal"; then
-    SECURITY_TESTS_FOUND=true
+    ZIP_SLIP_TESTS_FOUND=true
     if echo "$FULL_TEST_OUTPUT" | grep "test_add_from_zip_rejects_path_traversal" | grep -q "FAIL"; then
+        ZIP_SLIP_TESTS_PASSED=false
         SECURITY_TESTS_PASSED=false
     fi
 fi
 
 if echo "$FULL_TEST_OUTPUT" | grep -q "test_extract_zip_to_temp_rejects_path_traversal"; then
-    SECURITY_TESTS_FOUND=true
+    ZIP_SLIP_TESTS_FOUND=true
     if echo "$FULL_TEST_OUTPUT" | grep "test_extract_zip_to_temp_rejects_path_traversal" | grep -q "FAIL"; then
+        ZIP_SLIP_TESTS_PASSED=false
         SECURITY_TESTS_PASSED=false
     fi
 fi
 
+# Check for path security test patterns
+if echo "$FULL_TEST_OUTPUT" | grep -q "test_validate_path_component"; then
+    PATH_SECURITY_TESTS_FOUND=true
+    if echo "$FULL_TEST_OUTPUT" | grep "test_validate_path_component" | grep -q "FAIL"; then
+        PATH_SECURITY_TESTS_PASSED=false
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+if echo "$FULL_TEST_OUTPUT" | grep -q "test_safe_join"; then
+    PATH_SECURITY_TESTS_FOUND=true
+    if echo "$FULL_TEST_OUTPUT" | grep "test_safe_join" | grep -q "FAIL"; then
+        PATH_SECURITY_TESTS_PASSED=false
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+if echo "$FULL_TEST_OUTPUT" | grep -q "test_validate_path_within_root"; then
+    PATH_SECURITY_TESTS_FOUND=true
+    if echo "$FULL_TEST_OUTPUT" | grep "test_validate_path_within_root" | grep -q "FAIL"; then
+        PATH_SECURITY_TESTS_PASSED=false
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+# Set overall security tests found flag
+if [ "$ZIP_SLIP_TESTS_FOUND" = true ] || [ "$PATH_SECURITY_TESTS_FOUND" = true ]; then
+    SECURITY_TESTS_FOUND=true
+fi
+
 if [ "$SECURITY_TESTS_FOUND" = false ]; then
     echo -e "${RED}No security tests found!${NC}" >&2
-    echo -e "${YELLOW}Expected tests matching patterns: safe_extract, test_add_from_zip_rejects_path_traversal, test_extract_zip_to_temp_rejects_path_traversal${NC}" >&2
+    echo -e "${YELLOW}Expected tests matching patterns:${NC}" >&2
+    echo -e "${YELLOW}  - ZIP slip: safe_extract, test_add_from_zip_rejects_path_traversal, test_extract_zip_to_temp_rejects_path_traversal${NC}" >&2
+    echo -e "${YELLOW}  - Path security: test_validate_path_component, test_safe_join, test_validate_path_within_root${NC}" >&2
     OVERALL_STATUS="FAILED"
     EXIT_CODE=1
     TEST_OUTPUT="$FULL_TEST_OUTPUT"
@@ -248,6 +287,12 @@ if [ "$COMPILATION_FAILED" = true ]; then
     "failed": 0,
     "skipped": 0,
     "passing_percentage": 0
+  },
+  "security_tests": {
+    "zip_slip_tests_found": false,
+    "zip_slip_tests_passed": false,
+    "path_security_tests_found": false,
+    "path_security_tests_passed": false
   }
 }
 EOF
@@ -265,6 +310,12 @@ else
     "failed": ${FAILED:-0},
     "skipped": ${SKIPPED:-0},
     "passing_percentage": $PASSING_PERCENTAGE
+  },
+  "security_tests": {
+    "zip_slip_tests_found": $ZIP_SLIP_TESTS_FOUND,
+    "zip_slip_tests_passed": $ZIP_SLIP_TESTS_PASSED,
+    "path_security_tests_found": $PATH_SECURITY_TESTS_FOUND,
+    "path_security_tests_passed": $PATH_SECURITY_TESTS_PASSED
   }
 }
 EOF
