@@ -30,6 +30,9 @@ pub enum HttpError {
 
     /// Service-specific errors
     ServiceError(String),
+
+    /// Service unavailable (e.g., missing API key for semantic search)
+    ServiceUnavailable(String),
 }
 
 impl HttpError {
@@ -44,6 +47,7 @@ impl HttpError {
             HttpError::InternalServerError(_) | HttpError::ServiceError(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
+            HttpError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -58,6 +62,7 @@ impl HttpError {
             HttpError::Conflict(_) => "CONFLICT",
             HttpError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
             HttpError::ServiceError(_) => "SERVICE_ERROR",
+            HttpError::ServiceUnavailable(_) => "SERVICE_UNAVAILABLE",
         }
     }
 }
@@ -75,6 +80,7 @@ impl std::fmt::Display for HttpError {
             HttpError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             HttpError::InternalServerError(msg) => write!(f, "Internal Server Error: {}", msg),
             HttpError::ServiceError(msg) => write!(f, "Service Error: {}", msg),
+            HttpError::ServiceUnavailable(msg) => write!(f, "Service Unavailable: {}", msg),
         }
     }
 }
@@ -96,7 +102,8 @@ impl IntoResponse for HttpError {
             | HttpError::NotFound(msg)
             | HttpError::Conflict(msg)
             | HttpError::InternalServerError(msg)
-            | HttpError::ServiceError(msg) => (msg, None),
+            | HttpError::ServiceError(msg)
+            | HttpError::ServiceUnavailable(msg) => (msg, None),
         };
 
         let body = Json(json!({
