@@ -1,0 +1,13 @@
+{
+  "status": "completed",
+  "timestamp": "2026-02-07T11:15:33Z",
+  "command": "scripts/run-tests.sh",
+  "exit_code": 0,
+  "test_statistics": {
+    "total": 449,
+    "passed": 441,
+    "failed": 0,
+    "skipped": 8,
+    "passing_percentage": 98
+  }
+}

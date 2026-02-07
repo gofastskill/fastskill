@@ -330,28 +330,20 @@ async fn add_from_zip(
     let temp_dir = TempDir::new().map_err(CliError::Io)?;
     let extract_path = temp_dir.path();
 
-    // Extract zip file
-    let file = fs::File::open(zip_path).map_err(CliError::Io)?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| CliError::InvalidSource(format!("Invalid zip file: {}", e)))?;
-
-    for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| CliError::InvalidSource(format!("Failed to read zip entry: {}", e)))?;
-        let outpath = extract_path.join(file.name());
-
-        if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath).map_err(CliError::Io)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    fs::create_dir_all(p).map_err(CliError::Io)?;
+    // Extract zip file safely using shared handler
+    {
+        use fastskill::storage::zip::ZipHandler;
+        let zip_handler = ZipHandler::new()
+            .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+        zip_handler
+            .extract_to_dir(zip_path, extract_path)
+            .map_err(|e| match e {
+                fastskill::core::service::ServiceError::Validation(msg) => {
+                    CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
                 }
-            }
-            let mut outfile = fs::File::create(&outpath).map_err(CliError::Io)?;
-            std::io::copy(&mut file, &mut outfile).map_err(CliError::Io)?;
-        }
+                fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
+                _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+            })?;
     }
 
     // Find SKILL.md in extracted directory
@@ -833,28 +825,20 @@ async fn add_from_registry(
     let temp_zip = temp_dir.path().join(format!("package-{}.zip", version));
     std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
 
-    // Extract ZIP
-    let file = fs::File::open(&temp_zip).map_err(CliError::Io)?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| CliError::InvalidSource(format!("Invalid zip file: {}", e)))?;
-
-    for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| CliError::InvalidSource(format!("Failed to read zip entry: {}", e)))?;
-        let outpath = extract_path.join(file.name());
-
-        if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath).map_err(CliError::Io)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    fs::create_dir_all(p).map_err(CliError::Io)?;
+    // Extract ZIP safely using shared handler
+    {
+        use fastskill::storage::zip::ZipHandler;
+        let zip_handler = ZipHandler::new()
+            .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+        zip_handler
+            .extract_to_dir(&temp_zip, &extract_path)
+            .map_err(|e| match e {
+                fastskill::core::service::ServiceError::Validation(msg) => {
+                    CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
                 }
-            }
-            let mut outfile = fs::File::create(&outpath).map_err(CliError::Io)?;
-            std::io::copy(&mut file, &mut outfile).map_err(CliError::Io)?;
-        }
+                fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
+                _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+            })?;
     }
 
     // Find SKILL.md in extracted directory
@@ -1087,10 +1071,16 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::unwrap_used
+)]
 mod tests {
     use super::*;
     use fastskill::{FastSkillService, ServiceConfig};
+    use std::io::Write;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -1258,13 +1248,13 @@ mod tests {
         let skill_content = r#"# Test Skill
 
 Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
+ Version: 1.0.0
+ Description: A test skill for coverage
 "#;
         fs::write(source_dir.join("SKILL.md"), skill_content).unwrap();
 
         let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
+ skills_directory = ".claude/skills"
 "#;
         fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
@@ -1289,5 +1279,187 @@ skills_directory = ".claude/skills"
         let result = execute_add(&service, args, false).await;
         // May succeed or fail depending on various factors, but should exercise the code path
         assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_add_from_zip_rejects_path_traversal_attack() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create a ZIP with path traversal attempt
+        let zip_path = temp_dir.path().join("malicious.zip");
+        let zip_file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(zip_file);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        // Add safe content
+        zip.start_file("SKILL.md", options).unwrap();
+        let _ = zip.write_all(
+            b"# Test Skill
+
+Name: safe-skill
+Version: 1.0.0
+Description: Safe skill",
+        );
+
+        // Add malicious path traversal attempt
+        zip.start_file("../../../evil.txt", options).unwrap();
+        let _ = zip.write_all(b"malicious content");
+
+        zip.finish().unwrap();
+
+        // Create skill-project.toml
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: zip_path.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false).await;
+
+        // Should fail due to path traversal detection
+        assert!(result.is_err());
+        match result {
+            Err(CliError::InvalidSource(msg)) => {
+                assert!(
+                    msg.contains("path traversal") || msg.contains("Path traversal"),
+                    "Error should mention path traversal: {}",
+                    msg
+                );
+            }
+            Err(CliError::Validation(msg)) => {
+                assert!(
+                    msg.contains("path traversal") || msg.contains("Path traversal"),
+                    "Error should mention path traversal: {}",
+                    msg
+                );
+            }
+            _ => {
+                panic!("Expected InvalidSource or Validation error for path traversal attack, got: {:?}", result);
+            }
+        }
+
+        // Verify no file was created outside the extraction directory
+        let evil_path = temp_dir.path().join("../../../evil.txt");
+        assert!(
+            !evil_path.exists(),
+            "Evil file should not exist: {}",
+            evil_path.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_from_zip_rejects_windows_style_traversal() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create a ZIP with Windows-style path traversal
+        let zip_path = temp_dir.path().join("windows-malicious.zip");
+        let zip_file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(zip_file);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        zip.start_file("SKILL.md", options).unwrap();
+        let _ = zip.write_all(
+            b"# Test Skill
+
+Name: safe-skill
+Version: 1.0.0
+Description: Safe skill",
+        );
+
+        // Add Windows-style path traversal attempt
+        zip.start_file("..\\..\\..\\evil.txt", options).unwrap();
+        let _ = zip.write_all(b"malicious content");
+
+        zip.finish().unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: zip_path.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false).await;
+
+        // Should fail
+        assert!(
+            result.is_err(),
+            "Windows-style traversal should be rejected"
+        );
     }
 }
