@@ -310,11 +310,12 @@ When handling untrusted input or archives, agents MUST follow these rules:
 
 ## Commit Conventions
 
-Per RFC 2119, the following rule applies:
+Per RFC 2119, the following rules apply:
 
-- **MUST NOT** add any authoring messages for commits suggesting that Claude is a co-author of that commit
-
-Commits should represent human-authored work without AI co-attribution.
+- **MUST** use conventional commit-style messages: a type (e.g. `feat`, `fix`, `docs`, `chore`, `refactor`, `test`), optional scope in parentheses, and a short description (e.g. `feat(cli): add --dry-run to install`).
+- **MUST NOT** add co-author trailers (e.g. `Co-authored-by: Cursor`, `Co-authored-by: Claude`) or any AI/agent attribution in commit messages or footers.
+- **MUST NOT** include author-style lines or footers in commit messages; commits MUST NOT contain `Author:` or similar trailers that attribute the change to an AI or tool.
+- Commit messages MUST refer only to the change itself and MUST NOT state or imply that the commit was co-authored by Cursor, Claude, or any other agent.
 
 ## Release Process
 
