@@ -72,7 +72,7 @@ Enter skills directory path [.skills]: .skills
 fastskill init --yes
 
 # Specify custom options
-fastskill init --yes --skills-dir my-skills --embedding-model text-embedding-3-large
+fastskill init --yes --skills-dir my-skills
 
 # Skip creating example skill
 fastskill init --yes --no-example
@@ -85,8 +85,9 @@ fastskill init --yes --no-example
 | `--yes` | Skip interactive prompts, use defaults | `false` |
 | `--force` | Reinitialize even if files exist | `false` |
 | `--skills-dir <DIR>` | Skills directory path | `.skills` |
-| `--embedding-model <MODEL>` | OpenAI embedding model | `text-embedding-3-small` |
 | `--no-example` | Skip creating example skill | `false` |
+
+**Note**: The `--embedding-model` option is not yet available. To configure embedding model, edit the `.fastskill/config.yaml` file after initialization.
 
 ## Files Created
 

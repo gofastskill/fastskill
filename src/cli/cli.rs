@@ -142,6 +142,7 @@ impl Cli {
                         query,
                         limit: 10,
                         format: "table".to_string(),
+                        embedding: None,
                     };
                     search::execute_search(&service, search_args).await
                 } else {

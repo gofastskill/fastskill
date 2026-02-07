@@ -119,6 +119,12 @@ For each SKILL.md file:
 - Stores metadata, embeddings, and file hashes
 - Creates optimized indexes for fast search
 
+### 5. Cleanup
+
+- Removes index entries for skills no longer on disk
+- Compares indexed skill IDs with current skill directories
+- Logs removal of stale entries (does not fail reindex)
+
 ## Output and Progress
 
 ### Success Output
