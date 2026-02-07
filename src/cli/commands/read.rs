@@ -76,7 +76,7 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
             // If single match found, use it; otherwise return not found error
             if matching_skills.is_empty() {
-                let searched_paths = config::get_skill_search_locations_for_display()
+                let searched_paths = config::get_skill_search_locations_for_display(false)
                     .unwrap_or_else(|_| {
                         vec![(
                             service.config().skill_storage_path.clone(),
