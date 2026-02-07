@@ -60,7 +60,7 @@ tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # JWT authentication
-jsonwebtoken = "9.2"
+jsonwebtoken = "10.3"
 
 # Request validation
 validator = { version = "0.20", features = ["derive"] }

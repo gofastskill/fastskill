@@ -3,6 +3,7 @@
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::models::{Claims, TokenRequest, TokenResponse};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// JWT service for token management
@@ -72,7 +73,8 @@ impl JwtService {
 
     /// Validate and decode a JWT token
     pub fn validate_token(&self, token: &str) -> HttpResult<Claims> {
-        let validation = Validation::default();
+        let mut validation = Validation::default();
+        validation.required_spec_claims = HashSet::from(["exp".to_string()]);
         let token_data = decode::<Claims>(token, &self.decoding_key, &validation)
             .map_err(|_| HttpError::Unauthorized("Invalid token".to_string()))?;
 
