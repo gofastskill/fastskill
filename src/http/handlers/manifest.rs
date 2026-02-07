@@ -92,11 +92,21 @@ pub(crate) fn get_repositories(
 }
 
 /// Get lock file path from project path
-fn get_lock_path(project_path: &std::path::Path) -> PathBuf {
-    if let Some(parent) = project_path.parent() {
+/// Returns the canonicalized lock path to prevent path traversal
+fn get_lock_path(project_path: &std::path::Path) -> Result<PathBuf, HttpError> {
+    let lock_path = if let Some(parent) = project_path.parent() {
         parent.join("skills.lock")
     } else {
         PathBuf::from("skills.lock")
+    };
+
+    // Canonicalize if it exists, otherwise return the path as-is for creation
+    if lock_path.exists() {
+        lock_path.canonicalize().map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to resolve lock path: {}", e))
+        })
+    } else {
+        Ok(lock_path)
     }
 }
 
@@ -259,7 +269,7 @@ pub async fn add_skill_to_manifest(
     Json(request): Json<AddSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
     let project_path = &state.project_file_path;
-    let _lock_path = get_lock_path(project_path);
+    let _lock_path = get_lock_path(project_path)?;
 
     // Load project or create new
     let mut project = if project_path.exists() {
@@ -269,7 +279,15 @@ pub async fn add_skill_to_manifest(
     } else {
         // Ensure parent directory exists
         if let Some(parent) = project_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
+            // Validate parent path to prevent traversal
+            let safe_parent = if parent.exists() {
+                parent.canonicalize().map_err(|e| {
+                    HttpError::InternalServerError(format!("Failed to resolve parent path: {}", e))
+                })?
+            } else {
+                parent.to_path_buf()
+            };
+            std::fs::create_dir_all(&safe_parent).map_err(|e| {
                 HttpError::InternalServerError(format!("Failed to create directory: {}", e))
             })?;
         }
@@ -343,7 +361,7 @@ pub async fn remove_skill_from_manifest(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<()>>> {
     let project_path = &state.project_file_path;
-    let lock_path = get_lock_path(project_path);
+    let lock_path = get_lock_path(project_path)?;
 
     if !project_path.exists() {
         return Err(HttpError::NotFound(
@@ -546,23 +564,43 @@ async fn generate_skills_mdc(state: &AppState) -> Result<(), Box<dyn std::error:
 }
 
 /// Find all SKILL.md files in the skills directory
-fn find_skill_files(skills_dir: &PathBuf) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+fn find_skill_files(
+    skills_dir: &std::path::Path,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut files = Vec::new();
 
     if !skills_dir.exists() {
         return Ok(files);
     }
 
-    for entry in std::fs::read_dir(skills_dir)? {
-        let entry = entry?;
-        let path = entry.path();
+    // Canonicalize the root directory to prevent traversal
+    let safe_skills_dir = skills_dir.canonicalize()?;
 
-        if path.is_dir() {
-            files.extend(find_skill_files(&path)?);
-        } else if path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md") {
-            files.push(path);
+    fn find_skill_files_recursive(
+        dir: &std::path::Path,
+        root: &std::path::Path,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Ensure we stay within the root directory
+            let canonical_path = path.canonicalize()?;
+            if !canonical_path.starts_with(root) {
+                continue; // Skip paths outside root
+            }
+
+            if path.is_dir() {
+                find_skill_files_recursive(&path, root, files)?;
+            } else if path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md") {
+                files.push(path);
+            }
         }
+        Ok(())
     }
+
+    find_skill_files_recursive(&safe_skills_dir, &safe_skills_dir, &mut files)?;
 
     files.sort();
     Ok(files)
@@ -583,7 +621,7 @@ fn extract_category(skill_file: &std::path::Path, skills_dir: &std::path::Path) 
 }
 
 /// Extract YAML frontmatter from SKILL.md file
-fn extract_frontmatter(file_path: &PathBuf) -> Result<String, Box<dyn std::error::Error>> {
+fn extract_frontmatter(file_path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(file_path)?;
     let lines = content.lines();
     let mut frontmatter = String::from("---\n");

@@ -1,6 +1,7 @@
 //! Staging area management for registry publishing
 
 use crate::core::service::ServiceError;
+use crate::security::sanitize_path_component;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -70,9 +71,9 @@ impl StagingManager {
     /// Accepts scope and id separately
     pub fn get_staging_path(&self, scope: &str, id: &str, version: &str) -> PathBuf {
         self.staging_dir
-            .join(sanitize_path(scope))
-            .join(sanitize_path(id))
-            .join(sanitize_path(version))
+            .join(sanitize_path_component(scope))
+            .join(sanitize_path_component(id))
+            .join(sanitize_path_component(version))
     }
 
     /// Store package in staging area
@@ -165,6 +166,11 @@ impl StagingManager {
 
     /// Load metadata for a job
     pub fn load_metadata(&self, job_id: &str) -> Result<Option<StagingMetadata>, ServiceError> {
+        // Validate job_id to prevent path traversal
+        if job_id.contains("..") || job_id.contains('/') || job_id.contains('\\') {
+            return Err(ServiceError::Custom(format!("Invalid job_id: {}", job_id)));
+        }
+
         // Search for metadata with matching job_id
         if !self.staging_dir.exists() {
             return Ok(None);
@@ -264,14 +270,6 @@ impl StagingManager {
             Ok(None)
         }
     }
-}
-
-/// Sanitize path component to avoid directory traversal
-fn sanitize_path(component: &str) -> String {
-    component
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
-        .collect()
 }
 
 #[cfg(test)]

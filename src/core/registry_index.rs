@@ -1,6 +1,7 @@
 //! Crates.io-like registry index management
 
 use crate::core::service::ServiceError;
+use crate::security::validate_path_component;
 use chrono::{DateTime, Utc};
 use semver;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,14 @@ pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> PathBuf {
     // skill_id is always in org/package format (enforced at publish time)
     // Organization is the authenticated user's username (lowercase, filesystem-safe)
     let parts: Vec<&str> = skill_id.split('/').collect();
+
+    // Validate each path component to prevent traversal
+    for part in &parts {
+        if validate_path_component(part).is_err() {
+            // If validation fails, return a safe fallback path that won't match anything
+            return registry_path.join("invalid");
+        }
+    }
 
     // Enforce that skill_id must have exactly 2 parts (org/package)
     // This is a programming error check - skill_id format is enforced at publish time
@@ -122,7 +131,18 @@ pub fn read_skill_versions(
         return Ok(Vec::new());
     }
 
-    let content = fs::read_to_string(&index_path).map_err(ServiceError::Io)?;
+    // Canonicalize index_path to prevent path traversal
+    let safe_index_path = index_path.canonicalize().map_err(ServiceError::Io)?;
+
+    // Ensure index_path is under registry_path
+    let canonical_registry = registry_path.canonicalize().map_err(ServiceError::Io)?;
+    if !safe_index_path.starts_with(&canonical_registry) {
+        return Err(ServiceError::Custom(
+            "Index path escapes registry directory".to_string(),
+        ));
+    }
+
+    let content = fs::read_to_string(&safe_index_path).map_err(ServiceError::Io)?;
 
     let mut entries = Vec::new();
 
@@ -446,11 +466,14 @@ pub async fn scan_registry_index(
         return Ok(Vec::new());
     }
 
+    // Canonicalize registry_path to prevent path traversal
+    let canonical_registry = registry_path.canonicalize().map_err(ServiceError::Io)?;
+
     let mut skill_map: std::collections::HashMap<String, Vec<VersionEntry>> =
         std::collections::HashMap::new();
 
     // Recursively scan registry directory
-    for entry in WalkDir::new(registry_path).min_depth(1) {
+    for entry in WalkDir::new(&canonical_registry).min_depth(1) {
         let entry = entry.map_err(|e| ServiceError::Io(e.into()))?;
         let path = entry.path();
 

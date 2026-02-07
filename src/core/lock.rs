@@ -72,7 +72,10 @@ impl SkillsLock {
             return Err(LockError::NotFound(path.to_path_buf()));
         }
 
-        let content = std::fs::read_to_string(path).map_err(LockError::Io)?;
+        // Canonicalize path to prevent traversal attacks
+        let safe_path = path.canonicalize().map_err(LockError::Io)?;
+
+        let content = std::fs::read_to_string(&safe_path).map_err(LockError::Io)?;
 
         let lock: SkillsLock =
             toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
