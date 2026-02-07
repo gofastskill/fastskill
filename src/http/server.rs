@@ -21,13 +21,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::{compression::CompressionLayer, services::ServeDir, trace::TraceLayer};
-use tracing::{info, warn};
+use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tracing::info;
 
-/// Static assets embedded at compile time (used when filesystem static dir is not found, e.g. installed binary).
+/// Static assets embedded at compile time
 static EMBEDDED_STATIC: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/http/static");
 
-/// Serves embedded static files when filesystem static dir is not found (e.g. installed binary).
+/// Serves embedded static files for the registry UI.
 async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
     let path = req.uri().path().trim_start_matches('/');
     let name = match path {
@@ -181,112 +181,6 @@ impl FastSkillServer {
         }
     }
 
-    /// Resolve the static directory path for the registry UI
-    ///
-    /// This function tries multiple strategies to find the static directory:
-    /// 1. Uses CARGO_MANIFEST_DIR (works in development and when built from source)
-    /// 2. Tries relative paths from current directory
-    /// 3. Tries paths relative to executable location
-    ///
-    /// This ensures the registry UI works regardless of where the binary is run from.
-    pub fn resolve_static_dir() -> PathBuf {
-        // Try multiple strategies to find the static directory
-
-        // Strategy 0: Check environment variable (highest priority)
-        if let Ok(env_path) = std::env::var("FASTSKILL_STATIC_DIR") {
-            let static_path = PathBuf::from(env_path);
-            if static_path.exists() {
-                info!(
-                    "Resolved static directory (from FASTSKILL_STATIC_DIR): {}",
-                    static_path.display()
-                );
-                return static_path;
-            }
-        }
-
-        // Strategy 1: Use CARGO_MANIFEST_DIR (works in development and when built from source)
-        #[allow(unused_mut)]
-        let mut static_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        static_path.push("src");
-        static_path.push("http");
-        static_path.push("static");
-
-        if static_path.exists() {
-            info!(
-                "Resolved static directory (CARGO_MANIFEST_DIR): {}",
-                static_path.display()
-            );
-            return static_path;
-        }
-
-        // Strategy 2: Try direct relative path from current directory
-        if let Ok(current_dir) = std::env::current_dir() {
-            let test_path = current_dir.join("src/http/static");
-            if test_path.exists() {
-                info!(
-                    "Resolved static directory (relative to current dir): {}",
-                    test_path.display()
-                );
-                return test_path;
-            }
-
-            // Strategy 2b: Try relative to current directory by walking up to find the crate
-            let mut search_dir = current_dir.clone();
-            // Walk up to 10 levels to find the src/http/static directory
-            for _ in 0..10 {
-                let test_path = search_dir.join("src/http/static");
-                if test_path.exists() {
-                    info!(
-                        "Resolved static directory (relative to current dir, walking up): {}",
-                        test_path.display()
-                    );
-                    return test_path;
-                }
-                if !search_dir.pop() {
-                    break;
-                }
-            }
-        }
-
-        // Strategy 3: Try relative to executable location
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let mut exe_relative = exe_dir.to_path_buf();
-                exe_relative.push("static");
-                if exe_relative.exists() {
-                    info!(
-                        "Resolved static directory (relative to executable): {}",
-                        exe_relative.display()
-                    );
-                    return exe_relative;
-                }
-
-                // Try going up a few directories
-                for _ in 0..5 {
-                    exe_relative.pop();
-                    let mut test_path = exe_relative.clone();
-                    test_path.push("src");
-                    test_path.push("http");
-                    test_path.push("static");
-                    if test_path.exists() {
-                        info!(
-                            "Resolved static directory (relative to executable, going up): {}",
-                            test_path.display()
-                        );
-                        return test_path;
-                    }
-                }
-            }
-        }
-
-        // Fallback: return the compile-time path (will fail at runtime if not found, but at least we tried)
-        warn!(
-            "Could not find static directory, using compile-time path: {}",
-            static_path.display()
-        );
-        static_path
-    }
-
     /// Create a new server instance from a service reference
     pub fn from_ref(service: &FastSkillService, host: &str, port: u16) -> Self {
         let service_arc = unsafe {
@@ -362,22 +256,14 @@ impl FastSkillServer {
                 delete(claude_api::delete_skill_version),
             );
 
-        // Installed-skills UI at / (always); dashboard at /dashboard
-        let static_dir = Self::resolve_static_dir();
-        if static_dir.exists() {
-            info!("Serving UI at / (installed skills)");
-            router = router
-                .route("/dashboard", get(status::root))
-                .nest_service("/", ServeDir::new(static_dir));
-        } else {
-            info!("Serving UI at / from embedded static (filesystem static dir not found)");
-            router = router
-                .route("/dashboard", get(status::root))
-                .route("/", get(serve_embedded_static))
-                .route("/index.html", get(serve_embedded_static))
-                .route("/app.js", get(serve_embedded_static))
-                .route("/styles.css", get(serve_embedded_static));
-        }
+        // Installed-skills UI at / (always from embedded static); dashboard at /dashboard
+        info!("Serving UI at /");
+        router = router
+            .route("/dashboard", get(status::root))
+            .route("/", get(serve_embedded_static))
+            .route("/index.html", get(serve_embedded_static))
+            .route("/app.js", get(serve_embedded_static))
+            .route("/styles.css", get(serve_embedded_static));
 
         // Registry and manifest API routes (always available)
         router = router
