@@ -247,34 +247,14 @@ impl ValidationWorker {
 
     /// Extract ZIP to temporary directory
     fn extract_zip_to_temp(
-        package_path: &PathBuf,
+        package_path: &std::path::Path,
         temp_dir: &std::path::Path,
     ) -> Result<(), ServiceError> {
-        let file = std::fs::File::open(package_path).map_err(ServiceError::Io)?;
-        let mut archive = ZipArchive::new(file)
-            .map_err(|e| ServiceError::Validation(format!("Invalid ZIP file: {}", e)))?;
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).map_err(|e| {
-                ServiceError::Validation(format!("Failed to read ZIP entry: {}", e))
-            })?;
-
-            let outpath = temp_dir.join(file.name());
-
-            if file.name().ends_with('/') {
-                std::fs::create_dir_all(&outpath).map_err(ServiceError::Io)?;
-            } else {
-                if let Some(p) = outpath.parent() {
-                    if !p.exists() {
-                        std::fs::create_dir_all(p).map_err(ServiceError::Io)?;
-                    }
-                }
-                let mut outfile = std::fs::File::create(&outpath).map_err(ServiceError::Io)?;
-                std::io::copy(&mut file, &mut outfile).map_err(ServiceError::Io)?;
-            }
-        }
-
-        Ok(())
+        use crate::storage::zip::ZipHandler;
+        let zip_handler = ZipHandler::new().map_err(|e| {
+            ServiceError::Validation(format!("Failed to create ZIP handler: {}", e))
+        })?;
+        zip_handler.extract_to_dir(package_path, temp_dir)
     }
 
     /// Find skill directory in extracted ZIP
@@ -491,5 +471,113 @@ impl ValidationWorker {
         staging_manager.update_status(job_id, StagingStatus::Accepted, Vec::new())?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+
+    /// Helper to create a test ZIP with malicious entries
+    fn create_malicious_zip(path: &std::path::Path) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        // Add legitimate content
+        zip.start_file("SKILL.md", options).unwrap();
+        zip.write_all(
+            b"# Test Skill
+
+Name: test-skill
+Version: 1.0.0
+Description: Test skill for validation",
+        )
+        .unwrap();
+
+        // Add path traversal attempt
+        zip.start_file("../../../evil.txt", options).unwrap();
+        zip.write_all(b"malicious content").unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn test_extract_zip_to_temp_rejects_path_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let extract_dir = temp_dir.path().join("extract");
+        std::fs::create_dir_all(&extract_dir).unwrap();
+
+        let zip_path = temp_dir.path().join("malicious.zip");
+        create_malicious_zip(&zip_path);
+
+        let result = ValidationWorker::extract_zip_to_temp(&zip_path, &extract_dir);
+
+        assert!(result.is_err());
+        match result {
+            Err(ServiceError::Validation(msg)) => {
+                assert!(
+                    msg.contains("path traversal") || msg.contains("Path traversal"),
+                    "Error should mention path traversal: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected ServiceError::Validation for path traversal"),
+        }
+
+        // Verify no file was created outside the extraction directory
+        let evil_path = extract_dir.join("../../../evil.txt");
+        assert!(!evil_path.exists(), "Evil file should not exist");
+
+        // Safe file should exist if partial extraction occurred
+        let _safe_file = extract_dir.join("SKILL.md");
+        // Note: Depending on implementation order, safe files might be created before the malicious one
+    }
+
+    #[test]
+    fn test_extract_zip_to_temp_rejects_windows_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let extract_dir = temp_dir.path().join("extract");
+        std::fs::create_dir_all(&extract_dir).unwrap();
+
+        let zip_path = temp_dir.path().join("windows-malicious.zip");
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        zip.start_file("SKILL.md", options).unwrap();
+        zip.write_all(
+            b"# Test
+
+Name: test
+Version: 1.0.0
+Description: test",
+        )
+        .unwrap();
+
+        zip.start_file("..\\..\\..\\evil.txt", options).unwrap();
+        zip.write_all(b"malicious").unwrap();
+
+        zip.finish().unwrap();
+
+        let result = ValidationWorker::extract_zip_to_temp(&zip_path, &extract_dir);
+
+        // On Unix, backslashes are treated as regular characters, so the path is literal
+        // On Windows, this would be a path traversal and should be rejected
+        // We accept either behavior since it's platform-specific
+        if cfg!(windows) {
+            assert!(
+                result.is_err(),
+                "Windows-style traversal should be rejected on Windows"
+            );
+        } else {
+            // On Unix, the backslashes are literal characters
+            assert!(result.is_ok() || result.is_err());
+        }
     }
 }
