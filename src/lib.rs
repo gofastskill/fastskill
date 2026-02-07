@@ -52,6 +52,7 @@ pub mod core;
 pub mod events;
 pub mod execution;
 pub mod http;
+pub mod security;
 pub mod storage;
 pub mod validation;
 

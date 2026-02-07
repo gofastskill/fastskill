@@ -370,7 +370,10 @@ impl SkillProjectToml {
             return Err(ManifestError::NotFound(path.to_path_buf()));
         }
 
-        let content = std::fs::read_to_string(path).map_err(ManifestError::Io)?;
+        // Canonicalize path to prevent traversal attacks
+        let safe_path = path.canonicalize().map_err(ManifestError::Io)?;
+
+        let content = std::fs::read_to_string(&safe_path).map_err(ManifestError::Io)?;
 
         let project: SkillProjectToml = toml::from_str(&content).map_err(|e| {
             // T066: Enhanced TOML error message with line numbers

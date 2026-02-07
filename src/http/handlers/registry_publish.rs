@@ -7,6 +7,7 @@ use crate::http::auth::roles::{EndpointPermissions, UserRole};
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
+use crate::security::validate_path_component;
 use axum::{
     extract::{Multipart, Path, State},
     http::{header, HeaderMap},
@@ -104,25 +105,34 @@ pub async fn publish_package(
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from(".staging"));
 
-    tracing::info!("Using staging directory: {}", staging_dir.display());
-    tracing::info!("Staging directory exists: {}", staging_dir.exists());
+    // Canonicalize staging_dir if it exists to prevent path traversal
+    let safe_staging_dir = if staging_dir.exists() {
+        staging_dir.canonicalize().map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to resolve staging directory: {}", e))
+        })?
+    } else {
+        staging_dir.clone()
+    };
 
-    if !staging_dir.exists() {
-        tracing::info!("Creating staging directory: {}", staging_dir.display());
-        std::fs::create_dir_all(&staging_dir).map_err(|e| {
+    tracing::info!("Using staging directory: {}", safe_staging_dir.display());
+    tracing::info!("Staging directory exists: {}", safe_staging_dir.exists());
+
+    if !safe_staging_dir.exists() {
+        tracing::info!("Creating staging directory: {}", safe_staging_dir.display());
+        std::fs::create_dir_all(&safe_staging_dir).map_err(|e| {
             tracing::error!(
                 "Failed to create staging directory {}: {}",
-                staging_dir.display(),
+                safe_staging_dir.display(),
                 e
             );
             HttpError::InternalServerError("Failed to create staging directory".to_string())
         })?;
     }
 
-    let staging_manager = StagingManager::new(staging_dir.clone());
+    let staging_manager = StagingManager::new(safe_staging_dir.clone());
     tracing::info!(
         "Initializing staging manager with directory: {}",
-        staging_dir.display()
+        safe_staging_dir.display()
     );
     staging_manager.initialize().map_err(|e| {
         tracing::error!("Failed to initialize staging manager: {}", e);
@@ -154,6 +164,14 @@ pub async fn publish_package(
     // Extract id and version from ZIP (id comes from skill-project.toml)
     let (id, version) = extract_skill_metadata_from_zip(&package_data)?;
 
+    // Validate id and version to prevent path traversal
+    validate_path_component(&id)
+        .map_err(|e| HttpError::BadRequest(format!("Invalid skill ID: {}", e)))?;
+    validate_path_component(&version)
+        .map_err(|e| HttpError::BadRequest(format!("Invalid version: {}", e)))?;
+    validate_path_component(&user_scope)
+        .map_err(|e| HttpError::BadRequest(format!("Invalid user scope: {}", e)))?;
+
     // Combine user scope with id: scope/id (for response)
     // id from skill-project.toml should not contain slashes
     let skill_id = format!("{}/{}", user_scope, id);
@@ -183,8 +201,8 @@ pub async fn publish_package(
         .map_err(|e| {
             // Log detailed error information on server side for debugging
             tracing::error!("Failed to store package {} v{}: {}", skill_id, version, e);
-            tracing::error!("Staging directory: {}", staging_dir.display());
-            tracing::error!("Staging directory exists: {}", staging_dir.exists());
+            tracing::error!("Staging directory: {}", safe_staging_dir.display());
+            tracing::error!("Staging directory exists: {}", safe_staging_dir.exists());
             tracing::error!("Calculated staging path: {}", staging_path.display());
             tracing::error!(
                 "Staging path parent exists: {}",

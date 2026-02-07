@@ -190,7 +190,14 @@ pub async fn delete_skill(
 
     let project_path = &state.project_file_path;
     let lock_path = if let Some(parent) = project_path.parent() {
-        parent.join("skills.lock")
+        let safe_parent = if parent.exists() {
+            parent.canonicalize().map_err(|e| {
+                HttpError::InternalServerError(format!("Failed to resolve parent path: {}", e))
+            })?
+        } else {
+            parent.to_path_buf()
+        };
+        safe_parent.join("skills.lock")
     } else {
         std::path::PathBuf::from("skills.lock")
     };

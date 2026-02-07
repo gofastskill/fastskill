@@ -1,6 +1,7 @@
 //! Skill storage service for managing uploaded skills
 
 use crate::core::service::FastSkillService;
+use crate::security::validate_path_component;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -101,6 +102,11 @@ impl SkillStorage {
             directory: directory.clone(),
         };
 
+        // Validate directory name to prevent path traversal
+        validate_path_component(&directory).map_err(|e| {
+            crate::http::errors::HttpError::BadRequest(format!("Invalid directory name: {}", e))
+        })?;
+
         // Store files
         let skill_path = self.skills_dir.join(&directory);
         fs::create_dir_all(&skill_path).await.map_err(|e| {
@@ -111,7 +117,24 @@ impl SkillStorage {
         })?;
 
         for (filename, content) in files {
-            let file_path = skill_path.join(filename);
+            // Validate filename components to prevent path traversal
+            if filename.contains("..") || filename.starts_with('/') {
+                return Err(crate::http::errors::HttpError::BadRequest(format!(
+                    "Invalid filename: {}",
+                    filename
+                )));
+            }
+
+            let file_path = skill_path.join(&filename);
+
+            // Ensure the file path is still under skill_path (prevent traversal)
+            let canonical_skill_path = skill_path.canonicalize().map_err(|e| {
+                crate::http::errors::HttpError::InternalServerError(format!(
+                    "Failed to resolve skill path: {}",
+                    e
+                ))
+            })?;
+
             // Ensure parent directories exist
             if let Some(parent) = file_path.parent() {
                 fs::create_dir_all(parent).await.map_err(|e| {
@@ -121,12 +144,20 @@ impl SkillStorage {
                     ))
                 })?;
             }
-            fs::write(file_path, content).await.map_err(|e| {
-                crate::http::errors::HttpError::InternalServerError(format!(
-                    "Failed to write file: {}",
-                    e
-                ))
-            })?;
+            // Verify the resolved file path is under the canonical skill path
+            if file_path.starts_with(&canonical_skill_path) {
+                fs::write(file_path, content).await.map_err(|e| {
+                    crate::http::errors::HttpError::InternalServerError(format!(
+                        "Failed to write file: {}",
+                        e
+                    ))
+                })?;
+            } else {
+                return Err(crate::http::errors::HttpError::BadRequest(format!(
+                    "File path escapes skill directory: {}",
+                    filename
+                )));
+            }
         }
 
         // Update skill metadata
@@ -331,15 +362,47 @@ impl SkillStorage {
             None => return Ok(()), // Skill doesn't exist
         };
 
+        // Validate directory name to prevent path traversal
+        validate_path_component(&skill_meta.directory).map_err(|e| {
+            crate::http::errors::HttpError::InternalServerError(format!(
+                "Invalid skill directory: {}",
+                e
+            ))
+        })?;
+
         // Remove skill directory
         let skill_path = self.skills_dir.join(&skill_meta.directory);
+
+        // Ensure the skill path is under skills_dir (prevent traversal)
+        let canonical_skills_dir = self.skills_dir.canonicalize().map_err(|e| {
+            crate::http::errors::HttpError::InternalServerError(format!(
+                "Failed to resolve skills directory: {}",
+                e
+            ))
+        })?;
+
         if skill_path.exists() {
-            fs::remove_dir_all(skill_path).await.map_err(|e| {
+            let canonical_skill_path = skill_path.canonicalize().map_err(|e| {
                 crate::http::errors::HttpError::InternalServerError(format!(
-                    "Failed to remove skill directory: {}",
+                    "Failed to resolve skill path: {}",
                     e
                 ))
             })?;
+
+            if !canonical_skill_path.starts_with(&canonical_skills_dir) {
+                return Err(crate::http::errors::HttpError::BadRequest(
+                    "Skill path escapes skills directory".to_string(),
+                ));
+            }
+
+            fs::remove_dir_all(canonical_skill_path)
+                .await
+                .map_err(|e| {
+                    crate::http::errors::HttpError::InternalServerError(format!(
+                        "Failed to remove skill directory: {}",
+                        e
+                    ))
+                })?;
         }
 
         // Update metadata file
