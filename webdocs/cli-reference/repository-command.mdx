@@ -180,7 +180,7 @@ Versions for skill: acme/web-scraper
 
 ### search
 
-Search for skills across configured repositories using semantic search.
+Search for skills across configured repositories.
 
 ```bash
 # Search for skills by keyword
@@ -191,29 +191,31 @@ fastskill registry search "data analysis" --repository my-repo
 ```
 
 **Parameters**:
-- `<query>`: Search query string (supports semantic matching)
+- `<query>`: Search query string
 - `--repository <NAME>`: Repository to search (searches all if not specified)
 
 **Search Features**:
-- Semantic search: Matches by meaning, not just keywords
+- Text-only search: Matches by substring on skill id, name, and description
 - Multi-repository: Searches across all configured repositories
-- Relevance ranking: Results ordered by relevance score
-- Fuzzy matching: Handles typos and variations
+- Marketplace support: Available for git marketplace repositories
+- HTTP registries: Currently do not support search (returns empty results)
+
+**Note**: Registry search is text-only and does not use semantic search. For semantic search of installed skills, use `fastskill search`.
 
 **Output Format**:
-Displays matching skills with relevance scores and brief descriptions.
+Displays matching skills with brief descriptions.
 
 **Example Output**:
 ```
 Search results for "web scraping":
 
-1. acme/web-scraper (relevance: 0.95)
+1. acme/web-scraper
    A web scraping skill for extracting data from websites
 
-2. data-extractor/html-parser (relevance: 0.87)
+2. data-extractor/html-parser
    Parse and extract data from HTML content
 
-3. crawler/spider-bot (relevance: 0.82)
+3. crawler/spider-bot
    Automated web crawling and data collection
 
 Found 3 matching skills

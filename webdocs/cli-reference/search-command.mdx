@@ -15,7 +15,7 @@ Semantic search requires prior indexing with `fastskill reindex`. Keyword search
 
 ### Prerequisites
 
-**For Semantic Search (default):**
+**For Semantic Search (default with --embedding true or unspecified):**
 - OpenAI API key: `export OPENAI_API_KEY="your-openai-api-key"`
 - Skills indexed: `fastskill reindex`
 - Configuration: `.fastskill/config.yaml` with embedding settings
@@ -26,10 +26,13 @@ Semantic search requires prior indexing with `fastskill reindex`. Keyword search
 ```bash
 # Semantic search (requires OpenAI API key and indexing)
 export OPENAI_API_KEY="your-openai-api-key"
-fastskill search "process documents and extract information"
+fastskill search --embedding true "process documents and extract information"
 
-# Keyword search (works immediately)
-fastskill search "pdf" --embedding false
+# Keyword search (works immediately, no API key required)
+fastskill search --embedding false "pdf"
+
+# Auto-detect (default: try semantic, fall back to keyword on config error)
+fastskill search "powerpoint"
 
 # Search in specific skills directory
 fastskill --skills-dir .claude/skills/ search "powerpoint"
@@ -63,6 +66,26 @@ fastskill search "powerpoint" --format json
 # XML output
 fastskill search "powerpoint" --format xml
 ```
+
+### --embedding <true|false>
+
+Control search mode:
+
+```bash
+# Use embedding search only (requires API key)
+fastskill search --embedding true "process documents"
+
+# Use keyword search only (no API key required)
+fastskill search --embedding false "document processing"
+
+# Auto-detect (default: try semantic, fall back to keyword on config error)
+fastskill search "document processing"
+```
+
+**Modes:**
+- `--embedding true`: Use embedding search only. If embedding config or API key is missing, returns an error.
+- `--embedding false`: Use keyword search only. No embedding config or API key required.
+- Not specified (default): Try embedding search first, fall back to keyword search if embedding config is missing or API key is unavailable.
 
 ## Search Methods
 

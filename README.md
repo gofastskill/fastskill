@@ -21,7 +21,7 @@ FastSkill is a skill package manager and operational toolkit for the AI agent ec
 ## Key Capabilities
 
 - **Package Management**: Install, update, and remove skills from multiple sources (Git, local, ZIP)
-- **Semantic Search**: Find skills using OpenAI embeddings and natural language queries
+- **Semantic Search**: Find skills using OpenAI embeddings and natural language queries with high accuracy
 - **Registry Services**: Publish, version, and distribute skills via registry
 - **Manifest System**: Declarative dependency management with lock files for reproducible installations
 - **HTTP API**: RESTful service layer for agent integration
@@ -255,9 +255,12 @@ fastskill add ./skills -r
 # Index skills for semantic search
 fastskill reindex
 
-# Search for skills
+# Search for skills (semantic by default)
 fastskill search "powerpoint presentation"
 fastskill search "data processing" --limit 5
+
+# Search using keyword-only (no API key required)
+fastskill search --embedding false "powerpoint"
 ```
 
 ## Essential Commands

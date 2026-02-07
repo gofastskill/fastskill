@@ -10,9 +10,10 @@ Arguments:
   <QUERY>  Search query over installed skills (local semantic search)
 
 Options:
-  -l, --limit <LIMIT>    Maximum number of results (default: 10) [default: 10]
-  -f, --format <FORMAT>  Output format (table, json, xml) [default: table]
-  -h, --help             Print help
+  -l, --limit <LIMIT>          Maximum number of results (default: 10) [default: 10]
+  -f, --format <FORMAT>        Output format (table, json, xml) [default: table]
+      --embedding <EMBEDDING>  Use embedding search (true), text search only (false), or auto-detect (not specified) [possible values: true, false]
+  -h, --help                   Print help
 
 Examples:
   fastskill search "text processing"

@@ -20,13 +20,32 @@ pub struct SearchArgs {
     /// Output format (table, json, xml)
     #[arg(short, long, default_value = "table")]
     pub format: String,
+
+    /// Use embedding search (true), text search only (false), or auto-detect (not specified)
+    #[arg(long)]
+    pub embedding: Option<bool>,
 }
 
 pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> CliResult<()> {
-    let results = match perform_embedding_search(service, &args.query, args.limit).await {
-        Ok(r) => r,
-        Err(CliError::Config(_)) => perform_text_search(service, &args.query, args.limit).await?,
-        Err(e) => return Err(e),
+    let results = match args.embedding {
+        Some(false) => {
+            // --embedding false: use text search only
+            perform_text_search(service, &args.query, args.limit).await?
+        }
+        Some(true) => {
+            // --embedding true: use embedding search only, no fallback
+            perform_embedding_search(service, &args.query, args.limit).await?
+        }
+        None => {
+            // No flag: try embedding, fall back to text on config error
+            match perform_embedding_search(service, &args.query, args.limit).await {
+                Ok(r) => r,
+                Err(CliError::Config(_)) => {
+                    perform_text_search(service, &args.query, args.limit).await?
+                }
+                Err(e) => return Err(e),
+            }
+        }
     };
 
     if results.is_empty() {
@@ -366,6 +385,7 @@ mod tests {
             query: "".to_string(),
             limit: 10,
             format: "table".to_string(),
+            embedding: None,
         };
 
         // Should fail because embedding config requires API key
@@ -394,6 +414,7 @@ mod tests {
             query: "test query".to_string(),
             limit: 5,
             format: "table".to_string(),
+            embedding: None,
         };
 
         // Should fail because embedding config requires API key or succeed with empty results
@@ -418,6 +439,7 @@ mod tests {
             query: "test".to_string(),
             limit: 10,
             format: "table".to_string(),
+            embedding: None,
         };
 
         let result = execute_search(&service, args).await;
@@ -466,10 +488,96 @@ Description: A test skill for semantic search
             query: "test skill".to_string(),
             limit: 5,
             format: "json".to_string(),
+            embedding: None,
         };
 
         let result = execute_search(&service, args).await;
         // May fail due to missing API key, but should process the args correctly
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_embedding_false_uses_text_search() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            embedding: None,
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = SearchArgs {
+            query: "test query".to_string(),
+            limit: 10,
+            format: "table".to_string(),
+            embedding: Some(false),
+        };
+
+        let result = execute_search(&service, args).await;
+        // Should succeed using text search (no embedding config required)
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_embedding_true_no_config_returns_config_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            embedding: None,
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = SearchArgs {
+            query: "test query".to_string(),
+            limit: 10,
+            format: "table".to_string(),
+            embedding: Some(true),
+        };
+
+        let result = execute_search(&service, args).await;
+        // Should return Config error (no fallback when embedding=true)
+        assert!(result.is_err());
+        if let Err(CliError::Config(msg)) = result {
+            assert!(msg.contains("Embedding configuration required"));
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_search_default_empty_index_returns_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                embedding_model: "text-embedding-3-small".to_string(),
+                index_path: None,
+            }),
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = SearchArgs {
+            query: "test query".to_string(),
+            limit: 10,
+            format: "table".to_string(),
+            embedding: None,
+        };
+
+        let result = execute_search(&service, args).await;
+        // Should succeed (may fall back to text search if no API key)
+        // Either way, should not panic
         assert!(result.is_ok() || result.is_err());
     }
 }

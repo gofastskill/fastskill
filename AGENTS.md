@@ -190,6 +190,8 @@ Located in `src/core/vector_index.rs`:
 
 **Key trait:** `VectorIndexService` with methods: `add_or_update_skill()`, `search_similar()`, `remove_skill()`
 
+**Note:** The `remove` and `reindex` commands automatically keep the vector index in sync by removing entries for deleted skills or skills no longer on disk.
+
 ### Event System
 
 Event-driven architecture in `src/events/event_bus.rs`:
