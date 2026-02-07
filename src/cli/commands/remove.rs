@@ -25,7 +25,11 @@ pub struct RemoveArgs {
     pub force: bool,
 }
 
-pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> CliResult<()> {
+pub async fn execute_remove(
+    service: &FastSkillService,
+    args: RemoveArgs,
+    global: bool,
+) -> CliResult<()> {
     if args.skill_ids.is_empty() {
         return Err(CliError::Config("No skill IDs provided".to_string()));
     }
@@ -74,10 +78,10 @@ pub async fn execute_remove(service: &FastSkillService, args: RemoveArgs) -> Cli
     // Return error if any skills don't exist (before showing confirmation)
     if !nonexistent_skills.is_empty() {
         let skill_id_display = nonexistent_skills.join(", ");
-        let searched_paths = get_skill_search_locations_for_display().unwrap_or_else(|_| {
+        let searched_paths = get_skill_search_locations_for_display(global).unwrap_or_else(|_| {
             vec![(
                 service.config().skill_storage_path.clone(),
-                "project".to_string(),
+                if global { "global" } else { "project" }.to_string(),
             )]
         });
         return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
@@ -228,7 +232,7 @@ mod tests {
             force: false,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
             assert!(msg.contains("No skill IDs provided"));
@@ -253,7 +257,7 @@ mod tests {
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Validation(msg)) = result {
             assert!(msg.contains("Invalid skill ID format"));
@@ -279,7 +283,7 @@ mod tests {
         };
 
         // This should fail because the skill doesn't exist
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
     }
 
@@ -350,7 +354,7 @@ source = { path = ".claude/skills/test-skill" }
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
@@ -428,7 +432,7 @@ source = { path = ".claude/skills/test-skill" }
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         // May succeed or fail depending on various factors
         // The important part is that it attempts to remove from vector index
         assert!(result.is_ok() || result.is_err());

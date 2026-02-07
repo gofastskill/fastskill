@@ -10,10 +10,18 @@ use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
 use std::path::{Path, PathBuf};
 
 /// Convert ServiceError to CliError, mapping SkillNotFound to the rich message with searched paths and Try suggestions.
-pub fn service_error_to_cli(e: fastskill::ServiceError, skill_storage_path: &Path) -> CliError {
+pub fn service_error_to_cli(
+    e: fastskill::ServiceError,
+    skill_storage_path: &Path,
+    _global: bool,
+) -> CliError {
     if let fastskill::ServiceError::SkillNotFound(id) = e {
-        let searched_paths = get_skill_search_locations_for_display()
-            .unwrap_or_else(|_| vec![(skill_storage_path.to_path_buf(), "project".to_string())]);
+        let searched_paths = get_skill_search_locations_for_display(_global).unwrap_or_else(|_| {
+            vec![(
+                skill_storage_path.to_path_buf(),
+                if _global { "global" } else { "project" }.to_string(),
+            )]
+        });
         return CliError::SkillNotFound(SkillNotFoundMessage::new(id, searched_paths));
     }
     CliError::Service(e)

@@ -33,6 +33,7 @@ Arguments:
 Options:
       --repositories-path <REPOSITORIES_PATH>  Path to repositories.toml file
   -v, --verbose                                Enable verbose output
+      --global                                 Use global skills directory
   -h, --help                                   Print help (see more with '--help')
   -V, --version                                Print version
 Error: error: invalid value '99999' for '--port <PORT>': 99999 is not in 0..=65535

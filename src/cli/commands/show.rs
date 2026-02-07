@@ -47,7 +47,7 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                 }
             } else {
                 let searched_paths =
-                    get_skill_search_locations_for_display().unwrap_or_else(|_| {
+                    get_skill_search_locations_for_display(false).unwrap_or_else(|_| {
                         vec![(config.skills_directory.clone(), "project".to_string())]
                     });
                 return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
@@ -68,7 +68,7 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
     } else {
         // Fall back to service
         // Note: show command doesn't have access to CLI sources_path, so uses env var or walk-up
-        let config = create_service_config(None, None)?;
+        let config = create_service_config(false, None, None)?;
         let mut service = FastSkillService::new(config)
             .await
             .map_err(CliError::Service)?;
@@ -96,7 +96,7 @@ pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
                 }
             } else {
                 let searched_paths =
-                    get_skill_search_locations_for_display().unwrap_or_else(|_| {
+                    get_skill_search_locations_for_display(false).unwrap_or_else(|_| {
                         vec![(
                             service.config().skill_storage_path.clone(),
                             "project".to_string(),

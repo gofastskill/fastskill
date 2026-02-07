@@ -42,6 +42,10 @@ pub struct Cli {
     /// Search query (positional argument when no subcommand is used)
     #[arg(help = "Search query string (used when no subcommand is specified)")]
     pub query: Option<String>,
+
+    /// Use user-level global skills directory (~/.config/fastskill/skills)
+    #[arg(long, help = "Use global skills directory")]
+    pub global: bool,
 }
 
 impl Cli {
@@ -98,9 +102,10 @@ impl Cli {
         // For other commands, we need to restore self.command, so we need a different approach
         // Actually, if we get here, command was None or not Init/Repository/Package/Publish/RegistryIndex
         let command = self.command;
+        let global = self.global;
 
         // Create service configuration with resolved skills directory
-        let config = create_service_config(None, None)?;
+        let config = create_service_config(global, None, None)?;
 
         if self.verbose {
             println!(
@@ -117,12 +122,14 @@ impl Cli {
 
         // Handle commands
         match command {
-            Some(Commands::Add(args)) => add::execute_add(&service, args, self.verbose).await,
+            Some(Commands::Add(args)) => {
+                add::execute_add(&service, args, self.verbose, global).await
+            }
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
-            Some(Commands::List(args)) => list::execute_list(&service, args).await,
+            Some(Commands::List(args)) => list::execute_list(&service, args, global).await,
             Some(Commands::Read(args)) => read::execute_read(Arc::new(service), args).await,
             Some(Commands::Reindex(args)) => reindex::execute_reindex(&service, args).await,
-            Some(Commands::Remove(args)) => remove::execute_remove(&service, args).await,
+            Some(Commands::Remove(args)) => remove::execute_remove(&service, args, global).await,
             Some(Commands::Search(args)) => search::execute_search(&service, args).await,
             Some(Commands::Serve(args)) => serve::execute_serve(&service, args).await,
             Some(Commands::Init(_))

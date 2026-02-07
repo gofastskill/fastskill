@@ -177,7 +177,7 @@ pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
 
     // Initialize service
     // Note: update command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(None, None)?;
+    let config = create_service_config(false, None, None)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;

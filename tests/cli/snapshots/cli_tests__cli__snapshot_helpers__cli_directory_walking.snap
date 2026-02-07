@@ -50,6 +50,9 @@ Options:
   -v, --verbose
           Enable verbose output
 
+      --global
+          Use global skills directory
+
   -h, --help
           Print help (see a summary with '-h')
 
