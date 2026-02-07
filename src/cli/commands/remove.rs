@@ -232,7 +232,7 @@ mod tests {
             force: false,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
             assert!(msg.contains("No skill IDs provided"));
@@ -257,7 +257,7 @@ mod tests {
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Validation(msg)) = result {
             assert!(msg.contains("Invalid skill ID format"));
@@ -283,7 +283,7 @@ mod tests {
         };
 
         // This should fail because the skill doesn't exist
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
     }
 
@@ -354,7 +354,7 @@ source = { path = ".claude/skills/test-skill" }
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
@@ -432,7 +432,7 @@ source = { path = ".claude/skills/test-skill" }
             force: true,
         };
 
-        let result = execute_remove(&service, args).await;
+        let result = execute_remove(&service, args, false).await;
         // May succeed or fail depending on various factors
         // The important part is that it attempts to remove from vector index
         assert!(result.is_ok() || result.is_err());

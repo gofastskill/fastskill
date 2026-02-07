@@ -1135,7 +1135,7 @@ mod tests {
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
         assert!(result.is_err());
     }
 
@@ -1161,7 +1161,7 @@ mod tests {
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
         // May fail due to invalid format or missing registry
         assert!(result.is_err());
     }
@@ -1189,7 +1189,7 @@ mod tests {
         };
 
         // Should still fail because source doesn't exist, but force flag is accepted
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
         assert!(result.is_err());
     }
 
@@ -1232,7 +1232,7 @@ mod tests {
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
         assert!(
             result.is_err(),
             "Expected error when no manifest: {:?}",
@@ -1306,7 +1306,7 @@ Name: test-skill
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
         // May succeed or fail depending on various factors, but should exercise the code path
         assert!(result.is_ok() || result.is_err());
     }
@@ -1382,7 +1382,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
 
         // Should fail due to path traversal detection
         assert!(result.is_err());
@@ -1484,7 +1484,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false).await;
+        let result = execute_add(&service, args, false, false).await;
 
         // Should fail
         assert!(

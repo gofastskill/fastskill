@@ -387,7 +387,7 @@ mod tests {
             details: false,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Config(_)) = result {
             // Expected error type
@@ -440,7 +440,7 @@ mod tests {
             details: false,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
             assert!(
@@ -494,7 +494,7 @@ skills_directory = ".claude/skills"
             details: false,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
@@ -567,7 +567,7 @@ source = { path = ".claude/skills/test-skill" }
             details: false,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
@@ -614,7 +614,7 @@ skills_directory = ".claude/skills"
             details: false,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
@@ -661,7 +661,7 @@ skills_directory = ".claude/skills"
             details: true,
         };
 
-        let result = execute_list(&service, args).await;
+        let result = execute_list(&service, args, false).await;
         // May succeed or fail depending on various factors
         assert!(result.is_ok() || result.is_err());
     }
