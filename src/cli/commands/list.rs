@@ -412,9 +412,19 @@ mod tests {
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
+        let work_dir: PathBuf = if resolve_project_file(temp_dir.path()).found {
+            let fallback = std::env::temp_dir()
+                .join("fastskill_no_manifest")
+                .join(std::process::id().to_string());
+            fs::create_dir_all(&fallback).unwrap();
+            fallback
+        } else {
+            temp_dir.path().to_path_buf()
+        };
+        std::env::set_current_dir(&work_dir).unwrap();
 
         let config = ServiceConfig {
-            skill_storage_path: temp_dir.path().to_path_buf(),
+            skill_storage_path: work_dir.clone(),
             ..Default::default()
         };
         let mut service = FastSkillService::new(config).await.unwrap();
