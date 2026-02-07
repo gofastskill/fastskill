@@ -70,10 +70,16 @@ impl StagingManager {
     /// Get staging path for a skill version
     /// Accepts scope and id separately
     pub fn get_staging_path(&self, scope: &str, id: &str, version: &str) -> PathBuf {
+        let scope_safe = crate::security::validate_path_component(scope)
+            .unwrap_or_else(|_| sanitize_path_component(scope));
+        let id_safe = crate::security::validate_path_component(id)
+            .unwrap_or_else(|_| sanitize_path_component(id));
+        let version_safe = crate::security::validate_path_component(version)
+            .unwrap_or_else(|_| sanitize_path_component(version));
         self.staging_dir
-            .join(sanitize_path_component(scope))
-            .join(sanitize_path_component(id))
-            .join(sanitize_path_component(version))
+            .join(scope_safe)
+            .join(id_safe)
+            .join(version_safe)
     }
 
     /// Store package in staging area
@@ -127,8 +133,14 @@ impl StagingManager {
         hasher.update(package_data);
         let checksum = format!("sha256:{:x}", hasher.finalize());
 
-        // Use id directly for package filename
-        let package_filename = format!("{}-{}.zip", id, version);
+        // Validate id and version for safe filename construction
+        let id_safe = crate::security::validate_path_component(id)
+            .map_err(|e| ServiceError::Custom(format!("Invalid id: {}", e)))?;
+        let version_safe = crate::security::validate_path_component(version)
+            .map_err(|e| ServiceError::Custom(format!("Invalid version: {}", e)))?;
+
+        // Use validated id and version for package filename
+        let package_filename = format!("{}-{}.zip", id_safe, version_safe);
         let package_path = staging_path.join(&package_filename);
         tracing::info!(
             "StagingManager: writing package file: {}",
@@ -221,7 +233,14 @@ impl StagingManager {
                 )));
             }
         };
-        let staging_path = self.get_staging_path(&scope, &id, &metadata.version);
+
+        // Validate id and version for safe path construction
+        let id_safe = crate::security::validate_path_component(&id)
+            .map_err(|e| ServiceError::Custom(format!("Invalid id: {}", e)))?;
+        let version_safe = crate::security::validate_path_component(&metadata.version)
+            .map_err(|e| ServiceError::Custom(format!("Invalid version: {}", e)))?;
+
+        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe);
         let metadata_path = staging_path.join("metadata.json");
 
         let updated_metadata = StagingMetadata {
@@ -259,9 +278,16 @@ impl StagingManager {
                 )));
             }
         };
-        let staging_path = self.get_staging_path(&scope, &id, &metadata.version);
-        // Use id directly for filename (must match store_package)
-        let package_filename = format!("{}-{}.zip", id, metadata.version);
+
+        // Validate id and version to prevent path traversal
+        let id_safe = crate::security::validate_path_component(&id)
+            .map_err(|e| ServiceError::Custom(format!("Invalid id: {}", e)))?;
+        let version_safe = crate::security::validate_path_component(&metadata.version)
+            .map_err(|e| ServiceError::Custom(format!("Invalid version: {}", e)))?;
+
+        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe);
+        // Use validated id and version for filename (must match store_package)
+        let package_filename = format!("{}-{}.zip", id_safe, version_safe);
         let package_path = staging_path.join(&package_filename);
 
         if package_path.exists() {
