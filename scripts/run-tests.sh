@@ -98,14 +98,65 @@ cd "$NEWTON_DIR"
 
 # Run tests and capture output
 echo -e "${YELLOW}Running tests with cargo-nextest...${NC}" >&2
-if TEST_OUTPUT=$(cargo nextest run --all-features 2>&1); then
-    OVERALL_STATUS="PASSED"
-    EXIT_CODE=0
-    echo -e "${GREEN}Tests completed successfully!${NC}" >&2
-else
+
+# First run security-sensitive tests explicitly and ensure they exist
+echo -e "${YELLOW}Checking for ZIP slip security tests...${NC}" >&2
+
+# Run just the security tests by running all tests and filtering
+FULL_TEST_OUTPUT=$(cargo nextest run --all-features 2>&1)
+FULL_EXIT_CODE=$?
+
+# Check if security tests ran and passed
+SECURITY_TESTS_PASSED=true
+SECURITY_TESTS_FOUND=false
+
+# Check for specific security test patterns
+if echo "$FULL_TEST_OUTPUT" | grep -q "safe_extract"; then
+    SECURITY_TESTS_FOUND=true
+    # Check if any of the security tests failed
+    if echo "$FULL_TEST_OUTPUT" | grep "safe_extract" | grep -q "FAIL"; then
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+if echo "$FULL_TEST_OUTPUT" | grep -q "test_add_from_zip_rejects_path_traversal"; then
+    SECURITY_TESTS_FOUND=true
+    if echo "$FULL_TEST_OUTPUT" | grep "test_add_from_zip_rejects_path_traversal" | grep -q "FAIL"; then
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+if echo "$FULL_TEST_OUTPUT" | grep -q "test_extract_zip_to_temp_rejects_path_traversal"; then
+    SECURITY_TESTS_FOUND=true
+    if echo "$FULL_TEST_OUTPUT" | grep "test_extract_zip_to_temp_rejects_path_traversal" | grep -q "FAIL"; then
+        SECURITY_TESTS_PASSED=false
+    fi
+fi
+
+if [ "$SECURITY_TESTS_FOUND" = false ]; then
+    echo -e "${RED}No security tests found!${NC}" >&2
+    echo -e "${YELLOW}Expected tests matching patterns: safe_extract, test_add_from_zip_rejects_path_traversal, test_extract_zip_to_temp_rejects_path_traversal${NC}" >&2
     OVERALL_STATUS="FAILED"
     EXIT_CODE=1
-    echo -e "${RED}Some tests failed!${NC}" >&2
+    TEST_OUTPUT="$FULL_TEST_OUTPUT"
+elif [ "$SECURITY_TESTS_PASSED" = false ]; then
+    echo -e "${RED}Security tests failed!${NC}" >&2
+    OVERALL_STATUS="FAILED"
+    EXIT_CODE=1
+    TEST_OUTPUT="$FULL_TEST_OUTPUT"
+else
+    echo -e "${GREEN}Security tests passed!${NC}" >&2
+
+    if [ $FULL_EXIT_CODE -eq 0 ]; then
+        OVERALL_STATUS="PASSED"
+        EXIT_CODE=0
+        echo -e "${GREEN}All tests completed successfully!${NC}" >&2
+    else
+        OVERALL_STATUS="FAILED"
+        EXIT_CODE=1
+        echo -e "${RED}Some tests failed!${NC}" >&2
+    fi
+    TEST_OUTPUT="$FULL_TEST_OUTPUT"
 fi
 
 echo "" >&2
@@ -176,7 +227,7 @@ fi
 
 # Get failed test names (if any)
 FAILED_TESTS=""
-if [ "$FAILED" -gt 0 ]; then
+if [ -n "$FAILED" ] && [ "$FAILED" -gt 0 ]; then
     # Extract failed test names from output
     FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -A 5 -B 1 "FAIL\|✗" | grep "^\s*[^-]*test.*" | sed 's/.*--- \(.*\) ---.*/\1/' | grep -v "^\s*$" | head -10)
 fi
