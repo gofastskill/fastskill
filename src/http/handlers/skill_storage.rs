@@ -44,10 +44,16 @@ pub struct SkillStorage {
 impl SkillStorage {
     /// Create a new skill storage service
     pub fn new(service: Arc<FastSkillService>, skills_dir: PathBuf) -> Self {
+        let canonical_skills_dir = Self::canonicalize_path(skills_dir);
         Self {
             service,
-            skills_dir,
+            skills_dir: canonical_skills_dir,
         }
+    }
+
+    /// Canonicalize a path if it exists, otherwise return as-is
+    fn canonicalize_path(path: PathBuf) -> PathBuf {
+        path.canonicalize().unwrap_or(path)
     }
 
     /// Generate a skill ID following Anthropic format (skill_01...)
@@ -86,7 +92,12 @@ impl SkillStorage {
         let metadata = self.parse_skill_metadata(skill_md_content)?;
 
         // Extract directory name from file paths
-        let directory = self.extract_directory_name(&files)?;
+        let directory_raw = self.extract_directory_name(&files)?;
+
+        // Validate and get safe directory name for path construction
+        let directory = validate_path_component(&directory_raw).map_err(|e| {
+            crate::http::errors::HttpError::BadRequest(format!("Invalid directory name: {}", e))
+        })?;
 
         // Create version
         let version_id = Self::generate_version_id();
@@ -102,12 +113,7 @@ impl SkillStorage {
             directory: directory.clone(),
         };
 
-        // Validate directory name to prevent path traversal
-        validate_path_component(&directory).map_err(|e| {
-            crate::http::errors::HttpError::BadRequest(format!("Invalid directory name: {}", e))
-        })?;
-
-        // Store files
+        // Store files - use validated directory string
         let skill_path = self.skills_dir.join(&directory);
         fs::create_dir_all(&skill_path).await.map_err(|e| {
             crate::http::errors::HttpError::InternalServerError(format!(
@@ -117,15 +123,12 @@ impl SkillStorage {
         })?;
 
         for (filename, content) in files {
-            // Validate filename components to prevent path traversal
-            if filename.contains("..") || filename.starts_with('/') {
-                return Err(crate::http::errors::HttpError::BadRequest(format!(
-                    "Invalid filename: {}",
-                    filename
-                )));
-            }
+            // Validate each path component of filename to prevent path traversal
+            let filename_safe = validate_path_component(&filename).map_err(|e| {
+                crate::http::errors::HttpError::BadRequest(format!("Invalid filename: {}", e))
+            })?;
 
-            let file_path = skill_path.join(&filename);
+            let file_path = skill_path.join(&filename_safe);
 
             // Ensure the file path is still under skill_path (prevent traversal)
             let canonical_skill_path = skill_path.canonicalize().map_err(|e| {
@@ -155,7 +158,7 @@ impl SkillStorage {
             } else {
                 return Err(crate::http::errors::HttpError::BadRequest(format!(
                     "File path escapes skill directory: {}",
-                    filename
+                    filename_safe
                 )));
             }
         }
@@ -362,16 +365,16 @@ impl SkillStorage {
             None => return Ok(()), // Skill doesn't exist
         };
 
-        // Validate directory name to prevent path traversal
-        validate_path_component(&skill_meta.directory).map_err(|e| {
+        // Validate directory name and get safe string for path construction
+        let directory_safe = validate_path_component(&skill_meta.directory).map_err(|e| {
             crate::http::errors::HttpError::InternalServerError(format!(
                 "Invalid skill directory: {}",
                 e
             ))
         })?;
 
-        // Remove skill directory
-        let skill_path = self.skills_dir.join(&skill_meta.directory);
+        // Remove skill directory - use validated directory string
+        let skill_path = self.skills_dir.join(&directory_safe);
 
         // Ensure the skill path is under skills_dir (prevent traversal)
         let canonical_skills_dir = self.skills_dir.canonicalize().map_err(|e| {

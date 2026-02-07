@@ -182,4 +182,26 @@ mod tests {
         assert!(safe_join(root, "../etc/passwd").is_err());
         assert!(safe_join(root, "subdir/../../etc").is_err());
     }
+
+    #[test]
+    fn test_validated_return_value_is_safe() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Validate path component and get the safe return value
+        let safe_component = validate_path_component("valid-name").unwrap();
+
+        // Build path using the validated return value
+        let path = root.join(&safe_component);
+
+        // Verify the path is safe and doesn't escape root
+        let canonical_path = path.canonicalize().unwrap_or(path);
+        let canonical_root = root.canonicalize().unwrap_or(root.to_path_buf());
+        assert!(canonical_path.starts_with(&canonical_root));
+
+        // Verify the validated string doesn't contain dangerous characters
+        assert!(!safe_component.contains(".."));
+        assert!(!safe_component.contains('/'));
+        assert!(!safe_component.contains('\\'));
+    }
 }

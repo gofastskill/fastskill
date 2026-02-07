@@ -1,6 +1,6 @@
 # Newton Test Results Report
-Generated: 2026-02-07T11:15:33Z
-Command: scripts/run-tests.sh
+Generated: 2026-02-07T14:04:31Z
+Command: ./scripts/run-tests.sh
 Output File: test_results.md
 JSON File: test_results.json
 
@@ -8,19 +8,19 @@ JSON File: test_results.json
 ✅ **PASSED** - All tests completed successfully
 
 ## Test Statistics
-- **Total Tests:** 449
-- **Passed:** 441
+- **Total Tests:** 455
+- **Passed:** 447
 - **Failed:** 
 - **Skipped:** 8
 - **Passing Rate:** 98%
 
 ## Progress Visualization
 ```
-[█████████████████████████████░] 98% (441/449)
+[█████████████████████████████░] 98% (447/455)
 ```
 
 ## Performance
-- **Test Duration:** 1.561s
+- **Test Duration:** 1.623s
 
 ## Files
 - **Raw Test Output:** `test_results.json`

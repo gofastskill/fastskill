@@ -39,10 +39,15 @@ impl AppState {
         project_file_path: std::path::PathBuf,
         skills_directory: std::path::PathBuf,
     ) -> Self {
-        self.project_root = project_root;
-        self.project_file_path = project_file_path;
-        self.skills_directory = skills_directory;
+        self.project_root = Self::canonicalize_path(project_root);
+        self.project_file_path = Self::canonicalize_path(project_file_path);
+        self.skills_directory = Self::canonicalize_path(skills_directory);
         self
+    }
+
+    /// Canonicalize a path if it exists, otherwise return as-is
+    fn canonicalize_path(path: std::path::PathBuf) -> std::path::PathBuf {
+        path.canonicalize().unwrap_or(path)
     }
 
     pub fn uptime_seconds(&self) -> u64 {
