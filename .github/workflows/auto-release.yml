@@ -105,24 +105,28 @@ jobs:
             echo "Auto-bumping patch: $CURRENT -> $NEW_VERSION"
           fi
 
-      - name: Update Cargo.toml version
+      - name: Update Cargo.toml and Cargo.lock version
         if: steps.check-label.outputs.skip != 'true' && steps.release.outputs.needs_bump == 'true'
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
-          
+
           echo "Updated Cargo.toml to version $VERSION:"
           grep '^version = ' Cargo.toml
+
+          # Update Cargo.lock to match the new version
+          cargo update -p fastskill --precise "$VERSION"
+          echo "Updated Cargo.lock to version $VERSION"
 
       - name: Commit version bump
         if: steps.check-label.outputs.skip != 'true' && steps.release.outputs.needs_bump == 'true'
         run: |
           VERSION="${{ steps.release.outputs.version }}"
-          
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add Cargo.toml
+
+          git add Cargo.toml Cargo.lock
           git commit -m "chore: bump version to $VERSION [skip ci]"
           git push origin refs/heads/main:refs/heads/main
 
