@@ -59,14 +59,6 @@ This is a test skill for sync command.
     assert!(agents_md_content.contains("<name>skill1</name>"));
     assert!(agents_md_content.contains("<name>skill2</name>"));
 
-    // Verify .cursor/rules/skills.mdc was created
-    let rules_path = temp_dir.path().join(".cursor/rules/skills.mdc");
-    assert!(rules_path.exists());
-    let rules_content = fs::read_to_string(&rules_path).unwrap();
-    assert!(rules_content.contains("# Skills Configuration"));
-    assert!(rules_content.contains("### `skill1`"));
-    assert!(rules_content.contains("### `skill2`"));
-
     assert_snapshot_with_settings(
         "sync_all_skills_yes",
         &result.stdout,
@@ -238,55 +230,6 @@ Additional content here.
 }
 
 #[test]
-fn test_sync_with_no_rules_flag() {
-    let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".claude").join("skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Create test skill
-    let skill_dir = skills_dir.join("test-skill");
-    fs::create_dir_all(&skill_dir).unwrap();
-    let skill_content = r#"---
-name: test-skill
-description: A test skill
-version: 1.0.0
----
-# Test Skill
-
-Test skill content.
-"#;
-    fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
-
-    // Create skill-project.toml
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
-    )
-    .unwrap();
-
-    // Create AGENTS.md
-    fs::write(temp_dir.path().join("AGENTS.md"), "# AGENTS.md\n\n").unwrap();
-
-    let result = run_fastskill_command(&["sync", "--yes", "--no-rules"], Some(temp_dir.path()));
-
-    assert!(result.success);
-
-    // Verify AGENTS.md was updated
-    let agents_md_content = fs::read_to_string(temp_dir.path().join("AGENTS.md")).unwrap();
-    assert!(agents_md_content.contains("<skills_system"));
-
-    // Verify .cursor/rules/skills.mdc was NOT created
-    let rules_path = temp_dir.path().join(".cursor/rules/skills.mdc");
-    assert!(!rules_path.exists());
-
-    assert_snapshot_with_settings(
-        "sync_with_no_rules_flag",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
 fn test_sync_custom_files() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
@@ -314,14 +257,7 @@ Custom skill content.
     .unwrap();
 
     let result = run_fastskill_command(
-        &[
-            "sync",
-            "--yes",
-            "--agents-file",
-            "CUSTOM.md",
-            "--rules-file",
-            "custom-rules.mdc",
-        ],
+        &["sync", "--yes", "--agents-file", "CUSTOM.md"],
         Some(temp_dir.path()),
     );
 
@@ -332,12 +268,6 @@ Custom skill content.
     assert!(custom_agents.exists());
     let content = fs::read_to_string(&custom_agents).unwrap();
     assert!(content.contains("<skills_system"));
-
-    // Verify custom rules file was created
-    let custom_rules = temp_dir.path().join("custom-rules.mdc");
-    assert!(custom_rules.exists());
-    let rules_content = fs::read_to_string(&custom_rules).unwrap();
-    assert!(rules_content.contains("# Skills Configuration"));
 
     assert_snapshot_with_settings(
         "sync_custom_files",
