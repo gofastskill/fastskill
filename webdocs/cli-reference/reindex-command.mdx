@@ -223,7 +223,7 @@ fastskill reindex --skills-dir .claude/skills/
 # Creates: .claude/skills/.fastskill/skills.md
 ```
 
-This file contains all indexed skills in Cursor-compatible format.
+This file contains all indexed skills in markdown format. To expose installed skills to Cursor and other agents, use `fastskill sync` to update AGENTS.md instead.
 
 ### Configuration for Markdown Export
 
@@ -232,7 +232,7 @@ Add to `.fastskill/config.yaml`:
 ```yaml
 markdown_export:
   enabled: true
-  output_path: ".cursor/rules/skills.md"
+  output_path: "docs/skills-registry.md"
   header_instructions: |
     Skills are modular packages in `.claude/skills/<category>/<skill-name>/SKILL.md`
     that provide specialized workflows, tool integrations, and domain knowledge.

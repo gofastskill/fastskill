@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::cli::commands::{
     add, auth, disable, init, install, list, package, publish, read, registry, reindex, remove,
-    search, serve, show, sources, update, version, Commands,
+    search, serve, show, sources, sync, update, version, Commands,
 };
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -128,6 +128,7 @@ impl Cli {
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
             Some(Commands::List(args)) => list::execute_list(&service, args, global).await,
             Some(Commands::Read(args)) => read::execute_read(Arc::new(service), args).await,
+            Some(Commands::Sync(args)) => sync::execute_sync(&service, args).await,
             Some(Commands::Reindex(args)) => reindex::execute_reindex(&service, args).await,
             Some(Commands::Remove(args)) => remove::execute_remove(&service, args, global).await,
             Some(Commands::Search(args)) => search::execute_search(&service, args).await,
