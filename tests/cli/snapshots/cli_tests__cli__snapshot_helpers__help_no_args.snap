@@ -22,6 +22,7 @@ Commands:
   search    Search installed skills by query (local semantic search)
   serve     Start the FastSkill HTTP API server
   show      Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+  sync      Sync installed skills to AGENTS.md
   sources   Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace [aliases: source]
   update    Update skills to latest versions
   version   Display FastSkill version
@@ -56,6 +57,7 @@ Commands:
   search    Search installed skills by query (local semantic search)
   serve     Start the FastSkill HTTP API server
   show      Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+  sync      Sync installed skills to AGENTS.md
   sources   Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace [aliases: source]
   update    Update skills to latest versions
   version   Display FastSkill version

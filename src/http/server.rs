@@ -303,8 +303,7 @@ impl FastSkillServer {
             .route(
                 "/api/manifest/skills/:id",
                 delete(manifest::remove_skill_from_manifest),
-            )
-            .route("/api/manifest/generate-mdc", post(manifest::generate_mdc));
+            );
 
         // Add middleware and state
         Ok(router
