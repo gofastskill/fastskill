@@ -4,3 +4,4 @@ expression: normalized
 ---
 FastSkill [VERSION]
 [OK] Removed all skills from AGENTS.md
+[OK] Updated .cursor/rules/skills.mdc

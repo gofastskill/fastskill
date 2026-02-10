@@ -1,11 +1,11 @@
 //! Sync command implementation
 //!
-//! Synchronizes installed skills into AGENTS.md
+//! Synchronizes installed skills into AGENTS.md and .cursor/rules/skills.mdc
 
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::agents_md::{
-    generate_skills_xml, parse_current_skills, remove_skills_section, replace_skills_section,
-    SkillLocation, SkillSummary,
+    generate_rules_content, generate_skills_xml, parse_current_skills, remove_skills_section,
+    replace_skills_section, SkillLocation, SkillSummary,
 };
 use crate::cli::utils::messages;
 use clap::Args;
@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-/// Sync installed skills to AGENTS.md
+/// Sync installed skills to AGENTS.md and .cursor/rules/skills.mdc
 #[derive(Debug, Args)]
 pub struct SyncArgs {
     /// Non-interactive mode: include all installed skills
@@ -28,6 +28,14 @@ pub struct SyncArgs {
     /// Path to AGENTS.md (defaults to ./AGENTS.md)
     #[arg(long)]
     pub agents_file: Option<String>,
+
+    /// Do not update .cursor/rules/skills.mdc
+    #[arg(long)]
+    pub no_rules: bool,
+
+    /// Override path to rules file
+    #[arg(long)]
+    pub rules_file: Option<String>,
 }
 
 /// Execute the sync command
@@ -36,8 +44,13 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
     let agents_file = resolve_agents_file(&current_dir, args.agents_file)?;
+    let rules_file = resolve_rules_file(&current_dir, args.rules_file)?;
 
-    debug!("Agents file: {}", agents_file.display());
+    debug!(
+        "Agents file: {}, Rules file: {}",
+        agents_file.display(),
+        rules_file.display()
+    );
 
     // Get global skills directory
     let global_skills_dir = get_global_skills_directory()?;
@@ -134,6 +147,11 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
         );
     }
 
+    // Update .cursor/rules/skills.mdc unless --no-rules
+    if !args.no_rules {
+        update_rules_file(&rules_file, &selected_skills)?;
+    }
+
     Ok(())
 }
 
@@ -148,6 +166,20 @@ fn resolve_agents_file(current_dir: &Path, override_path: Option<String>) -> Cli
         }
     } else {
         Ok(current_dir.join("AGENTS.md"))
+    }
+}
+
+/// Resolve .cursor/rules/skills.mdc file path
+fn resolve_rules_file(current_dir: &Path, override_path: Option<String>) -> CliResult<PathBuf> {
+    if let Some(path) = override_path {
+        let path = PathBuf::from(path);
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            Ok(current_dir.join(path))
+        }
+    } else {
+        Ok(current_dir.join(".cursor/rules/skills.mdc"))
     }
 }
 
@@ -247,6 +279,34 @@ fn interactive_select_skills(
     }
 }
 
+/// Update .cursor/rules/skills.mdc with selected skills
+fn update_rules_file(rules_file: &Path, selected_skills: &[SkillSummary]) -> CliResult<()> {
+    let rules_dir = rules_file
+        .parent()
+        .ok_or_else(|| CliError::Config("Invalid rules file path".to_string()))?;
+
+    fs::create_dir_all(rules_dir).map_err(|e| {
+        CliError::Io(std::io::Error::other(format!(
+            "Failed to create {}: {}",
+            rules_dir.display(),
+            e
+        )))
+    })?;
+
+    let content = generate_rules_content(selected_skills);
+    fs::write(rules_file, content).map_err(|e| {
+        CliError::Io(std::io::Error::other(format!(
+            "Failed to write {}: {}",
+            rules_file.display(),
+            e
+        )))
+    })?;
+
+    println!("{}", messages::ok("Updated .cursor/rules/skills.mdc"));
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +364,22 @@ mod tests {
             resolve_agents_file(&current_dir, Some("/absolute/path/AGENTS.md".to_string()))
                 .unwrap();
         assert_eq!(result, PathBuf::from("/absolute/path/AGENTS.md"));
+    }
+
+    #[test]
+    fn test_resolve_rules_file_default() {
+        let current_dir = PathBuf::from("/home/user/project");
+        let result = resolve_rules_file(&current_dir, None).unwrap();
+        assert_eq!(
+            result,
+            PathBuf::from("/home/user/project/.cursor/rules/skills.mdc")
+        );
+    }
+
+    #[test]
+    fn test_resolve_rules_file_override() {
+        let current_dir = PathBuf::from("/home/user/project");
+        let result = resolve_rules_file(&current_dir, Some("custom.mdc".to_string())).unwrap();
+        assert_eq!(result, PathBuf::from("/home/user/project/custom.mdc"));
     }
 }
