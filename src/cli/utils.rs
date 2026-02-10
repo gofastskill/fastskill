@@ -1,5 +1,6 @@
 //! Utility functions for CLI operations
 
+pub mod agents_md;
 pub mod api_client;
 pub mod install_utils;
 pub mod manifest_utils;

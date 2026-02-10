@@ -16,6 +16,7 @@ pub mod search;
 pub mod serve;
 pub mod show;
 pub mod sources;
+pub mod sync;
 pub mod update;
 pub mod version;
 
@@ -128,6 +129,13 @@ pub enum Commands {
         after_help = "Examples:\n  fastskill show\n  fastskill show pptx --tree"
     )]
     Show(show::ShowArgs),
+
+    /// Sync installed skills to AGENTS.md and .cursor/rules/skills.mdc
+    #[command(
+        about = "Sync installed skills to AGENTS.md and .cursor/rules/skills.mdc",
+        after_help = "Examples:\n  fastskill sync\n  fastskill sync --yes\n  fastskill sync --agents-file custom.md"
+    )]
+    Sync(sync::SyncArgs),
 
     /// Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace
     #[command(
