@@ -113,6 +113,8 @@ desktop.ini
 .coverage
 .coverage.*
 coverage.xml
+test_results.md
+test_results.json
 *.cover
 *.py,cover
 .hypothesis/
@@ -326,3 +328,4 @@ CLAUDE.md
 repomix-output.xml
 coverage-after
 coverage-before
+skill-project.toml
