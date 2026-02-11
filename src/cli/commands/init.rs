@@ -534,6 +534,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_init_success() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
