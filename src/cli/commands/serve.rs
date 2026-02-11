@@ -17,7 +17,7 @@ pub struct ServeArgs {
 }
 
 pub async fn execute_serve(
-    service: &fastskill::FastSkillService,
+    service: std::sync::Arc<fastskill::FastSkillService>,
     args: ServeArgs,
 ) -> CliResult<()> {
     info!(
@@ -28,7 +28,7 @@ pub async fn execute_serve(
     println!("FastSkill HTTP server starting...");
     println!("  Listening on: http://{}:{}", args.host, args.port);
 
-    let server = fastskill::http::server::FastSkillServer::from_ref(service, &args.host, args.port);
+    let server = fastskill::http::server::FastSkillServer::from_ref(&service, &args.host, args.port);
 
     // Start the server (this will block until shutdown)
     server

@@ -181,12 +181,9 @@ impl FastSkillServer {
         }
     }
 
-    /// Create a new server instance from a service reference
-    pub fn from_ref(service: &FastSkillService, host: &str, port: u16) -> Self {
-        let service_arc = unsafe {
-            Arc::increment_strong_count(service);
-            Arc::from_raw(service as *const FastSkillService)
-        };
+    /// Create a new server instance from an Arc-wrapped service reference
+    pub fn from_ref(service: &Arc<FastSkillService>, host: &str, port: u16) -> Self {
+        let service_arc = Arc::clone(service);
 
         let addr = match Self::parse_address(host, port) {
             Ok(addr) => addr,
