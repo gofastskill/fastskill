@@ -5,17 +5,12 @@
 //! These tests simulate complete workflows through the CLI binary.
 //! Note: These tests require the CLI binary to be built first.
 
-use std::env;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 use super::snapshot_helpers::{
     run_fastskill_command, cli_snapshot_settings, assert_snapshot_with_settings
 };
-
-fn get_binary_path() -> String {
-    format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"))
-}
 
 /// Create a test skill with valid SKILL.md in the given directory
 fn create_test_skill(dir: &Path, skill_name: &str) {
