@@ -37,18 +37,24 @@ fn get_test_skill_path() -> PathBuf {
         .join(TEST_SKILL_NAME)
 }
 
-/// Get the fastskill binary path
+/// Get the fastskill binary path (resolves under coverage, debug, and release).
 fn get_fastskill_binary() -> PathBuf {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let target_dir = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-    PathBuf::from(manifest_dir)
-        .join("target")
-        .join(target_dir)
-        .join("fastskill")
+    let base = PathBuf::from(manifest_dir);
+    let candidates = [
+        base.join("target")
+            .join("llvm-cov-target")
+            .join("debug")
+            .join("fastskill"),
+        base.join("target").join("debug").join("fastskill"),
+        base.join("target").join("release").join("fastskill"),
+    ];
+    for path in &candidates {
+        if path.exists() {
+            return path.clone();
+        }
+    }
+    base.join("target").join("debug").join("fastskill")
 }
 
 /// Validate that a ZIP package contains the expected version in skill-project.toml
