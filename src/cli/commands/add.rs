@@ -1110,7 +1110,6 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
 mod tests {
     use super::*;
     use fastskill::{FastSkillService, ServiceConfig};
-    use std::io::Write;
     use tempfile::TempDir;
 
     #[tokio::test]
