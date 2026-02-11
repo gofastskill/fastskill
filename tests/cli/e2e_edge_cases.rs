@@ -10,10 +10,6 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
-fn get_binary_path() -> String {
-    format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"))
-}
-
 /// Create a skill with invalid SKILL.md
 fn create_invalid_skill(dir: &Path, skill_name: &str) {
     let skill_dir = dir.join(skill_name);
