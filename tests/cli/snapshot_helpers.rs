@@ -20,29 +20,30 @@ pub struct SnapshotSettings {
     pub normalize_timestamps: bool,
 }
 
-/// Get the path to the fastskill binary for testing
+/// Candidate paths for the fastskill binary, in resolution order.
+/// `llvm-cov-target` is used by cargo-llvm-cov when collecting coverage.
+fn binary_path_candidates(manifest_dir: &str) -> [String; 3] {
+    [
+        format!("{}/target/llvm-cov-target/debug/fastskill", manifest_dir),
+        format!("{}/target/debug/fastskill", manifest_dir),
+        format!("{}/target/release/fastskill", manifest_dir),
+    ]
+}
+
+/// Get the path to the fastskill binary for testing.
+/// Resolves under coverage (llvm-cov-target), debug, and release builds.
 pub fn get_binary_path() -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let debug_path = format!("{}/target/debug/fastskill", manifest_dir);
-    let release_path = format!("{}/target/release/fastskill", manifest_dir);
-
-    println!(
-        "DEBUG: Looking for binary at: {}, exists: {}",
-        debug_path,
-        Path::new(&debug_path).exists()
-    );
-
-    if Path::new(&debug_path).exists() {
-        println!("DEBUG: Using debug path: {}", debug_path);
-        debug_path
-    } else if Path::new(&release_path).exists() {
-        println!("DEBUG: Using release path: {}", release_path);
-        release_path
-    } else {
-        println!("DEBUG: No binary found, using cargo fallback");
-        // Fallback to cargo run
-        "cargo".to_string()
+    for path in &binary_path_candidates(manifest_dir) {
+        if Path::new(path).exists() {
+            #[cfg(test)]
+            println!("DEBUG: Using binary at: {}", path);
+            return path.clone();
+        }
     }
+    #[cfg(test)]
+    println!("DEBUG: No binary found, using cargo fallback");
+    "cargo".to_string()
 }
 
 /// Run a fastskill command and return the result

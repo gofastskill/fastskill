@@ -8,13 +8,18 @@ mod cli;
 fn test_cli_help() {
     use std::process::Command;
 
-    let binary = format!("{}/target/debug/fastskill", env!("CARGO_MANIFEST_DIR"));
-
-    // Test --help flag
-    let output = Command::new(&binary)
-        .arg("--help")
-        .output()
-        .expect("Failed to execute CLI");
+    let binary = cli::snapshot_helpers::get_binary_path();
+    let output = if binary == "cargo" {
+        Command::new("cargo")
+            .args(["run", "--bin", "fastskill", "--", "--help"])
+            .output()
+            .expect("Failed to execute CLI")
+    } else {
+        Command::new(&binary)
+            .arg("--help")
+            .output()
+            .expect("Failed to execute CLI")
+    };
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);

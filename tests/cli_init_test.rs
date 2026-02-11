@@ -8,19 +8,18 @@ use std::process::Command;
 use tempfile::TempDir;
 
 fn get_binary_path() -> String {
-    // Use absolute path from manifest directory
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let debug_path = format!("{}/target/debug/fastskill", manifest_dir);
-    let release_path = format!("{}/target/release/fastskill", manifest_dir);
-
-    if Path::new(&debug_path).exists() {
-        debug_path
-    } else if Path::new(&release_path).exists() {
-        release_path
-    } else {
-        // Fallback to cargo run for testing
-        "cargo".to_string()
+    let candidates = [
+        format!("{}/target/llvm-cov-target/debug/fastskill", manifest_dir),
+        format!("{}/target/debug/fastskill", manifest_dir),
+        format!("{}/target/release/fastskill", manifest_dir),
+    ];
+    for path in &candidates {
+        if Path::new(path).exists() {
+            return path.clone();
+        }
     }
+    "cargo".to_string()
 }
 
 #[test]
