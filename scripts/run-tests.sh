@@ -12,10 +12,10 @@
 
 set -e  # Exit on any error
 
-# Default values
-OUTPUT_FILE="test_results.md"
-JSON_FILE="test_results.json"
+# Default: write under target/test_results/ so the script has no side effects in the working tree
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+OUTPUT_FILE=""
+JSON_FILE=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,8 +29,8 @@ error_exit() {
     echo "Usage: $0 [OPTIONS]" >&2
     echo "" >&2
     echo "Options:" >&2
-    echo "  -o, --output FILE    Output markdown report file (default: test_results.md)" >&2
-    echo "  -j, --json FILE      JSON results file (default: test_results.json)" >&2
+    echo "  -o, --output FILE    Output markdown report file (default: target/test_results/test_results.md)" >&2
+    echo "  -j, --json FILE      JSON results file (default: target/test_results/test_results.json)" >&2
     echo "  -h, --help           Show this help message" >&2
     exit 1
 }
@@ -63,8 +63,8 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  -o, --output FILE    Output markdown report file (default: test_results.md)"
-            echo "  -j, --json FILE      JSON results file (default: test_results.json)"
+            echo "  -o, --output FILE    Output markdown report file (default: target/test_results/test_results.md)"
+            echo "  -j, --json FILE      JSON results file (default: target/test_results/test_results.json)"
             echo "  -h, --help           Show this help message"
             echo ""
             echo "Requirements:"
@@ -95,6 +95,16 @@ NEWTON_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${YELLOW}Running tests in: $NEWTON_DIR${NC}" >&2
 cd "$NEWTON_DIR"
+
+# Default output under target/test_results/ (gitignored) when -o/-j not given
+if [ -z "$OUTPUT_FILE" ]; then
+    mkdir -p target/test_results
+    OUTPUT_FILE="target/test_results/test_results.md"
+fi
+if [ -z "$JSON_FILE" ]; then
+    mkdir -p target/test_results
+    JSON_FILE="target/test_results/test_results.json"
+fi
 
 # Run tests and capture output
 echo -e "${YELLOW}Running tests with cargo-nextest...${NC}" >&2
