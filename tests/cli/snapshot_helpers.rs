@@ -205,6 +205,7 @@ pub fn cli_snapshot_settings() -> SnapshotSettings {
 }
 
 /// Settings for help command snapshots (usually don't need path normalization)
+#[allow(dead_code)]
 pub fn help_snapshot_settings() -> SnapshotSettings {
     SnapshotSettings {
         normalize_paths: false,
@@ -214,6 +215,7 @@ pub fn help_snapshot_settings() -> SnapshotSettings {
 }
 
 /// Settings for error output snapshots
+#[allow(dead_code)]
 pub fn error_snapshot_settings() -> SnapshotSettings {
     SnapshotSettings {
         normalize_paths: true,
