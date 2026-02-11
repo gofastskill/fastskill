@@ -132,7 +132,7 @@ impl Cli {
             Some(Commands::Reindex(args)) => reindex::execute_reindex(&service, args).await,
             Some(Commands::Remove(args)) => remove::execute_remove(&service, args, global).await,
             Some(Commands::Search(args)) => search::execute_search(&service, args).await,
-            Some(Commands::Serve(args)) => serve::execute_serve(&service, args).await,
+            Some(Commands::Serve(args)) => serve::execute_serve(Arc::new(service), args).await,
             Some(Commands::Init(_))
             | Some(Commands::Install(_))
             | Some(Commands::Update(_))
