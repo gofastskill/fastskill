@@ -29,6 +29,8 @@ jobs:
         run: cargo install cargo-nextest --locked
 
       - name: Run tests with coverage
+        env:
+          NEXTEST_THREADS: "2"
         run: cargo llvm-cov nextest --all-features -E 'not test(install_e2e_tests)' --lcov --output-path lcov.info
 
       - name: Upload to Codecov
