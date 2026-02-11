@@ -96,6 +96,10 @@ NEWTON_DIR="$(dirname "$SCRIPT_DIR")"
 echo -e "${YELLOW}Running tests in: $NEWTON_DIR${NC}" >&2
 cd "$NEWTON_DIR"
 
+# Format check (same as CI: check only, no fix)
+echo -e "${YELLOW}Running format check (cargo fmt --all -- --check)...${NC}" >&2
+cargo fmt --all -- --check
+
 # Default output under target/test_results/ (gitignored) when -o/-j not given
 if [ -z "$OUTPUT_FILE" ]; then
     mkdir -p target/test_results
