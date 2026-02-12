@@ -18,6 +18,33 @@ use tempfile::TempDir;
 use tracing::info;
 use walkdir::WalkDir;
 
+/// Bundled options for add operations (reduces argument count)
+struct AddContext<'a> {
+    service: &'a FastSkillService,
+    force: bool,
+    editable: bool,
+    groups: Vec<String>,
+    verbose: bool,
+    global: bool,
+}
+
+/// Source metadata to record after installing a skill
+struct SourceMeta {
+    source_url: Option<String>,
+    source_type: Option<SourceType>,
+    source_branch: Option<String>,
+    source_tag: Option<String>,
+    source_subdir: Option<PathBuf>,
+    installed_from: Option<String>,
+}
+
+/// Target for install: where to copy and what to record
+struct InstallTarget {
+    storage_dir: PathBuf,
+    meta: SourceMeta,
+    version_display: String,
+}
+
 /// T028: Helper to update skill-project.toml and skills.lock
 fn update_project_files(
     skill_def: &SkillDefinition,
@@ -43,8 +70,108 @@ fn update_project_files(
     Ok(())
 }
 
-/// Discover all directories containing SKILL.md under the given base directory
-/// Skips hidden directories (those starting with '.')
+async fn register_skill_once(ctx: &AddContext<'_>, skill_def: &SkillDefinition) -> CliResult<()> {
+    if ctx.force {
+        ctx.service
+            .skill_manager()
+            .force_register_skill(skill_def.clone())
+            .await
+            .map_err(CliError::Service)?;
+    } else {
+        if ctx
+            .service
+            .skill_manager()
+            .get_skill(&skill_def.id)
+            .await
+            .map_err(CliError::Service)?
+            .is_some()
+        {
+            return Err(CliError::Config(format!(
+                "Skill '{}' already exists. Use --force to overwrite.",
+                skill_def.id
+            )));
+        }
+        ctx.service
+            .skill_manager()
+            .register_skill(skill_def.clone())
+            .await
+            .map_err(CliError::Service)?;
+    }
+    Ok(())
+}
+
+/// Copy skill to storage, register, update source tracking, and update project files.
+async fn install_copied_skill(
+    ctx: &AddContext<'_>,
+    skill_path: &Path,
+    mut skill_def: SkillDefinition,
+    target: InstallTarget,
+) -> CliResult<()> {
+    if target.storage_dir.exists() {
+        if !ctx.force {
+            return Err(CliError::Config(format!(
+                "Skill directory '{}' already exists. Use --force to overwrite.",
+                target.storage_dir.display()
+            )));
+        }
+        tokio::fs::remove_dir_all(&target.storage_dir)
+            .await
+            .map_err(CliError::Io)?;
+    }
+    copy_dir_recursive(skill_path, &target.storage_dir).await?;
+    skill_def.skill_file = target.storage_dir.join("SKILL.md");
+    skill_def.source_url = target.meta.source_url;
+    skill_def.source_type = target.meta.source_type;
+    skill_def.source_branch = target.meta.source_branch;
+    skill_def.source_tag = target.meta.source_tag;
+    skill_def.source_subdir = target.meta.source_subdir;
+    skill_def.installed_from = target.meta.installed_from;
+    skill_def.fetched_at = Some(Utc::now());
+    skill_def.editable = ctx.editable;
+
+    register_skill_once(ctx, &skill_def).await?;
+
+    let update = fastskill::core::skill_manager::SkillUpdate {
+        source_url: skill_def.source_url.clone(),
+        source_type: skill_def.source_type.clone(),
+        source_branch: skill_def.source_branch.clone(),
+        source_tag: skill_def.source_tag.clone(),
+        source_subdir: skill_def.source_subdir.clone(),
+        installed_from: skill_def.installed_from.clone(),
+        fetched_at: skill_def.fetched_at,
+        editable: Some(skill_def.editable),
+        ..Default::default()
+    };
+    ctx.service
+        .skill_manager()
+        .update_skill(&skill_def.id, update)
+        .await
+        .map_err(|e| {
+            crate::cli::utils::service_error_to_cli(
+                e,
+                ctx.service.config().skill_storage_path.as_path(),
+                ctx.global,
+            )
+        })?;
+
+    update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
+    println!(
+        "Successfully added skill: {} (v{})",
+        skill_def.name, target.version_display
+    );
+    println!(
+        "{}",
+        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
+    );
+    Ok(())
+}
+
+fn component_is_hidden(c: std::path::Component<'_>) -> bool {
+    matches!(c, std::path::Component::Normal(name) if name.to_string_lossy().starts_with('.'))
+}
+
+/// Discover all directories containing SKILL.md under the given base directory.
+/// Skips hidden directories (those starting with '.').
 fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
     if !base.exists() {
         return Err(CliError::InvalidSource(format!(
@@ -52,7 +179,6 @@ fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
             base.display()
         )));
     }
-
     if !base.is_dir() {
         return Err(CliError::InvalidSource(format!(
             "Path is not a directory: {}",
@@ -60,8 +186,8 @@ fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
         )));
     }
 
-    let mut skill_dirs = Vec::new();
     let base_canonical = base.canonicalize().map_err(CliError::Io)?;
+    let mut skill_dirs = Vec::new();
 
     for entry in WalkDir::new(base)
         .min_depth(1)
@@ -75,34 +201,21 @@ fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
             )
         })?;
         let path = entry.path();
-
-        // Check if this directory contains SKILL.md
-        if path.is_dir() && path.join("SKILL.md").exists() {
-            // Canonicalize to check relative path from base
-            let path_canonical = path.canonicalize().map_err(CliError::Io)?;
-
-            // Compute relative path to check for hidden directories
-            let relative_path = path_canonical.strip_prefix(&base_canonical).map_err(|_| {
-                CliError::Validation(format!(
-                    "Failed to compute relative path for: {}",
-                    path.display()
-                ))
-            })?;
-
-            // Skip hidden directories (check if any component of relative path starts with '.')
-            let should_skip = relative_path.components().any(|c| {
-                if let std::path::Component::Normal(name) = c {
-                    name.to_string_lossy().starts_with('.')
-                } else {
-                    false
-                }
-            });
-            if should_skip {
-                continue;
-            }
-
-            skill_dirs.push(path_canonical);
+        if !path.is_dir() || !path.join("SKILL.md").exists() {
+            continue;
         }
+
+        let path_canonical = path.canonicalize().map_err(CliError::Io)?;
+        let relative_path = path_canonical.strip_prefix(&base_canonical).map_err(|_| {
+            CliError::Validation(format!(
+                "Failed to compute relative path for: {}",
+                path.display()
+            ))
+        })?;
+        if relative_path.components().any(component_is_hidden) {
+            continue;
+        }
+        skill_dirs.push(path_canonical);
     }
 
     Ok(skill_dirs)
@@ -147,13 +260,71 @@ pub struct AddArgs {
     pub recursive: bool,
 }
 
-pub async fn execute_add(
-    service: &FastSkillService,
-    args: AddArgs,
-    verbose: bool,
-    global: bool,
-) -> CliResult<()> {
-    // Require manifest before any install work
+fn resolve_source(args: &AddArgs) -> SkillSource {
+    let Some(ref source_type) = args.source_type else {
+        return detect_skill_source(&args.source);
+    };
+    match source_type.as_str() {
+        "registry" => SkillSource::SkillId(args.source.clone()),
+        "github" | "git" => SkillSource::GitUrl(args.source.clone()),
+        "local" => {
+            let path = PathBuf::from(&args.source);
+            if path.extension().and_then(|s| s.to_str()) == Some("zip") {
+                SkillSource::ZipFile(path)
+            } else {
+                SkillSource::Folder(path)
+            }
+        }
+        _ => detect_skill_source(&args.source),
+    }
+}
+
+async fn handle_recursive_add(ctx: &AddContext<'_>, path: &Path) -> CliResult<()> {
+    info!(
+        "Adding skills recursively from directory: {}",
+        path.display()
+    );
+    let skill_dirs = get_skill_dirs_recursive(path)?;
+    if skill_dirs.is_empty() {
+        return Err(CliError::Validation(format!(
+            "No skill directories found under {}",
+            path.display()
+        )));
+    }
+    println!(
+        "Found {} skill(s) in directory {}",
+        skill_dirs.len(),
+        path.display()
+    );
+
+    let mut failed: Vec<(PathBuf, CliError)> = Vec::new();
+    let mut success_count = 0;
+    for skill_path in skill_dirs {
+        match add_from_folder(ctx, &skill_path).await {
+            Ok(()) => success_count += 1,
+            Err(e) => {
+                eprintln!("Skill at {}: {}", skill_path.display(), e);
+                failed.push((skill_path, e));
+            }
+        }
+    }
+    if failed.is_empty() {
+        return Ok(());
+    }
+    let total = success_count + failed.len();
+    Err(CliError::Validation(format!(
+        "{} of {} skills failed:\n{}",
+        failed.len(),
+        total,
+        failed
+            .iter()
+            .map(|(path, err)| format!("  - {}: {}", path.display(), err))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )))
+}
+
+fn ensure_manifest() -> CliResult<()> {
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let project_file_result = resolve_project_file(&current_dir);
@@ -162,456 +333,164 @@ pub async fn execute_add(
             manifest_required_for_add_message().to_string(),
         ));
     }
-
-    let groups = args.group.map(|g| vec![g]).unwrap_or_default();
-
-    // Check if source type is overridden
-    let source = if let Some(ref source_type) = args.source_type {
-        match source_type.as_str() {
-            "registry" => SkillSource::SkillId(args.source.clone()),
-            "github" | "git" => SkillSource::GitUrl(args.source.clone()),
-            "local" => {
-                let path = PathBuf::from(&args.source);
-                if path.extension().and_then(|s| s.to_str()) == Some("zip") {
-                    SkillSource::ZipFile(path)
-                } else {
-                    SkillSource::Folder(path)
-                }
-            }
-            _ => detect_skill_source(&args.source),
-        }
-    } else {
-        detect_skill_source(&args.source)
-    };
-
-    // Handle recursive add
-    if args.recursive {
-        // Recursive only works with local folders
-        if let SkillSource::Folder(ref path) = source {
-            info!(
-                "Adding skills recursively from directory: {}",
-                path.display()
-            );
-
-            // Discover all skill directories
-            let skill_dirs = get_skill_dirs_recursive(path)?;
-
-            if skill_dirs.is_empty() {
-                return Err(CliError::Validation(format!(
-                    "No skill directories found under {}",
-                    path.display()
-                )));
-            }
-
-            println!(
-                "Found {} skill(s) in directory {}",
-                skill_dirs.len(),
-                path.display()
-            );
-
-            // Add each skill directory, collecting failures but continuing
-            let mut failed: Vec<(PathBuf, CliError)> = Vec::new();
-            let mut success_count = 0;
-
-            for skill_path in skill_dirs {
-                // Use the same logic as single folder add
-                match add_from_folder(
-                    service,
-                    &skill_path,
-                    args.force,
-                    args.editable,
-                    groups.clone(),
-                    verbose,
-                    global,
-                )
-                .await
-                {
-                    Ok(()) => success_count += 1,
-                    Err(e) => {
-                        eprintln!("Skill at {}: {}", skill_path.display(), e);
-                        failed.push((skill_path, e));
-                    }
-                }
-            }
-
-            // Report results
-            if !failed.is_empty() {
-                let total = success_count + failed.len();
-                return Err(CliError::Validation(format!(
-                    "{} of {} skills failed:\n{}",
-                    failed.len(),
-                    total,
-                    failed
-                        .iter()
-                        .map(|(path, err)| format!("  - {}: {}", path.display(), err))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )));
-            }
-
-            return Ok(());
-        } else {
-            return Err(CliError::Config(
-                "Recursive add is only valid when source is a local directory".to_string(),
-            ));
-        }
-    }
-
-    match source {
-        SkillSource::ZipFile(path) => {
-            add_from_zip(
-                service,
-                &path,
-                args.force,
-                args.editable,
-                groups,
-                verbose,
-                global,
-            )
-            .await
-        }
-        SkillSource::Folder(path) => {
-            // Check if the folder has a SKILL.md at the root
-            if !path.join("SKILL.md").exists() {
-                // No SKILL.md at root - check if there are skills in subdirectories
-                match get_skill_dirs_recursive(&path) {
-                    Ok(skill_dirs) if !skill_dirs.is_empty() => {
-                        return Err(CliError::Validation(format!(
-                            "This directory has no SKILL.md at the root but contains {} skill(s) in subdirectories. Add them all with: fastskill add {} --recursive",
-                            skill_dirs.len(),
-                            path.display()
-                        )));
-                    }
-                    _ => {
-                        return Err(CliError::Validation(format!(
-                            "No SKILL.md found in {}. A skill directory must contain a SKILL.md file. If this folder has multiple skills in subdirectories, use --recursive.",
-                            path.display()
-                        )));
-                    }
-                }
-            }
-            add_from_folder(
-                service,
-                &path,
-                args.force,
-                args.editable,
-                groups,
-                verbose,
-                global,
-            )
-            .await
-        }
-        SkillSource::GitUrl(url) => {
-            add_from_git(
-                service,
-                &url,
-                args.branch.as_deref(),
-                args.tag.as_deref(),
-                args.force,
-                args.editable,
-                groups,
-                verbose,
-                global,
-            )
-            .await
-        }
-        SkillSource::SkillId(skill_id) => {
-            add_from_registry(
-                service,
-                &skill_id,
-                args.force,
-                args.editable,
-                groups,
-                verbose,
-                global,
-            )
-            .await
-        }
-    }
+    Ok(())
 }
 
-async fn add_from_zip(
+pub async fn execute_add(
     service: &FastSkillService,
-    zip_path: &Path,
-    force: bool,
-    editable: bool,
-    groups: Vec<String>,
+    args: AddArgs,
     verbose: bool,
     global: bool,
 ) -> CliResult<()> {
-    info!("Adding skill from zip file: {}", zip_path.display());
+    ensure_manifest()?;
+    let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
+    let ctx = AddContext {
+        service,
+        force: args.force,
+        editable: args.editable,
+        groups,
+        verbose,
+        global,
+    };
+    let source = resolve_source(&args);
 
-    // Basic validation - check file exists
+    if args.recursive {
+        let path = match &source {
+            SkillSource::Folder(p) => p,
+            _ => {
+                return Err(CliError::Config(
+                    "Recursive add is only valid when source is a local directory".to_string(),
+                ));
+            }
+        };
+        return handle_recursive_add(&ctx, path).await;
+    }
+
+    match source {
+        SkillSource::ZipFile(path) => add_from_zip(&ctx, &path).await,
+        SkillSource::Folder(path) => {
+            validate_folder_has_skill(&path)?;
+            add_from_folder(&ctx, &path).await
+        }
+        SkillSource::GitUrl(url) => {
+            add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref()).await
+        }
+        SkillSource::SkillId(skill_id) => add_from_registry(&ctx, &skill_id).await,
+    }
+}
+
+fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
+    if path.join("SKILL.md").exists() {
+        return Ok(());
+    }
+    if let Ok(dirs) = get_skill_dirs_recursive(path) {
+        if !dirs.is_empty() {
+            return Err(CliError::Validation(format!(
+                "This directory has no SKILL.md at the root but contains {} skill(s) in subdirectories. Add them all with: fastskill add {} --recursive",
+                dirs.len(),
+                path.display()
+            )));
+        }
+    }
+    Err(CliError::Validation(format!(
+        "No SKILL.md found in {}. A skill directory must contain a SKILL.md file. If this folder has multiple skills in subdirectories, use --recursive.",
+        path.display()
+    )))
+}
+
+fn extract_zip_to_temp(zip_path: &Path) -> CliResult<tempfile::TempDir> {
+    let temp_dir = TempDir::new().map_err(CliError::Io)?;
+    let extract_path = temp_dir.path();
+    use fastskill::storage::zip::ZipHandler;
+    let zip_handler = ZipHandler::new()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+    zip_handler
+        .extract_to_dir(zip_path, extract_path)
+        .map_err(|e| match e {
+            fastskill::core::service::ServiceError::Validation(msg) => {
+                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
+            }
+            fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
+            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+        })?;
+    Ok(temp_dir)
+}
+
+async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
+    info!("Adding skill from zip file: {}", zip_path.display());
     if !zip_path.exists() {
         return Err(CliError::InvalidSource(format!(
             "Zip file does not exist: {}",
             zip_path.display()
         )));
     }
-
-    // Extract zip to temporary directory
-    let temp_dir = TempDir::new().map_err(CliError::Io)?;
-    let extract_path = temp_dir.path();
-
-    // Extract zip file safely using shared handler
-    {
-        use fastskill::storage::zip::ZipHandler;
-        let zip_handler = ZipHandler::new()
-            .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
-        zip_handler
-            .extract_to_dir(zip_path, extract_path)
-            .map_err(|e| match e {
-                fastskill::core::service::ServiceError::Validation(msg) => {
-                    CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
-                }
-                fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
-                _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
-            })?;
-    }
-
-    // Find SKILL.md in extracted directory
+    let _temp_dir = extract_zip_to_temp(zip_path)?;
+    let extract_path = _temp_dir.path();
     let skill_path = find_skill_in_directory(extract_path)?;
-    validate_skill_structure(&skill_path, verbose)?;
-
-    // Read and parse SKILL.md to create skill definition
-    // Skill ID will be read from skill-project.toml (mandatory)
+    validate_skill_structure(&skill_path, ctx.verbose)?;
     let skill_def = create_skill_from_path(&skill_path)?;
-
-    // Copy skill to skills storage directory
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(skill_def.id.as_str());
-    if skill_storage_dir.exists() {
-        if !force {
-            return Err(CliError::Config(format!(
-                "Skill directory '{}' already exists. Use --force to overwrite.",
-                skill_storage_dir.display()
-            )));
-        }
-        // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
-    }
-
-    // Copy skill directory to storage
-    copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
-
-    // Update skill file path to point to the copied location
-    let mut skill_def = skill_def;
-    skill_def.skill_file = skill_storage_dir.join("SKILL.md");
-
-    // Register the skill (force or regular based on flag)
-    if force {
-        service
-            .skill_manager()
-            .force_register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    } else {
-        // Check if skill already exists only when not forcing
-        if service
-            .skill_manager()
-            .get_skill(&skill_def.id)
-            .await
-            .map_err(CliError::Service)?
-            .is_some()
-        {
-            return Err(CliError::Config(format!(
-                "Skill '{}' already exists. Use --force to overwrite.",
-                skill_def.id
-            )));
-        }
-        service
-            .skill_manager()
-            .register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    }
-
-    // Update source tracking in skill definition
-    skill_def.source_url = Some(zip_path.to_string_lossy().to_string());
-    skill_def.source_type = Some(SourceType::ZipFile);
-    skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = editable;
-
-    // Update skill with source tracking
-    service
-        .skill_manager()
-        .update_skill(
-            &skill_def.id,
-            fastskill::core::skill_manager::SkillUpdate {
-                source_url: skill_def.source_url.clone(),
-                source_type: skill_def.source_type.clone(),
-                fetched_at: skill_def.fetched_at,
-                editable: Some(skill_def.editable),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| {
-            crate::cli::utils::service_error_to_cli(
-                e,
-                service.config().skill_storage_path.as_path(),
-                global,
-            )
-        })?;
-
-    // T028: Update skill-project.toml and skills.lock
-    update_project_files(&skill_def, groups.clone(), editable)?;
-
-    println!(
-        "Successfully added skill: {} (v{})",
-        skill_def.name, skill_def.version
-    );
-    println!(
-        "{}",
-        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
-    Ok(())
+    let version = skill_def.version.clone();
+    let target = InstallTarget {
+        storage_dir: ctx
+            .service
+            .config()
+            .skill_storage_path
+            .join(skill_def.id.as_str()),
+        meta: SourceMeta {
+            source_url: Some(zip_path.to_string_lossy().to_string()),
+            source_type: Some(SourceType::ZipFile),
+            source_branch: None,
+            source_tag: None,
+            source_subdir: None,
+            installed_from: None,
+        },
+        version_display: version,
+    };
+    install_copied_skill(ctx, &skill_path, skill_def, target).await
 }
 
-async fn add_from_folder(
-    service: &FastSkillService,
-    folder_path: &Path,
-    force: bool,
-    editable: bool,
-    groups: Vec<String>,
-    verbose: bool,
-    global: bool,
-) -> CliResult<()> {
+async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
-
-    // Validate folder structure
-    validate_skill_structure(folder_path, verbose)?;
-
-    // Read and parse SKILL.md to create skill definition
-    // Skill ID will be read from skill-project.toml (mandatory)
+    validate_skill_structure(folder_path, ctx.verbose)?;
     let skill_def = create_skill_from_path(folder_path)?;
-
-    // Copy skill to skills storage directory (local skills stored at id path, no scope)
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(skill_def.id.as_str());
-    if skill_storage_dir.exists() {
-        if !force {
-            return Err(CliError::Config(format!(
-                "Skill directory '{}' already exists. Use --force to overwrite.",
-                skill_storage_dir.display()
-            )));
-        }
-        // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
-    }
-
-    // Copy skill directory to storage
-    copy_dir_recursive(folder_path, &skill_storage_dir).await?;
-
-    // Update skill file path to point to the copied location
-    let mut skill_def = skill_def;
-    skill_def.skill_file = skill_storage_dir.join("SKILL.md");
-
-    // Register the skill (force or regular based on flag)
-    if force {
-        service
-            .skill_manager()
-            .force_register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    } else {
-        // Check if skill already exists only when not forcing
-        if service
-            .skill_manager()
-            .get_skill(&skill_def.id)
-            .await
-            .map_err(CliError::Service)?
-            .is_some()
-        {
-            return Err(CliError::Config(format!(
-                "Skill '{}' already exists. Use --force to overwrite.",
-                skill_def.id
-            )));
-        }
-        service
-            .skill_manager()
-            .register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    }
-
-    // Update source tracking in skill definition
-    skill_def.source_url = Some(folder_path.to_string_lossy().to_string());
-    skill_def.source_type = Some(SourceType::LocalPath);
-    skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = editable;
-
-    // Update skill with source tracking
-    service
-        .skill_manager()
-        .update_skill(
-            &skill_def.id,
-            fastskill::core::skill_manager::SkillUpdate {
-                source_url: skill_def.source_url.clone(),
-                source_type: skill_def.source_type.clone(),
-                fetched_at: skill_def.fetched_at,
-                editable: Some(skill_def.editable),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| {
-            crate::cli::utils::service_error_to_cli(
-                e,
-                service.config().skill_storage_path.as_path(),
-                global,
-            )
-        })?;
-
-    // T028: Update skill-project.toml and skills.lock
-    update_project_files(&skill_def, groups.clone(), editable)?;
-
-    println!(
-        "Successfully added skill: {} (v{})",
-        skill_def.name, skill_def.version
-    );
-    println!(
-        "{}",
-        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
-    Ok(())
+    let target = InstallTarget {
+        storage_dir: ctx
+            .service
+            .config()
+            .skill_storage_path
+            .join(skill_def.id.as_str()),
+        meta: SourceMeta {
+            source_url: Some(folder_path.to_string_lossy().to_string()),
+            source_type: Some(SourceType::LocalPath),
+            source_branch: None,
+            source_tag: None,
+            source_subdir: None,
+            installed_from: None,
+        },
+        version_display: skill_def.version.clone(),
+    };
+    install_copied_skill(ctx, folder_path, skill_def, target).await
 }
 
-async fn add_from_git(
-    service: &FastSkillService,
+async fn clone_and_validate_skill(
     git_url: &str,
     branch: Option<&str>,
     tag: Option<&str>,
-    force: bool,
-    editable: bool,
-    groups: Vec<String>,
-    verbose: bool,
-    global: bool,
-) -> CliResult<()> {
-    info!("Adding skill from git URL: {}", git_url);
-
-    // Parse git URL
+) -> CliResult<(
+    TempDir,
+    PathBuf,
+    SkillDefinition,
+    Option<String>,
+    Option<String>,
+)> {
+    use fastskill::storage::git::{clone_repository, validate_cloned_skill};
     let git_info = parse_git_url(git_url)?;
     let branch = branch.or(git_info.branch.as_deref());
-
-    // Clone repository
-    {
-        // Access through the storage module
-        use fastskill::storage::git::{clone_repository, validate_cloned_skill};
-        let temp_dir = clone_repository(&git_info.repo_url, branch, tag, None)
-            .await
-            .map_err(|e| CliError::GitCloneFailed(e.to_string()))?;
-
-        // Determine the skill directory path (handle subdir for tree URLs)
-        let skill_base_path = if let Some(subdir) = &git_info.subdir {
+    let temp_dir = clone_repository(&git_info.repo_url, branch, tag, None)
+        .await
+        .map_err(|e| CliError::GitCloneFailed(e.to_string()))?;
+    let skill_base_path = match &git_info.subdir {
+        Some(subdir) => {
             let subdir_path = temp_dir.path().join(subdir);
             if !subdir_path.exists() {
                 return Err(CliError::InvalidSource(format!(
@@ -620,209 +499,158 @@ async fn add_from_git(
                 )));
             }
             subdir_path
-        } else {
-            temp_dir.path().to_path_buf()
-        };
-
-        // Validate cloned skill structure
-        let skill_path = validate_cloned_skill(&skill_base_path)
-            .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
-
-        // Validate skill structure
-        validate_skill_structure(&skill_path, verbose)?;
-
-        // Read and parse SKILL.md to create skill definition
-        // Skill ID will be read from skill-project.toml (mandatory)
-        let skill_def = create_skill_from_path(&skill_path)?;
-
-        // Copy skill to skills storage directory (local skills stored at id path, no scope)
-        let skill_storage_dir = service
-            .config()
-            .skill_storage_path
-            .join(skill_def.id.as_str());
-        if skill_storage_dir.exists() {
-            if !force {
-                return Err(CliError::Config(format!(
-                    "Skill directory '{}' already exists. Use --force to overwrite.",
-                    skill_storage_dir.display()
-                )));
-            }
-            // Remove existing directory
-            tokio::fs::remove_dir_all(&skill_storage_dir)
-                .await
-                .map_err(CliError::Io)?;
         }
-
-        // Copy skill directory to storage
-        copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
-
-        // Update skill file path to point to the copied location
-        let mut skill_def = skill_def;
-        skill_def.skill_file = skill_storage_dir.join("SKILL.md");
-
-        // Register the skill (force or regular based on flag)
-        if force {
-            service
-                .skill_manager()
-                .force_register_skill(skill_def.clone())
-                .await
-                .map_err(CliError::Service)?;
-        } else {
-            // Check if skill already exists only when not forcing
-            if service
-                .skill_manager()
-                .get_skill(&skill_def.id)
-                .await
-                .map_err(CliError::Service)?
-                .is_some()
-            {
-                return Err(CliError::Config(format!(
-                    "Skill '{}' already exists. Use --force to overwrite.",
-                    skill_def.id
-                )));
-            }
-            service
-                .skill_manager()
-                .register_skill(skill_def.clone())
-                .await
-                .map_err(CliError::Service)?;
-        }
-
-        // Update source tracking in skill definition
-        skill_def.source_url = Some(git_url.to_string());
-        skill_def.source_type = Some(SourceType::GitUrl);
-        skill_def.source_branch = branch.map(|s| s.to_string());
-        skill_def.source_tag = tag.map(|s| s.to_string());
-        skill_def.source_subdir = git_info.subdir.clone();
-        skill_def.fetched_at = Some(Utc::now());
-        skill_def.editable = editable;
-        // TODO: Get commit hash from git repository
-
-        // Update skill with source tracking
-        service
-            .skill_manager()
-            .update_skill(
-                &skill_def.id,
-                fastskill::core::skill_manager::SkillUpdate {
-                    source_url: skill_def.source_url.clone(),
-                    source_type: skill_def.source_type.clone(),
-                    source_branch: skill_def.source_branch.clone(),
-                    source_tag: skill_def.source_tag.clone(),
-                    source_subdir: skill_def.source_subdir.clone(),
-                    fetched_at: skill_def.fetched_at,
-                    editable: Some(skill_def.editable),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| {
-                crate::cli::utils::service_error_to_cli(
-                    e,
-                    service.config().skill_storage_path.as_path(),
-                    global,
-                )
-            })?;
-
-        // T028: Update skill-project.toml and skills.lock
-        update_project_files(&skill_def, groups.clone(), editable)?;
-
-        println!(
-            "Successfully added skill: {} (v{})",
-            skill_def.name, skill_def.version
-        );
-        println!(
-            "{}",
-            crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
-        );
-        Ok(())
-    }
+        None => temp_dir.path().to_path_buf(),
+    };
+    let skill_path = validate_cloned_skill(&skill_base_path)
+        .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
+    let skill_def = create_skill_from_path(&skill_path)?;
+    Ok((
+        temp_dir,
+        skill_path,
+        skill_def,
+        branch.map(String::from),
+        tag.map(String::from),
+    ))
 }
 
-/// Add skill from registry
-async fn add_from_registry(
-    service: &FastSkillService,
-    skill_id_input: &str,
-    force: bool,
-    editable: bool,
-    groups: Vec<String>,
-    verbose: bool,
-    global: bool,
+async fn add_from_git(
+    ctx: &AddContext<'_>,
+    git_url: &str,
+    branch: Option<&str>,
+    tag: Option<&str>,
 ) -> CliResult<()> {
-    info!("Adding skill from registry: {}", skill_id_input);
+    info!("Adding skill from git URL: {}", git_url);
+    let (_temp_dir, skill_path, skill_def, branch_opt, tag_opt) =
+        clone_and_validate_skill(git_url, branch, tag).await?;
+    validate_skill_structure(&skill_path, ctx.verbose)?;
+    let git_info = parse_git_url(git_url)?;
+    let target = InstallTarget {
+        storage_dir: ctx
+            .service
+            .config()
+            .skill_storage_path
+            .join(skill_def.id.as_str()),
+        meta: SourceMeta {
+            source_url: Some(git_url.to_string()),
+            source_type: Some(SourceType::GitUrl),
+            source_branch: branch_opt.or(git_info.branch),
+            source_tag: tag_opt,
+            source_subdir: git_info.subdir,
+            installed_from: None,
+        },
+        version_display: skill_def.version.clone(),
+    };
+    install_copied_skill(ctx, &skill_path, skill_def, target).await
+}
 
-    // Parse skill ID and version
+fn parse_registry_scope_id(
+    skill_id_input: &str,
+) -> CliResult<(String, String, String, Option<String>)> {
     let (skill_id_full, version_opt) = parse_skill_id(skill_id_input);
+    let (scope, expected_id) = match skill_id_full.find('/') {
+        Some(slash_pos) => (
+            skill_id_full[..slash_pos].to_string(),
+            skill_id_full[slash_pos + 1..].to_string(),
+        ),
+        None => {
+            return Err(CliError::Config(format!(
+                "Registry skill ID must be in format 'scope/id', got: {}",
+                skill_id_full
+            )));
+        }
+    };
+    Ok((skill_id_full, scope, expected_id, version_opt))
+}
 
-    // Extract scope and id from skill_id (format: scope/id or just id)
-    let (scope, expected_id) = if let Some(slash_pos) = skill_id_full.find('/') {
-        let s = &skill_id_full[..slash_pos];
-        let i = &skill_id_full[slash_pos + 1..];
-        (s.to_string(), i.to_string())
-    } else {
-        // No scope provided, use "default" or error?
-        // For now, treat as unscoped (local skill)
+async fn resolve_registry_version(
+    repo_client: &(dyn fastskill::core::repository::RepositoryClient + Send + Sync),
+    skill_id_full: &str,
+    version_opt: Option<String>,
+) -> CliResult<String> {
+    if let Some(v) = version_opt {
+        return Ok(v);
+    }
+    let versions = repo_client
+        .get_versions(skill_id_full)
+        .await
+        .map_err(|e| CliError::Config(format!("Failed to get versions: {}", e)))?;
+    if versions.is_empty() {
         return Err(CliError::Config(format!(
-            "Registry skill ID must be in format 'scope/id', got: {}",
+            "No versions found for skill '{}' in repository",
             skill_id_full
         )));
-    };
+    }
+    let mut sorted = versions;
+    sorted.sort();
+    sorted
+        .last()
+        .cloned()
+        .ok_or_else(|| CliError::Config("No versions available".to_string()))
+}
 
-    // Load repository configuration from skill-project.toml [tool.fastskill.repositories]
+async fn download_registry_package(
+    repo_client: &(dyn fastskill::core::repository::RepositoryClient + Send + Sync),
+    skill_id_full: &str,
+    version: &str,
+    verbose: bool,
+) -> CliResult<(TempDir, PathBuf, SkillDefinition)> {
+    let zip_data = repo_client
+        .download(skill_id_full, version)
+        .await
+        .map_err(|e| CliError::Config(format!("Failed to download package: {}", e)))?;
+    let temp_dir = TempDir::new().map_err(CliError::Io)?;
+    let extract_path = temp_dir.path().join("extracted");
+    fs::create_dir_all(&extract_path).map_err(CliError::Io)?;
+    let temp_zip = temp_dir.path().join(format!("package-{}.zip", version));
+    std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
+    use fastskill::storage::zip::ZipHandler;
+    let zip_handler = ZipHandler::new()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+    zip_handler
+        .extract_to_dir(&temp_zip, &extract_path)
+        .map_err(|e| match e {
+            fastskill::core::service::ServiceError::Validation(msg) => {
+                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
+            }
+            fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
+            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+        })?;
+    let skill_path = find_skill_in_directory(&extract_path)?;
+    validate_skill_structure(&skill_path, verbose)?;
+    let skill_def = create_skill_from_path(&skill_path)?;
+    Ok((temp_dir, skill_path, skill_def))
+}
+
+async fn add_from_registry(ctx: &AddContext<'_>, skill_id_input: &str) -> CliResult<()> {
+    info!("Adding skill from registry: {}", skill_id_input);
+    let (skill_id_full, scope, expected_id, version_opt) = parse_registry_scope_id(skill_id_input)?;
+
     let repositories = crate::cli::config::load_repositories_from_project()?;
     let repo_manager = RepositoryManager::from_definitions(repositories);
-
-    // Get default repository (prefer http-registry type, fallback to any)
     let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
         CliError::Config(
             "No default repository configured. Use 'fastskill registry add' to add a repository."
                 .to_string(),
         )
     })?;
-
-    // For now, we only support http-registry type for add command
-    // TODO: Support other repository types
     if !matches!(
         default_repo.repo_type,
         fastskill::core::repository::RepositoryType::HttpRegistry
     ) {
-        return Err(CliError::Config(
-            format!("Repository '{}' is not an http-registry type. Only http-registry repositories are supported for 'fastskill add' currently.", default_repo.name)
-        ));
+        return Err(CliError::Config(format!(
+            "Repository '{}' is not an http-registry type. Only http-registry repositories are supported for 'fastskill add' currently.",
+            default_repo.name
+        )));
     }
 
-    // Get repository client
     let repo_client = repo_manager
         .get_client(&default_repo.name)
         .await
         .map_err(|e| CliError::Config(format!("Failed to get repository client: {}", e)))?;
+    let version =
+        resolve_registry_version(repo_client.as_ref(), &skill_id_full, version_opt).await?;
 
-    // Determine version to use
-    let version = if let Some(v) = version_opt {
-        v
-    } else {
-        // Get all versions and pick the latest
-        let versions = repo_client
-            .get_versions(&skill_id_full)
-            .await
-            .map_err(|e| CliError::Config(format!("Failed to get versions: {}", e)))?;
-
-        if versions.is_empty() {
-            return Err(CliError::Config(format!(
-                "No versions found for skill '{}' in repository",
-                skill_id_full
-            )));
-        }
-
-        // Sort versions and get latest (simple string comparison for now)
-        let mut sorted_versions = versions;
-        sorted_versions.sort();
-        sorted_versions
-            .last()
-            .ok_or_else(|| CliError::Config("No versions available".to_string()))?
-            .clone()
-    };
-
-    // Get skill metadata to verify it exists
     let _skill_metadata = repo_client
         .get_skill(&skill_id_full, Some(&version))
         .await
@@ -834,51 +662,14 @@ async fn add_from_registry(
             ))
         })?;
 
-    // Download package
     info!(
         "Downloading {}@{} from repository...",
         skill_id_full, version
     );
-    let zip_data = repo_client
-        .download(&skill_id_full, &version)
-        .await
-        .map_err(|e| CliError::Config(format!("Failed to download package: {}", e)))?;
+    let (_temp_dir, skill_path, skill_def) =
+        download_registry_package(repo_client.as_ref(), &skill_id_full, &version, ctx.verbose)
+            .await?;
 
-    // Extract to temporary directory
-    // The skill ID will be read from skill-project.toml in the extracted package
-    let temp_dir = TempDir::new().map_err(CliError::Io)?;
-    let extract_path = temp_dir.path().join("extracted");
-    fs::create_dir_all(&extract_path).map_err(CliError::Io)?;
-
-    // Write ZIP to temp file
-    let temp_zip = temp_dir.path().join(format!("package-{}.zip", version));
-    std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
-
-    // Extract ZIP safely using shared handler
-    {
-        use fastskill::storage::zip::ZipHandler;
-        let zip_handler = ZipHandler::new()
-            .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
-        zip_handler
-            .extract_to_dir(&temp_zip, &extract_path)
-            .map_err(|e| match e {
-                fastskill::core::service::ServiceError::Validation(msg) => {
-                    CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
-                }
-                fastskill::core::service::ServiceError::Io(err) => CliError::Io(err),
-                _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
-            })?;
-    }
-
-    // Find SKILL.md in extracted directory
-    let skill_path = find_skill_in_directory(&extract_path)?;
-    validate_skill_structure(&skill_path, verbose)?;
-
-    // Read and parse SKILL.md to create skill definition
-    // Skill ID will be read from skill-project.toml in the extracted package (mandatory)
-    let skill_def = create_skill_from_path(&skill_path)?;
-
-    // Verify that the extracted id matches the expected id from the registry reference
     if skill_def.id.as_str() != expected_id {
         return Err(CliError::Config(format!(
             "Skill ID mismatch: expected '{}' from registry reference '{}', but found '{}' in skill-project.toml",
@@ -886,101 +677,24 @@ async fn add_from_registry(
         )));
     }
 
-    // Copy skill to skills storage directory at scope/id path
-    let skill_storage_dir = service
-        .config()
-        .skill_storage_path
-        .join(&scope)
-        .join(skill_def.id.as_str());
-    if skill_storage_dir.exists() {
-        if !force {
-            return Err(CliError::Config(format!(
-                "Skill directory '{}' already exists. Use --force to overwrite.",
-                skill_storage_dir.display()
-            )));
-        }
-        // Remove existing directory
-        tokio::fs::remove_dir_all(&skill_storage_dir)
-            .await
-            .map_err(CliError::Io)?;
-    }
-
-    // Copy skill directory to storage
-    copy_dir_recursive(&skill_path, &skill_storage_dir).await?;
-
-    // Update skill file path to point to the copied location
-    let mut skill_def = skill_def;
-    skill_def.skill_file = skill_storage_dir.join("SKILL.md");
-
-    // Register the skill
-    if force {
-        service
-            .skill_manager()
-            .force_register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    } else {
-        if service
-            .skill_manager()
-            .get_skill(&skill_def.id)
-            .await
-            .map_err(CliError::Service)?
-            .is_some()
-        {
-            return Err(CliError::Config(format!(
-                "Skill '{}' already exists. Use --force to overwrite.",
-                skill_def.id
-            )));
-        }
-        service
-            .skill_manager()
-            .register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    }
-
-    // Update source tracking - use Source type for repository
-    skill_def.source_url = None; // Repository clients handle download internally
-    skill_def.source_type = Some(SourceType::Source);
-    skill_def.installed_from = Some(default_repo.name.clone());
-    skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = editable;
-
-    // Update skill with source tracking
-    service
-        .skill_manager()
-        .update_skill(
-            &skill_def.id,
-            fastskill::core::skill_manager::SkillUpdate {
-                source_url: skill_def.source_url.clone(),
-                source_type: skill_def.source_type.clone(),
-                installed_from: skill_def.installed_from.clone(),
-                fetched_at: skill_def.fetched_at,
-                editable: Some(skill_def.editable),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| {
-            crate::cli::utils::service_error_to_cli(
-                e,
-                service.config().skill_storage_path.as_path(),
-                global,
-            )
-        })?;
-
-    // T028: Update skill-project.toml and skills.lock
-    update_project_files(&skill_def, groups.clone(), editable)?;
-
-    println!(
-        "Successfully added skill: {} (v{}) from registry",
-        skill_def.name, version
-    );
-    println!(
-        "{}",
-        crate::cli::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
-    Ok(())
+    let target = InstallTarget {
+        storage_dir: ctx
+            .service
+            .config()
+            .skill_storage_path
+            .join(&scope)
+            .join(skill_def.id.as_str()),
+        meta: SourceMeta {
+            source_url: None,
+            source_type: Some(SourceType::Source),
+            source_branch: None,
+            source_tag: None,
+            source_subdir: None,
+            installed_from: Some(default_repo.name.clone()),
+        },
+        version_display: version,
+    };
+    install_copied_skill(ctx, &skill_path, skill_def, target).await
 }
 
 /// Read skill ID from skill-project.toml (mandatory)
@@ -1112,84 +826,41 @@ mod tests {
     use fastskill::{FastSkillService, ServiceConfig};
     use tempfile::TempDir;
 
-    #[tokio::test]
-    async fn test_execute_add_nonexistent_source() {
+    async fn run_add_expect_err(source: &str, source_type: Option<&str>, force: bool) {
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
             skill_storage_path: temp_dir.path().to_path_buf(),
             ..Default::default()
         };
-
         let mut service = FastSkillService::new(config).await.unwrap();
         service.initialize().await.unwrap();
-
         let args = AddArgs {
-            source: "/nonexistent/path".to_string(),
-            source_type: Some("local".to_string()),
+            source: source.to_string(),
+            source_type: source_type.map(String::from),
             branch: None,
             tag: None,
-            force: false,
+            force,
             editable: false,
             group: None,
             recursive: false,
         };
-
         let result = execute_add(&service, args, false, false).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_add_nonexistent_source() {
+        run_add_expect_err("/nonexistent/path", Some("local"), false).await;
     }
 
     #[tokio::test]
     async fn test_execute_add_invalid_skill_id() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = ServiceConfig {
-            skill_storage_path: temp_dir.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = AddArgs {
-            source: "invalid@skill@id".to_string(),
-            source_type: Some("registry".to_string()),
-            branch: None,
-            tag: None,
-            force: false,
-            editable: false,
-            group: None,
-            recursive: false,
-        };
-
-        let result = execute_add(&service, args, false, false).await;
-        // May fail due to invalid format or missing registry
-        assert!(result.is_err());
+        run_add_expect_err("invalid@skill@id", Some("registry"), false).await;
     }
 
     #[tokio::test]
     async fn test_execute_add_with_force_flag() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = ServiceConfig {
-            skill_storage_path: temp_dir.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = AddArgs {
-            source: "/nonexistent/path".to_string(),
-            source_type: Some("local".to_string()),
-            branch: None,
-            tag: None,
-            force: true,
-            editable: false,
-            group: None,
-            recursive: false,
-        };
-
-        // Should still fail because source doesn't exist, but force flag is accepted
-        let result = execute_add(&service, args, false, false).await;
-        assert!(result.is_err());
+        run_add_expect_err("/nonexistent/path", Some("local"), true).await;
     }
 
     #[tokio::test]

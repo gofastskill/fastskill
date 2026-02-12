@@ -4,8 +4,7 @@ use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
 use clap::Args;
 use fastskill::core::manifest::{
-    DependenciesSection, DependencySpec, FastSkillToolConfig, MetadataSection, SkillProjectToml,
-    ToolSection,
+    DependenciesSection, FastSkillToolConfig, MetadataSection, SkillProjectToml, ToolSection,
 };
 use fastskill::core::metadata::parse_yaml_frontmatter;
 use fastskill::core::validation::{
@@ -52,28 +51,62 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
     println!("FastSkill Skill Initialization");
     println!();
 
-    // Check if skill-project.toml already exists
     let skill_project_path = Path::new("skill-project.toml");
-    if skill_project_path.exists() && !args.force {
+    ensure_can_init(skill_project_path, args.force)?;
+
+    let is_skill_level = Path::new("SKILL.md").exists();
+    let (skill_md_content, frontmatter) = load_skill_md_and_frontmatter(is_skill_level)?;
+
+    let version = resolve_version(&args, &frontmatter, skill_md_content.as_deref())?;
+    let description = resolve_description(&args, &frontmatter)?;
+    let author = resolve_author(&args, &frontmatter)?;
+    let download_url = resolve_download_url(&args)?;
+    let skills_directory = resolve_skills_directory(is_skill_level, &args)?;
+
+    let skill_id = resolve_skill_id()?;
+
+    let meta = InitMetadata {
+        skill_id: &skill_id,
+        version: version.clone(),
+        description,
+        author,
+        download_url,
+        skills_directory: &skills_directory,
+    };
+    let skill_project = build_skill_project(meta)?;
+
+    skill_project
+        .save_to_file(skill_project_path)
+        .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+
+    append_tool_comment(skill_project_path, is_skill_level)?;
+
+    let context = fastskill::core::project::detect_context(skill_project_path);
+    skill_project.validate_for_context(context).map_err(|e| {
+        CliError::Config(format!(
+            "skill-project.toml validation failed after creation: {}",
+            e
+        ))
+    })?;
+
+    print_success(is_skill_level, &version, skills_directory.as_deref());
+    Ok(())
+}
+
+fn ensure_can_init(path: &Path, force: bool) -> CliResult<()> {
+    if path.exists() && !force {
         return Err(CliError::Config(
             "skill-project.toml already exists. Use --force to overwrite.".to_string(),
         ));
     }
+    Ok(())
+}
 
-    // Detect context: skill-level if SKILL.md exists, otherwise project-level (T040)
-    let skill_md_exists = Path::new("SKILL.md").exists();
-    let is_skill_level = skill_md_exists;
-
-    // Read SKILL.md if it exists to extract metadata from frontmatter
-    let (skill_md_content, frontmatter) = if skill_md_exists {
-        let content = fs::read_to_string("SKILL.md")
-            .map_err(|e| CliError::Config(format!("Failed to read SKILL.md: {}", e)))?;
-        let frontmatter = parse_yaml_frontmatter(&content).map_err(|e| {
-            CliError::Config(format!("Failed to parse SKILL.md frontmatter: {}", e))
-        })?;
-        (Some(content), frontmatter)
-    } else {
-        (
+fn load_skill_md_and_frontmatter(
+    skill_md_exists: bool,
+) -> CliResult<(Option<String>, fastskill::core::metadata::SkillFrontmatter)> {
+    if !skill_md_exists {
+        return Ok((
             None,
             fastskill::core::metadata::SkillFrontmatter {
                 name: String::new(),
@@ -84,91 +117,106 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
                 compatibility: None,
                 metadata: None,
                 allowed_tools: None,
-                extra: std::collections::HashMap::new(),
+                extra: HashMap::new(),
             },
-        )
-    };
+        ));
+    }
+    let content = fs::read_to_string("SKILL.md")
+        .map_err(|e| CliError::Config(format!("Failed to read SKILL.md: {}", e)))?;
+    let frontmatter = parse_yaml_frontmatter(&content)
+        .map_err(|e| CliError::Config(format!("Failed to parse SKILL.md frontmatter: {}", e)))?;
+    Ok((Some(content), frontmatter))
+}
 
-    // Extract version (priority: CLI arg > frontmatter > prompt/default)
-    let version = if let Some(version_arg) = args.version {
-        // Validate version format
-        validate_semver(&version_arg)
+fn resolve_version(
+    args: &InitArgs,
+    frontmatter: &fastskill::core::metadata::SkillFrontmatter,
+    skill_md_content: Option<&str>,
+) -> CliResult<String> {
+    if let Some(ref version_arg) = args.version {
+        validate_semver(version_arg)
             .map_err(|e| CliError::InvalidSemver(format!("{}: {}", version_arg, e)))?;
-        version_arg
-    } else if let Some(ref version) = frontmatter.version {
-        if !version.is_empty() {
-            validate_semver(version)
-                .map_err(|e| CliError::InvalidSemver(format!("{}: {}", version, e)))?;
-            version.clone()
-        } else {
-            extract_version_from_skill_md(
-                skill_md_content.as_ref().unwrap_or(&String::new()),
-                args.yes,
-            )?
+        return Ok(version_arg.clone());
+    }
+    if let Some(ref v) = frontmatter.version {
+        if !v.is_empty() {
+            validate_semver(v).map_err(|e| CliError::InvalidSemver(format!("{}: {}", v, e)))?;
+            return Ok(v.clone());
         }
-    } else if let Some(ref content) = skill_md_content {
-        extract_version_from_skill_md(content, args.yes)?
-    } else {
-        // Default version when no SKILL.md
-        if args.yes {
-            "1.0.0".to_string()
-        } else {
-            extract_version_from_skill_md("", args.yes)?
-        }
-    };
+    }
+    let content = skill_md_content.unwrap_or("");
+    extract_version_from_skill_md(content, args.yes)
+}
 
-    // Extract description (priority: CLI arg > frontmatter > prompt/default)
-    let description = if let Some(desc_arg) = args.description {
-        Some(desc_arg)
-    } else if !frontmatter.description.is_empty() {
-        Some(frontmatter.description.clone())
-    } else if !args.yes {
-        prompt_for_field("Description", None)?
-    } else {
-        None
-    };
+fn resolve_description(
+    args: &InitArgs,
+    frontmatter: &fastskill::core::metadata::SkillFrontmatter,
+) -> CliResult<Option<String>> {
+    if let Some(ref d) = args.description {
+        return Ok(Some(d.clone()));
+    }
+    if !frontmatter.description.is_empty() {
+        return Ok(Some(frontmatter.description.clone()));
+    }
+    if !args.yes {
+        return prompt_for_field("Description", None);
+    }
+    Ok(None)
+}
 
-    // Extract author (priority: CLI arg > frontmatter > prompt/default)
-    let author = if let Some(author_arg) = args.author {
-        Some(author_arg)
-    } else if let Some(frontmatter_author) = frontmatter.author.clone() {
-        Some(frontmatter_author)
-    } else if !args.yes {
-        prompt_for_field("Author", None).ok().flatten()
-    } else {
-        None
-    };
+fn resolve_author(
+    args: &InitArgs,
+    frontmatter: &fastskill::core::metadata::SkillFrontmatter,
+) -> CliResult<Option<String>> {
+    if let Some(ref a) = args.author {
+        return Ok(Some(a.clone()));
+    }
+    if let Some(ref a) = frontmatter.author {
+        return Ok(Some(a.clone()));
+    }
+    if !args.yes {
+        return Ok(prompt_for_field("Author", None).ok().flatten());
+    }
+    Ok(None)
+}
 
-    // Extract download_url (priority: CLI arg > prompt/default)
-    let download_url = if let Some(url_arg) = args.download_url {
-        Some(url_arg)
-    } else if !args.yes {
-        prompt_for_field("Download URL", None).ok().flatten()
-    } else {
-        None
-    };
+fn resolve_download_url(args: &InitArgs) -> CliResult<Option<String>> {
+    if let Some(ref u) = args.download_url {
+        return Ok(Some(u.clone()));
+    }
+    if !args.yes {
+        return Ok(prompt_for_field("Download URL", None).ok().flatten());
+    }
+    Ok(None)
+}
 
-    // Extract skills_directory for project-level init (required)
-    let skills_directory = if !is_skill_level {
-        // Project-level: skills_directory is required
-        if let Some(dir_arg) = args.skills_dir {
-            Some(dir_arg)
-        } else if !args.yes {
-            // Prompt for skills directory
-            prompt_for_field("Skills directory", Some(".claude/skills"))?
-                .or(Some(".claude/skills".to_string()))
-        } else {
-            // Error: --skills-dir is required for project-level init with --yes
-            return Err(CliError::Config(
-                "Project-level init requires --skills-dir <path>. Provide --skills-dir or remove --yes to be prompted.".to_string()
-            ));
-        }
-    } else {
-        // Skill-level: skills_directory is optional
-        args.skills_dir
-    };
+fn resolve_skills_directory(is_skill_level: bool, args: &InitArgs) -> CliResult<Option<String>> {
+    if is_skill_level {
+        return Ok(args.skills_dir.clone());
+    }
+    if let Some(ref dir) = args.skills_dir {
+        return Ok(Some(dir.clone()));
+    }
+    if !args.yes {
+        let dir = prompt_for_field("Skills directory", Some(".claude/skills"))?
+            .or(Some(".claude/skills".to_string()));
+        return Ok(dir);
+    }
+    Err(CliError::Config(
+        "Project-level init requires --skills-dir <path>. Provide --skills-dir or remove --yes to be prompted.".to_string()
+    ))
+}
 
-    // Extract skill ID from current directory name
+struct InitMetadata<'a> {
+    skill_id: &'a str,
+    version: String,
+    description: Option<String>,
+    author: Option<String>,
+    download_url: Option<String>,
+    skills_directory: &'a Option<String>,
+}
+
+fn resolve_skill_id() -> CliResult<String> {
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let skill_id = current_dir
@@ -177,33 +225,24 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
         .ok_or_else(|| {
             CliError::Config("Cannot determine skill ID from current directory name".to_string())
         })?;
-
-    // Validate skill ID format
     validate_identifier(skill_id)
         .map_err(|e| CliError::InvalidIdentifier(format!("Skill ID '{}': {}", skill_id, e)))?;
-    let skill_id = skill_id.to_string();
+    Ok(skill_id.to_string())
+}
 
-    // Create skill-project.toml
-    let version_clone = version.clone();
-
-    // Build metadata section (required - must have at least id and version)
+fn build_skill_project(meta: InitMetadata<'_>) -> CliResult<SkillProjectToml> {
     let metadata = Some(MetadataSection {
-        id: Some(skill_id),
-        version: Some(version),
-        description,
-        author,
-        download_url,
+        id: Some(meta.skill_id.to_string()),
+        version: Some(meta.version),
+        description: meta.description,
+        author: meta.author,
+        download_url: meta.download_url,
         name: None,
     });
-
-    // Create dependencies section based on context
-    // For project-level, create [dependencies]; for skill-level, also create it for consistency
     let dependencies = Some(DependenciesSection {
-        dependencies: HashMap::<String, DependencySpec>::new(),
+        dependencies: HashMap::new(),
     });
-
-    // Build tool section with skills_directory if provided
-    let tool = skills_directory.as_ref().map(|dir| ToolSection {
+    let tool = meta.skills_directory.as_ref().map(|dir| ToolSection {
         fastskill: Some(FastSkillToolConfig {
             skills_directory: Some(std::path::PathBuf::from(dir)),
             embedding: None,
@@ -211,26 +250,18 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
             server: None,
         }),
     });
-
-    // Metadata is now always required (must have id and version)
-    // Validate that at least one section exists
     validate_project_structure(true, dependencies.is_some())
         .map_err(|e| CliError::ProjectTomlValidation(e.to_string()))?;
-
-    let skill_project = SkillProjectToml {
+    Ok(SkillProjectToml {
         metadata,
         dependencies,
         tool,
-    };
+    })
+}
 
-    // Save to file first with basic structure
-    skill_project
-        .save_to_file(skill_project_path)
-        .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
-
-    // Append commented [tool.fastskill] section only for skill-level (project-level has real tool section)
-    if is_skill_level {
-        let tool_section_comment = r#"
+fn append_tool_comment(path: &Path, is_skill_level: bool) -> CliResult<()> {
+    let comment = if is_skill_level {
+        r#"
 # Optional: FastSkill configuration for skill authors
 # Uncomment and configure as needed
 
@@ -246,16 +277,9 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
 # type = "http-registry"
 # index_url = "https://registry.fastskill.dev"
 # priority = 0
-"#;
-
-        let mut content = fs::read_to_string(skill_project_path)
-            .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
-        content.push_str(tool_section_comment);
-        fs::write(skill_project_path, content)
-            .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+"#
     } else {
-        // For project-level, optionally add comments about additional config
-        let config_comment = r#"
+        r#"
 # Additional configuration options for [tool.fastskill]:
 #
 # [tool.fastskill.embedding]
@@ -267,138 +291,125 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
 # type = "http-registry"
 # index_url = "https://registry.fastskill.dev"
 # priority = 0
-"#;
+"#
+    };
+    let mut content = fs::read_to_string(path)
+        .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
+    content.push_str(comment);
+    fs::write(path, content)
+        .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
+    Ok(())
+}
 
-        let mut content = fs::read_to_string(skill_project_path)
-            .map_err(|e| CliError::Config(format!("Failed to read skill-project.toml: {}", e)))?;
-        content.push_str(config_comment);
-        fs::write(skill_project_path, content)
-            .map_err(|e| CliError::Config(format!("Failed to write skill-project.toml: {}", e)))?;
-    }
-
-    // T058: Validate context after creation
-    let context = fastskill::core::project::detect_context(skill_project_path);
-    skill_project.validate_for_context(context).map_err(|e| {
-        CliError::Config(format!(
-            "skill-project.toml validation failed after creation: {}",
-            e
+fn print_success(is_skill_level: bool, version: &str, skills_directory: Option<&str>) {
+    println!(
+        "{}",
+        messages::ok(&format!(
+            "Created skill-project.toml with version: {}",
+            version
         ))
-    })?;
-
+    );
     if is_skill_level {
-        println!(
-            "{}",
-            messages::ok(&format!(
-                "Created skill-project.toml with version: {}",
-                version_clone
-            ))
-        );
         println!();
         println!(
             "{}",
             messages::info("This file contains author-provided metadata for your skill.")
         );
         println!("   It will be used by fastskill for version management.");
-    } else {
-        println!(
-            "{}",
-            messages::ok(&format!(
-                "Created skill-project.toml with version: {}",
-                version_clone
-            ))
-        );
-        if let Some(ref dir) = skills_directory {
-            println!();
-            println!("{}", messages::info(&format!("Skills directory: {}", dir)));
-        }
-        println!();
-        println!(
-            "{}",
-            messages::info("This file configures your project's skill dependencies.")
-        );
-        println!("   Add skills with: fastskill add <skill-id>");
+        return;
     }
-
-    Ok(())
+    if let Some(dir) = skills_directory {
+        println!();
+        println!("{}", messages::info(&format!("Skills directory: {}", dir)));
+    }
+    println!();
+    println!(
+        "{}",
+        messages::info("This file configures your project's skill dependencies.")
+    );
+    println!("   Add skills with: fastskill add <skill-id>");
 }
 
 fn extract_version_from_skill_md(content: &str, skip_prompts: bool) -> CliResult<String> {
-    // If content is empty (no SKILL.md), return default
-    if content.is_empty() {
-        return if skip_prompts {
-            Ok("1.0.0".to_string())
-        } else {
-            prompt_for_version()
-        };
+    if let Some(v) = try_version_from_content(content) {
+        return Ok(v);
     }
-    // Try to extract version from YAML frontmatter
-    if content.starts_with("---") {
-        // Find the end of the opening delimiter
-        let opening_end = if content.starts_with("---\n") {
-            4 // "---\n" is 4 bytes
-        } else if content.starts_with("---\r\n") {
-            5 // "---\r\n" is 5 bytes
-        } else if content.len() >= 3 && &content[0..3] == "---" {
-            // Handle case where "---" is not followed by newline
-            if content.len() > 3 {
-                3
-            } else {
-                return Ok("1.0.0".to_string()); // No content after opening delimiter
-            }
-        } else {
-            return Ok("1.0.0".to_string()); // Invalid format
-        };
+    default_version_or_prompt(skip_prompts)
+}
 
-        // Search for the closing delimiter after the opening one
-        let after_opening = &content[opening_end..];
+fn default_version_or_prompt(skip_prompts: bool) -> CliResult<String> {
+    if skip_prompts {
+        Ok("1.0.0".to_string())
+    } else {
+        prompt_for_version()
+    }
+}
 
-        // Try to find closing delimiter with newline first
-        let closing_pos = if let Some(pos) = after_opening.find("\n---\n") {
-            Some(opening_end + pos + 1) // +1 to skip the newline before "---"
-        } else if let Some(pos) = after_opening.find("\n---\r\n") {
-            Some(opening_end + pos + 1)
-        } else if let Some(pos) = after_opening.find("\n---") {
-            // Check if this is at the end of content or followed by whitespace/newline
-            let check_pos = opening_end + pos + 1;
-            if check_pos + 3 >= content.len()
-                || content
-                    .chars()
-                    .nth(check_pos + 3)
-                    .is_none_or(|c| c == '\n' || c == '\r' || c.is_whitespace())
-            {
-                Some(check_pos)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+fn try_version_from_content(content: &str) -> Option<String> {
+    if content.is_empty() || !content.starts_with("---") {
+        return None;
+    }
+    let opening_end = opening_delimiter_end(content)?;
+    let after_opening = &content[opening_end..];
+    let closing_start = find_closing_delimiter(content, opening_end, after_opening)?;
+    let frontmatter = content[opening_end..closing_start].trim();
+    version_from_frontmatter_text(frontmatter)
+}
 
-        if let Some(closing_start) = closing_pos {
-            // Extract frontmatter content between delimiters
-            let frontmatter = &content[opening_end..closing_start].trim();
-            for line in frontmatter.lines() {
-                if line.trim().starts_with("version:") {
-                    let version = line
-                        .split(':')
-                        .nth(1)
-                        .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string());
-                    if let Some(v) = version {
-                        if !v.is_empty() {
-                            return Ok(v);
-                        }
-                    }
-                }
-            }
+fn opening_delimiter_end(content: &str) -> Option<usize> {
+    if content.starts_with("---\n") {
+        Some(4)
+    } else if content.starts_with("---\r\n") {
+        Some(5)
+    } else if content.len() > 3 && content.starts_with("---") {
+        Some(3)
+    } else {
+        None
+    }
+}
+
+fn find_closing_delimiter(content: &str, opening_end: usize, after_opening: &str) -> Option<usize> {
+    if let Some(pos) = after_opening.find("\n---\n") {
+        return Some(opening_end + pos + 1);
+    }
+    if let Some(pos) = after_opening.find("\n---\r\n") {
+        return Some(opening_end + pos + 1);
+    }
+    if let Some(pos) = after_opening.find("\n---") {
+        let start = opening_end + pos + 1;
+        if is_valid_closing(content, start) {
+            return Some(start);
         }
     }
+    None
+}
 
-    // If version not found in frontmatter, prompt user
-    if skip_prompts {
-        return Ok("1.0.0".to_string());
+fn is_valid_closing(content: &str, start: usize) -> bool {
+    if start + 3 > content.len() {
+        return false;
     }
+    let after_dash = start + 3;
+    if after_dash >= content.len() {
+        return true;
+    }
+    let c = content[after_dash..].chars().next();
+    c.map(|c| c == '\n' || c == '\r' || c.is_whitespace())
+        .unwrap_or(true)
+}
 
-    prompt_for_version()
+fn version_from_frontmatter_text(frontmatter: &str) -> Option<String> {
+    for line in frontmatter.lines() {
+        let line = line.trim();
+        if !line.starts_with("version:") {
+            continue;
+        }
+        let v = line.split(':').nth(1)?.trim();
+        let v = v.trim_matches('"').trim_matches('\'').trim();
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
+    None
 }
 
 fn prompt_for_version() -> CliResult<String> {
