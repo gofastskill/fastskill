@@ -15,13 +15,13 @@ use axum::{
     Router,
 };
 use include_dir::{include_dir, Dir};
-use std::str::FromStr;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use tower::ServiceBuilder;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 use tracing::info;
 
@@ -135,7 +135,13 @@ pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLay
             // No server config - deny all origins (no CORS headers)
             info!("No CORS configuration found - denying all origins");
             CorsLayer::new()
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
                 .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
         }
         Some(server_config) => {
@@ -143,7 +149,13 @@ pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLay
                 // Empty origins list - deny all origins
                 info!("Empty CORS allowed_origins - denying all origins");
                 CorsLayer::new()
-                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
                     .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
             } else {
                 // Build origin list from config
@@ -161,7 +173,13 @@ pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLay
                     Err(e) => {
                         tracing::error!("Failed to build CORS origins: {}", e);
                         return CorsLayer::new()
-                            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                            .allow_methods([
+                                Method::GET,
+                                Method::POST,
+                                Method::PUT,
+                                Method::DELETE,
+                                Method::OPTIONS,
+                            ])
                             .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")));
                     }
                 };
@@ -187,14 +205,26 @@ pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLay
                     Err(e) => {
                         tracing::error!("Failed to build CORS headers: {}", e);
                         return CorsLayer::new()
-                            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                            .allow_methods([
+                                Method::GET,
+                                Method::POST,
+                                Method::PUT,
+                                Method::DELETE,
+                                Method::OPTIONS,
+                            ])
                             .allow_origin(AllowOrigin::list(origin_header_values))
                             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
                     }
                 };
 
                 CorsLayer::new()
-                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
                     .allow_origin(AllowOrigin::list(origin_header_values))
                     .allow_headers(header_names)
                     .allow_credentials(true)
