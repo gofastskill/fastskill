@@ -9,6 +9,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::info;
 
+/// HTTP server CORS configuration
+#[derive(Debug, Clone, Default)]
+pub struct HttpServerConfig {
+    /// List of origins allowed for CORS (required when server is used)
+    pub allowed_origins: Vec<String>,
+
+    /// Optional: allow list of request headers
+    /// Default: ["Content-Type", "Authorization"] if unset
+    pub allowed_headers: Vec<String>,
+}
+
 /// Main service configuration
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -41,6 +52,9 @@ pub struct ServiceConfig {
 
     /// Registry blob base URL
     pub registry_blob_base_url: Option<String>,
+
+    /// HTTP server configuration
+    pub http_server: Option<HttpServerConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -56,6 +70,7 @@ impl Default for ServiceConfig {
             registry_blob_storage: None,
             registry_index_path: None,
             registry_blob_base_url: None,
+            http_server: None,
         }
     }
 }

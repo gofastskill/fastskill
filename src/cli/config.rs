@@ -5,6 +5,7 @@ use dirs;
 use fastskill::core::manifest::SkillProjectToml;
 use fastskill::core::project;
 use fastskill::core::repository::RepositoryDefinition;
+use fastskill::core::service::HttpServerConfig;
 use fastskill::{core::BlobStorageConfig, ServiceConfig};
 use std::env;
 use std::path::PathBuf;
@@ -174,6 +175,9 @@ pub fn create_service_config(
             index_path: embedding.index_path,
         });
 
+    // Load server configuration from skill-project.toml
+    let http_server_config = load_server_config()?;
+
     // Read registry configuration from environment variables
     let registry_blob_storage =
         if let (Ok(bucket), Ok(region)) = (env::var("S3_BUCKET"), env::var("S3_REGION")) {
@@ -209,9 +213,75 @@ pub fn create_service_config(
     Ok(ServiceConfig {
         skill_storage_path: resolved_dir,
         embedding: embedding_config,
+        http_server: http_server_config,
         registry_blob_storage,
         registry_index_path,
         staging_dir,
         ..Default::default()
     })
+}
+
+/// Load HTTP server configuration from skill-project.toml [tool.fastskill.server]
+pub fn load_server_config() -> CliResult<Option<HttpServerConfig>> {
+    let current_dir = env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+
+    let project_file = project::resolve_project_file(&current_dir);
+    if !project_file.found {
+        return Ok(None); // No skill-project.toml found
+    }
+
+    let project = SkillProjectToml::load_from_file(&project_file.path).map_err(|e| {
+        CliError::Config(format!(
+            "Failed to load skill-project.toml from {}: {}",
+            project_file.path.display(),
+            e
+        ))
+    })?;
+
+    // Extract [tool.fastskill.server] configuration
+    let server_toml = project
+        .tool
+        .and_then(|t| t.fastskill)
+        .and_then(|f| f.server);
+
+    if let Some(server) = server_toml {
+        // Validate and convert allowed_origins
+        let allowed_origins: Vec<String> = server
+            .allowed_origins
+            .into_iter()
+            .filter(|origin| {
+                if is_valid_origin(origin) {
+                    true
+                } else {
+                    tracing::warn!("Invalid origin in config, skipping: {}", origin);
+                    false
+                }
+            })
+            .collect();
+
+        let http_config = HttpServerConfig {
+            allowed_origins,
+            allowed_headers: server.allowed_headers,
+        };
+
+        Ok(Some(http_config))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Validate that an origin string is a valid URI origin
+pub fn is_valid_origin(origin: &str) -> bool {
+    // Basic validation: must be a non-empty string that looks like a URL
+    if origin.trim().is_empty() {
+        return false;
+    }
+
+    // Check for valid URL pattern (http://, https://)
+    let after_proto = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"));
+
+    matches!(after_proto, Some(after) if !after.is_empty())
 }

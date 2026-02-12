@@ -58,6 +58,7 @@ pub mod validation;
 
 pub use core::embedding::{EmbeddingService, OpenAIEmbeddingService};
 pub use core::loading::{LoadedSkill, ProgressiveLoadingService};
+pub use core::manifest::SkillProjectToml;
 pub use core::metadata::{
     parse_yaml_frontmatter, MetadataService, SkillFrontmatter, SkillMetadata,
 };

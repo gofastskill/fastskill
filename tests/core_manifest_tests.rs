@@ -166,6 +166,7 @@ fn test_validation_project_level() {
                 skills_directory: Some(PathBuf::from(".cursor/skills")),
                 embedding: None,
                 repositories: None,
+                server: None,
             }),
         }),
     };

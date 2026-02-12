@@ -265,6 +265,24 @@ pub struct FastSkillToolConfig {
     /// Optional repository configuration
     #[serde(default)]
     pub repositories: Option<Vec<RepositoryDefinition>>,
+    /// Optional HTTP server configuration
+    #[serde(default)]
+    pub server: Option<HttpServerConfigToml>,
+}
+
+/// HTTP server configuration in TOML format
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpServerConfigToml {
+    /// List of origins allowed for CORS (required when server is used)
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+    /// Optional: allow list of request headers (default: ["Content-Type", "Authorization"])
+    #[serde(default = "default_allowed_headers_toml")]
+    pub allowed_headers: Vec<String>,
+}
+
+fn default_allowed_headers_toml() -> Vec<String> {
+    vec!["Content-Type".to_string(), "Authorization".to_string()]
 }
 
 /// Embedding configuration in TOML format

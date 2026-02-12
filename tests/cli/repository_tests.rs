@@ -82,6 +82,7 @@ web-scraper = "1.0.0"
         skills_directory: None,
         embedding: None,
         repositories: Some(Vec::new()),
+        server: None,
     });
     let repos = fastskill_config.repositories.get_or_insert_with(Vec::new);
 
