@@ -122,8 +122,8 @@ curl -X GET http://localhost:8080/
 curl -X POST http://localhost:8080/auth/token \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "user",
-    "password": "pass"
+    "role": "manager",
+    "username": "optional-username"
   }'
 
 # Verify token
@@ -189,7 +189,7 @@ curl -X POST http://localhost:8080/api/registry/publish \
   -F "package=@skill-package.zip"
 
 # Get publish job status
-curl -X GET http://localhost:8080/api/registry/publish/:job_id/status \
+curl -X GET http://localhost:8080/api/registry/publish/status/:job_id \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -291,7 +291,6 @@ use fastskill::SkillFilters;
 
 let filters = SkillFilters {
     enabled: Some(true),
-    tags: Some(vec!["text".to_string(), "nlp".to_string()]),
     ..Default::default()
 };
 
@@ -315,11 +314,11 @@ fastskill serve --host 0.0.0.0 --port 9000
 ### With Registry UI
 
 ```bash
-# Enable registry web UI at /registry
+# Enable registry web UI
 fastskill serve --enable-registry
 ```
 
-Then open `http://localhost:8080/registry` in your browser.
+Then open `http://localhost:8080/` or `http://localhost:8080/dashboard` in your browser.
 
 ## Integration Examples
 
@@ -474,7 +473,7 @@ let results = join_all(tasks).await;
   ```bash
   curl -X POST http://localhost:8080/auth/token \
     -H "Content-Type: application/json" \
-    -d '{"username": "user", "password": "pass"}'
+    -d '{"role": "manager", "username": "optional-username"}'
   ```
   </Info>
 </Accordion>

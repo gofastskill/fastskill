@@ -49,17 +49,20 @@ Quick reference for common FastSkill operations.
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
-| List repositories | `fastskill registry list` | Lists all configured repositories from `skill-project.toml` |
-| Show repository | `fastskill registry show repo-name` | Displays repository configuration details (type, URL, auth, priority) |
-| Add repository | `fastskill registry add repo-name --type git-marketplace --url <url>` | Adds new repository to `skill-project.toml`, supports git-marketplace, http-registry, zip-url, local |
-| Remove repository | `fastskill registry remove repo-name` | Removes repository from `skill-project.toml` |
-| Create marketplace | `fastskill registry create --path ./skills` | Scans directory for skills, generates `marketplace.json` for repository distribution |
+| List repositories | `fastskill sources list` | Lists all configured repositories from `skill-project.toml` |
+| Show repository | `fastskill sources show repo-name` | Displays repository configuration details (type, URL, auth, priority) |
+| Add repository | `fastskill sources add repo-name --repo-type git-marketplace <url>` | Adds new repository to `skill-project.toml`, supports git-marketplace, http-registry, zip-url, local |
+| Remove repository | `fastskill sources remove repo-name` | Removes repository from `skill-project.toml` |
+| Update repository | `fastskill sources update repo-name --branch main --priority 1` | Updates repository metadata (branch, priority) |
+| Test repository | `fastskill sources test repo-name` | Tests repository connectivity and accessibility |
+| Refresh repositories | `fastskill sources refresh` | Refreshes repository cache (re-fetches from source) |
 | List registry skills | `fastskill registry list-skills` | Lists all skills from HTTP registry (grid format) |
 | List registry skills (JSON) | `fastskill registry list-skills --json` | Lists all skills from HTTP registry in JSON format |
 | List by scope | `fastskill registry list-skills --scope acme` | Lists skills filtered by scope from HTTP registry |
 | List all versions | `fastskill registry list-skills --all-versions` | Lists all versions of each skill from HTTP registry |
-| Show skill | `fastskill registry show-skill skill-id` | Shows details for a specific skill |
-| Search skills | `fastskill registry search query` | Searches for skills across repositories |
+| Show skill | `fastskill registry show-skill skill-id` | Shows details for a specific skill from registry |
+| Show skill versions | `fastskill registry versions skill-id` | Lists all available versions for a specific skill |
+| Search skills | `fastskill registry search query` | Searches for skills across repositories (text-only search) |
 
 For detailed documentation, see the [README](/) and [Registry Guide](/registry/overview).
 

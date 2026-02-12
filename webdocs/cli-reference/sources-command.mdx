@@ -44,31 +44,31 @@ Add a new repository to your skill sources.
 
 ```bash
 # Add HTTP registry
-fastskill sources add public --type http-registry https://api.fastskill.io --priority 0
+fastskill sources add public --repo-type http-registry https://api.fastskill.io --priority 0
 
 # Add Git marketplace
-fastskill sources add team-skills --type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill sources add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
 
 # Add ZIP URL source
-fastskill sources add custom --type zip-url https://cdn.example.com/skills/ --priority 2
+fastskill sources add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
 
 # Add local directory
-fastskill sources add local-dev --type local ./skills --priority 3
+fastskill sources add local-dev --repo-type local ./skills --priority 3
 
 # Add with authentication (PAT)
-fastskill sources add private-repo --type git-marketplace https://github.com/team/private.git \
+fastskill sources add private-repo --repo-type git-marketplace https://github.com/team/private.git \
   --auth-type pat --auth-env GITHUB_TOKEN
 
 # Add with SSH key
-fastskill sources add private-repo --type git-marketplace https://github.com/team/private.git \
+fastskill sources add private-repo --repo-type git-marketplace https://github.com/team/private.git \
   --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
 
 # Add with basic auth
-fastskill sources add registry --type http-registry https://api.example.com \
+fastskill sources add registry --repo-type http-registry https://api.example.com \
   --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
 
 # Add with API key
-fastskill sources add registry --type http-registry https://api.example.com \
+fastskill sources add registry --repo-type http-registry https://api.example.com \
   --auth-type api-key --auth-env API_KEY
 ```
 
@@ -76,7 +76,7 @@ fastskill sources add registry --type http-registry https://api.example.com \
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--type` | - | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local` |
+| `--repo-type` | - | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local` |
 | `--priority` | - | number | 0 | Lower number = higher priority (used for conflict resolution) |
 | `--branch` | - | string | none | Git branch to checkout (for git-marketplace) |
 | `--tag` | - | string | none | Git tag to checkout (for git-marketplace) |
@@ -314,51 +314,51 @@ env_var = "GITHUB_TOKEN"
 
 ### PAT (Personal Access Token)
 - Use for Git repositories and private registries
-- Token stored in environment variable
-- Example:
-  ```bash
-  fastskill sources add private-repo --type git-marketplace https://github.com/team/repo.git \
-    --auth-type pat --auth-env GITHUB_TOKEN
-  ```
+  - Token stored in environment variable
+  - Example:
+    ```bash
+    fastskill sources add private-repo --repo-type git-marketplace https://github.com/team/repo.git \
+      --auth-type pat --auth-env GITHUB_TOKEN
+    ```
   ```bash
   export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
   ```
 
 ### SSH Key
 - Use for Git repositories with SSH access
-- Key path points to private key file
-- Example:
-  ```bash
-  fastskill sources add private-repo --type git-marketplace git@github.com:team/repo.git \
-    --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
-  ```
+  - Key path points to private key file
+  - Example:
+    ```bash
+    fastskill sources add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
+      --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
+    ```
 
 ### SSH
 - Use for Git repositories with SSH protocol
-- Similar to SSH Key but may use system SSH agent
-- Example:
-  ```bash
-  fastskill sources add private-repo --type git-marketplace git@github.com:team/repo.git \
-    --auth-type ssh --auth-key-path ~/.ssh/id_rsa
-  ```
+  - Similar to SSH Key but may use system SSH agent
+  - Example:
+    ```bash
+    fastskill sources add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
+      --auth-type ssh --auth-key-path ~/.ssh/id_rsa
+    ```
 
 ### Basic Auth
 - Use for HTTP registries with username/password
-- Password stored in environment variable
-- Example:
-  ```bash
-  fastskill sources add registry --type http-registry https://api.example.com \
-    --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
-  ```
+  - Password stored in environment variable
+  - Example:
+    ```bash
+    fastskill sources add registry --repo-type http-registry https://api.example.com \
+      --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
+    ```
 
 ### API Key
 - Use for HTTP registries with API key authentication
-- API key stored in environment variable
-- Example:
-  ```bash
-  fastskill sources add registry --type http-registry https://api.example.com \
-    --auth-type api-key --auth-env API_KEY
-  ```
+  - API key stored in environment variable
+  - Example:
+    ```bash
+    fastskill sources add registry --repo-type http-registry https://api.example.com \
+      --auth-type api-key --auth-env API_KEY
+    ```
 
 ## Multi-Source Skill Resolution
 
@@ -366,9 +366,9 @@ FastSkill supports multiple sources with priority-based resolution:
 
 ```bash
 # Add multiple sources
-fastskill sources add public-registry --type http-registry https://api.fastskill.io --priority 0
-fastskill sources add team-skills --type git-marketplace https://github.com/team/skills.git --priority 1
-fastskill sources add local-dev --type local ./skills --priority 2
+fastskill sources add public-registry --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill sources add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill sources add local-dev --repo-type local ./skills --priority 2
 ```
 
 **Resolution process**:
@@ -388,19 +388,14 @@ fastskill sources add local-dev --type local ./skills --priority 2
 
 ```bash
 # Add public registry
-fastskill sources add public --type http-registry https://api.fastskill.io --priority 0
+fastskill sources add public --repo-type http-registry https://api.fastskill.io --priority 0
 
 # Add team repository
-fastskill sources add team --type git-marketplace https://github.com/team/skills.git \
+fastskill sources add team --repo-type git-marketplace https://github.com/team/skills.git \
   --auth-type pat --auth-env GITHUB_TOKEN --priority 1
 
 # Add local development directory
-fastskill sources add local-dev --type local ./skills --priority 2
-
-# Test all sources
-fastskill sources test public
-fastskill sources test team
-fastskill sources test local-dev
+fastskill sources add local-dev --repo-type local ./skills --priority 2
 ```
 
 ### Creating a Git marketplace
