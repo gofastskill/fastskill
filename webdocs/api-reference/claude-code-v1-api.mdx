@@ -5,7 +5,7 @@ description: "FastSkill implementation of Claude Code v1 API specification for s
 
 ## Overview
 
-FastSkill implements the Claude Code v1 API specification, providing a standardized interface for skill management compatible with Claude Code clients. The v1 API endpoints are prefixed with `/api/code/v1/` and provide CRUD operations for skills and skill versions.
+FastSkill implements the Claude Code v1 API specification, providing a standardized interface for skill management compatible with Claude Code clients. The v1 API endpoints are prefixed with `/v1/` and provide CRUD operations for skills and skill versions.
 
 <Info>
 The Claude Code v1 API is designed for Claude Code clients and provides a standardized skill management interface.
@@ -16,7 +16,7 @@ The Claude Code v1 API is designed for Claude Code clients and provides a standa
 All Claude Code v1 API endpoints use the base path:
 
 ```
-http://localhost:8080/api/code/v1
+http://localhost:8080/v1
 ```
 
 ## Authentication
@@ -30,7 +30,7 @@ curl -X POST http://localhost:8080/auth/token \
   -d '{"role": "manager"}'
 
 # Use token in requests
-curl -X GET http://localhost:8080/api/code/v1/skills \
+curl -X GET http://localhost:8080/v1/skills \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -44,7 +44,7 @@ The token must have at least `user` role. For creating/updating skills, use `man
 
 List all skills available in the system.
 
-**Endpoint**: `GET /api/code/v1/skills`
+**Endpoint**: `GET /v1/skills`
 
 **Authentication**: Required (user, manager, or admin)
 
@@ -59,11 +59,11 @@ List all skills available in the system.
 **Example**:
 ```bash
 # List all skills
-curl -X GET http://localhost:8080/api/code/v1/skills \
+curl -X GET http://localhost:8080/v1/skills \
   -H "Authorization: Bearer <token>"
 
 # List enabled skills with pagination
-curl -X GET "http://localhost:8080/api/code/v1/skills?enabled=true&limit=10&offset=0" \
+curl -X GET "http://localhost:8080/v1/skills?enabled=true&limit=10&offset=0" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -95,7 +95,7 @@ curl -X GET "http://localhost:8080/api/code/v1/skills?enabled=true&limit=10&offs
 
 Retrieve details of a specific skill.
 
-**Endpoint**: `GET /api/code/v1/skills/:skill_id`
+**Endpoint**: `GET /v1/skills/:skill_id`
 
 **Authentication**: Required (user, manager, or admin)
 
@@ -108,7 +108,7 @@ Retrieve details of a specific skill.
 **Example**:
 ```bash
 # Get skill details
-curl -X GET http://localhost:8080/api/code/v1/skills/pptx \
+curl -X GET http://localhost:8080/v1/skills/pptx \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -154,7 +154,7 @@ curl -X GET http://localhost:8080/api/code/v1/skills/pptx \
 
 Create a new skill in the system.
 
-**Endpoint**: `POST /api/code/v1/skills`
+**Endpoint**: `POST /v1/skills`
 
 **Authentication**: Required (manager or admin)
 
@@ -195,7 +195,7 @@ Create a new skill in the system.
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8080/api/code/v1/skills \
+curl -X POST http://localhost:8080/v1/skills \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -243,53 +243,11 @@ curl -X POST http://localhost:8080/api/code/v1/skills \
 }
 ```
 
-### Update Skill
-
-Update an existing skill.
-
-**Endpoint**: `PUT /api/code/v1/skills/:skill_id`
-
-**Authentication**: Required (manager or admin)
-
-**Path Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|--------|-----------|-------------|
-| `skill_id` | string | Yes | Unique skill identifier |
-
-**Request Body**: Same as create skill (all fields optional)
-
-**Example**:
-```bash
-curl -X PUT http://localhost:8080/api/code/v1/skills/web-scraper \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "Updated description",
-    "version": "1.1.0",
-    "enabled": false
-  }'
-```
-
-**Response** (success):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "web-scraper",
-    "description": "Updated description",
-    "version": "1.1.0",
-    "enabled": false,
-    "updated_at": "2025-02-02T16:00:00Z"
-  }
-}
-```
-
 ### Delete Skill
 
 Delete a skill from the system.
 
-**Endpoint**: `DELETE /api/code/v1/skills/:skill_id`
+**Endpoint**: `DELETE /v1/skills/:skill_id`
 
 **Authentication**: Required (manager or admin)
 
@@ -301,7 +259,7 @@ Delete a skill from the system.
 
 **Example**:
 ```bash
-curl -X DELETE http://localhost:8080/api/code/v1/skills/web-scraper \
+curl -X DELETE http://localhost:8080/v1/skills/web-scraper \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -331,7 +289,7 @@ curl -X DELETE http://localhost:8080/api/code/v1/skills/web-scraper \
 
 Create a new version for an existing skill.
 
-**Endpoint**: `POST /api/code/v1/skills/:skill_id/versions`
+**Endpoint**: `POST /v1/skills/:skill_id/versions`
 
 **Authentication**: Required (manager or admin)
 
@@ -364,7 +322,7 @@ Create a new version for an existing skill.
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8080/api/code/v1/skills/web-scraper/versions \
+curl -X POST http://localhost:8080/v1/skills/web-scraper/versions \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -398,7 +356,7 @@ curl -X POST http://localhost:8080/api/code/v1/skills/web-scraper/versions \
 
 List all versions of a skill.
 
-**Endpoint**: `GET /api/code/v1/skills/:skill_id/versions`
+**Endpoint**: `GET /v1/skills/:skill_id/versions`
 
 **Authentication**: Required (user, manager, or admin)
 
@@ -417,7 +375,7 @@ List all versions of a skill.
 
 **Example**:
 ```bash
-curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions \
+curl -X GET http://localhost:8080/v1/skills/web-scraper/versions \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -457,7 +415,7 @@ curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions \
 
 Get details of a specific skill version.
 
-**Endpoint**: `GET /api/code/v1/skills/:skill_id/versions/:version`
+**Endpoint**: `GET /v1/skills/:skill_id/versions/:version`
 
 **Authentication**: Required (user, manager, or admin)
 
@@ -470,7 +428,7 @@ Get details of a specific skill version.
 
 **Example**:
 ```bash
-curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions/1.2.0 \
+curl -X GET http://localhost:8080/v1/skills/web-scraper/versions/1.2.0 \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -495,7 +453,7 @@ curl -X GET http://localhost:8080/api/code/v1/skills/web-scraper/versions/1.2.0 
 
 Delete a specific version of a skill.
 
-**Endpoint**: `DELETE /api/code/v1/skills/:skill_id/versions/:version`
+**Endpoint**: `DELETE /v1/skills/:skill_id/versions/:version`
 
 **Authentication**: Required (manager or admin)
 
@@ -508,7 +466,7 @@ Delete a specific version of a skill.
 
 **Example**:
 ```bash
-curl -X DELETE http://localhost:8080/api/code/v1/skills/web-scraper/versions/1.0.0 \
+curl -X DELETE http://localhost:8080/v1/skills/web-scraper/versions/1.0.0 \
   -H "Authorization: Bearer <token>"
 ```
 

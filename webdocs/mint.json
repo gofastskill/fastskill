@@ -119,6 +119,7 @@
             "pages": [
                 "registry/overview",
                 "registry/repository-architecture",
+                "registry/index-system",
                 "registry/sources",
                 "registry/marketplace-json",
                 "registry/web-ui"
