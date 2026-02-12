@@ -896,7 +896,7 @@ async fn test_fastskill_list_grid_output() {
 
     // Create mock installed skills
     let installed_skills = vec![SkillDefinition {
-        id: SkillId::from("acme/tool1".to_string()),
+        id: SkillId::new("tool1".to_string()).unwrap(),
         name: "Tool 1".to_string(),
         description: "First tool".to_string(),
         version: "1.0.0".to_string(),
@@ -1026,7 +1026,7 @@ async fn test_extraneous_packages_reconciliation() {
     // Note: SkillId doesn't allow slashes, so we use unscoped ID
     // The reconciliation uses skill.id.to_string() which will be the unscoped ID
     let installed_skills = vec![SkillDefinition {
-        id: SkillId::from("extraneous-tool".to_string()),
+        id: SkillId::new("extraneous-tool".to_string()).unwrap(),
         name: "Extraneous Tool".to_string(),
         description: "Not in project".to_string(),
         version: "1.0.0".to_string(),
@@ -1084,7 +1084,7 @@ async fn test_version_mismatches_reconciliation() {
     // Installed skill with version 1.0.0
     // Note: SkillId doesn't allow slashes, so we use unscoped ID
     let installed_skills = vec![SkillDefinition {
-        id: SkillId::from("tool".to_string()),
+        id: SkillId::new("tool".to_string()).unwrap(),
         name: "Tool".to_string(),
         description: "A tool".to_string(),
         version: "1.0.0".to_string(), // Installed version

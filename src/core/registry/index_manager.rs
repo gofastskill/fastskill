@@ -80,7 +80,7 @@ impl IndexManager {
         info!("Normalized skill_id '{}' to '{}'", skill_id, normalized_id);
 
         // Step 2: Get index file path
-        let index_path = get_skill_index_path(&self.registry_path, &normalized_id);
+        let index_path = get_skill_index_path(&self.registry_path, &normalized_id)?;
 
         // Ensure parent directory exists
         if let Some(parent) = index_path.parent() {

@@ -1,6 +1,6 @@
 //! Path security utilities to prevent directory traversal attacks
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -25,6 +25,33 @@ pub fn sanitize_path_component(component: &str) -> String {
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
         .collect()
+}
+
+/// Normalize a path by resolving . and .. components in memory
+/// This function does not access the filesystem and works on non-existent paths
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                result.push(component);
+            }
+            Component::CurDir => {
+                // Skip current directory components
+            }
+            Component::ParentDir => {
+                // Pop from result if possible, otherwise we've escaped root
+                if !result.pop() {
+                    // Path tries to escape, return empty to indicate invalid
+                    return PathBuf::new();
+                }
+            }
+            Component::Normal(s) => {
+                result.push(s);
+            }
+        }
+    }
+    result
 }
 
 /// Validate that a path stays within the allowed root directory
@@ -59,7 +86,27 @@ pub fn validate_path_within_root(path: &Path, root: &Path) -> Result<PathBuf, Pa
             })?
         } else {
             // If parent doesn't exist, we need to validate the constructed path
-            root.join(path)
+            // Normalize the path to resolve any .. or . components
+            let relative_to_root = path.strip_prefix(root).unwrap_or(path);
+            let normalized_relative = normalize_path(relative_to_root);
+            if normalized_relative.as_os_str().is_empty() {
+                // Path escapes root through ..
+                return Err(PathSecurityError::EscapesRoot(format!(
+                    "Path '{}' attempts to escape root directory '{}'",
+                    path.display(),
+                    abs_root.display()
+                )));
+            }
+            let normalized_path = abs_root.join(&normalized_relative);
+            // Verify the normalized path is within root
+            if !normalized_path.starts_with(&abs_root) {
+                return Err(PathSecurityError::EscapesRoot(format!(
+                    "Path '{}' attempts to escape root directory '{}'",
+                    path.display(),
+                    abs_root.display()
+                )));
+            }
+            return Ok(normalized_path);
         };
 
         if let Some(filename) = path.file_name() {
@@ -203,5 +250,17 @@ mod tests {
         assert!(!safe_component.contains(".."));
         assert!(!safe_component.contains('/'));
         assert!(!safe_component.contains('\\'));
+    }
+
+    #[test]
+    fn test_validate_path_within_root_nonexistent_traversal_rejected() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Test path that does not exist and would escape when resolved
+        let escape_path = root.join("subdir/../../escape");
+        let result = validate_path_within_root(&escape_path, root);
+
+        assert!(matches!(result, Err(PathSecurityError::EscapesRoot(_))));
     }
 }

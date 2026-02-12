@@ -1,6 +1,7 @@
 //! ZIP package handling for skill distribution
 
 use crate::core::service::ServiceError;
+use crate::security::path::normalize_path;
 use std::io;
 use std::path::Path;
 
@@ -60,12 +61,31 @@ impl ZipHandler {
                 )));
             }
 
-            // Build the output path
-            let outpath = dest_dir.join(&entry_name);
+            // Normalize the entry name to resolve . and .. components before any I/O
+            let normalized_entry_name = normalize_path(Path::new(&entry_name));
+            if normalized_entry_name.as_os_str().is_empty() {
+                return Err(ServiceError::Validation(format!(
+                    "Path traversal attempt detected in ZIP entry: '{}'",
+                    entry_name
+                )));
+            }
+
+            // Build the output path using the normalized entry name
+            let outpath = dest_dir.join(&normalized_entry_name);
+
+            // Ensure the normalized path is within the destination directory before any I/O
+            let outpath_str = outpath.to_string_lossy().to_string();
+            let dest_str = dest_canonical.to_string_lossy().to_string();
+            if !outpath_str.starts_with(&dest_str) {
+                return Err(ServiceError::Validation(format!(
+                    "Path traversal attempt detected in ZIP entry: '{}' would resolve outside extraction directory",
+                    entry_name
+                )));
+            }
 
             // For directories, we need to check if they exist or can be created
             // For files, we need to validate after creation
-            let path_is_directory = entry_name.ends_with('/');
+            let path_is_directory = normalized_entry_name.ends_with("/");
 
             // Canonicalize the output path to resolve any .. components
             // Note: canonicalize() requires the path to exist, so we only canonicalize after creation for directories
@@ -89,7 +109,7 @@ impl ZipHandler {
                 // For files, we need to ensure parent is valid before creating
                 if let Some(parent) = outpath.parent() {
                     if !parent.exists() {
-                        // Create parent directory
+                        // Create parent directory (safe now because we've already validated the normalized path)
                         std::fs::create_dir_all(parent).map_err(ServiceError::Io)?;
                     }
                     // Validate parent path
@@ -294,5 +314,26 @@ mod tests {
         assert!(result.is_err());
         // Mixed traversal should be rejected
         assert!(extract_dir.path().join("safe/file.txt").exists());
+    }
+
+    #[test]
+    fn test_safe_extract_does_not_create_dirs_outside_root() {
+        let base = TempDir::new().unwrap();
+        let extract_dir = base.path().join("extract");
+        std::fs::create_dir_all(&extract_dir).unwrap();
+
+        // Create a zip with a traversal entry that goes outside base
+        let (_temp_dir, zip_path) =
+            create_test_zip(&[("../../../escape_evil/file.txt", b"malicious content")]);
+
+        let handler = ZipHandler::new().unwrap();
+        let result = handler.extract_to_dir(&zip_path, &extract_dir);
+
+        // Should return an error before any I/O happens (due to normalization)
+        assert!(result.is_err());
+
+        // No file or directory should have been created
+        assert!(!extract_dir.join("escape_evil").exists());
+        assert!(!extract_dir.join("escape_evil/file.txt").exists());
     }
 }

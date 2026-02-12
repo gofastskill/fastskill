@@ -61,7 +61,7 @@ async fn test_index_served_from_filesystem() {
     use std::io::Write;
 
     // Use the same path structure as the actual implementation
-    let index_file_path = get_skill_index_path(&registry_path, "testorg/test-skill");
+    let index_file_path = get_skill_index_path(&registry_path, "testorg/test-skill").unwrap();
     if let Some(parent) = index_file_path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
@@ -137,7 +137,7 @@ async fn test_server_restart_no_git_clone() {
     use std::io::Write;
 
     // Use the same path structure as the actual implementation
-    let index_file_path = get_skill_index_path(&registry_path, "testorg/restart-skill");
+    let index_file_path = get_skill_index_path(&registry_path, "testorg/restart-skill").unwrap();
     if let Some(parent) = index_file_path.parent() {
         fs::create_dir_all(parent).unwrap();
     }

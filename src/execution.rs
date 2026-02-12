@@ -50,6 +50,9 @@ pub struct ExecutionConfig {
     /// Allowed commands for shell execution
     pub allowed_commands: Vec<String>,
 
+    /// Allowed script roots - scripts must be under one of these paths if configured
+    pub allowed_script_roots: Vec<PathBuf>,
+
     /// Environment variables to set
     pub environment_variables: HashMap<String, String>,
 }
@@ -68,6 +71,7 @@ impl Default for ExecutionConfig {
                 "python3".to_string(),
                 "node".to_string(),
             ],
+            allowed_script_roots: Vec::new(),
             environment_variables: HashMap::new(),
         }
     }
@@ -262,7 +266,31 @@ impl ExecutionSandbox {
 
         // Validate file paths if accessing files
         if script.path.exists() {
-            // In a real implementation, we'd check path traversal, etc.
+            // Check path traversal - ensure script is under allowed roots if configured
+            if !self.config.allowed_script_roots.is_empty() {
+                let canonical_path = script.path.canonicalize().map_err(|e| {
+                    ExecutionError::SecurityViolation(format!(
+                        "Failed to canonicalize script path: {}",
+                        e
+                    ))
+                })?;
+
+                let is_allowed = self.config.allowed_script_roots.iter().any(|root| {
+                    if let Ok(canonical_root) = root.canonicalize() {
+                        canonical_path.starts_with(&canonical_root)
+                    } else {
+                        false
+                    }
+                });
+
+                if !is_allowed {
+                    return Err(ExecutionError::SecurityViolation(format!(
+                        "Script path '{}' is outside allowed roots: {:?}",
+                        script.path.display(),
+                        self.config.allowed_script_roots
+                    )));
+                }
+            }
         }
 
         Ok(())
@@ -430,4 +458,69 @@ struct UserExecutionResult {
     stdout: String,
     stderr: String,
     exit_code: Option<i32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_validate_script_rejects_path_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let allowed_root = temp_dir.path().join("allowed");
+        std::fs::create_dir_all(&allowed_root).unwrap();
+
+        let config = ExecutionConfig {
+            allowed_script_roots: vec![allowed_root.clone()],
+            ..Default::default()
+        };
+
+        let sandbox = ExecutionSandbox::new(config).unwrap();
+
+        // Create a script outside the allowed root
+        let outside_path = temp_dir.path().join("outside").join("script.py");
+        std::fs::create_dir_all(outside_path.parent().unwrap()).unwrap();
+        std::fs::write(&outside_path, "print('test')").unwrap();
+
+        let script = ScriptDefinition {
+            path: outside_path,
+            content: None,
+            language: ScriptLanguage::Python,
+            parameters: std::collections::HashMap::new(),
+            working_directory: None,
+        };
+
+        let result = sandbox.validate_script(&script);
+        assert!(matches!(result, Err(ExecutionError::SecurityViolation(_))));
+    }
+
+    #[test]
+    fn test_validate_script_accepts_path_inside_allowed_root() {
+        let temp_dir = TempDir::new().unwrap();
+        let allowed_root = temp_dir.path().join("allowed");
+        std::fs::create_dir_all(&allowed_root).unwrap();
+
+        let config = ExecutionConfig {
+            allowed_script_roots: vec![allowed_root.clone()],
+            ..Default::default()
+        };
+
+        let sandbox = ExecutionSandbox::new(config).unwrap();
+
+        // Create a script inside the allowed root
+        let inside_path = allowed_root.join("script.py");
+        std::fs::write(&inside_path, "print('test')").unwrap();
+
+        let script = ScriptDefinition {
+            path: inside_path,
+            content: None,
+            language: ScriptLanguage::Python,
+            parameters: std::collections::HashMap::new(),
+            working_directory: None,
+        };
+
+        let result = sandbox.validate_script(&script);
+        assert!(result.is_ok());
+    }
 }
