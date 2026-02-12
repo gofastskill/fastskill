@@ -27,6 +27,24 @@ pub struct FastSkillConfig {
     /// Required in project-level skill-project.toml; no default.
     #[serde(default)]
     pub skills_directory: Option<PathBuf>,
+    /// HTTP server configuration
+    #[serde(default)]
+    pub server: Option<HttpServerConfig>,
+}
+
+/// HTTP server configuration (CLI version)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpServerConfig {
+    /// List of origins allowed for CORS
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+    /// Optional: allow list of request headers
+    #[serde(default = "default_allowed_headers_config")]
+    pub allowed_headers: Vec<String>,
+}
+
+fn default_allowed_headers_config() -> Vec<String> {
+    vec!["Content-Type".to_string(), "Authorization".to_string()]
 }
 
 /// Load configuration from skill-project.toml [tool.fastskill] section
@@ -65,9 +83,16 @@ pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<Fa
             index_path: e.index_path,
         });
 
+        // Convert HttpServerConfigToml to HttpServerConfig
+        let server = config.server.map(|s| HttpServerConfig {
+            allowed_origins: s.allowed_origins,
+            allowed_headers: s.allowed_headers,
+        });
+
         Ok(Some(FastSkillConfig {
             embedding,
             skills_directory: config.skills_directory,
+            server,
         }))
     } else {
         // skill-project.toml exists but no [tool.fastskill] section

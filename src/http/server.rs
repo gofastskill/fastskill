@@ -9,7 +9,7 @@ use crate::http::handlers::{
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, HeaderValue, Method, StatusCode},
+    http::{header, HeaderName, HeaderValue, Method, StatusCode},
     response::Response,
     routing::{delete, get, post, put},
     Router,
@@ -18,9 +18,10 @@ use include_dir::{include_dir, Dir};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use tower::ServiceBuilder;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 use tracing::info;
 
@@ -123,6 +124,113 @@ fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
 fn display_startup_banner() {
     // TODO: Implement startup banner display
     let _version = crate::VERSION;
+}
+
+/// Build CORS layer from service configuration
+pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLayer {
+    let http_config = config.http_server.as_ref();
+
+    match http_config {
+        None => {
+            // No server config - deny all origins (no CORS headers)
+            info!("No CORS configuration found - denying all origins");
+            CorsLayer::new()
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
+                .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
+        }
+        Some(server_config) => {
+            if server_config.allowed_origins.is_empty() {
+                // Empty origins list - deny all origins
+                info!("Empty CORS allowed_origins - denying all origins");
+                CorsLayer::new()
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
+                    .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
+            } else {
+                // Build origin list from config
+                let origins: Result<Vec<HeaderValue>, _> = server_config
+                    .allowed_origins
+                    .iter()
+                    .map(|origin| {
+                        HeaderValue::from_str(origin)
+                            .map_err(|e| format!("Invalid origin header value '{}': {}", origin, e))
+                    })
+                    .collect();
+
+                let origin_header_values = match origins {
+                    Ok(values) => values,
+                    Err(e) => {
+                        tracing::error!("Failed to build CORS origins: {}", e);
+                        return CorsLayer::new()
+                            .allow_methods([
+                                Method::GET,
+                                Method::POST,
+                                Method::PUT,
+                                Method::DELETE,
+                                Method::OPTIONS,
+                            ])
+                            .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")));
+                    }
+                };
+
+                info!(
+                    "Configuring CORS for {} origins: {}",
+                    origin_header_values.len(),
+                    server_config.allowed_origins.join(", ")
+                );
+
+                // Build allowed headers from config or use safe defaults
+                let headers: Result<Vec<HeaderName>, _> = server_config
+                    .allowed_headers
+                    .iter()
+                    .map(|header| {
+                        HeaderName::from_str(header)
+                            .map_err(|e| format!("Invalid header name '{}': {}", header, e))
+                    })
+                    .collect();
+
+                let header_names = match headers {
+                    Ok(values) => values,
+                    Err(e) => {
+                        tracing::error!("Failed to build CORS headers: {}", e);
+                        return CorsLayer::new()
+                            .allow_methods([
+                                Method::GET,
+                                Method::POST,
+                                Method::PUT,
+                                Method::DELETE,
+                                Method::OPTIONS,
+                            ])
+                            .allow_origin(AllowOrigin::list(origin_header_values))
+                            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+                    }
+                };
+
+                CorsLayer::new()
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
+                    .allow_origin(AllowOrigin::list(origin_header_values))
+                    .allow_headers(header_names)
+                    .allow_credentials(true)
+            }
+        }
+    }
 }
 
 /// FastSkill HTTP server
@@ -308,12 +416,7 @@ impl FastSkillServer {
                 ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())
                     .layer(CompressionLayer::new())
-                    .layer(
-                        CorsLayer::new()
-                            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-                            .allow_headers(Any)
-                            .allow_origin(Any), // TODO: Configure CORS properly
-                    ),
+                    .layer(build_cors_layer(self.service.config())),
             )
             .layer(axum::middleware::from_fn_with_state(
                 state.jwt_service.clone(),

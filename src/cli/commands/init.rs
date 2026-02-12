@@ -208,6 +208,7 @@ pub async fn execute_init(args: InitArgs) -> CliResult<()> {
             skills_directory: Some(std::path::PathBuf::from(dir)),
             embedding: None,
             repositories: None,
+            server: None,
         }),
     });
 

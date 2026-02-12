@@ -248,6 +248,7 @@ impl RepositoryManager {
                     skills_directory: None,
                     embedding: None,
                     repositories: Some(manifest_repos),
+                    server: None,
                 }),
             });
         } else if let Some(ref mut tool) = project.tool {
@@ -256,6 +257,7 @@ impl RepositoryManager {
                     skills_directory: None,
                     embedding: None,
                     repositories: Some(manifest_repos),
+                    server: None,
                 });
             } else if let Some(ref mut fastskill) = tool.fastskill {
                 fastskill.repositories = Some(manifest_repos);
