@@ -168,15 +168,17 @@ impl RepositoryClient for MarketplaceRepositoryClient {
 
         Ok(skill_infos
             .into_iter()
-            .map(|info| SkillMetadata {
-                id: SkillId::from(info.id.clone()),
-                name: info.name,
-                description: info.description,
-                version: info.version.unwrap_or_else(|| "1.0.0".to_string()),
-                author: None,
-                enabled: true,
-                token_estimate: 0,
-                last_updated: Utc::now(),
+            .filter_map(|info| {
+                SkillId::new(info.id.clone()).ok().map(|id| SkillMetadata {
+                    id,
+                    name: info.name,
+                    description: info.description,
+                    version: info.version.unwrap_or_else(|| "1.0.0".to_string()),
+                    author: None,
+                    enabled: true,
+                    token_estimate: 0,
+                    last_updated: Utc::now(),
+                })
             })
             .collect())
     }
@@ -187,7 +189,8 @@ impl RepositoryClient for MarketplaceRepositoryClient {
         version: Option<&str>,
     ) -> Result<Option<SkillMetadata>, RepositoryClientError> {
         use crate::core::service::SkillId;
-        let skill_id = SkillId::from(id.to_string());
+        let skill_id = SkillId::new(id.to_string())
+            .map_err(|e| RepositoryClientError::Client(format!("Invalid skill ID: {}", e)))?;
         let skills = self.list_skills().await?;
         Ok(skills
             .into_iter()
@@ -215,7 +218,8 @@ impl RepositoryClient for MarketplaceRepositoryClient {
 
     async fn get_versions(&self, id: &str) -> Result<Vec<String>, RepositoryClientError> {
         use crate::core::service::SkillId;
-        let skill_id = SkillId::from(id.to_string());
+        let skill_id = SkillId::new(id.to_string())
+            .map_err(|e| RepositoryClientError::Client(format!("Invalid skill ID: {}", e)))?;
         let skills = self.list_skills().await?;
         Ok(skills
             .into_iter()
@@ -428,9 +432,9 @@ impl RepositoryClient for CratesRegistryClient {
         // Convert SkillSummary to SkillMetadata
         let metadata: Vec<SkillMetadata> = summaries
             .into_iter()
-            .map(|s| {
-                SkillMetadata {
-                    id: SkillId::from(s.id.clone()),
+            .filter_map(|s| {
+                SkillId::new(s.id.clone()).ok().map(|id| SkillMetadata {
+                    id,
                     name: s.name.clone(),
                     description: s.description.clone(),
                     version: s.latest_version.clone(),
@@ -438,7 +442,7 @@ impl RepositoryClient for CratesRegistryClient {
                     enabled: true,
                     token_estimate: s.description.len() / 4, // Rough estimate
                     last_updated: s.published_at.unwrap_or_else(chrono::Utc::now),
-                }
+                })
             })
             .collect();
 
@@ -471,19 +475,23 @@ impl RepositoryClient for CratesRegistryClient {
         use crate::core::service::SkillId;
         use chrono::Utc;
 
-        Ok(entry.map(|e| SkillMetadata {
-            id: SkillId::from(e.name.clone().to_string()),
-            name: e.name.clone(),
-            description: e
-                .metadata
-                .as_ref()
-                .and_then(|m| m.description.clone())
-                .unwrap_or_else(|| "".to_string()),
-            version: e.vers,
-            author: e.metadata.as_ref().and_then(|m| m.author.clone()),
-            enabled: true,
-            token_estimate: 0,
-            last_updated: Utc::now(),
+        Ok(entry.and_then(|e| {
+            SkillId::new(e.name.clone().to_string())
+                .ok()
+                .map(|id| SkillMetadata {
+                    id,
+                    name: e.name.clone(),
+                    description: e
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.description.clone())
+                        .unwrap_or_else(|| "".to_string()),
+                    version: e.vers,
+                    author: e.metadata.as_ref().and_then(|m| m.author.clone()),
+                    enabled: true,
+                    token_estimate: 0,
+                    last_updated: Utc::now(),
+                })
         }))
     }
 

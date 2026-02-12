@@ -186,7 +186,7 @@ pub async fn publish_package(
     );
 
     // Calculate the staging path that will be created
-    let staging_path = staging_manager.get_staging_path(&user_scope, &id, &version);
+    let staging_path = staging_manager.get_staging_path(&user_scope, &id, &version)?;
     tracing::info!("Calculated staging path: {}", staging_path.display());
 
     let (_, job_id) = staging_manager

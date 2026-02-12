@@ -7,3 +7,4 @@
 webdocs
 tests
 .github
+*.sh

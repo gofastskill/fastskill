@@ -43,38 +43,26 @@ pub fn create_registry_structure(base_path: &Path) -> Result<(), ServiceError> {
 /// Get the index file path for a skill using org/package directory structure
 /// Format: {org}/{package}
 /// skill_id must always be in "org/package" format (enforced at publish time)
-pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> PathBuf {
+pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> Result<PathBuf, ServiceError> {
     // skill_id is always in org/package format (enforced at publish time)
     // Organization is the authenticated user's username (lowercase, filesystem-safe)
     let parts: Vec<&str> = skill_id.split('/').collect();
 
     // Enforce that skill_id must have exactly 2 parts (org/package)
-    // This is a programming error check - skill_id format is enforced at publish time
-    #[allow(clippy::panic)]
     if parts.len() != 2 {
-        panic!(
+        return Err(ServiceError::Validation(format!(
             "Invalid skill_id format: must be 'org/package', got: {}",
             skill_id
-        );
+        )));
     }
 
     // Validate and get safe strings for path construction
-    let org = match validate_path_component(parts[0]) {
-        Ok(safe_org) => safe_org,
-        Err(_) => {
-            // If validation fails, return a safe fallback path that won't match anything
-            return registry_path.join("invalid");
-        }
-    };
-    let package = match validate_path_component(parts[1]) {
-        Ok(safe_package) => safe_package,
-        Err(_) => {
-            // If validation fails, return a safe fallback path that won't match anything
-            return registry_path.join("invalid");
-        }
-    };
+    let org = validate_path_component(parts[0])
+        .map_err(|e| ServiceError::Validation(format!("Invalid org: {}", e)))?;
+    let package = validate_path_component(parts[1])
+        .map_err(|e| ServiceError::Validation(format!("Invalid package: {}", e)))?;
 
-    registry_path.join(&org).join(&package)
+    Ok(registry_path.join(&org).join(&package))
 }
 
 /// Update registry index with a new skill version
@@ -86,7 +74,7 @@ pub fn update_skill_version(
     registry_path: &Path,
 ) -> Result<(), ServiceError> {
     // Get index file path using crates.io directory structure
-    let index_path = get_skill_index_path(registry_path, skill_id);
+    let index_path = get_skill_index_path(registry_path, skill_id)?;
 
     // Create parent directories if they don't exist
     if let Some(parent) = index_path.parent() {
@@ -130,7 +118,7 @@ pub fn read_skill_versions(
     registry_path: &Path,
     skill_id: &str,
 ) -> Result<Vec<VersionEntry>, ServiceError> {
-    let index_path = get_skill_index_path(registry_path, skill_id);
+    let index_path = get_skill_index_path(registry_path, skill_id)?;
 
     if !index_path.exists() {
         return Ok(Vec::new());
@@ -377,7 +365,7 @@ pub fn migrate_index_format(
 
     // Write new format files
     for (skill_id, versions) in skill_versions {
-        let new_index_path = get_skill_index_path(new_registry_path, &skill_id);
+        let new_index_path = get_skill_index_path(new_registry_path, &skill_id)?;
 
         // Create parent directories
         if let Some(parent) = new_index_path.parent() {
@@ -663,23 +651,21 @@ mod tests {
         let registry_path = temp_dir.path();
 
         // Test org/package format
-        let path = get_skill_index_path(registry_path, "acme/web-scraper");
+        let path = get_skill_index_path(registry_path, "acme/web-scraper").unwrap();
         assert_eq!(path, registry_path.join("acme").join("web-scraper"));
 
         // Test another org/package
-        let path = get_skill_index_path(registry_path, "myorg/data-processor");
+        let path = get_skill_index_path(registry_path, "myorg/data-processor").unwrap();
         assert_eq!(path, registry_path.join("myorg").join("data-processor"));
 
         // Test single character org/package
-        let path = get_skill_index_path(registry_path, "a/tool");
+        let path = get_skill_index_path(registry_path, "a/tool").unwrap();
         assert_eq!(path, registry_path.join("a").join("tool"));
 
-        // Test that invalid format panics (should panic)
-        // Note: This test verifies that malformed skill_ids are rejected
-        // let result = std::panic::catch_unwind(|| {
-        //     get_skill_index_path(registry_path, "invalid-format");
-        // });
-        // assert!(result.is_err()); // Should panic with invalid format
+        // Test that invalid format returns error
+        assert!(get_skill_index_path(registry_path, "invalid-format").is_err());
+        assert!(get_skill_index_path(registry_path, "single").is_err());
+        assert!(get_skill_index_path(registry_path, "a/b/c").is_err());
     }
 
     #[test]
@@ -753,7 +739,7 @@ mod tests {
         update_skill_version(skill_id, "1.0.0", &metadata, registry_path).unwrap();
 
         // Read file and verify it's compact JSON (not pretty-printed)
-        let index_path = get_skill_index_path(registry_path, skill_id);
+        let index_path = get_skill_index_path(registry_path, skill_id).unwrap();
         let content = fs::read_to_string(&index_path).unwrap();
 
         // Should be a single line (newline-delimited)

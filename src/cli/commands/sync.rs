@@ -250,12 +250,14 @@ fn interactive_select_skills(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fastskill::SkillId;
 
     #[test]
     fn test_determine_skill_location_project() {
         let global_dir = PathBuf::from("/home/user/.config/fastskill/skills");
+        let skill_id = SkillId::new("test-skill".to_string()).unwrap();
         let skill = SkillDefinition::new(
-            "test-skill".to_string().into(),
+            skill_id,
             "Test Skill".to_string(),
             "Test".to_string(),
             "1.0.0".to_string(),
@@ -270,8 +272,9 @@ mod tests {
     #[test]
     fn test_determine_skill_location_global() {
         let global_dir = PathBuf::from("/home/user/.config/fastskill/skills");
+        let skill_id = SkillId::new("test-skill".to_string()).unwrap();
         let skill = SkillDefinition::new(
-            "test-skill".to_string().into(),
+            skill_id,
             "Test Skill".to_string(),
             "Test".to_string(),
             "1.0.0".to_string(),
