@@ -25,7 +25,7 @@ FastSkill is a skill package manager and operational toolkit for the AI agent ec
 - **Semantic Search**: Find skills using OpenAI embeddings and natural language queries with high accuracy
 - **Registry Services**: Publish, version, and distribute skills via registry
 - **Manifest System**: Declarative dependency management with lock files for reproducible installations
-- **HTTP API**: RESTful service layer for agent integration
+- **HTTP API**: RESTful service layer for agent integration (requires authentication for protected endpoints)
 - **Web UI**: Browse and manage skills through web interface
 
 ## Compatible Agents

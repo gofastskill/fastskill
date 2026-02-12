@@ -95,6 +95,10 @@ Use the token in API requests:
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/skills
 ```
 
+<Warning>
+Protected endpoints require a valid token and return 401 if missing or invalid. Public routes (e.g., `POST /auth/token`, `GET /`, `GET /api/status`, dashboard and static assets) do not require authentication.
+</Warning>
+
 ## Production Deployment
 
 For production, configure JWT authentication properly:

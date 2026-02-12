@@ -3,8 +3,8 @@
 use crate::http::auth::{jwt::JwtService, roles::UserRole};
 use crate::http::errors::HttpError;
 use axum::{
-    extract::Request,
-    http::{header, StatusCode},
+    extract::{Request, State},
+    http::{header, Method, StatusCode},
     middleware::Next,
     response::Response,
 };
@@ -79,13 +79,80 @@ impl AuthMiddleware {
     }
 }
 
-/// Axum middleware function
-pub async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
-    // For now, we'll skip authentication in middleware and handle it in handlers
-    // This allows for flexible per-endpoint auth requirements
-    // TODO: Implement proper middleware with state
+/// Check if a route is public (does not require authentication)
+fn is_public_route(method: &Method, path: &str) -> bool {
+    match (method, path) {
+        // POST /auth/token - token endpoint
+        (&Method::POST, "/auth/token") => true,
 
-    Ok(next.run(req).await)
+        // GET / - root endpoint
+        (&Method::GET, "/") => true,
+
+        // GET /dashboard - dashboard
+        (&Method::GET, "/dashboard") => true,
+
+        // Static assets
+        (&Method::GET, "/index.html") => true,
+        (&Method::GET, "/app.js") => true,
+        (&Method::GET, "/styles.css") => true,
+
+        // Registry index endpoints (read-only)
+        (&Method::GET, path) if path.starts_with("/index/") => true,
+        (&Method::GET, "/api/registry/index/skills") => true,
+        (&Method::GET, "/api/registry/sources") => true,
+        (&Method::GET, "/api/registry/skills") => true,
+        (&Method::GET, path) if path.starts_with("/api/registry/sources/") => true,
+
+        // All other routes require authentication
+        _ => false,
+    }
+}
+
+/// Axum middleware function that enforces JWT authentication
+pub async fn auth_middleware(
+    State(jwt_service): State<Arc<JwtService>>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+
+    // Check if this is a public route
+    if is_public_route(&method, &path) {
+        // For public routes, attach anonymous AuthContext and proceed
+        let mut req = req;
+        req.extensions_mut().insert(AuthContext::anonymous());
+        return Ok(next.run(req).await);
+    }
+
+    // For protected routes, extract and validate token
+    let token = AuthMiddleware::extract_token(&req);
+    let user_role_and_id = match token {
+        Some(token_str) => match jwt_service.validate_token(&token_str) {
+            Ok(claims) => match UserRole::parse_role(&claims.role) {
+                Ok(role) => Some((role, claims.sub)),
+                Err(_) => {
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+            },
+            Err(_) => {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+        },
+        None => {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Attach AuthContext to request extensions
+    if let Some((user_role, user_id)) = user_role_and_id {
+        let mut req = req;
+        req.extensions_mut()
+            .insert(AuthContext::authenticated(user_id, user_role));
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
 /// Authentication state for request context
