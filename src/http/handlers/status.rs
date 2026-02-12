@@ -1,6 +1,7 @@
 //! Status and root endpoint handlers
 
 use crate::core::service::FastSkillService;
+use crate::http::auth::jwt::JwtService;
 use crate::http::errors::HttpResult;
 use crate::http::models::{ApiResponse, StatusResponse};
 use axum::{extract::State, response::Html};
@@ -11,6 +12,7 @@ use std::time::SystemTime;
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<FastSkillService>,
+    pub jwt_service: Arc<JwtService>,
     pub start_time: SystemTime,
     pub project_file_path: std::path::PathBuf,
     pub project_root: std::path::PathBuf,
@@ -18,14 +20,16 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(service: Arc<FastSkillService>) -> Self {
-        Self {
+    pub fn new(service: Arc<FastSkillService>) -> Result<Self, Box<dyn std::error::Error>> {
+        let jwt_service = Arc::new(JwtService::from_env()?);
+        Ok(Self {
             service,
+            jwt_service,
             start_time: SystemTime::now(),
             project_file_path: std::path::PathBuf::from("skill-project.toml"),
             project_root: std::path::PathBuf::from("."),
             skills_directory: std::path::PathBuf::from(".claude/skills"),
-        }
+        })
     }
 
     pub fn with_project_file_path(mut self, path: std::path::PathBuf) -> Self {

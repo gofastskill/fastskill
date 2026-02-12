@@ -206,7 +206,7 @@ impl FastSkillServer {
         let config = crate::core::load_project_config(&current_dir)
             .map_err(|e| format!("Failed to load project config: {}", e))?;
 
-        let state = AppState::new(self.service.clone()).with_project_config(
+        let state = AppState::new(self.service.clone())?.with_project_config(
             config.project_root,
             config.project_file_path,
             config.skills_directory,
@@ -315,6 +315,10 @@ impl FastSkillServer {
                             .allow_origin(Any), // TODO: Configure CORS properly
                     ),
             )
+            .layer(axum::middleware::from_fn_with_state(
+                state.jwt_service.clone(),
+                crate::http::auth::middleware::auth_middleware,
+            ))
             .with_state(state))
     }
 

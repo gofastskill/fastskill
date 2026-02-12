@@ -13,6 +13,7 @@
 use fastskill::http::handlers::search::search_skills;
 use fastskill::http::models::{ApiResponse, SearchRequest};
 use fastskill::{EmbeddingConfig, ServiceConfig};
+use std::sync::Arc;
 use tempfile::TempDir;
 
 /// Helper to create a mock AppState for testing
@@ -37,7 +38,19 @@ async fn create_test_app_state(
     let mut service = fastskill::FastSkillService::new(config).await.unwrap();
     service.initialize().await.unwrap();
 
-    fastskill::http::handlers::AppState { service }
+    let jwt_service = Arc::new(
+        fastskill::http::auth::jwt::JwtService::from_env()
+            .expect("Failed to create JWT service for tests"),
+    );
+
+    fastskill::http::handlers::AppState {
+        service: Arc::new(service),
+        jwt_service,
+        start_time: std::time::SystemTime::now(),
+        project_file_path: std::path::PathBuf::from("skill-project.toml"),
+        project_root: skills_dir.to_path_buf(),
+        skills_directory: skills_dir.to_path_buf(),
+    }
 }
 
 #[tokio::test]

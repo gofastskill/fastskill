@@ -1,6 +1,6 @@
 //! Authentication endpoint handlers
 
-use crate::http::auth::{jwt::JwtService, roles::EndpointPermissions};
+use crate::http::auth::roles::EndpointPermissions;
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
@@ -9,7 +9,7 @@ use validator::Validate;
 
 /// POST /auth/token - Generate JWT token (for local development)
 pub async fn generate_token(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<TokenRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<TokenResponse>>> {
     // Check permissions (public for local dev)
@@ -33,12 +33,8 @@ pub async fn generate_token(
         )
     })?;
 
-    // For now, we'll create a simple JWT service instance
-    // In a real implementation, this would be part of the app state
-    let jwt_service = JwtService::from_env()
-        .map_err(|e| HttpError::InternalServerError(format!("JWT service error: {:?}", e)))?;
-
-    let response = jwt_service.generate_dev_token(&request)?;
+    // Use JwtService from app state
+    let response = state.jwt_service.generate_dev_token(&request)?;
 
     Ok(axum::Json(ApiResponse::success(response)))
 }
