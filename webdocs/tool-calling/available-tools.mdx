@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get available tools from the tool service
     let tools = service.tool_service().get_available_tools().await?;
-    
+
     println!("Found {} available tools", tools.len());
     for tool in tools {
         println!("  - {}: {}", tool.name, tool.description);
@@ -41,6 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+<Note>
+The `get_available_tools()` method currently returns an empty list. This is the interface contract for tool discovery. To discover tools, use the search and list commands to find skills, then read their SKILL.md files to see the tools they define.
+</Note>
 
 ## Tool Discovery Through Skills
 

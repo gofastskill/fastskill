@@ -60,9 +60,8 @@ fastskill list --help         # Help for list command
 |--------|-------------|---------|
 | `--version` | Show version information | `fastskill --version` |
 | `--verbose, -v` | Enable verbose output | `fastskill -v list` |
-| `--quiet, -q` | Suppress non-error output | `fastskill -q register skill.json` |
-| `--config` | Specify configuration file | `fastskill --config prod.json serve` |
-| `--log-level` | Set logging level | `fastskill --log-level DEBUG serve` |
+| `--repositories_path` | Path to repositories configuration file | `fastskill --repositories_path .claude/repositories.toml list` |
+| `--global` | Use global configuration instead of project-level | `fastskill --global list` |
 | `--help, -h` | Show help information | `fastskill --help` |
 
 ## Command Categories
@@ -117,7 +116,7 @@ fastskill list --help         # Help for list command
     Semantic search across installed skills (supports `--format xml`, `--format json`). See [search Command](/cli-reference/search-command).
   </Card>
   <Card title="fastskill sources" icon="book">
-    Manage repositories (list/add/remove/show/update/test/refresh/create) with authentication and priority. See [sources Command](/cli-reference/sources-command).
+    Manage repositories (list/add/remove/show/update/test/refresh) with authentication and priority. See [sources Command](/cli-reference/sources-command).
   </Card>
   <Card title="fastskill auth" icon="key">
     Manage authentication (login/logout/whoami) with JWT tokens and RBAC. See [auth Command](/cli-reference/auth-command).
@@ -390,7 +389,7 @@ jobs:
   </Tip>
 
   <Tip>
-  **Service permissions**: Use `--user` flag or run with appropriate privileges for system-wide operations.
+  **Service permissions**: Run with appropriate privileges for system-wide operations.
   </Tip>
 </Accordion>
 
@@ -413,11 +412,11 @@ jobs:
 Enable debug mode for detailed troubleshooting:
 
 ```bash
-# Enable debug logging
-fastskill --log-level DEBUG serve
-
 # Run with verbose output
 fastskill -v install
+
+# Use environment variable for trace-level logging
+RUST_LOG=fastskill=trace fastskill serve
 ```
 
 ## Best Practices
