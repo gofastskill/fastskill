@@ -1,7 +1,6 @@
 //! Staging area management for registry publishing
 
 use crate::core::service::ServiceError;
-use crate::security::sanitize_path_component;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -69,17 +68,24 @@ impl StagingManager {
 
     /// Get staging path for a skill version
     /// Accepts scope and id separately
-    pub fn get_staging_path(&self, scope: &str, id: &str, version: &str) -> PathBuf {
+    /// Returns an error if any component contains path traversal attempts
+    pub fn get_staging_path(
+        &self,
+        scope: &str,
+        id: &str,
+        version: &str,
+    ) -> Result<PathBuf, ServiceError> {
         let scope_safe = crate::security::validate_path_component(scope)
-            .unwrap_or_else(|_| sanitize_path_component(scope));
+            .map_err(|e| ServiceError::Validation(format!("Invalid scope: {}", e)))?;
         let id_safe = crate::security::validate_path_component(id)
-            .unwrap_or_else(|_| sanitize_path_component(id));
+            .map_err(|e| ServiceError::Validation(format!("Invalid id: {}", e)))?;
         let version_safe = crate::security::validate_path_component(version)
-            .unwrap_or_else(|_| sanitize_path_component(version));
-        self.staging_dir
+            .map_err(|e| ServiceError::Validation(format!("Invalid version: {}", e)))?;
+        Ok(self
+            .staging_dir
             .join(scope_safe)
             .join(id_safe)
-            .join(version_safe)
+            .join(version_safe))
     }
 
     /// Store package in staging area
@@ -92,7 +98,7 @@ impl StagingManager {
         package_data: &[u8],
         uploaded_by: Option<&str>,
     ) -> Result<(PathBuf, String), ServiceError> {
-        let staging_path = self.get_staging_path(scope, id, version);
+        let staging_path = self.get_staging_path(scope, id, version)?;
         tracing::info!(
             "StagingManager: creating directory: {}",
             staging_path.display()
@@ -240,7 +246,7 @@ impl StagingManager {
         let version_safe = crate::security::validate_path_component(&metadata.version)
             .map_err(|e| ServiceError::Custom(format!("Invalid version: {}", e)))?;
 
-        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe);
+        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe)?;
         let metadata_path = staging_path.join("metadata.json");
 
         let updated_metadata = StagingMetadata {
@@ -285,7 +291,7 @@ impl StagingManager {
         let version_safe = crate::security::validate_path_component(&metadata.version)
             .map_err(|e| ServiceError::Custom(format!("Invalid version: {}", e)))?;
 
-        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe);
+        let staging_path = self.get_staging_path(&scope, &id_safe, &version_safe)?;
         // Use validated id and version for filename (must match store_package)
         let package_filename = format!("{}-{}.zip", id_safe, version_safe);
         let package_path = staging_path.join(&package_filename);
@@ -332,5 +338,22 @@ mod tests {
         assert_eq!(metadata.version, "1.0.0");
         assert_eq!(metadata.status, StagingStatus::Pending);
         assert_eq!(metadata.uploaded_by, Some("user1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_staging_path_rejects_traversal_components() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = StagingManager::new(temp_dir.path().to_path_buf());
+        manager.initialize().unwrap();
+
+        // Test that get_staging_path rejects ".." components
+        let result = manager.get_staging_path("..", "id", "1.0.0");
+        assert!(result.is_err());
+
+        let result = manager.get_staging_path("scope", "..", "1.0.0");
+        assert!(result.is_err());
+
+        let result = manager.get_staging_path("scope", "id", "..");
+        assert!(result.is_err());
     }
 }

@@ -221,9 +221,11 @@ impl From<SkillId> for String {
     }
 }
 
-impl From<String> for SkillId {
-    fn from(s: String) -> Self {
-        Self::new(s).unwrap_or_else(|_| SkillId("unknown".to_string()))
+impl TryFrom<String> for SkillId {
+    type Error = ServiceError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        SkillId::new(s)
     }
 }
 
@@ -634,5 +636,22 @@ mod tests {
 
         service.shutdown().await.unwrap();
         assert!(!service.is_initialized());
+    }
+
+    #[test]
+    fn test_skill_id_new_validates_input() {
+        assert!(SkillId::new("valid-id".to_string()).is_ok());
+        assert!(SkillId::new("valid_id_123".to_string()).is_ok());
+        assert!(SkillId::new("".to_string()).is_err());
+        assert!(SkillId::new("bad/id".to_string()).is_err());
+        assert!(SkillId::new("id with spaces".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_skill_id_try_from_validates_input() {
+        // TryFrom should validate input
+        assert!(SkillId::try_from("valid-id".to_string()).is_ok());
+        assert!(SkillId::try_from("".to_string()).is_err());
+        assert!(SkillId::try_from("bad/id".to_string()).is_err());
     }
 }

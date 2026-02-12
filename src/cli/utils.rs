@@ -293,3 +293,25 @@ fn format_skills_table(skills: &[fastskill::SkillDefinition]) -> String {
 fn format_skills_json(skills: &[fastskill::SkillDefinition]) -> String {
     serde_json::to_string_pretty(skills).unwrap_or_else(|e| format!("Error serializing: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_skill_id_regex_valid() {
+        // Test that the regex compiles and the function doesn't panic
+        // These test various valid skill ID formats
+        assert!(is_skill_id("valid-skill"));
+        assert!(is_skill_id("scope/id"));
+        assert!(is_skill_id("scope/id@1.0.0"));
+        assert!(is_skill_id("valid-skill@1.2.3"));
+        assert!(is_skill_id("my_skill@2.0.0"));
+
+        // Test that invalid formats are rejected
+        assert!(!is_skill_id(""));
+        assert!(!is_skill_id("invalid:format"));
+        assert!(!is_skill_id("invalid\\path"));
+        assert!(!is_skill_id("/absolute/path"));
+    }
+}
