@@ -125,23 +125,152 @@ For each SKILL.md file:
 - Compares indexed skill IDs with current skill directories
 - Logs removal of stale entries (does not fail reindex)
 
+## Progress Monitoring
+
+### Output Levels
+
+The reindex command supports three output levels:
+
+- **Default**: Shows progress bar with completion percentage
+- **Verbose (`-v, --verbose`)**: Shows per-skill processing details
+- **Quiet (`-q, --quiet`)**: Suppresses progress, shows only final summary
+
+### Progress Bar
+
+By default, reindex displays a live progress bar:
+
+```
+Progress: [12/50] (24%) | Pending: 38 | Skipped: 0 | Failed: 0 | Elapsed: 15s
+```
+
+The progress bar shows:
+- Number of completed skills
+- Completion percentage
+- Remaining skills to process
+- Skills skipped (unchanged)
+- Skills that failed
+- Total elapsed time
+
+### Verbose Mode
+
+Use `-v` or `--verbose` to see detailed output:
+
+```bash
+fastskill reindex --verbose
+
+Processing: pptx
+Processing: skill-creator
+  ⊘ Skipped: fastskill (unchanged hash)
+Processing: pptx
+  ✗ Failed: bad-skill - Failed to parse frontmatter
+  ✓ Indexed: data-ops
+...
+Reindex completed
+  Total skills: 50
+  Successfully indexed: 42
+  Skipped (unchanged): 5
+  Failed: 3
+  Total time: 45.23s
+```
+
+### Quiet Mode
+
+Use `-q` or `--quiet` to suppress all progress output:
+
+```bash
+fastskill reindex --quiet
+
+Reindex completed
+  Total skills: 50
+  Successfully indexed: 42
+  Skipped (unchanged): 5
+  Failed: 3
+  Total time: 45.23s
+```
+
+### Environment Variables
+
+The reindex command respects the following environment variables:
+
+#### `FASTSKILL_NO_PROGRESS`
+
+Disable progress bars and spinners:
+
+```bash
+FASTSKILL_NO_PROGRESS=1 fastskill reindex
+```
+
+This is useful when running in non-interactive environments like CI/CD pipelines.
+
+#### `NO_COLOR`
+
+Disable colored output:
+
+```bash
+NO_COLOR=1 fastskill reindex
+```
+
+Useful for environments that don't support ANSI color codes.
+
+### TTY Detection
+
+The progress bar automatically detects if stdout is a TTY:
+- **TTY terminal**: Shows progress bar (unless `FASTSKILL_NO_PROGRESS` is set)
+- **Piped output**: No progress bar (falls back to simple text)
+- **Redirected output**: No progress bar
+
+Examples:
+```bash
+# Shows progress bar (TTY)
+fastskill reindex --skills-dir .claude/skills/
+
+# No progress bar (piped to grep)
+fastskill reindex --skills-dir .claude/skills/ | grep "error"
+
+# No progress bar (redirected to file)
+fastskill reindex --skills-dir .claude/skills/ > output.log
+
+# Force quiet mode explicitly
+fastskill reindex --quiet
+```
+
 ## Output and Progress
 
-### Success Output
+### Legacy Output (Logging)
+
+In addition to the progress monitoring, the command uses structured logging:
 
 ```
 INFO Processing skill: airflow-ops
 INFO Processing skill: dag-development
 INFO Processing skill: k8s-monitoring
-INFO Reindex completed: 15 successful, 0 errors
 ```
+
+This logging is separate from the user-facing progress output and can be controlled via the `RUST_LOG` environment variable for debugging purposes.
+
+### Success Output
+
+When using default or verbose mode, you'll see detailed progress information followed by a summary:
 
 ### Error Handling
 
+In verbose mode, errors are shown with detailed information:
+
 ```
-WARN Failed to process skill: Validation error: Failed to generate embedding for airflow-ops: Custom error: OpenAI API error 401 Unauthorized
-INFO Reindex completed: 14 successful, 1 errors
+  ✗ Failed: airflow-ops - Failed to generate embedding: OpenAI API error 401 Unauthorized
+  ✗ Failed: dag-development - Failed to parse frontmatter: Invalid YAML
+...
+Reindex completed
+  Total skills: 15
+  Successfully indexed: 13
+  Skipped (unchanged): 0
+  Failed: 2
+  Total time: 23.45s
+
+error: Reindex completed with 2 errors
 ```
+
+In quiet or default mode, only the summary and error count are shown.
 
 Common errors:
 - **API Key Issues**: Check `OPENAI_API_KEY` environment variable

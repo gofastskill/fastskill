@@ -3,3 +3,5 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
+Found 0 skills to process
+No skills found in [TEMP_DIR]
