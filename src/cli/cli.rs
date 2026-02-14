@@ -5,8 +5,8 @@ use fastskill::FastSkillService;
 use std::sync::Arc;
 
 use crate::cli::commands::{
-    add, auth, disable, init, install, list, package, publish, read, registry, reindex, remove,
-    search, serve, show, sources, sync, update, version, Commands,
+    add, analyze, auth, disable, init, install, list, package, publish, read, registry, reindex,
+    remove, search, serve, show, sources, sync, update, version, Commands,
 };
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -125,6 +125,7 @@ impl Cli {
             Some(Commands::Add(args)) => {
                 add::execute_add(&service, args, self.verbose, global).await
             }
+            Some(Commands::Analyze(args)) => analyze::execute_analyze(&service, args).await,
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
             Some(Commands::List(args)) => list::execute_list(&service, args, global).await,
             Some(Commands::Read(args)) => read::execute_read(Arc::new(service), args).await,
