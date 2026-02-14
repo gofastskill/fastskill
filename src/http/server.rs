@@ -54,6 +54,58 @@ async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+/// Validate blob storage configuration fields
+fn validate_blob_storage_fields(blob_config: &crate::core::BlobStorageConfig) -> Vec<&'static str> {
+    let mut missing = Vec::new();
+
+    if blob_config.storage_type.is_empty() {
+        missing.push("storage_type");
+    }
+    if blob_config.bucket.is_empty() {
+        missing.push("bucket");
+    }
+    if blob_config.region.is_empty() {
+        missing.push("region");
+    }
+    if blob_config.access_key.is_empty() {
+        missing.push("access_key");
+    }
+    if blob_config.secret_key.is_empty() {
+        missing.push("secret_key");
+    }
+
+    missing
+}
+
+/// Build error message for validation failures
+fn build_validation_error_message(
+    missing: &[&str],
+    incomplete_fields: &[(&str, Vec<&str>)],
+) -> String {
+    let mut error_msg =
+        String::from("Registry enabled but required configuration is missing or incomplete:\n");
+
+    if !missing.is_empty() {
+        error_msg.push_str("  Missing configuration:\n");
+        for item in missing {
+            error_msg.push_str(&format!("    - {}\n", item));
+        }
+    }
+
+    if !incomplete_fields.is_empty() {
+        error_msg.push_str("  Incomplete configuration:\n");
+        for (config_name, fields) in incomplete_fields {
+            error_msg.push_str(&format!("    {} is missing fields:\n", config_name));
+            for field in fields {
+                error_msg.push_str(&format!("      - {}\n", field));
+            }
+        }
+    }
+
+    error_msg.push_str("\nS3 configuration is required for operational registry publishing.");
+    error_msg
+}
+
 /// Validate registry configuration and return detailed error message if invalid
 fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
     let mut missing = Vec::new();
@@ -65,59 +117,18 @@ fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
             missing.push("registry_blob_storage");
         }
         Some(blob_config) => {
-            // Validate required fields in blob storage config
-            let mut blob_missing = Vec::new();
-
-            if blob_config.storage_type.is_empty() {
-                blob_missing.push("storage_type");
-            }
-            if blob_config.bucket.is_empty() {
-                blob_missing.push("bucket");
-            }
-            if blob_config.region.is_empty() {
-                blob_missing.push("region");
-            }
-            if blob_config.access_key.is_empty() {
-                blob_missing.push("access_key");
-            }
-            if blob_config.secret_key.is_empty() {
-                blob_missing.push("secret_key");
-            }
-
+            let blob_missing = validate_blob_storage_fields(blob_config);
             if !blob_missing.is_empty() {
                 incomplete_fields.push(("registry_blob_storage", blob_missing));
             }
         }
     }
 
-    // Build error message
     if missing.is_empty() && incomplete_fields.is_empty() {
         return Ok(());
     }
 
-    let mut error_msg =
-        String::from("Registry enabled but required configuration is missing or incomplete:\n");
-
-    if !missing.is_empty() {
-        error_msg.push_str("  Missing configuration:\n");
-        for item in &missing {
-            error_msg.push_str(&format!("    - {}\n", item));
-        }
-    }
-
-    if !incomplete_fields.is_empty() {
-        error_msg.push_str("  Incomplete configuration:\n");
-        for (config_name, fields) in &incomplete_fields {
-            error_msg.push_str(&format!("    {} is missing fields:\n", config_name));
-            for field in fields {
-                error_msg.push_str(&format!("      - {}\n", field));
-            }
-        }
-    }
-
-    error_msg.push_str("\nS3 configuration is required for operational registry publishing.");
-
-    Err(error_msg)
+    Err(build_validation_error_message(&missing, &incomplete_fields))
 }
 
 /// Display startup banner with ASCII art
@@ -126,111 +137,104 @@ fn display_startup_banner() {
     let _version = crate::VERSION;
 }
 
+/// Get allowed methods for CORS
+fn get_allowed_methods() -> [Method; 5] {
+    [
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::DELETE,
+        Method::OPTIONS,
+    ]
+}
+
+/// Build default CORS layer (deny all origins)
+fn build_default_cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_methods(get_allowed_methods())
+        .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
+}
+
+/// Parse origin strings to HeaderValues
+fn parse_origins(origins: &[String]) -> Result<Vec<HeaderValue>, String> {
+    origins
+        .iter()
+        .map(|origin| {
+            HeaderValue::from_str(origin)
+                .map_err(|e| format!("Invalid origin header value '{}': {}", origin, e))
+        })
+        .collect()
+}
+
+/// Parse header strings to HeaderNames
+fn parse_headers(headers: &[String]) -> Result<Vec<HeaderName>, String> {
+    headers
+        .iter()
+        .map(|header| {
+            HeaderName::from_str(header)
+                .map_err(|e| format!("Invalid header name '{}': {}", header, e))
+        })
+        .collect()
+}
+
+/// Build CORS layer with configured origins and headers
+fn build_configured_cors_layer(
+    origin_header_values: Vec<HeaderValue>,
+    allowed_origins: &[String],
+    allowed_headers: &[String],
+) -> CorsLayer {
+    info!(
+        "Configuring CORS for {} origins: {}",
+        origin_header_values.len(),
+        allowed_origins.join(", ")
+    );
+
+    let header_names = match parse_headers(allowed_headers) {
+        Ok(values) => values,
+        Err(e) => {
+            tracing::error!("Failed to build CORS headers: {}", e);
+            return CorsLayer::new()
+                .allow_methods(get_allowed_methods())
+                .allow_origin(AllowOrigin::list(origin_header_values))
+                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        }
+    };
+
+    CorsLayer::new()
+        .allow_methods(get_allowed_methods())
+        .allow_origin(AllowOrigin::list(origin_header_values))
+        .allow_headers(header_names)
+        .allow_credentials(true)
+}
+
 /// Build CORS layer from service configuration
 pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLayer {
-    let http_config = config.http_server.as_ref();
-
-    match http_config {
+    let http_config = match config.http_server.as_ref() {
         None => {
-            // No server config - deny all origins (no CORS headers)
             info!("No CORS configuration found - denying all origins");
-            CorsLayer::new()
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
+            return build_default_cors_layer();
         }
-        Some(server_config) => {
-            if server_config.allowed_origins.is_empty() {
-                // Empty origins list - deny all origins
-                info!("Empty CORS allowed_origins - denying all origins");
-                CorsLayer::new()
-                    .allow_methods([
-                        Method::GET,
-                        Method::POST,
-                        Method::PUT,
-                        Method::DELETE,
-                        Method::OPTIONS,
-                    ])
-                    .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
-            } else {
-                // Build origin list from config
-                let origins: Result<Vec<HeaderValue>, _> = server_config
-                    .allowed_origins
-                    .iter()
-                    .map(|origin| {
-                        HeaderValue::from_str(origin)
-                            .map_err(|e| format!("Invalid origin header value '{}': {}", origin, e))
-                    })
-                    .collect();
+        Some(cfg) => cfg,
+    };
 
-                let origin_header_values = match origins {
-                    Ok(values) => values,
-                    Err(e) => {
-                        tracing::error!("Failed to build CORS origins: {}", e);
-                        return CorsLayer::new()
-                            .allow_methods([
-                                Method::GET,
-                                Method::POST,
-                                Method::PUT,
-                                Method::DELETE,
-                                Method::OPTIONS,
-                            ])
-                            .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")));
-                    }
-                };
-
-                info!(
-                    "Configuring CORS for {} origins: {}",
-                    origin_header_values.len(),
-                    server_config.allowed_origins.join(", ")
-                );
-
-                // Build allowed headers from config or use safe defaults
-                let headers: Result<Vec<HeaderName>, _> = server_config
-                    .allowed_headers
-                    .iter()
-                    .map(|header| {
-                        HeaderName::from_str(header)
-                            .map_err(|e| format!("Invalid header name '{}': {}", header, e))
-                    })
-                    .collect();
-
-                let header_names = match headers {
-                    Ok(values) => values,
-                    Err(e) => {
-                        tracing::error!("Failed to build CORS headers: {}", e);
-                        return CorsLayer::new()
-                            .allow_methods([
-                                Method::GET,
-                                Method::POST,
-                                Method::PUT,
-                                Method::DELETE,
-                                Method::OPTIONS,
-                            ])
-                            .allow_origin(AllowOrigin::list(origin_header_values))
-                            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
-                    }
-                };
-
-                CorsLayer::new()
-                    .allow_methods([
-                        Method::GET,
-                        Method::POST,
-                        Method::PUT,
-                        Method::DELETE,
-                        Method::OPTIONS,
-                    ])
-                    .allow_origin(AllowOrigin::list(origin_header_values))
-                    .allow_headers(header_names)
-                    .allow_credentials(true)
-            }
-        }
+    if http_config.allowed_origins.is_empty() {
+        info!("Empty CORS allowed_origins - denying all origins");
+        return build_default_cors_layer();
     }
+
+    let origin_header_values = match parse_origins(&http_config.allowed_origins) {
+        Ok(values) => values,
+        Err(e) => {
+            tracing::error!("Failed to build CORS origins: {}", e);
+            return build_default_cors_layer();
+        }
+    };
+
+    build_configured_cors_layer(
+        origin_header_values,
+        &http_config.allowed_origins,
+        &http_config.allowed_headers,
+    )
 }
 
 /// FastSkill HTTP server
@@ -307,21 +311,9 @@ impl FastSkillServer {
         }
     }
 
-    /// Create the Axum router with all routes
-    fn create_router(&self) -> Result<Router, Box<dyn std::error::Error>> {
-        // Load project configuration
-        let current_dir = env::current_dir()?;
-        let config = crate::core::load_project_config(&current_dir)
-            .map_err(|e| format!("Failed to load project config: {}", e))?;
-
-        let state = AppState::new(self.service.clone())?.with_project_config(
-            config.project_root,
-            config.project_file_path,
-            config.skills_directory,
-        );
-
-        let mut router = Router::new()
-            // Skills CRUD endpoints
+    /// Create skill CRUD routes
+    fn create_skill_routes() -> Router<AppState> {
+        Router::new()
             .route("/api/skills", get(skills::list_skills))
             .route("/api/skills", post(skills::create_skill))
             .route("/api/skills/:id", get(skills::get_skill))
@@ -329,17 +321,27 @@ impl FastSkillServer {
             .route("/api/skills/:id", delete(skills::delete_skill))
             .route("/api/skills/upgrade", post(skills::upgrade_skills))
             .route("/api/project", get(manifest::get_project))
-            // Search endpoint
+    }
+
+    /// Create search and reindex routes
+    fn create_search_routes() -> Router<AppState> {
+        Router::new()
             .route("/api/search", post(search::search_skills))
-            // Reindex endpoints
             .route("/api/reindex", post(reindex::reindex_all))
             .route("/api/reindex/:id", post(reindex::reindex_skill))
-            // Auth endpoints
+    }
+
+    /// Create authentication routes
+    fn create_auth_routes() -> Router<AppState> {
+        Router::new()
             .route("/auth/token", post(auth::generate_token))
             .route("/auth/verify", get(auth::verify_token))
-            // Status endpoint
             .route("/api/status", get(status::status))
-            // Claude Code v1 API endpoints
+    }
+
+    /// Create Claude Code v1 API routes
+    fn create_claude_api_routes() -> Router<AppState> {
+        Router::new()
             .route("/v1/skills", post(claude_api::create_skill))
             .route("/v1/skills", get(claude_api::list_skills))
             .route("/v1/skills/:skill_id", get(claude_api::get_skill))
@@ -359,19 +361,23 @@ impl FastSkillServer {
             .route(
                 "/v1/skills/:skill_id/versions/:version",
                 delete(claude_api::delete_skill_version),
-            );
+            )
+    }
 
-        // Installed-skills UI at / (always from embedded static); dashboard at /dashboard
+    /// Create UI routes
+    fn create_ui_routes() -> Router<AppState> {
         info!("Serving UI at /");
-        router = router
+        Router::new()
             .route("/dashboard", get(status::root))
             .route("/", get(serve_embedded_static))
             .route("/index.html", get(serve_embedded_static))
             .route("/app.js", get(serve_embedded_static))
-            .route("/styles.css", get(serve_embedded_static));
+            .route("/styles.css", get(serve_embedded_static))
+    }
 
-        // Registry and manifest API routes (always available)
-        router = router
+    /// Create registry routes
+    fn create_registry_routes() -> Router<AppState> {
+        Router::new()
             .route("/index/*skill_id", get(registry::serve_index_file))
             .route(
                 "/api/registry/index/skills",
@@ -396,6 +402,11 @@ impl FastSkillServer {
                 "/api/registry/publish/status/:job_id",
                 get(registry_publish::get_publish_status),
             )
+    }
+
+    /// Create manifest routes
+    fn create_manifest_routes() -> Router<AppState> {
+        Router::new()
             .route("/api/manifest/skills", get(manifest::list_manifest_skills))
             .route(
                 "/api/manifest/skills",
@@ -408,7 +419,31 @@ impl FastSkillServer {
             .route(
                 "/api/manifest/skills/:id",
                 delete(manifest::remove_skill_from_manifest),
-            );
+            )
+    }
+
+    /// Create the Axum router with all routes
+    fn create_router(&self) -> Result<Router, Box<dyn std::error::Error>> {
+        // Load project configuration
+        let current_dir = env::current_dir()?;
+        let config = crate::core::load_project_config(&current_dir)
+            .map_err(|e| format!("Failed to load project config: {}", e))?;
+
+        let state = AppState::new(self.service.clone())?.with_project_config(
+            config.project_root,
+            config.project_file_path,
+            config.skills_directory,
+        );
+
+        // Merge all route modules
+        let router = Router::new()
+            .merge(Self::create_skill_routes())
+            .merge(Self::create_search_routes())
+            .merge(Self::create_auth_routes())
+            .merge(Self::create_claude_api_routes())
+            .merge(Self::create_ui_routes())
+            .merge(Self::create_registry_routes())
+            .merge(Self::create_manifest_routes());
 
         // Add middleware and state
         Ok(router
