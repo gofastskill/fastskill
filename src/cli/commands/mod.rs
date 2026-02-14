@@ -1,6 +1,7 @@
 //! Command modules for CLI
 
 pub mod add;
+pub mod analyze;
 pub mod auth;
 pub mod disable;
 pub mod init;
@@ -31,6 +32,13 @@ pub enum Commands {
         after_help = "Examples:\n  fastskill add ./my-skill\n  fastskill add pptx@1.2.3"
     )]
     Add(add::AddArgs),
+
+    /// Diagnostic and analysis commands
+    #[command(
+        about = "Diagnostic and analysis commands",
+        after_help = "Examples:\n  fastskill analyze matrix\n  fastskill analyze matrix --threshold 0.8"
+    )]
+    Analyze(analyze::AnalyzeCommand),
 
     /// Authentication commands (login, logout, whoami)
     #[command(
