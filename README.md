@@ -323,6 +323,7 @@ fastskill search --embedding false "powerpoint"
 | `fastskill serve` | Start HTTP API server |
 | `fastskill init` | Initialize skill-project.toml |
 | `fastskill package` | Package skills into ZIP artifacts |
+| `fastskill analyze matrix` | Show similarity matrix between all skills |
 
 ### Skill Management
 
@@ -354,6 +355,17 @@ fastskill init                       # Initialize skill metadata
 fastskill package                    # Package skills into ZIP artifacts
 fastskill package --force --recursive # Package all skills recursively from nested directories
 ```
+
+### Diagnostic Commands
+
+```bash
+fastskill analyze matrix             # Show similarity matrix between all skills
+```
+
+- Identify related skills
+- Find potential duplicates
+- Verify embedding quality
+- Export data in JSON format
 
 ## Repositories
 

@@ -20,6 +20,7 @@ Usage: fastskill [OPTIONS] [QUERY] [COMMAND]
 
 Commands:
   add       Add a new skill to the skills database
+  analyze   Diagnostic and analysis commands
   auth      Manage authentication for registries
   disable   Disable skills by ID
   init      Initialize skill-project.toml in current skill directory
