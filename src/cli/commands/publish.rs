@@ -6,7 +6,7 @@ use clap::Args;
 use fastskill::core::repository::{
     RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 use url::Url;
 
@@ -40,81 +40,132 @@ pub struct PublishArgs {
     pub max_wait: u64,
 }
 
-pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
-    info!("Starting publish command");
+/// Context for publish operations
+struct PublishContext {
+    target: String,
+    packages: Vec<PathBuf>,
+    is_url: bool,
+    wait: bool,
+    max_wait: u64,
+}
 
-    // Validate mutually exclusive flags
+impl PublishContext {
+    fn new(args: PublishArgs) -> CliResult<Self> {
+        // Validate mutually exclusive flags
+        validate_publish_args(&args)?;
+
+        // Determine target URL or path
+        let target = determine_target(&args)?;
+        let is_url = Url::parse(&target).is_ok();
+
+        // Collect packages
+        let packages = collect_packages(&args.artifacts)?;
+        validate_packages(&packages, &args.artifacts)?;
+
+        // Apply --no-wait override
+        let wait = if args.no_wait { false } else { args.wait };
+
+        Ok(Self {
+            target,
+            packages,
+            is_url,
+            wait,
+            max_wait: args.max_wait,
+        })
+    }
+}
+
+/// Validate publish arguments (mutual exclusivity)
+fn validate_publish_args(args: &PublishArgs) -> CliResult<()> {
     if args.registry.is_some() && args.target.is_some() {
         return Err(CliError::Config(
             "Cannot specify both --registry and --target. Use one or the other.".to_string(),
         ));
     }
+    Ok(())
+}
 
-    // Determine target (API URL or local path)
-    let target = if let Some(registry_name) = &args.registry {
-        // Load from skill-project.toml [tool.fastskill.repositories]
-        let repositories = crate::cli::config::load_repositories_from_project()?;
-        let repo_manager = RepositoryManager::from_definitions(repositories);
-
-        let repo = repo_manager.get_repository(registry_name).ok_or_else(|| {
-            CliError::Config(format!(
-                "Repository '{}' not found in repositories.toml",
-                registry_name
-            ))
-        })?;
-
-        // Extract API URL from repository configuration
-        extract_api_url_from_repository(repo)?
+/// Determine the target URL or path from arguments
+fn determine_target(args: &PublishArgs) -> CliResult<String> {
+    if let Some(registry_name) = &args.registry {
+        determine_target_from_registry(registry_name)
     } else {
-        // Existing logic: --target flag, env var, or default
-        args.target
+        Ok(args
+            .target
+            .clone()
             .or_else(|| std::env::var("FASTSKILL_API_URL").ok())
-            .unwrap_or_else(|| "http://localhost:8080".to_string())
-    };
+            .unwrap_or_else(|| "http://localhost:8080".to_string()))
+    }
+}
 
-    // Detect if target is URL or local path
-    let is_url = Url::parse(&target).is_ok();
+/// Determine target from registry configuration
+fn determine_target_from_registry(registry_name: &str) -> CliResult<String> {
+    let repositories = crate::cli::config::load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
 
-    // Collect packages to publish (validate artifacts path exists first)
-    let packages = collect_packages(&args.artifacts)?;
+    let repo = repo_manager.get_repository(registry_name).ok_or_else(|| {
+        CliError::Config(format!(
+            "Repository '{}' not found in repositories.toml",
+            registry_name
+        ))
+    })?;
 
+    extract_api_url_from_repository(repo)
+}
+
+/// Validate that packages were found
+fn validate_packages(packages: &[PathBuf], artifacts: &Path) -> CliResult<()> {
     if packages.is_empty() {
         return Err(CliError::Validation(format!(
             "No ZIP packages found in: {}",
-            args.artifacts.display()
+            artifacts.display()
         )));
     }
+    Ok(())
+}
+
+pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
+    info!("Starting publish command");
+
+    // Create publish context
+    let context = PublishContext::new(args)?;
 
     println!(
         "{}",
-        messages::info(&format!("Found {} package(s) to publish", packages.len()))
+        messages::info(&format!(
+            "Found {} package(s) to publish",
+            context.packages.len()
+        ))
     );
 
-    // Get token (with automatic refresh if needed)
-    let token = if is_url {
-        crate::cli::auth_config::get_token_with_refresh(&target).await?
+    // Execute publish based on target type
+    if context.is_url {
+        publish_to_api_with_auth(&context).await?;
     } else {
-        None
-    };
-
-    // Apply --no-wait override
-    let wait = if args.no_wait { false } else { args.wait };
-
-    if is_url {
-        // API mode - check if token is available
-        let token_str = token.ok_or_else(|| {
-            CliError::Validation(format!(
-                "No authentication token found for registry: {}. Run `fastskill auth login` to authenticate.",
-                target
-            ))
-        })?;
-        publish_to_api(&target, &packages, Some(&token_str), wait, args.max_wait).await?;
-    } else {
-        // Local folder mode
-        publish_to_local_folder(&target, &packages).await?;
+        publish_to_local_folder(&context.target, &context.packages).await?;
     }
 
     Ok(())
+}
+
+/// Publish to API with authentication
+async fn publish_to_api_with_auth(context: &PublishContext) -> CliResult<()> {
+    let token = crate::cli::auth_config::get_token_with_refresh(&context.target).await?;
+    let token_str = token.ok_or_else(|| {
+        CliError::Validation(format!(
+            "No authentication token found for registry: {}. Run `fastskill auth login` to authenticate.",
+            context.target
+        ))
+    })?;
+
+    publish_to_api(
+        &context.target,
+        &context.packages,
+        Some(&token_str),
+        context.wait,
+        context.max_wait,
+    )
+    .await
 }
 
 /// Collect packages from artifacts path (file or directory)
@@ -142,26 +193,148 @@ fn collect_packages(artifacts: &PathBuf) -> CliResult<Vec<PathBuf>> {
     }
 }
 
+/// Check if a path is a ZIP file
+fn is_zip_file(path: &Path) -> bool {
+    path.is_file() && path.extension().is_some_and(|ext| ext == "zip")
+}
+
 /// Find all ZIP files in a directory
 fn find_zip_files(dir: &PathBuf) -> CliResult<Vec<PathBuf>> {
-    let mut zip_files = Vec::new();
-
     let entries = std::fs::read_dir(dir).map_err(CliError::Io)?;
 
-    for entry in entries {
-        let entry = entry.map_err(CliError::Io)?;
-        let path = entry.path();
-
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext == "zip" {
-                    zip_files.push(path);
-                }
-            }
-        }
-    }
+    let zip_files: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| is_zip_file(path))
+        .collect();
 
     Ok(zip_files)
+}
+
+/// Get package name from path
+fn get_package_name(package: &Path) -> &str {
+    package
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+}
+
+/// Handle validation status after waiting
+fn handle_validation_status(
+    status: &crate::cli::utils::api_client::PublishStatusApiResponse,
+) -> CliResult<()> {
+    match status.status.as_str() {
+        "pending" | "validating" => {
+            eprintln!(
+                "{}",
+                messages::error(&format!(
+                    "Timeout waiting for validation. Current status: {}. Use --max-wait to increase timeout.",
+                    status.status
+                ))
+            );
+            Ok(())
+        }
+        "accepted" => {
+            println!(
+                "{}",
+                messages::ok(&format!(
+                    "Package accepted: {} v{}",
+                    status.skill_id, status.version
+                ))
+            );
+            Ok(())
+        }
+        "rejected" => {
+            eprintln!(
+                "{}",
+                messages::error(&format!(
+                    "Package validation failed: {:?}",
+                    status.validation_errors
+                ))
+            );
+            Err(CliError::Validation(format!(
+                "Package was rejected: {:?}",
+                status.validation_errors
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Wait for package validation to complete
+async fn wait_for_package_validation(
+    client: &ApiClient,
+    job_id: &str,
+    max_wait: u64,
+) -> CliResult<()> {
+    println!("{}", messages::info("Waiting for validation..."));
+
+    match client.wait_for_completion(job_id, max_wait).await {
+        Ok(status) => handle_validation_status(&status),
+        Err(e) => {
+            eprintln!(
+                "{}",
+                messages::error(&format!("Package validation failed: {}", e))
+            );
+            Err(e)
+        }
+    }
+}
+
+/// Publish a single package to API
+async fn publish_single_package(
+    client: &ApiClient,
+    package: &Path,
+    api_url: &str,
+    wait: bool,
+    max_wait: u64,
+) -> CliResult<()> {
+    let package_name = get_package_name(package);
+
+    println!(
+        "{}",
+        messages::info(&format!("Publishing: {}", package_name))
+    );
+
+    // Publish package
+    let response = client
+        .publish_package(package)
+        .await
+        .map_err(|e| CliError::Validation(format!("Failed to publish {}: {}", package_name, e)))?;
+
+    println!(
+        "{}",
+        messages::ok(&format!(
+            "Package queued: {} v{} (job: {})",
+            response.skill_id, response.version, response.job_id
+        ))
+    );
+
+    // Get initial status
+    let initial_status = client
+        .get_publish_status(&response.job_id)
+        .await
+        .map_err(|e| CliError::Validation(format!("Failed to get initial status: {}", e)))?;
+
+    println!(
+        "{}",
+        messages::info(&format!("Initial status: {}", initial_status.status))
+    );
+
+    // Wait for completion if requested
+    if wait {
+        wait_for_package_validation(client, &response.job_id, max_wait).await?;
+    } else {
+        println!(
+            "{}",
+            messages::info(&format!(
+                "Check status with: GET {}/api/registry/publish/status/{}",
+                api_url, response.job_id
+            ))
+        );
+    }
+
+    Ok(())
 }
 
 /// Publish packages to API
@@ -180,92 +353,7 @@ async fn publish_to_api(
     );
 
     for package in packages {
-        let package_name = package
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
-
-        println!(
-            "{}",
-            messages::info(&format!("Publishing: {}", package_name))
-        );
-
-        // Publish package (server will extract scope from JWT token)
-        let response = client.publish_package(package).await.map_err(|e| {
-            CliError::Validation(format!("Failed to publish {}: {}", package_name, e))
-        })?;
-
-        println!(
-            "{}",
-            messages::ok(&format!(
-                "Package queued: {} v{} (job: {})",
-                response.skill_id, response.version, response.job_id
-            ))
-        );
-
-        // Always poll status at least once to show initial status
-        let initial_status = client
-            .get_publish_status(&response.job_id)
-            .await
-            .map_err(|e| CliError::Validation(format!("Failed to get initial status: {}", e)))?;
-
-        println!(
-            "{}",
-            messages::info(&format!("Initial status: {}", initial_status.status))
-        );
-
-        // Wait for completion if requested
-        if wait {
-            println!("{}", messages::info("Waiting for validation..."));
-
-            match client.wait_for_completion(&response.job_id, max_wait).await {
-                Ok(status) => {
-                    // Check if we timed out (status is still pending/validating)
-                    if status.status == "pending" || status.status == "validating" {
-                        eprintln!("{}", messages::error(&format!(
-                            "Timeout waiting for validation. Current status: {}. Use --max-wait to increase timeout.",
-                            status.status
-                        )));
-                        // Don't return error, just show warning and continue
-                    } else if status.status == "accepted" {
-                        println!(
-                            "{}",
-                            messages::ok(&format!(
-                                "Package accepted: {} v{}",
-                                status.skill_id, status.version
-                            ))
-                        );
-                    } else if status.status == "rejected" {
-                        eprintln!(
-                            "{}",
-                            messages::error(&format!(
-                                "Package validation failed: {:?}",
-                                status.validation_errors
-                            ))
-                        );
-                        return Err(CliError::Validation(format!(
-                            "Package was rejected: {:?}",
-                            status.validation_errors
-                        )));
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        messages::error(&format!("Package validation failed: {}", e))
-                    );
-                    return Err(e);
-                }
-            }
-        } else {
-            println!(
-                "{}",
-                messages::info(&format!(
-                    "Check status with: GET {}/api/registry/publish/status/{}",
-                    api_url, response.job_id
-                ))
-            );
-        }
+        publish_single_package(&client, package, api_url, wait, max_wait).await?;
     }
 
     Ok(())
@@ -380,19 +468,48 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    /// Create test publish args
+    fn create_test_args(artifacts: PathBuf, target: Option<String>, wait: bool) -> PublishArgs {
+        PublishArgs {
+            artifacts,
+            registry: None,
+            target,
+            wait,
+            no_wait: !wait,
+            max_wait: 300,
+        }
+    }
+
+    /// Create a valid ZIP file for testing
+    fn create_test_zip(artifacts_dir: &PathBuf, skill_name: &str) {
+        use std::io::Write;
+        use zip::{write::FileOptions, ZipWriter};
+
+        let skill_content = format!(
+            r#"# {}
+
+Name: {}
+Version: 1.0.0
+Description: A test skill for coverage
+"#,
+            skill_name, skill_name
+        );
+
+        let zip_path = artifacts_dir.join(format!("{}-1.0.0.zip", skill_name));
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("SKILL.md", options).unwrap();
+        zip.write_all(skill_content.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+
     #[tokio::test]
     async fn test_execute_publish_nonexistent_artifacts() {
         let temp_dir = TempDir::new().unwrap();
         let nonexistent_path = temp_dir.path().join("nonexistent");
 
-        let args = PublishArgs {
-            artifacts: nonexistent_path,
-            registry: None,
-            target: None,
-            wait: true,
-            no_wait: false,
-            max_wait: 300,
-        };
+        let args = create_test_args(nonexistent_path, None, true);
 
         let result = execute_publish(args).await;
         assert!(result.is_err());
@@ -409,14 +526,7 @@ mod tests {
         let artifacts_dir = temp_dir.path().join("artifacts");
         fs::create_dir_all(&artifacts_dir).unwrap();
 
-        let args = PublishArgs {
-            artifacts: artifacts_dir,
-            registry: None,
-            target: Some("/tmp/test-publish".to_string()),
-            wait: true,
-            no_wait: false,
-            max_wait: 300,
-        };
+        let args = create_test_args(artifacts_dir, Some("/tmp/test-publish".to_string()), true);
 
         let result = execute_publish(args).await;
         assert!(result.is_err());
@@ -433,14 +543,7 @@ mod tests {
         let invalid_file = temp_dir.path().join("not-a-zip.txt");
         fs::write(&invalid_file, "not a zip file").unwrap();
 
-        let args = PublishArgs {
-            artifacts: invalid_file,
-            registry: None,
-            target: Some("/tmp/test-publish".to_string()),
-            wait: true,
-            no_wait: false,
-            max_wait: 300,
-        };
+        let args = create_test_args(invalid_file, Some("/tmp/test-publish".to_string()), true);
 
         let result = execute_publish(args).await;
         assert!(result.is_err());
@@ -460,35 +563,9 @@ mod tests {
         let target_dir = temp_dir.path().join("target");
         fs::create_dir_all(&target_dir).unwrap();
 
-        let skill_dir = temp_dir.path().join("skill");
-        fs::create_dir_all(&skill_dir).unwrap();
-        let skill_content = r#"# Test Skill
+        create_test_zip(&artifacts_dir, "test-skill");
 
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
-        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
-
-        // Create a minimal valid ZIP file manually
-        use std::io::Write;
-        use zip::{write::FileOptions, ZipWriter};
-        let zip_path = artifacts_dir.join("test-skill-1.0.0.zip");
-        let file = std::fs::File::create(&zip_path).unwrap();
-        let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
-        zip.start_file("SKILL.md", options).unwrap();
-        zip.write_all(skill_content.as_bytes()).unwrap();
-        zip.finish().unwrap();
-
-        let args = PublishArgs {
-            artifacts: artifacts_dir,
-            registry: None,
-            target: Some(target_dir.display().to_string()),
-            wait: false,
-            no_wait: true,
-            max_wait: 300,
-        };
+        let args = create_test_args(artifacts_dir, Some(target_dir.display().to_string()), false);
 
         let result = execute_publish(args).await;
         // May fail due to missing S3 config or other issues, but should process the zip
