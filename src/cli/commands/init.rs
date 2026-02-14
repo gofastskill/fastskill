@@ -1,4 +1,9 @@
-//! Init command implementation - creates skill-project.toml for skill authors
+//! Init command implementation
+//!
+//! Creates skill-project.toml for skill authors and project-level configuration:
+//! - **Skill context**: In skill directory - creates [metadata] section for skill authoring
+//! - **Project context**: At project root - creates [dependencies] section for managing skills
+//! - **SKILL.md only**: When skill follows standard without extra config - skill-project.toml is optional
 
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;

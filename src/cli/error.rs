@@ -226,6 +226,36 @@ pub fn manifest_required_for_add_message() -> &'static str {
      then run 'fastskill add <skill>' from your project."
 }
 
+#[derive(Debug, Clone)]
+pub enum CliWarning {
+    MissingSkillProjectToml { path: PathBuf, fallback_id: String },
+}
+
+impl CliWarning {
+    pub fn display(&self, source_type: &str, editable: bool) {
+        match self {
+            CliWarning::MissingSkillProjectToml { path, fallback_id } => {
+                eprintln!(
+                    "⚠  Warning: skill-project.toml not found at {}",
+                    path.display()
+                );
+                eprintln!(
+                    "   Using skill ID '{}' from SKILL.md frontmatter",
+                    fallback_id
+                );
+
+                if source_type == "local" && editable {
+                    eprintln!("   Consider running 'fastskill init' in the skill directory to add skill-project.toml");
+                } else {
+                    eprintln!(
+                        "   This is normal for standard-compliant skills from external sources"
+                    );
+                }
+            }
+        }
+    }
+}
+
 impl CliError {
     /// Get the exit code for this error
     /// Returns: 0 = success, 1 = not found/invalid, 2 = system error
