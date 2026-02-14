@@ -57,6 +57,10 @@ pub fn update_lock_file(
 
 /// T028: Add skill to skill-project.toml [dependencies] section.
 /// Fails if skill-project.toml is not found in the hierarchy (we never auto-create it).
+///
+/// Local paths are canonicalized to absolute paths before being written to the TOML file.
+/// This ensures consistent behavior regardless of the current working directory when
+/// the skill is added.
 pub fn add_skill_to_project_toml(
     skill: &SkillDefinition,
     groups: Vec<String>,
@@ -138,13 +142,23 @@ pub fn add_skill_to_project_toml(
                 }
             }
             fastskill::core::skill_manager::SourceType::LocalPath => {
-                let path_str = skill
+                let path_buf = skill
                     .source_subdir
                     .clone()
                     .or_else(|| skill.source_url.clone().map(std::path::PathBuf::from))
-                    .unwrap_or_else(|| std::path::PathBuf::from(skill.id.as_str()))
-                    .to_string_lossy()
-                    .to_string();
+                    .unwrap_or_else(|| std::path::PathBuf::from(skill.id.as_str()));
+
+                // Canonicalize to ensure absolute path (safety net)
+                let canonical_path = path_buf.canonicalize().map_err(|e| {
+                    format!(
+                        "Failed to canonicalize path '{}': {}",
+                        path_buf.display(),
+                        e
+                    )
+                })?;
+
+                let path_str = canonical_path.to_string_lossy().to_string();
+
                 let source_specific = SourceSpecificFields {
                     url: None,
                     branch: None,
