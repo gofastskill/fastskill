@@ -105,7 +105,7 @@ async fn install_from_git(
         let skill_path = validate_cloned_skill(&skill_base_path)
             .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
 
-        let mut skill_def = create_skill_from_path(&skill_path)?;
+        let mut skill_def = create_skill_from_path(&skill_path, "git", false)?;
         let skill_storage_dir = service
             .config()
             .skill_storage_path
@@ -177,7 +177,7 @@ async fn install_from_local(
         )));
     }
 
-    let mut skill_def = create_skill_from_path(&skill_path)?;
+    let mut skill_def = create_skill_from_path(&skill_path, "local", editable)?;
     let skill_storage_dir = service
         .config()
         .skill_storage_path

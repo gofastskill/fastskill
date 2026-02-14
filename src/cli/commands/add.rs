@@ -1,6 +1,6 @@
 //! Add command implementation
 
-use crate::cli::error::{manifest_required_for_add_message, CliError, CliResult};
+use crate::cli::error::{manifest_required_for_add_message, CliError, CliResult, CliWarning};
 use crate::cli::utils::manifest_utils;
 use crate::cli::utils::{
     detect_skill_source, parse_git_url, parse_skill_id, validate_skill_structure, SkillSource,
@@ -440,7 +440,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
     let extract_path = _temp_dir.path();
     let skill_path = find_skill_in_directory(extract_path)?;
     validate_skill_structure(&skill_path, ctx.verbose)?;
-    let skill_def = create_skill_from_path(&skill_path)?;
+    let skill_def = create_skill_from_path(&skill_path, "zip", false)?;
     let version = skill_def.version.clone();
     let target = InstallTarget {
         storage_dir: ctx
@@ -464,7 +464,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
 async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
     validate_skill_structure(folder_path, ctx.verbose)?;
-    let skill_def = create_skill_from_path(folder_path)?;
+    let skill_def = create_skill_from_path(folder_path, "local", ctx.editable)?;
 
     // Canonicalize the folder path to get absolute path
     let canonical_path = folder_path.canonicalize().map_err(|e| {
@@ -526,7 +526,7 @@ async fn clone_and_validate_skill(
     };
     let skill_path = validate_cloned_skill(&skill_base_path)
         .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
-    let skill_def = create_skill_from_path(&skill_path)?;
+    let skill_def = create_skill_from_path(&skill_path, "git", false)?;
     Ok((
         temp_dir,
         skill_path,
@@ -640,7 +640,7 @@ async fn download_registry_package(
         })?;
     let skill_path = find_skill_in_directory(&extract_path)?;
     validate_skill_structure(&skill_path, verbose)?;
-    let skill_def = create_skill_from_path(&skill_path)?;
+    let skill_def = create_skill_from_path(&skill_path, "registry", false)?;
     Ok((temp_dir, skill_path, skill_def))
 }
 
@@ -719,15 +719,12 @@ async fn add_from_registry(ctx: &AddContext<'_>, skill_id_input: &str) -> CliRes
     install_copied_skill(ctx, &skill_path, skill_def, target).await
 }
 
-/// Read skill ID from skill-project.toml (mandatory)
-fn read_skill_id_from_toml(skill_path: &Path) -> CliResult<String> {
+/// Read skill ID and version from skill-project.toml (optional)
+fn read_skill_id_from_toml(skill_path: &Path) -> CliResult<Option<String>> {
     let skill_project_path = skill_path.join("skill-project.toml");
 
     if !skill_project_path.exists() {
-        return Err(CliError::Validation(format!(
-            "skill-project.toml is required but not found in: {}. Run 'fastskill init' to create it.",
-            skill_path.display()
-        )));
+        return Ok(None);
     }
 
     #[derive(serde::Deserialize)]
@@ -745,11 +742,47 @@ fn read_skill_id_from_toml(skill_path: &Path) -> CliResult<String> {
         CliError::Validation("skill-project.toml must have a [metadata] section".to_string())
     })?;
 
-    metadata.id.ok_or_else(|| {
-        CliError::Validation(
-            "skill-project.toml [metadata] section must have a non-empty 'id' field".to_string(),
-        )
-    })
+    Ok(metadata.id)
+}
+
+fn read_version_from_toml(skill_path: &Path) -> CliResult<Option<String>> {
+    let skill_project_path = skill_path.join("skill-project.toml");
+
+    if !skill_project_path.exists() {
+        return Ok(None);
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SkillProjectToml {
+        metadata: Option<fastskill::core::manifest::MetadataSection>,
+    }
+
+    let content = fs::read_to_string(&skill_project_path)
+        .map_err(|e| CliError::Validation(format!("Failed to read skill-project.toml: {}", e)))?;
+
+    let project: SkillProjectToml = toml::from_str(&content)
+        .map_err(|e| CliError::Validation(format!("Failed to parse skill-project.toml: {}", e)))?;
+
+    Ok(project.metadata.and_then(|m| m.version))
+}
+
+fn generate_fallback_skill_id(skill_path: &Path) -> CliResult<String> {
+    let skill_md_path = skill_path.join("SKILL.md");
+
+    let content = std::fs::read_to_string(&skill_md_path)
+        .map_err(|e| CliError::Validation(format!("Failed to read SKILL.md: {}", e)))?;
+
+    let frontmatter = fastskill::core::metadata::parse_yaml_frontmatter(&content).map_err(|e| {
+        CliError::Validation(format!("Failed to parse SKILL.md frontmatter: {}", e))
+    })?;
+
+    if let Some(metadata) = &frontmatter.metadata {
+        if let Some(id) = metadata.get("id") {
+            return Ok(id.clone());
+        }
+    }
+
+    Ok(frontmatter.name.clone())
 }
 
 /// Find SKILL.md in a directory (could be at root or in subdirectory)
@@ -776,35 +809,56 @@ fn find_skill_in_directory(dir: &Path) -> CliResult<PathBuf> {
 }
 
 /// Create a skill definition from a path containing SKILL.md
-/// The skill ID is read from skill-project.toml (mandatory)
-pub fn create_skill_from_path(skill_path: &Path) -> CliResult<SkillDefinition> {
-    // Read skill ID from skill-project.toml (mandatory)
-    let skill_id_str = read_skill_id_from_toml(skill_path)?;
+/// The skill ID is read from skill-project.toml if present, otherwise from SKILL.md frontmatter
+pub fn create_skill_from_path(
+    skill_path: &Path,
+    source_type: &str,
+    editable: bool,
+) -> CliResult<SkillDefinition> {
+    let skill_id_str = match read_skill_id_from_toml(skill_path)? {
+        Some(id) => id,
+        None => {
+            let fallback = generate_fallback_skill_id(skill_path)?;
+            CliWarning::MissingSkillProjectToml {
+                path: skill_path.to_path_buf(),
+                fallback_id: fallback.clone(),
+            }
+            .display(source_type, editable);
+            fallback
+        }
+    };
+
     let skill_file = skill_path.join("SKILL.md");
     let content = fs::read_to_string(&skill_file).map_err(CliError::Io)?;
 
-    // Parse YAML frontmatter using proper YAML parser
     let frontmatter = fastskill::core::metadata::parse_yaml_frontmatter(&content)
         .map_err(|e| CliError::Validation(format!("Failed to parse SKILL.md: {}", e)))?;
 
-    // Validate and create skill ID
     let skill_id_str_clone = skill_id_str.clone();
     let skill_id = fastskill::SkillId::new(skill_id_str).map_err(|_| {
         CliError::Validation(format!("Invalid skill ID format: {}", skill_id_str_clone))
     })?;
 
-    // Create skill definition from parsed frontmatter
-    let mut skill = SkillDefinition::new(
-        skill_id,
-        frontmatter.name,
-        frontmatter.description,
-        frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()),
-    );
+    let version = match read_version_from_toml(skill_path)? {
+        Some(toml_version) => toml_version,
+        None => frontmatter
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("version"))
+            .or(frontmatter.version.as_ref())
+            .cloned()
+            .unwrap_or_else(|| {
+                eprintln!(
+                    "⚠  Note: No version specified in SKILL.md frontmatter, defaulting to 1.0.0"
+                );
+                "1.0.0".to_string()
+            }),
+    };
 
-    // Set skill file path
+    let mut skill =
+        SkillDefinition::new(skill_id, frontmatter.name, frontmatter.description, version);
+
     skill.skill_file = skill_file.clone();
-
-    // No optional fields to set from frontmatter
     skill.author = frontmatter.author;
 
     Ok(skill)
@@ -1202,5 +1256,291 @@ skills_directory = ".claude/skills"
             project_content.contains(&absolute_source_dir.to_string_lossy().to_string()),
             "skill-project.toml should contain absolute path"
         );
+    }
+
+    #[tokio::test]
+    async fn test_add_skill_without_toml_fallback() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("test-skill-no-toml");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let skill_md = r#"---
+name: test-skill-no-toml
+description: Test skill without skill-project.toml
+metadata:
+  id: test-skill-no-toml
+  version: "1.0.0"
+---
+Test skill content
+"#;
+        fs::write(source_dir.join("SKILL.md"), skill_md).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+
+        assert!(
+            result.is_ok(),
+            "Add should succeed without skill-project.toml: {:?}",
+            result
+        );
+
+        let skill_id = fastskill::SkillId::new("test-skill-no-toml".to_string()).unwrap();
+        let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
+        assert!(skill.is_some(), "Skill should be registered");
+        assert_eq!(skill.unwrap().id.as_str(), "test-skill-no-toml");
+    }
+
+    #[tokio::test]
+    async fn test_add_skill_toml_takes_precedence() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("test-skill-both");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let skill_md = r#"---
+name: test-skill-both
+description: Test skill
+metadata:
+  id: from-skill-md
+  version: "2.0.0"
+---
+Test content
+"#;
+        fs::write(source_dir.join("SKILL.md"), skill_md).unwrap();
+
+        let project_toml = r#"[metadata]
+id = "from-toml"
+version = "1.5.0"
+"#;
+        fs::write(source_dir.join("skill-project.toml"), project_toml).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+
+        assert!(result.is_ok(), "Add should succeed: {:?}", result);
+
+        let skill_id = fastskill::SkillId::new("from-toml".to_string()).unwrap();
+        let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
+        assert!(skill.is_some(), "skill-project.toml ID should be used");
+        assert_eq!(skill.unwrap().version, "1.5.0");
+    }
+
+    #[tokio::test]
+    async fn test_add_skill_fallback_to_name() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("fallback-name-skill");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let skill_md = r#"---
+name: fallback-name-skill
+description: Test skill
+---
+Test content
+"#;
+        fs::write(source_dir.join("SKILL.md"), skill_md).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+
+        assert!(result.is_ok(), "Add should succeed: {:?}", result);
+
+        let skill_id = fastskill::SkillId::new("fallback-name-skill".to_string()).unwrap();
+        let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
+        assert!(skill.is_some(), "Should use name from SKILL.md frontmatter");
+    }
+
+    #[tokio::test]
+    async fn test_add_skill_invalid_name_fails() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("valid-directory-name");
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let skill_md = r#"---
+name: INVALID-NAME
+description: Test skill
+---
+Test content
+"#;
+        fs::write(source_dir.join("SKILL.md"), skill_md).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+
+        assert!(result.is_err(), "Should fail due to invalid name");
     }
 }

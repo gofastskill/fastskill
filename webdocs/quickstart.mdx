@@ -71,12 +71,36 @@ Browse http://localhost:8080/registry to view installed/available skills.
   - Public registry ID: `fastskill add pptx@1.0.0`
   - Local folder (editable): `fastskill add ./skills/my-skill -e --group dev`
   - Git repo with branch: `fastskill add https://github.com/org/skill.git --branch main`
-  - Private registry:  
+  - Private registry:
     ```bash
     fastskill registry add team --type git-marketplace --url https://github.com/org/skills.git \
       --priority 1
     fastskill install
     ```
+
+- **Add standard-compliant skills (SKILL.md only)**
+  ```bash
+  # Create minimal skill
+  mkdir my-first-skill
+  cd my-first-skill
+
+  cat > SKILL.md << 'EOF'
+  ---
+  name: my-first-skill
+  description: A simple skill following the AI Agentic Skills Standard
+  ---
+
+  This is my first skill!
+  EOF
+
+  # Add it to fastskill
+  fastskill add .
+  ```
+
+  FastSkill will:
+  - Extract the skill ID from SKILL.md (`name` or `metadata.id`)
+  - Extract version from SKILL.md (`metadata.version` or `version`, defaulting to `1.0.0`)
+  - Display a warning suggesting `fastskill init` to add `skill-project.toml`
 
 - **Package skills**
   ```bash

@@ -19,6 +19,52 @@ FastSkill is a skill package manager and operational toolkit for the AI agent ec
 
 **What are skills?** Skills are reusable instruction sets in SKILL.md that extend an AI agent's capabilities with specialized procedures, tool integrations, and domain knowledge. Examples include creating pull requests, integrating cloud services, automating CI/CD workflows, and domain-specific data processing. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
 
+## AI Agentic Skills Standard
+
+FastSkill supports the [AI Agentic Skills Specification](https://agentskills.io/specification).
+
+### Skill Requirements
+
+According to the standard, a skill must have:
+
+- **Required**: `SKILL.md` file with YAML frontmatter
+  - `name`: Skill identifier (1-64 chars, lowercase alphanumeric + hyphens)
+  - `description`: What the skill does (1-1024 chars)
+
+- **Optional**: `skill-project.toml` for advanced features
+  - Recommended for skill authors
+  - Provides dependency management
+  - Enables version tracking
+
+### Adding Skills Without skill-project.toml
+
+```bash
+# Works with standard-compliant skills
+fastskill add ./my-skill
+
+# Will use metadata from SKILL.md:
+# - Skill ID: from metadata.id or name field
+# - Version: from metadata.version or defaults to 1.0.0
+# - Warning displayed recommending 'fastskill init'
+```
+
+### Migration Guide
+
+For existing skills without `skill-project.toml`:
+
+```bash
+# Navigate to skill directory
+cd my-skill
+
+# Run fastskill init to add skill-project.toml
+fastskill init
+
+# This creates skill-project.toml with:
+# [metadata]
+# id = "my-skill"  # From SKILL.md name
+# version = "1.0.0"  # From SKILL.md metadata.version
+```
+
 ## Key Capabilities
 
 - **Package Management**: Install, update, and remove skills from multiple sources (Git, local, ZIP)
