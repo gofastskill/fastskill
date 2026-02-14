@@ -225,6 +225,8 @@ fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
 ///
 /// Adds the skill to skill-project.toml [dependencies] section and updates skills.lock.
 /// Supports git URLs, local paths, ZIP files, and registry skill IDs.
+///
+/// Local paths are automatically converted to absolute paths in skill-project.toml.
 #[derive(Debug, Args)]
 pub struct AddArgs {
     /// Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@1.2.3)
@@ -424,7 +426,17 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
             zip_path.display()
         )));
     }
-    let _temp_dir = extract_zip_to_temp(zip_path)?;
+
+    // Canonicalize the zip path to get absolute path
+    let canonical_zip_path = zip_path.canonicalize().map_err(|e| {
+        CliError::InvalidSource(format!(
+            "Failed to resolve absolute path for '{}': {}",
+            zip_path.display(),
+            e
+        ))
+    })?;
+
+    let _temp_dir = extract_zip_to_temp(&canonical_zip_path)?;
     let extract_path = _temp_dir.path();
     let skill_path = find_skill_in_directory(extract_path)?;
     validate_skill_structure(&skill_path, ctx.verbose)?;
@@ -437,7 +449,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
             .skill_storage_path
             .join(skill_def.id.as_str()),
         meta: SourceMeta {
-            source_url: Some(zip_path.to_string_lossy().to_string()),
+            source_url: Some(canonical_zip_path.to_string_lossy().to_string()),
             source_type: Some(SourceType::ZipFile),
             source_branch: None,
             source_tag: None,
@@ -453,6 +465,16 @@ async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<
     info!("Adding skill from folder: {}", folder_path.display());
     validate_skill_structure(folder_path, ctx.verbose)?;
     let skill_def = create_skill_from_path(folder_path)?;
+
+    // Canonicalize the folder path to get absolute path
+    let canonical_path = folder_path.canonicalize().map_err(|e| {
+        CliError::InvalidSource(format!(
+            "Failed to resolve absolute path for '{}': {}",
+            folder_path.display(),
+            e
+        ))
+    })?;
+
     let target = InstallTarget {
         storage_dir: ctx
             .service
@@ -460,7 +482,7 @@ async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<
             .skill_storage_path
             .join(skill_def.id.as_str()),
         meta: SourceMeta {
-            source_url: Some(folder_path.to_string_lossy().to_string()),
+            source_url: Some(canonical_path.to_string_lossy().to_string()),
             source_type: Some(SourceType::LocalPath),
             source_branch: None,
             source_tag: None,
@@ -985,4 +1007,200 @@ Name: test-skill
     // in src/core/registry/validation_worker.rs (test_extract_zip_to_temp_rejects_path_traversal
     // and test_extract_zip_to_temp_rejects_windows_traversal) where they don't rely on
     // changing the current directory, which is unreliable in concurrent test environments.
+
+    #[tokio::test]
+    async fn test_add_relative_path_creates_absolute_entry() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create source skill in subdirectory (relative path)
+        let relative_source_dir = temp_dir.path().join("source-skills/test-skill");
+        fs::create_dir_all(&relative_source_dir).unwrap();
+        let skill_content = r#"---
+name: test-skill
+version: 1.0.0
+description: A test skill for relative path testing
+---
+
+# Test Skill
+
+This is a test skill for relative path testing.
+"#;
+        fs::write(relative_source_dir.join("SKILL.md"), skill_content).unwrap();
+
+        // Create skill-project.toml for the skill
+        let skill_project_content = r#"[metadata]
+id = "test-skill"
+version = "1.0.0"
+"#;
+        fs::write(
+            relative_source_dir.join("skill-project.toml"),
+            skill_project_content,
+        )
+        .unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        // Add skill using relative path
+        let args = AddArgs {
+            source: "source-skills/test-skill".to_string(), // Relative path
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+        assert!(result.is_ok(), "Add failed: {:?}", result);
+
+        // Verify skill-project.toml contains absolute path
+        let project_toml_path = temp_dir.path().join("skill-project.toml");
+        let project_content = fs::read_to_string(&project_toml_path).unwrap();
+
+        // The path should be absolute (start with /)
+        // Extract the path value from the TOML
+        let path_line = project_content
+            .lines()
+            .find(|line| line.starts_with("path = "))
+            .unwrap();
+        let path_value = path_line.trim_start_matches("path = ").trim_matches('"');
+
+        // Path should be absolute (not relative like "source-skills/test-skill")
+        assert!(
+            std::path::Path::new(path_value).is_absolute(),
+            "Path should be absolute, but got: {}",
+            path_value
+        );
+
+        // Should match the expected absolute path
+        assert!(
+            project_content.contains(&relative_source_dir.to_string_lossy().to_string()),
+            "skill-project.toml should contain absolute path. Expected: {}\nContent:\n{}",
+            relative_source_dir.display(),
+            project_content
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_absolute_path_preserved_as_is() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create source skill with absolute path
+        let absolute_source_dir = temp_dir.path().join("test-skill-absolute");
+        fs::create_dir_all(&absolute_source_dir).unwrap();
+        let skill_content = r#"---
+name: test-skill-absolute
+version: 1.0.0
+description: A test skill for absolute path testing
+---
+
+# Test Skill Absolute
+
+This is a test skill for absolute path testing.
+"#;
+        fs::write(absolute_source_dir.join("SKILL.md"), skill_content).unwrap();
+
+        // Create skill-project.toml for the skill
+        let skill_project_content = r#"[metadata]
+id = "test-skill-absolute"
+version = "1.0.0"
+"#;
+        fs::write(
+            absolute_source_dir.join("skill-project.toml"),
+            skill_project_content,
+        )
+        .unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        // Add skill using absolute path
+        let args = AddArgs {
+            source: absolute_source_dir.to_string_lossy().to_string(), // Absolute path
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false, false).await;
+        assert!(result.is_ok(), "Add failed: {:?}", result);
+
+        // Verify skill-project.toml contains the absolute path
+        let project_toml_path = temp_dir.path().join("skill-project.toml");
+        let project_content = fs::read_to_string(&project_toml_path).unwrap();
+
+        assert!(
+            project_content.contains(&absolute_source_dir.to_string_lossy().to_string()),
+            "skill-project.toml should contain absolute path"
+        );
+    }
 }
