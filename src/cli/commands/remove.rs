@@ -286,7 +286,12 @@ pub async fn execute_remove(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::await_holding_lock
+)]
 mod tests {
     use super::*;
     use fastskill::ServiceConfig;

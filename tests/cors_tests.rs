@@ -1,4 +1,10 @@
 //! CORS configuration tests
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::assertions_on_constants
+)]
 
 use fastskill::core::manifest::SkillProjectToml;
 use fastskill::core::service::HttpServerConfig;

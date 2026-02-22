@@ -1,4 +1,5 @@
 //! Unit tests for file resolution priority
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use fastskill::core::manifest::ProjectContext;
 use fastskill::core::project::{detect_context, resolve_project_file};

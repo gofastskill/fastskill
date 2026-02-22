@@ -363,7 +363,12 @@ fn build_flags_str(row: &ListRow) -> String {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::await_holding_lock
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

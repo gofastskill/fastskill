@@ -165,7 +165,12 @@ fn print_skill_details(skill: &fastskill::core::lock::LockedSkillEntry) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::await_holding_lock
+)]
 mod tests {
     use super::*;
     use std::fs;

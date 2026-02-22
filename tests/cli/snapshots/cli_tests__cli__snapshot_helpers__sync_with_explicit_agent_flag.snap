@@ -3,4 +3,4 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-[OK] Synced 1 skill(s) to CUSTOM.md
+[OK] Synced 1 skill(s) to CLAUDE.md

@@ -162,7 +162,7 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
     Ok(())
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     use super::*;

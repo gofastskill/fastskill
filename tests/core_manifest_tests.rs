@@ -1,4 +1,5 @@
 //! Unit tests for TOML parsing, serialization, and context detection
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use fastskill::core::manifest::{
     DependenciesSection, DependencySource, DependencySpec, FastSkillToolConfig, MetadataSection,
