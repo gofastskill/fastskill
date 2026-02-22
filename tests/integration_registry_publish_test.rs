@@ -1,7 +1,7 @@
 //! Integration tests for publishing skills to production registry
 //!
 //! **IMPORTANT**: These tests are disabled by default and should only be run manually.
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //!
 //! They require:
 //! - Access to production registry at https://api.fastskill.io

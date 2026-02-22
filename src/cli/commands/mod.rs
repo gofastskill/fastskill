@@ -138,10 +138,10 @@ pub enum Commands {
     )]
     Show(show::ShowArgs),
 
-    /// Sync installed skills to AGENTS.md
+    /// Sync installed skills to the agent's metadata file
     #[command(
-        about = "Sync installed skills to AGENTS.md",
-        after_help = "Examples:\n  fastskill sync\n  fastskill sync --yes\n  fastskill sync --agents-file custom.md"
+        about = "Sync installed skills to the agent's metadata file",
+        after_help = "Examples:\n  fastskill sync\n  fastskill sync --yes\n  fastskill sync --agent claude\n  fastskill sync --agents-file custom.md"
     )]
     Sync(sync::SyncArgs),
 

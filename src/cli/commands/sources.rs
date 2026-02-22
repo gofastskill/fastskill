@@ -206,7 +206,7 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::await_holding_lock)]
 #[cfg(test)]
 mod tests {
     use super::*;

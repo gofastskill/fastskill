@@ -499,7 +499,12 @@ fn calculate_file_hash(file_path: &Path) -> CliResult<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::assertions_on_constants
+)]
 mod tests {
     use super::*;
     use fastskill::{EmbeddingConfig, ServiceConfig};

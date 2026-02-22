@@ -207,7 +207,7 @@ pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
     Ok(())
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::await_holding_lock)]
 #[cfg(test)]
 mod tests {
     use super::*;

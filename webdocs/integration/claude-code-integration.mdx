@@ -1,0 +1,65 @@
+---
+title: "Claude Code Integration"
+description: "Integrate FastSkill with Claude Code for intelligent skill discovery."
+---
+
+## Overview
+
+FastSkill integrates with Claude Code using CLAUDE.md as the instruction file. Run
+`fastskill sync` to expose installed skills — fastskill auto-detects CLAUDE.md when
+it exists in the project root.
+
+## Quick start
+
+```bash
+# Auto-detect (recommended — picks up CLAUDE.md if it exists)
+fastskill sync --yes
+
+# Explicit (targets CLAUDE.md regardless of what other files exist)
+fastskill sync --agent claude --yes
+```
+
+## How it works
+
+`fastskill sync` calls aikit-sdk to resolve the metadata file:
+
+1. Scans the project root for AGENTS.md, CLAUDE.md, GEMINI.md in that order
+2. Uses the first file found
+3. If none exist and `--agent claude` is set, creates CLAUDE.md
+4. If none exist and no `--agent` is set, creates AGENTS.md
+
+## GitHub Actions
+
+```yaml
+name: Update Claude Code skills
+on:
+  push:
+    paths:
+      - '.claude/skills/**'
+      - 'skill-project.toml'
+
+jobs:
+  update-claude-md:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FastSkill
+        run: cargo install fastskill
+      - name: Sync skills
+        run: fastskill sync --agent claude --yes
+      - name: Commit CLAUDE.md
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add CLAUDE.md
+          git commit -m 'chore: update CLAUDE.md skills' || echo "No changes"
+          git push
+```
+
+## Troubleshooting
+
+**CLAUDE.md not updated:** Confirm `skill-project.toml` is present and the skills
+directory contains at least one valid `SKILL.md`. Run `fastskill sync --agent claude --yes`.
+
+**Wrong file detected:** If AGENTS.md exists alongside CLAUDE.md, fastskill picks
+AGENTS.md (it is checked first). Use `--agent claude` to force CLAUDE.md.

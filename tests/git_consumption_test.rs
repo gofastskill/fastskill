@@ -1,6 +1,6 @@
 //! Integration tests for Git repository consumption (external repositories with marketplace.json)
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use fastskill::core::repository::{
     RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
