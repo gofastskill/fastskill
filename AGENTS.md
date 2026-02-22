@@ -206,13 +206,13 @@ FastSkill resolves configuration in priority order:
 
 1. CLI arguments
 2. Environment variables (e.g., `OPENAI_API_KEY`, `RUST_LOG`)
-3. `.fastskill.yaml` in current directory
+3. `skill-project.toml` `[tool.fastskill]` section (walks up directory tree)
 4. Walk up directory tree to find existing `.claude/skills/`
 5. Default to `./.claude/skills/`
 
 ### Key Configuration Files
 
-- **`.fastskill.yaml`** - Project configuration (embedding settings, skills directory)
+- **`skill-project.toml`** `[tool.fastskill]` - Project configuration (embedding settings, skills directory)
 - **`.claude/repositories.toml`** - Multi-repository configuration
 - **`.claude/skills.toml`** - Project manifest (like package.json or Cargo.toml)
 - **`.claude/skills.lock`** - Lockfile for reproducible installations

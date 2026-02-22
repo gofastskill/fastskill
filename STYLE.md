@@ -693,7 +693,7 @@ match (is_tty(), is_piped()) {
 
 ### FS001: Configuration Error
 **Description:** Invalid or missing configuration file.
-**Recovery:** Check `.fastskill.yaml` file syntax and required fields.
+**Recovery:** Check the `[tool.fastskill]` section in `skill-project.toml` for syntax errors and required fields.
 
 ### FS101: Authentication Required
 **Description:** Registry access requires authentication.
