@@ -52,7 +52,7 @@ fs2 = "0.4"  # Cross-platform file locking
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 # HTTP client for embedding API (rustls for musl compatibility)
-reqwest = { version = "0.11", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 
 # Multipart form data handling for skill uploads
 multer = "3.1"
