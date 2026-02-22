@@ -895,7 +895,7 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
     clippy::unwrap_used,
     clippy::panic,
     clippy::expect_used,
-    clippy::unwrap_used
+    clippy::await_holding_lock
 )]
 mod tests {
     use super::*;

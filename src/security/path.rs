@@ -172,6 +172,7 @@ pub fn safe_join(root: &Path, user_path: &str) -> Result<PathBuf, PathSecurityEr
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use std::fs;

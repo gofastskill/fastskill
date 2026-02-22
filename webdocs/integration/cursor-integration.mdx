@@ -8,14 +8,18 @@ description: "Integrate FastSkill with Cursor IDE for intelligent skill discover
 FastSkill integrates seamlessly with Cursor IDE to provide AI agents with access to a comprehensive skill registry. This enables Cursor's AI to discover and utilize specialized tools and workflows automatically.
 
 <Info>
-Cursor integration uses AGENTS.md. Sync installed skills into AGENTS.md with `fastskill sync` so Cursor (and other agents) see the current skill list. Cursor also supports native skills and agents configuration.
+Cursor integration uses AGENTS.md. Run `fastskill sync` to sync installed skills — fastskill
+automatically detects the correct metadata file for your agent (AGENTS.md for Cursor,
+CLAUDE.md for Claude Code, GEMINI.md for Gemini). Use `--agent cursor-agent` to target
+Cursor explicitly.
 </Info>
 
 ## How It Works
 
-### 1. Sync skills to AGENTS.md
+### 1. Sync skills to AGENTS.md (Cursor)
 
-Expose installed skills to Cursor by syncing them into AGENTS.md:
+Expose installed skills to Cursor by syncing them into AGENTS.md. Cursor uses AGENTS.md
+as its instruction file; fastskill auto-detects this when AGENTS.md exists:
 
 ```bash
 # Sync all installed skills to AGENTS.md (non-interactive)
@@ -51,7 +55,8 @@ This updates AGENTS.md with the list of installed skills so Cursor (and other ag
 
 ## AGENTS.md format
 
-`fastskill sync` writes a `<skills_system>` section into AGENTS.md with `<available_skills>` listing each skill's id, description, and location (project or global). Cursor and other agents that read AGENTS.md use this to discover and invoke skills (e.g. via `fastskill read <skill-id>`).
+`fastskill sync` writes a `<skills_system>` section into the detected metadata file
+(AGENTS.md for Cursor) with `<available_skills>` listing each skill's id, description, and location (project or global). Cursor and other agents that read AGENTS.md use this to discover and invoke skills (e.g. via `fastskill read <skill-id>`).
 
 ## How Cursor uses the skills
 
@@ -59,7 +64,7 @@ This updates AGENTS.md with the list of installed skills so Cursor (and other ag
 
 When you ask Cursor to perform a task, it:
 
-1. **Reads available skills** from AGENTS.md (and native Cursor skills/agents)
+1. **Reads available skills** from AGENTS.md (Cursor's instruction file) and native Cursor skills/agents
 2. **Matches task requirements** against skill descriptions
 3. **Identifies relevant skills** for the task
 4. **Provides access** to the full SKILL.md content via `fastskill read <skill-id>`
@@ -84,9 +89,26 @@ Cursor can now understand:
 
 ## Advanced Configuration
 
-### Custom AGENTS.md path
+### Agent detection
 
-Use `--agents-file` to sync to a different file:
+`fastskill sync` automatically detects which metadata file to use by scanning the project
+directory for known files in this order: AGENTS.md, CLAUDE.md, GEMINI.md. The first
+file found is used. If none exist, AGENTS.md is created.
+
+| Agent | Metadata file | Agent key |
+|---|---|---|
+| Cursor | AGENTS.md | `cursor-agent` |
+| Claude Code | CLAUDE.md | `claude` |
+| Google Gemini | GEMINI.md | `gemini` |
+| GitHub Copilot | *(unsupported — use `--agents-file`)* | `copilot` |
+
+To target Cursor explicitly regardless of what files exist:
+
+```bash
+fastskill sync --yes --agent cursor-agent
+```
+
+To write to a completely custom path:
 
 ```bash
 fastskill sync --yes --agents-file custom.md
@@ -105,17 +127,18 @@ fastskill reindex --skills-dir ./custom-skills/
 
 ### Choosing which skills to sync
 
-Run `fastskill sync` without `--yes` to interactively select which installed skills appear in AGENTS.md.
+Run `fastskill sync` without `--yes` to interactively select which installed skills appear
+in the detected metadata file.
 
 ## Automation
 
 ### GitHub Actions
 
-Update AGENTS.md when skills change:
+Update skills metadata when skills change:
 
 ```yaml
 # .github/workflows/update-skills.yml
-name: Update AGENTS.md
+name: Update skills metadata
 on:
   push:
     paths:
@@ -131,15 +154,15 @@ jobs:
       - name: Install FastSkill
         run: cargo install --path tools/fastskill/rust/
 
-      - name: Sync skills to AGENTS.md
-        run: fastskill sync --yes
+      - name: Sync skills to metadata file
+        run: fastskill sync --agent cursor-agent --yes
 
-      - name: Commit AGENTS.md
+      - name: Commit metadata file
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add AGENTS.md
-          git commit -m 'Update AGENTS.md skills' || echo "No changes"
+          git commit -m 'chore: update AGENTS.md skills' || echo "No changes"
           git push
 ```
 
@@ -149,8 +172,8 @@ jobs:
 #!/bin/bash
 # .git/hooks/pre-commit
 if git diff --cached --name-only | grep -q ".claude/skills/"; then
-    echo "Skills changed, syncing to AGENTS.md..."
-    fastskill sync --yes
+    echo "Skills changed, syncing metadata file..."
+    fastskill sync --agent cursor-agent --yes
     git add AGENTS.md
 fi
 ```
@@ -178,7 +201,7 @@ cat AGENTS.md | head -80
 fastskill sync --yes
 ```
 
-#### Outdated skill list in AGENTS.md
+#### Outdated skill list
 ```bash
 fastskill sync --yes
 ```
@@ -195,7 +218,7 @@ fastskill search "test query" --embedding false
 # Verify index exists
 ls -la .claude/skills/.fastskill/index.db
 
-# Check AGENTS.md
+# Check detected metadata file
 wc -l AGENTS.md
 ```
 
@@ -223,7 +246,7 @@ wc -l AGENTS.md
 
 ### Multi-environment setup
 
-Use different AGENTS files per environment:
+Use different files per environment via `--agents-file`:
 
 ```bash
 fastskill sync --yes --agents-file AGENTS-dev.md

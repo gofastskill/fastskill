@@ -309,6 +309,214 @@ fn test_sync_with_empty_skills_list() {
 }
 
 #[test]
+fn test_sync_auto_detects_claude_metadata_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    // Create a skill
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // Create CLAUDE.md (not AGENTS.md) — aikit-sdk auto-detects by file existence,
+    // not by installed agent directories. AGENTS.md is checked first; since it does
+    // not exist here, CLAUDE.md is picked up instead.
+    fs::write(temp_dir.path().join("CLAUDE.md"), "# Claude instructions\n").unwrap();
+
+    let result = run_fastskill_command(&["sync", "--yes"], Some(temp_dir.path()));
+
+    assert!(result.success);
+
+    // CLAUDE.md should be updated with skills section
+    let claude_md = temp_dir.path().join("CLAUDE.md");
+    let content = fs::read_to_string(&claude_md).unwrap();
+    assert!(
+        content.contains("<skills_system"),
+        "CLAUDE.md must contain skills section"
+    );
+    assert!(content.contains("<name>test-skill</name>"));
+
+    // AGENTS.md must NOT be created as a side effect
+    assert!(
+        !temp_dir.path().join("AGENTS.md").exists(),
+        "AGENTS.md must not be created when CLAUDE.md was detected"
+    );
+
+    // The success message must reference CLAUDE.md (dynamic filename, not hardcoded "AGENTS.md")
+    assert!(
+        result.stdout.contains("CLAUDE.md"),
+        "stdout success message must reference CLAUDE.md, got: {}",
+        result.stdout
+    );
+
+    assert_snapshot_with_settings(
+        "sync_auto_detects_claude_metadata_file",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
+fn test_sync_with_explicit_agent_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // No metadata file exists — explicit --agent flag determines which file to create
+    let result = run_fastskill_command(
+        &["sync", "--yes", "--agent", "claude"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(result.success);
+
+    let claude_md = temp_dir.path().join("CLAUDE.md");
+    assert!(
+        claude_md.exists(),
+        "CLAUDE.md must be created by --agent claude"
+    );
+    let content = fs::read_to_string(&claude_md).unwrap();
+    assert!(content.contains("<skills_system"));
+
+    assert!(!temp_dir.path().join("AGENTS.md").exists());
+
+    assert!(
+        result.stdout.contains("CLAUDE.md"),
+        "stdout success message must reference CLAUDE.md, got: {}",
+        result.stdout
+    );
+
+    assert_snapshot_with_settings(
+        "sync_with_explicit_agent_flag",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
+fn test_sync_error_for_unsupported_agent() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // Copilot is a known agent key (validate_agent_key passes) but it has no instruction_file
+    // in the catalog, so instruction_file_with_override returns UnsupportedConcept
+    let result = run_fastskill_command(
+        &["sync", "--yes", "--agent", "copilot"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success, "sync with --agent copilot must fail");
+    assert!(
+        result.stdout.contains("does not support metadata files")
+            || result.stderr.contains("does not support metadata files"),
+        "error must explain that copilot does not support metadata files"
+    );
+    assert!(
+        result.stdout.contains("--agents-file") || result.stderr.contains("--agents-file"),
+        "error must suggest --agents-file as alternative"
+    );
+}
+
+#[test]
+fn test_sync_error_for_unknown_agent_key() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // An entirely unknown key must be rejected by the pre-flight validate_agent_key check
+    let result = run_fastskill_command(
+        &["sync", "--yes", "--agent", "notarealkey"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success, "sync with unknown agent key must fail");
+    assert!(
+        result.stdout.contains("Invalid agent key") || result.stderr.contains("Invalid agent key"),
+        "error must identify the bad key"
+    );
+}
+
+#[test]
+fn test_sync_override_takes_precedence_over_invalid_agent() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "sync",
+            "--yes",
+            "--agents-file",
+            "CUSTOM.md",
+            "--agent",
+            "notarealkey",
+        ],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        result.success,
+        "--agents-file override must take precedence over invalid --agent: stdout={} stderr={}",
+        result.stdout, result.stderr
+    );
+    assert!(temp_dir.path().join("CUSTOM.md").exists());
+    assert!(!result.stdout.contains("Invalid agent key"));
+    assert!(!result.stderr.contains("Invalid agent key"));
+}
+
+#[test]
 fn test_sync_no_agents_md_creates_file() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");

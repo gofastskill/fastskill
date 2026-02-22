@@ -462,7 +462,12 @@ fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<Str
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::expect_used,
+    clippy::ptr_arg
+)]
 mod tests {
     use super::*;
     use std::fs;

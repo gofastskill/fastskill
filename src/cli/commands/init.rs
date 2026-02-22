@@ -463,7 +463,8 @@ fn prompt_for_field(field_name: &str, default: Option<&str>) -> CliResult<Option
     clippy::unwrap_used,
     clippy::panic,
     clippy::expect_used,
-    clippy::collapsible_if
+    clippy::collapsible_if,
+    clippy::await_holding_lock
 )]
 mod tests {
     use super::*;

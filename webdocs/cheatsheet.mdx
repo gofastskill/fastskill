@@ -38,6 +38,15 @@ Quick reference for common FastSkill operations.
 | Auto-detect changes | `fastskill package --detect-changes --auto-bump` | Detects changed skills using file hashes, auto-bumps version, packages only changed skills |
 | Package specific | `fastskill package --skills web-scraper data-processor` | Packages only specified skills into ZIP artifacts |
 
+## Sync
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Sync all skills | `fastskill sync --yes` | Syncs all installed skills to the auto-detected metadata file (AGENTS.md, CLAUDE.md, or GEMINI.md) |
+| Sync with agent | `fastskill sync --agent claude --yes` | Syncs to the metadata file for the specified agent (e.g. CLAUDE.md for `claude`) |
+| Sync with override | `fastskill sync --agents-file custom.md --yes` | Syncs to a custom metadata file path, overriding auto-detection |
+| Interactive sync | `fastskill sync` | Interactively select which skills to expose in the detected metadata file |
+
 ## Servers
 
 | Operation | Command | What It Does |
