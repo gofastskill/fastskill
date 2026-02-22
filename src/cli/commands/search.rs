@@ -283,7 +283,7 @@ async fn perform_embedding_search(
             for path in searched_paths {
                 error_msg.push_str(&format!("  - {}\n", path.display()));
             }
-            error_msg.push_str("\nTo set up FastSkill, run:\n  fastskill init\n\nOr manually create .fastskill.yaml with:\n  embedding:\n    openai_base_url: \"https://api.openai.com/v1\"\n    embedding_model: \"text-embedding-3-small\"\n\nThen set your API key:\n  export OPENAI_API_KEY=\"your-key-here\"\n");
+            error_msg.push_str("\nTo set up FastSkill, run:\n  fastskill init\n\nOr manually add to skill-project.toml:\n  [tool.fastskill.embedding]\n  openai_base_url = \"https://api.openai.com/v1\"\n  embedding_model = \"text-embedding-3-small\"\n\nThen set your API key:\n  export OPENAI_API_KEY=\"your-key-here\"\n");
             CliError::Config(error_msg)
         })?;
 
