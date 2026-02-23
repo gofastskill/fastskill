@@ -1,5 +1,6 @@
 //! Core service layer modules
 
+pub mod analysis;
 pub mod blob_storage;
 pub mod build_cache;
 pub mod change_detection;
