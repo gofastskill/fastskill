@@ -131,9 +131,9 @@ The script automatically:
 - `--force`: Overwrite existing installation
 - `--help`: Show all available options
 
-**Homebrew (Linux)**
+**Homebrew (macOS + Linux)**
 
-Install FastSkill via [Homebrew](https://brew.sh/) on Linux:
+Install FastSkill via [Homebrew](https://brew.sh/) on macOS or Linux:
 
 ```bash
 brew install gofastskill/cli/fastskill
@@ -155,6 +155,35 @@ For more details, see the [Scoop bucket repository](https://github.com/gofastski
 **Manual Installation from GitHub Releases**
 
 Download the pre-built binary for your platform from [GitHub Releases](https://github.com/gofastskill/fastskill/releases).
+
+**macOS:**
+
+Two macOS binaries are available:
+
+| Binary | Hardware |
+|--------|----------|
+| `fastskill-aarch64-apple-darwin.tar.gz` | Apple Silicon (M1/M2/M3+) |
+| `fastskill-x86_64-apple-darwin.tar.gz` | Intel Macs |
+
+**Apple Silicon example:**
+
+```bash
+VERSION="0.8.6"  # Replace with latest version
+wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-aarch64-apple-darwin.tar.gz
+tar -xzf fastskill-aarch64-apple-darwin.tar.gz
+sudo mv fastskill /usr/local/bin/
+fastskill --version
+```
+
+**Intel macOS example:**
+
+```bash
+VERSION="0.8.6"  # Replace with latest version
+wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-apple-darwin.tar.gz
+tar -xzf fastskill-x86_64-apple-darwin.tar.gz
+sudo mv fastskill /usr/local/bin/
+fastskill --version
+```
 
 **Linux:**
 
