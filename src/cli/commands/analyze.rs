@@ -2,10 +2,10 @@
 
 use crate::cli::error::{CliError, CliResult};
 use clap::{Args, Subcommand};
+use fastskill::core::analysis::SimilarityPair;
 use fastskill::core::vector_index::IndexedSkill;
 use fastskill::FastSkillService;
-use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 /// Analyze command arguments
 #[derive(Debug, Args)]
@@ -67,15 +67,6 @@ pub struct MatrixArgs {
     /// Show full matrix (all pairs) instead of top-N per skill
     #[arg(long, help = "Show all similar skills instead of top-N summary")]
     pub full: bool,
-
-    /// Similarity threshold for duplicate detection
-    #[arg(
-        long,
-        default_value = "0.95",
-        value_parser = validate_threshold,
-        help = "Threshold for flagging potential duplicates (0.0 to 1.0)"
-    )]
-    pub duplicate_threshold: f32,
 }
 
 /// Cluster command arguments (placeholder for future implementation)
@@ -162,28 +153,19 @@ pub async fn execute_matrix(service: &FastSkillService, args: MatrixArgs) -> Cli
 
     // Output results
     if args.json {
-        let json_output = serde_json::to_string_pretty(&similarity_matrix)
+        let filtered: Vec<&SimilarityPair> = if args.threshold > 0.0 {
+            similarity_matrix
+                .iter()
+                .filter(|p| !p.similar_skills.is_empty())
+                .collect()
+        } else {
+            similarity_matrix.iter().collect()
+        };
+        let json_output = serde_json::to_string_pretty(&filtered)
             .map_err(|e| CliError::Validation(format!("Failed to serialize JSON: {}", e)))?;
         println!("{}", json_output);
     } else {
-        print_similarity_table(&similarity_matrix, args.full);
-    }
-
-    // Identify and display potential duplicates
-    if !args.json {
-        let duplicates = find_potential_duplicates(&similarity_matrix, args.duplicate_threshold);
-        if !duplicates.is_empty() {
-            println!("\n{}", "=".repeat(80));
-            println!(
-                "Potential duplicates (similarity >= {:.2}):",
-                args.duplicate_threshold
-            );
-            println!("{}", "=".repeat(80));
-            for (skill_a, skill_b, sim) in duplicates {
-                println!("  {} <-> {} (similarity: {:.3})", skill_a, skill_b, sim);
-            }
-            println!("\nConsider reviewing these pairs for consolidation.");
-        }
+        print_similarity_table(&similarity_matrix, args.threshold);
     }
 
     Ok(())
@@ -220,17 +202,6 @@ fn build_similarity_matrix(all_skills: &[IndexedSkill], args: &MatrixArgs) -> Ve
             }
         })
         .collect()
-}
-
-/// A skill and its most similar skills
-#[derive(Debug, Serialize)]
-struct SimilarityPair {
-    /// Skill identifier
-    skill_id: String,
-    /// Human-readable skill name
-    name: String,
-    /// List of (skill_id, similarity_score) tuples, sorted by similarity descending
-    similar_skills: Vec<(String, f32)>,
 }
 
 /// Extracts skill name from metadata JSON
@@ -277,86 +248,123 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot_product / (norm_a * norm_b)
 }
 
-/// Finds potential duplicate skills by reusing the similarity matrix data
+/// Prints the similarity grid to stdout.
 ///
-/// Returns pairs with similarity >= duplicate_threshold, sorted by similarity descending.
-/// Uses a HashSet to avoid reporting the same pair twice (A-B and B-A).
-fn find_potential_duplicates(
-    similarity_matrix: &[SimilarityPair],
-    duplicate_threshold: f32,
-) -> Vec<(String, String, f32)> {
-    let mut duplicates = Vec::new();
-    let mut seen = HashSet::new();
+/// This is a thin wrapper around `build_grid_string` that prints the result.
+fn print_similarity_table(matrix: &[SimilarityPair], threshold: f32) {
+    print!("{}", build_grid_string(matrix, threshold));
+}
 
-    for pair in similarity_matrix {
-        for (similar_id, similarity) in &pair.similar_skills {
-            if *similarity >= duplicate_threshold {
-                // Create canonical ordering (alphabetically first ID, then second)
-                let (id_a, id_b) = if pair.skill_id < *similar_id {
-                    (pair.skill_id.as_str(), similar_id.as_str())
+/// Truncates a column header ID to at most 17 characters.
+///
+/// If the ID exceeds 18 characters, it is shortened to 15 chars with a ".." suffix.
+fn truncate_header(s: &str) -> String {
+    if s.len() > 18 {
+        format!("{}..", &s[..15])
+    } else {
+        s.to_string()
+    }
+}
+
+/// Builds the ASCII grid string for the similarity matrix.
+///
+/// Pure function — does not print anything; enables unit testing without capturing stdout.
+///
+/// When `threshold > 0.0`, skills with no entries in `similar_skills` are omitted from
+/// both rows and columns. When `threshold == 0.0` (the default), all skills are shown.
+fn build_grid_string(matrix: &[SimilarityPair], threshold: f32) -> String {
+    let sep = "=".repeat(80);
+    let header_line = if threshold > 0.0 {
+        format!("Similarity Matrix (threshold: {:.2})", threshold)
+    } else {
+        "Similarity Matrix".to_string()
+    };
+
+    // Filter to skills that have at least one similar-skill entry when threshold is active
+    let visible: Vec<&SimilarityPair> = if threshold > 0.0 {
+        matrix
+            .iter()
+            .filter(|p| !p.similar_skills.is_empty())
+            .collect()
+    } else {
+        matrix.iter().collect()
+    };
+
+    let mut out = String::new();
+    out.push_str(&format!("\n{}\n{}\n{}\n", sep, header_line, sep));
+
+    if visible.is_empty() {
+        out.push_str(&format!(
+            "\n  No skills with similarity >= {:.2} found.\n\n{}\n",
+            threshold, sep
+        ));
+        return out;
+    }
+
+    // IDs of visible skills — these become both rows and columns
+    let ids: Vec<&str> = visible.iter().map(|p| p.skill_id.as_str()).collect();
+
+    // Build a score lookup from the full matrix data (both directions, since cosine is symmetric)
+    let mut scores: HashMap<String, f32> = HashMap::new();
+    for pair in matrix {
+        for (other_id, score) in &pair.similar_skills {
+            let key_fwd = format!("{}|{}", pair.skill_id, other_id);
+            scores.insert(key_fwd, *score);
+            // Insert reverse only if not already present (avoid overwriting a direct entry)
+            let key_rev = format!("{}|{}", other_id, pair.skill_id);
+            scores.entry(key_rev).or_insert(*score);
+        }
+    }
+
+    // Compute column headers (possibly truncated)
+    let col_headers: Vec<String> = ids.iter().map(|id| truncate_header(id)).collect();
+
+    // Column width = max(header display length, 5)
+    let col_widths: Vec<usize> = col_headers.iter().map(|h| h.len().max(5)).collect();
+
+    // Row label area width = length of longest skill ID
+    let row_label_width = ids.iter().map(|id| id.len()).max().unwrap_or(0);
+
+    // --- Column header row ---
+    out.push('\n');
+    out.push_str(&" ".repeat(row_label_width));
+    for (i, header) in col_headers.iter().enumerate() {
+        let w = col_widths[i];
+        out.push_str(&format!("  {:>width$}", header, width = w));
+    }
+    out.push('\n');
+
+    // --- Data rows ---
+    for row_pair in &visible {
+        let row_id = row_pair.skill_id.as_str();
+        out.push_str(&format!("{:<width$}", row_id, width = row_label_width));
+
+        for (col_idx, col_id) in ids.iter().enumerate() {
+            let w = col_widths[col_idx];
+            out.push_str("  ");
+
+            if row_id == *col_id {
+                // Diagonal cell: em-dash centred in column width.
+                // "—" is 3 UTF-8 bytes but 1 display character; compute padding manually.
+                let pad_total = w.saturating_sub(1);
+                let left = pad_total / 2;
+                let right = pad_total - left;
+                out.push_str(&format!("{}{}{}", " ".repeat(left), "—", " ".repeat(right)));
+            } else {
+                let key = format!("{}|{}", row_id, col_id);
+                if let Some(&score) = scores.get(&key) {
+                    out.push_str(&format!("{:>width$.3}", score, width = w));
                 } else {
-                    (similar_id.as_str(), pair.skill_id.as_str())
-                };
-
-                // Use a unique key to track seen pairs
-                let key = format!("{}|{}", id_a, id_b);
-                if seen.insert(key) {
-                    duplicates.push((id_a.to_string(), id_b.to_string(), *similarity));
+                    // Score not available (below threshold or truncated by limit)
+                    out.push_str(&" ".repeat(w));
                 }
             }
         }
+        out.push('\n');
     }
 
-    // Sort by similarity descending (highest first)
-    duplicates.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Limit to top 20 potential duplicates
-    duplicates.truncate(20);
-
-    duplicates
-}
-
-/// Prints similarity matrix in human-readable table format
-fn print_similarity_table(matrix: &[SimilarityPair], full: bool) {
-    if matrix.is_empty() {
-        println!("\nNo similarities found matching the criteria.");
-        return;
-    }
-
-    println!("\n{}", "=".repeat(80));
-    println!("Similarity Matrix");
-    println!("{}", "=".repeat(80));
-
-    for pair in matrix {
-        println!("\n{} ({})", pair.name, pair.skill_id);
-
-        if pair.similar_skills.is_empty() {
-            println!("  No similar skills found above threshold");
-            continue;
-        }
-
-        if full {
-            println!("  Similar skills:");
-            for (similar_id, similarity) in &pair.similar_skills {
-                println!("    {:60} {:.3}", similar_id, similarity);
-            }
-        } else {
-            // Show condensed view (already limited by args.limit during matrix build)
-            let skills_str: Vec<String> = pair
-                .similar_skills
-                .iter()
-                .map(|(id, sim)| format!("{} ({:.3})", id, sim))
-                .collect();
-
-            if skills_str.is_empty() {
-                println!("  No similar skills above threshold");
-            } else {
-                println!("  Top similar: {}", skills_str.join(", "));
-            }
-        }
-    }
-
-    println!("\n{}", "=".repeat(80));
+    out.push_str(&format!("\n{}\n", sep));
+    out
 }
 
 #[cfg(test)]
@@ -446,48 +454,112 @@ mod tests {
         assert_eq!(get_skill_name(&metadata), "Unknown");
     }
 
-    #[test]
-    fn test_find_potential_duplicates_no_duplicates() {
-        let matrix = vec![SimilarityPair {
-            skill_id: "skill-a".to_string(),
-            name: "Skill A".to_string(),
-            similar_skills: vec![("skill-b".to_string(), 0.5)],
-        }];
+    // --- Grid unit tests ---
 
-        let duplicates = find_potential_duplicates(&matrix, 0.95);
+    fn make_pair(id: &str, similar: Vec<(&str, f32)>) -> SimilarityPair {
+        SimilarityPair {
+            skill_id: id.to_string(),
+            name: id.to_string(),
+            similar_skills: similar
+                .into_iter()
+                .map(|(s, f)| (s.to_string(), f))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_build_grid_correct_dimensions() {
+        let matrix = vec![
+            make_pair("alpha", vec![("beta", 0.8), ("gamma", 0.7)]),
+            make_pair("beta", vec![("alpha", 0.8), ("gamma", 0.6)]),
+            make_pair("gamma", vec![("alpha", 0.7), ("beta", 0.6)]),
+        ];
+
+        let grid = build_grid_string(&matrix, 0.0);
+
+        // 3 header labels and 3 data rows expected
+        let data_rows: Vec<&str> = grid
+            .lines()
+            .filter(|l| l.starts_with("alpha") || l.starts_with("beta") || l.starts_with("gamma"))
+            .collect();
+        assert_eq!(data_rows.len(), 3, "Should have 3 data rows for 3 skills");
+
+        // The header row starts with spaces (row-label area) and contains all column IDs
+        let header_present = grid.lines().any(|l| {
+            l.contains("alpha")
+                && l.contains("beta")
+                && l.contains("gamma")
+                && l.trim_start().starts_with("alpha")
+        });
         assert!(
-            duplicates.is_empty(),
-            "Should find no duplicates below threshold"
+            header_present,
+            "Header row with all column labels should be present"
         );
     }
 
     #[test]
-    fn test_find_potential_duplicates_with_duplicates() {
+    fn test_build_grid_diagonal_is_dash() {
         let matrix = vec![
-            SimilarityPair {
-                skill_id: "skill-a".to_string(),
-                name: "Skill A".to_string(),
-                similar_skills: vec![("skill-b".to_string(), 0.98), ("skill-c".to_string(), 0.50)],
-            },
-            SimilarityPair {
-                skill_id: "skill-b".to_string(),
-                name: "Skill B".to_string(),
-                similar_skills: vec![
-                    ("skill-a".to_string(), 0.98), // Should not be duplicated
-                ],
-            },
+            make_pair("alpha", vec![("beta", 0.8)]),
+            make_pair("beta", vec![("alpha", 0.8)]),
         ];
 
-        let duplicates = find_potential_duplicates(&matrix, 0.95);
-        assert_eq!(
-            duplicates.len(),
-            1,
-            "Should find exactly one duplicate pair"
-        );
-        assert_eq!(duplicates[0].2, 0.98, "Similarity should be 0.98");
+        let grid = build_grid_string(&matrix, 0.0);
 
-        // Check canonical ordering (skill-a comes before skill-b alphabetically)
-        assert_eq!(duplicates[0].0, "skill-a");
-        assert_eq!(duplicates[0].1, "skill-b");
+        // Every data row should contain the em-dash for the diagonal
+        let data_rows: Vec<&str> = grid
+            .lines()
+            .filter(|l| l.starts_with("alpha") || l.starts_with("beta"))
+            .collect();
+
+        assert_eq!(data_rows.len(), 2);
+        for row in data_rows {
+            assert!(
+                row.contains('—'),
+                "Each data row should have a diagonal '—': {}",
+                row
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_grid_threshold_hides_empty_skills() {
+        // skill-a has a match above threshold; skill-b does not
+        let matrix = vec![
+            make_pair("skill-a", vec![("skill-b", 0.9)]),
+            make_pair("skill-b", vec![]),
+        ];
+
+        let grid = build_grid_string(&matrix, 0.8);
+
+        // skill-b should not appear as a row or column label
+        assert!(
+            grid.contains("skill-a"),
+            "skill-a should appear in the grid"
+        );
+        // skill-b may appear in the body as a score lookup, but not as a standalone row
+        let lines: Vec<&str> = grid.lines().collect();
+        let row_lines: Vec<&&str> = lines.iter().filter(|l| l.starts_with("skill-b")).collect();
+        assert!(
+            row_lines.is_empty(),
+            "skill-b should not be a row label when it has no matches above threshold"
+        );
+    }
+
+    #[test]
+    fn test_build_grid_default_shows_all_skills() {
+        // Both skills have empty similar_skills; with threshold=0.0 both should appear
+        let matrix = vec![make_pair("skill-a", vec![]), make_pair("skill-b", vec![])];
+
+        let grid = build_grid_string(&matrix, 0.0);
+
+        assert!(
+            grid.contains("skill-a"),
+            "skill-a should appear with threshold=0.0"
+        );
+        assert!(
+            grid.contains("skill-b"),
+            "skill-b should appear with threshold=0.0"
+        );
     }
 }
