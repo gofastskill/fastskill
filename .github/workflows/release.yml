@@ -36,10 +36,9 @@ jobs:
             TAG_VERSION="v$VERSION"
           else
             TAG_VERSION="${{ github.ref_name }}"
-            # Strip 'v' prefix
             VERSION="${TAG_VERSION#v}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag version: $TAG_VERSION"
           echo "Extracted version: $VERSION"
 
@@ -47,7 +46,7 @@ jobs:
         id: cargo-version
         run: |
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "cargo-version=$CARGO_VERSION" >> $GITHUB_OUTPUT
+          echo "cargo-version=$CARGO_VERSION" >> "$GITHUB_OUTPUT"
           echo "Cargo.toml version: $CARGO_VERSION"
 
       - name: Verify versions match
@@ -55,7 +54,6 @@ jobs:
           TAG_VER="${{ steps.extract-version.outputs.version }}"
           CARGO_VER="${{ steps.cargo-version.outputs.cargo-version }}"
 
-          # Skip version verification for test/pre-release tags (containing hyphens)
           if [[ "$TAG_VER" == *"-"* ]]; then
             echo "⚠️  Skipping version verification for pre-release tag: $TAG_VER"
             echo "Cargo.toml version: $CARGO_VER"
@@ -69,7 +67,7 @@ jobs:
           fi
 
   build:
-    name: Build ${{ matrix.os }} binary
+    name: Build ${{ matrix.target }}
     needs: verify-version
     runs-on: ${{ matrix.os }}
     strategy:
@@ -94,7 +92,18 @@ jobs:
             archive-format: zip
             archive-name: fastskill-x86_64-pc-windows-msvc.zip
             use-cross: false
-
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary-name: fastskill
+            archive-format: tar.gz
+            archive-name: fastskill-aarch64-apple-darwin.tar.gz
+            use-cross: false
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary-name: fastskill
+            archive-format: tar.gz
+            archive-name: fastskill-x86_64-apple-darwin.tar.gz
+            use-cross: false
 
     steps:
       - name: Checkout code
@@ -137,43 +146,53 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
-          else
-            cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
-          fi
+          cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
 
       - name: Create README for release
         shell: bash
         run: |
-          cat > release/README.md << 'EOF'
+          cat > release/README.md << 'README_EOF'
           # FastSkill ${{ needs.verify-version.outputs.version }}
-          
+
           ## Installation
-          
+
+          ### macOS
+
+          | Binary | Hardware |
+          |--------|----------|
+          | `fastskill-aarch64-apple-darwin.tar.gz` | Apple Silicon (M1/M2/M3+) |
+          | `fastskill-x86_64-apple-darwin.tar.gz` | Intel Macs |
+
+          Example:
+          ```bash
+          tar -xzf fastskill-aarch64-apple-darwin.tar.gz
+          sudo mv fastskill /usr/local/bin/
+          fastskill --version
+          ```
+
           ### Linux
-          
+
           Two Linux binaries are available:
-          
+
           | Binary | Best For |
           |--------|----------|
           | `fastskill-x86_64-unknown-linux-musl.tar.gz` | Universal - containers, CI/CD, older distributions |
           | `fastskill-x86_64-unknown-linux-gnu.tar.gz` | FIPS/compliance environments requiring dynamic linking |
-          
+
           **Recommended (musl/static - works everywhere):**
           ```bash
           tar -xzf fastskill-x86_64-unknown-linux-musl.tar.gz
           sudo mv fastskill /usr/local/bin/
           fastskill --version
           ```
-          
+
           **For FIPS/compliance (glibc - requires glibc 2.38+):**
           ```bash
           tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
           sudo mv fastskill /usr/local/bin/
           fastskill --version
           ```
-          
+
           ### Windows
           Extract the ZIP file and add to your PATH, or run from the extracted directory:
           ```powershell
@@ -181,26 +200,25 @@ jobs:
           # Add to PATH or run from extracted directory
           fastskill.exe --version
           ```
-          
+
           For more information, visit: https://github.com/gofastskill/fastskill
-          EOF
+          README_EOF
 
       - name: Create archive
         shell: bash
         run: |
           cd release
           if [ "${{ matrix.archive-format }}" = "tar.gz" ]; then
-            tar -czf ../${{ matrix.archive-name }} *
+            tar -czf "../${{ matrix.archive-name }}" *
           else
-            # Use PowerShell Compress-Archive on Windows
             if [ "${{ runner.os }}" = "Windows" ]; then
               powershell -Command "Compress-Archive -Path * -DestinationPath ../${{ matrix.archive-name }} -Force"
             else
-              zip -r ../${{ matrix.archive-name }} *
+              zip -r "../${{ matrix.archive-name }}" *
             fi
           fi
           cd ..
-          ls -lh ${{ matrix.archive-name }}
+          ls -lh "${{ matrix.archive-name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -214,15 +232,22 @@ jobs:
     needs: [verify-version, build]
     runs-on: ubuntu-latest
     if: always() && needs.verify-version.result == 'success'
-    
+
     steps:
-      - name: Download Linux artifact
+      - name: Download Linux GNU artifact
         uses: actions/download-artifact@v4
         with:
           name: fastskill-x86_64-unknown-linux-gnu.tar.gz
           path: ./artifacts
         continue-on-error: true
-      
+
+      - name: Download Linux MUSL artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastskill-x86_64-unknown-linux-musl.tar.gz
+          path: ./artifacts
+        continue-on-error: true
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -230,33 +255,65 @@ jobs:
           path: ./artifacts
         continue-on-error: true
 
-      - name: Download Linux musl artifact
+      - name: Download macOS ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: fastskill-x86_64-unknown-linux-musl.tar.gz
+          name: fastskill-aarch64-apple-darwin.tar.gz
           path: ./artifacts
         continue-on-error: true
-      
-      - name: Verify artifacts
+
+      - name: Download macOS x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fastskill-x86_64-apple-darwin.tar.gz
+          path: ./artifacts
+        continue-on-error: true
+
+      - name: Verify required artifacts
         run: |
-          echo "Checking artifacts..."
-          ls -lh ./artifacts/ || echo "No artifacts found"
-          if [ -f "./artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
-            echo "✅ Linux (glibc) binary found"
-          else
-            echo "⚠️  Linux (glibc) binary missing"
+          set -euo pipefail
+          REQUIRED=(
+            "fastskill-x86_64-unknown-linux-gnu.tar.gz"
+            "fastskill-x86_64-unknown-linux-musl.tar.gz"
+            "fastskill-x86_64-pc-windows-msvc.zip"
+            "fastskill-aarch64-apple-darwin.tar.gz"
+            "fastskill-x86_64-apple-darwin.tar.gz"
+          )
+
+          missing=0
+          echo "Collected artifacts:"
+          ls -lh ./artifacts || true
+
+          for artifact in "${REQUIRED[@]}"; do
+            if [ -f "./artifacts/$artifact" ]; then
+              echo "✅ Found $artifact"
+            else
+              echo "❌ Missing required artifact: $artifact"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "Release blocked because required artifacts are missing"
+            exit 1
           fi
-          if [ -f "./artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz" ]; then
-            echo "✅ Linux (musl/static) binary found"
-          else
-            echo "⚠️  Linux (musl/static) binary missing"
-          fi
-          if [ -f "./artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
-            echo "✅ Windows binary found"
-          else
-            echo "⚠️  Windows binary missing"
-          fi
-      
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          (
+            cd artifacts
+            sha256sum \
+              fastskill-x86_64-unknown-linux-gnu.tar.gz \
+              fastskill-x86_64-unknown-linux-musl.tar.gz \
+              fastskill-x86_64-pc-windows-msvc.zip \
+              fastskill-aarch64-apple-darwin.tar.gz \
+              fastskill-x86_64-apple-darwin.tar.gz \
+              | sort > checksums.txt
+          )
+          echo "Generated checksums:"
+          cat artifacts/checksums.txt
+
       - name: Upload collected artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -268,7 +325,7 @@ jobs:
     name: Create GitHub Release
     needs: [verify-version, collect-artifacts]
     runs-on: ubuntu-latest
-    if: always() && needs.verify-version.result == 'success'
+    if: always() && needs.verify-version.result == 'success' && needs.collect-artifacts.result == 'success'
     permissions:
       contents: write
 
@@ -284,121 +341,96 @@ jobs:
           name: release-artifacts
           path: ./artifacts
 
-      - name: Prepare file list for release
+      - name: Verify release files and prepare upload list
         id: prepare-files
         run: |
-          # Build newline-separated list of files (required by softprops/action-gh-release)
-          FILES=""
-          
-          if [ -f "artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz" ]; then
-            FILES="artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz"
-            echo "✅ Linux (glibc) artifact found"
-          else
-            echo "⚠️  Linux (glibc) artifact missing"
-          fi
-          
-          if [ -f "artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz" ]; then
-            if [ -n "$FILES" ]; then
-              FILES="$FILES"$'\n'"artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
-            else
-              FILES="artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
-            fi
-            echo "✅ Linux (musl/static) artifact found"
-          else
-            echo "⚠️  Linux (musl/static) artifact missing"
-          fi
-          
-          if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
-            if [ -n "$FILES" ]; then
-              FILES="$FILES"$'\n'"artifacts/fastskill-x86_64-pc-windows-msvc.zip"
-            else
-              FILES="artifacts/fastskill-x86_64-pc-windows-msvc.zip"
-            fi
-            echo "✅ Windows artifact found"
-          else
-            echo "⚠️  Windows artifact missing"
-          fi
-          
-          echo "Files to upload:"
-          echo "$FILES"
-          
-          # Output as multiline string
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          FILES=(
+            "artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz"
+            "artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
+            "artifacts/fastskill-x86_64-pc-windows-msvc.zip"
+            "artifacts/fastskill-aarch64-apple-darwin.tar.gz"
+            "artifacts/fastskill-x86_64-apple-darwin.tar.gz"
+            "artifacts/checksums.txt"
+          )
 
-      - name: Delete existing releases if present
+          for file in "${FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Missing release file: $file"
+              exit 1
+            fi
+          done
+
+          {
+            echo "files<<EOF"
+            printf '%s\n' "${FILES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Delete existing release if present
         continue-on-error: true
         run: |
           TAG="${{ github.ref_name }}"
-          
-          # Delete from main repository
-          echo "Checking for existing release ..."
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists, deleting it..."
+            echo "Release $TAG exists, deleting it"
             gh release delete "$TAG" --yes
             sleep 2
-            # Verify deletion
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Warning: Release $TAG still exists in fastskill repo after deletion attempt"
-              exit 1
-            else
-              echo "Confirmed: Release $TAG deleted from fastskill repo"
-            fi
           else
-            echo "No existing release found in repo fastskill for $TAG"
+            echo "No existing release found for $TAG"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate release notes
-        id: release-notes
         run: |
+          set -euo pipefail
           VERSION="${{ needs.verify-version.outputs.version }}"
           TAG="${{ github.ref_name }}"
-          
-          # Get previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
+
           if [ -n "$PREV_TAG" ]; then
-            echo "## Changes since $PREV_TAG" >> release_notes.md
-            echo "" >> release_notes.md
-            git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${TAG} >> release_notes.md || echo "- Initial release" >> release_notes.md
+            {
+              echo "## Changes since $PREV_TAG"
+              echo
+              git log --pretty=format:"- %s (%h)" "${PREV_TAG}..${TAG}" || echo "- Initial release"
+            } > release_notes.md
           else
-            echo "## Release $VERSION" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "- Initial release" >> release_notes.md
+            {
+              echo "## Release $VERSION"
+              echo
+              echo "- Initial release"
+            } > release_notes.md
           fi
-          
-          echo "" >> release_notes.md
-          echo "## Installation" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "Download the pre-built binary for your platform:" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "### Linux" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "- **Linux (glibc)**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\` - for FIPS/compliance environments requiring dynamic linking" >> release_notes.md
-          echo "- **Linux (musl/static)**: \`fastskill-x86_64-unknown-linux-musl.tar.gz\` - universal compatibility, containers, CI/CD (works on Ubuntu 20.04+, RHEL 8+, Alpine, etc.)" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "**Which Linux binary should I use?**" >> release_notes.md
-          echo "- Use **musl** for maximum compatibility (containers, CI/CD, older distributions)" >> release_notes.md
-          echo "- Use **glibc** only if you require dynamic linking for FIPS or compliance reasons" >> release_notes.md
-          echo "" >> release_notes.md
-          
-          # Check if Windows artifact exists
-          if [ -f "artifacts/fastskill-x86_64-pc-windows-msvc.zip" ]; then
-            echo "### Windows" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`" >> release_notes.md
-          else
-            echo "### Windows" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "- **Windows**: Not available in this release (build issue - see [Windows Build Issue](https://github.com/gofastskill/fastskill/blob/main/docs/WINDOWS_BUILD_ISSUE.md))" >> release_notes.md
-          fi
-          
+
+          {
+            echo
+            echo "## Installation"
+            echo
+            echo "Download the pre-built binary for your platform:"
+            echo
+            echo "### macOS"
+            echo
+            echo "- **Apple Silicon**: \`fastskill-aarch64-apple-darwin.tar.gz\`"
+            echo "- **Intel**: \`fastskill-x86_64-apple-darwin.tar.gz\`"
+            echo
+            echo "### Linux"
+            echo
+            echo "- **Linux (glibc)**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\`"
+            echo "- **Linux (musl/static)**: \`fastskill-x86_64-unknown-linux-musl.tar.gz\`"
+            echo
+            echo "### Windows"
+            echo
+            echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`"
+            echo
+            echo "### Checksums"
+            echo
+            echo "- **SHA256 checksums**: \`checksums.txt\`"
+          } >> release_notes.md
+
           cat release_notes.md
 
-      - name: Create Release (as draft to allow asset uploads)
+      - name: Create release (draft)
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.verify-version.outputs.version }}
@@ -407,15 +439,14 @@ jobs:
           files: ${{ steps.prepare-files.outputs.files }}
           draft: true
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           generate_release_notes: false
 
-      - name: Publish release (remove draft status)
+      - name: Publish release
         run: |
           TAG="v${{ needs.verify-version.outputs.version }}"
-          echo "Publishing release $TAG..."
           gh release edit "$TAG" --draft=false
-          echo "Release $TAG is now published!"
+          echo "Release $TAG is published"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -426,6 +457,7 @@ jobs:
     if: always() && needs.create-release.result == 'success'
     permissions:
       contents: write
+      actions: read
 
     steps:
       - name: Install dependencies
@@ -443,18 +475,9 @@ jobs:
 
       - name: Authenticate GitHub CLI
         run: |
-          # Persist token for subsequent steps/scripts (step-level env does not carry over)
           echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
-          # Set GH_TOKEN directly and verify it works
           export GH_TOKEN="${{ steps.app-token.outputs.token }}"
-          echo "Token length: ${#GH_TOKEN}"
-          # Test that gh can access the API with the token
-          if gh auth status; then
-            echo "✅ GitHub CLI authentication successful"
-          else
-            echo "❌ GitHub CLI authentication failed"
-            exit 1
-          fi
+          gh auth status
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -473,12 +496,44 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
+      - name: Validate Homebrew formula in tap CI
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.verify-version.outputs.version }}"
+          gh workflow run validate-formula.yml \
+            --repo gofastskill/homebrew-cli \
+            --ref main \
+            -f version="$VERSION"
+
+          RUN_ID=""
+          for _ in {1..30}; do
+            RUN_ID=$(gh run list \
+              --repo gofastskill/homebrew-cli \
+              --workflow validate-formula.yml \
+              --event workflow_dispatch \
+              --json databaseId,status,displayTitle \
+              -q ".[] | select(.displayTitle == \"Validate formula for $VERSION\") | .databaseId" \
+              | head -n 1)
+            if [ -n "$RUN_ID" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "Could not locate validate-formula workflow run"
+            exit 1
+          fi
+
+          gh run watch "$RUN_ID" --repo gofastskill/homebrew-cli --exit-status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Commit and push Homebrew changes
         run: |
           cd homebrew-cli
           VERSION="${{ needs.verify-version.outputs.version }}"
 
-          # Check if there are changes
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit for Homebrew formula"
           else
@@ -487,7 +542,6 @@ jobs:
             git add .
             git commit -m "chore: update fastskill to v${VERSION}"
             git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" main
-            echo "✅ Homebrew formula updated to v${VERSION}"
           fi
 
       - name: Checkout scoop-bucket repo
@@ -510,7 +564,6 @@ jobs:
           cd scoop-bucket
           VERSION="${{ needs.verify-version.outputs.version }}"
 
-          # Check if there are changes
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to commit for Scoop manifest"
           else
@@ -519,6 +572,4 @@ jobs:
             git add .
             git commit -m "chore: update fastskill to v${VERSION}"
             git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/scoop-bucket.git" main
-            echo "✅ Scoop manifest updated to v${VERSION}"
           fi
-

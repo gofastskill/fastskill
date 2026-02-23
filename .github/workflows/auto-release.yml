@@ -19,13 +19,13 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   auto-release:
     name: Auto Release
     runs-on: ubuntu-latest
-    
-    # Skip if commit message contains skip flags
+
     if: |
       !contains(github.event.head_commit.message, '[skip release]') &&
       !contains(github.event.head_commit.message, '[no release]') &&
@@ -48,23 +48,20 @@ jobs:
       - name: Check for no-release label
         id: check-label
         run: |
-          # Get the PR number from the merge commit message
           PR_NUMBER=$(echo "${{ github.event.head_commit.message }}" | grep -oP '#\K[0-9]+' | head -1 || echo "")
-          
+
           if [ -n "$PR_NUMBER" ]; then
             echo "Found PR #$PR_NUMBER in commit message"
-            
-            # Check if PR has no-release label
             LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || echo "")
-            
+
             if echo "$LABELS" | grep -qE '^no-release$'; then
               echo "Found 'no-release' label on PR #$PR_NUMBER"
-              echo "skip=true" >> $GITHUB_OUTPUT
+              echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
-          
-          echo "skip=false" >> $GITHUB_OUTPUT
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,15 +69,13 @@ jobs:
         if: steps.check-label.outputs.skip != 'true'
         id: versions
         run: |
-          # Current version in Cargo.toml
           CURRENT=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          
-          # Last released version (from latest tag)
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           LAST_VERSION="${LAST_TAG#v}"
-          echo "last=$LAST_VERSION" >> $GITHUB_OUTPUT
-          
+          echo "last=$LAST_VERSION" >> "$GITHUB_OUTPUT"
+
           echo "Current Cargo.toml version: $CURRENT"
           echo "Last released tag: $LAST_TAG ($LAST_VERSION)"
 
@@ -90,18 +85,16 @@ jobs:
         run: |
           CURRENT="${{ steps.versions.outputs.current }}"
           LAST="${{ steps.versions.outputs.last }}"
-          
+
           if [ "$CURRENT" != "$LAST" ]; then
-            # Developer already bumped version in their PR - use it
-            echo "version=$CURRENT" >> $GITHUB_OUTPUT
-            echo "needs_bump=false" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
             echo "Developer set version: $CURRENT (was $LAST)"
           else
-            # Auto-bump patch version
             IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
             NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "needs_bump=true" >> $GITHUB_OUTPUT
+            echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "needs_bump=true" >> "$GITHUB_OUTPUT"
             echo "Auto-bumping patch: $CURRENT -> $NEW_VERSION"
           fi
 
@@ -114,7 +107,6 @@ jobs:
           echo "Updated Cargo.toml to version $VERSION:"
           grep '^version = ' Cargo.toml
 
-          # Update Cargo.lock to match the new version
           cargo update -p fastskill --precise "$VERSION"
           echo "Updated Cargo.lock to version $VERSION"
 
@@ -136,7 +128,6 @@ jobs:
           VERSION="${{ steps.release.outputs.version }}"
           TAG="v$VERSION"
 
-          # Check if tag already exists
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists, skipping"
             exit 0
@@ -154,14 +145,39 @@ jobs:
           TAG="v$VERSION"
 
           echo "Triggering release workflow for version $VERSION..."
-
-          # Wait briefly to ensure tag is available on remote
           sleep 2
-
-          # Trigger release workflow via workflow_dispatch
           gh workflow run release.yml --ref "$TAG" -f version="$VERSION"
-
           echo "::notice::Release workflow triggered for $TAG"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Wait for release workflow result
+        if: steps.check-label.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release.outputs.version }}"
+          TAG="v$VERSION"
+
+          RUN_ID=""
+          for _ in {1..36}; do
+            RUN_ID=$(gh run list \
+              --workflow release.yml \
+              --event workflow_dispatch \
+              --json databaseId,displayTitle,headBranch,status \
+              -q ".[] | select(.headBranch == \"$TAG\") | .databaseId" \
+              | head -n 1)
+            if [ -n "$RUN_ID" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "Failed to find release workflow run for $TAG"
+            exit 1
+          fi
+
+          gh run watch "$RUN_ID" --exit-status
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -169,4 +185,3 @@ jobs:
         if: steps.check-label.outputs.skip == 'true'
         run: |
           echo "::notice::Release skipped due to 'no-release' label on PR"
-
