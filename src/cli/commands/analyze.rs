@@ -1250,27 +1250,39 @@ mod tests {
 
     #[test]
     fn test_classify_severity_critical() {
-        assert_eq!(classify_severity(0.99), SeverityLevel::Critical);
-        assert_eq!(classify_severity(0.98), SeverityLevel::Critical);
-        assert_eq!(classify_severity(1.0), SeverityLevel::Critical);
+        assert_eq!(classify_severity(0.99), Some(SeverityLevel::Critical));
+        assert_eq!(classify_severity(0.98), Some(SeverityLevel::Critical));
+        assert_eq!(classify_severity(1.0), Some(SeverityLevel::Critical));
     }
 
     #[test]
     fn test_classify_severity_high() {
-        assert_eq!(classify_severity(0.94), SeverityLevel::High);
-        assert_eq!(classify_severity(0.93), SeverityLevel::High);
+        assert_eq!(classify_severity(0.94), Some(SeverityLevel::High));
+        assert_eq!(classify_severity(0.93), Some(SeverityLevel::High));
         // Just below critical
         let just_below_critical = 0.97999_f32;
-        assert_eq!(classify_severity(just_below_critical), SeverityLevel::High);
+        assert_eq!(
+            classify_severity(just_below_critical),
+            Some(SeverityLevel::High)
+        );
     }
 
     #[test]
     fn test_classify_severity_medium() {
-        assert_eq!(classify_severity(0.90), SeverityLevel::Medium);
-        assert_eq!(classify_severity(0.88), SeverityLevel::Medium);
+        assert_eq!(classify_severity(0.90), Some(SeverityLevel::Medium));
+        assert_eq!(classify_severity(0.88), Some(SeverityLevel::Medium));
         // Just below high
         let just_below_high = 0.929_f32;
-        assert_eq!(classify_severity(just_below_high), SeverityLevel::Medium);
+        assert_eq!(
+            classify_severity(just_below_high),
+            Some(SeverityLevel::Medium)
+        );
+    }
+
+    #[test]
+    fn test_classify_severity_below_medium_is_none() {
+        assert_eq!(classify_severity(0.879), None);
+        assert_eq!(classify_severity(0.5), None);
     }
 
     // --- severity_floor_value tests ---
