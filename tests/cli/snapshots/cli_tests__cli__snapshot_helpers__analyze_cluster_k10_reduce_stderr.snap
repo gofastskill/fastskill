@@ -1,0 +1,5 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Warning: only 6 skills available, reducing k to 6
