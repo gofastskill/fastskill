@@ -1,0 +1,25 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+Scanning 6 skills for duplicates (threshold: 0.88)...
+Found 3 potential duplicate pairs
+
+[CRITICAL]  0.999  dup-crit-a  ↔  dup-crit-b
+  Suggestion: Review both — similar modification time
+
+[HIGH]      0.940  dup-high-a  ↔  dup-high-b
+  Suggestion: Review both — similar modification time
+
+[MEDIUM]    0.901  dup-med-a  ↔  dup-med-b
+  Suggestion: Review both — similar modification time
+
+Summary: 1 critical, 1 high, 1 medium
+Run 'fastskill remove <skill-id>' to remove a skill after review.

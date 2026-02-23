@@ -138,6 +138,13 @@ pub fn run_fastskill_command_with_env(
 pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> String {
     let mut result = output.to_string();
 
+    // Strip ANSI escape sequences to keep snapshots stable across environments
+    // where colorized logging may be enabled (e.g. CI terminals).
+    result = regex::Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+        .unwrap()
+        .replace_all(&result, "")
+        .to_string();
+
     if settings.normalize_versions {
         // Normalize version numbers (semantic versioning)
         result = regex::Regex::new(r"\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?")

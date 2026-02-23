@@ -1,0 +1,63 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+{
+  "threshold": 0.88,
+  "effective_floor": 0.88,
+  "total_pairs": 3,
+  "pairs": [
+    {
+      "severity": "critical",
+      "similarity": 0.9990005,
+      "skill_a": {
+        "id": "dup-crit-a",
+        "name": "dup-crit-a",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "skill_b": {
+        "id": "dup-crit-b",
+        "name": "dup-crit-b",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "suggestion": "Review both — similar modification time"
+    },
+    {
+      "severity": "high",
+      "similarity": 0.9397,
+      "skill_a": {
+        "id": "dup-high-a",
+        "name": "dup-high-a",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "skill_b": {
+        "id": "dup-high-b",
+        "name": "dup-high-b",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "suggestion": "Review both — similar modification time"
+    },
+    {
+      "severity": "medium",
+      "similarity": 0.9010075,
+      "skill_a": {
+        "id": "dup-med-a",
+        "name": "dup-med-a",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "skill_b": {
+        "id": "dup-med-b",
+        "name": "dup-med-b",
+        "modified_at": "[TIMESTAMP]"
+      },
+      "suggestion": "Review both — similar modification time"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+FastSkill [VERSION]
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+[TIMESTAMP]  WARN fastskill::core::service: Failed to index skill at [TEMP_DIR] Custom error: No YAML frontmatter found in SKILL.md
+Clustering 6 skills into 6 groups...
+
+Cluster 1 — aaa-git-amend (1 skills)
+  Members:
+    aaa-git-amend                  0.00
+
+Cluster 2 — aaa-git-commit (1 skills)
+  Members:
+    aaa-git-commit                 0.00
+
+Cluster 3 — bbb-code-review (1 skills)
+  Members:
+    bbb-code-review                0.00
+
+Cluster 4 — bbb-pr-review (1 skills)
+  Members:
+    bbb-pr-review                  0.00
+
+Cluster 5 — bbb-pr-writer (1 skills)
+  Members:
+    bbb-pr-writer                  0.00
+
+Cluster 6 — bbb-review-helper (1 skills)
+  Members:
+    bbb-review-helper              0.00
+
+Summary: 6 clusters  largest: 1 skills (aaa-git-amend)  smallest: 1 skills (aaa-git-amend)
