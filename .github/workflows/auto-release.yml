@@ -63,7 +63,7 @@ jobs:
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Get current and last released versions
         if: steps.check-label.outputs.skip != 'true'

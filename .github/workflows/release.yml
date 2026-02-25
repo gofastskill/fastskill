@@ -335,6 +335,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
       - name: Download collected artifacts
         uses: actions/download-artifact@v4
         with:
@@ -380,7 +387,7 @@ jobs:
             echo "No existing release found for $TAG"
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Generate release notes
         run: |
@@ -433,6 +440,7 @@ jobs:
       - name: Create release (draft)
         uses: softprops/action-gh-release@v1
         with:
+          token: ${{ steps.app-token.outputs.token }}
           tag_name: v${{ needs.verify-version.outputs.version }}
           name: Release ${{ needs.verify-version.outputs.version }}
           body_path: release_notes.md
@@ -448,7 +456,7 @@ jobs:
           gh release edit "$TAG" --draft=false
           echo "Release $TAG is published"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
   update-package-managers:
     name: Update Package Managers
@@ -473,11 +481,9 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           repositories: homebrew-cli,scoop-bucket
 
-      - name: Authenticate GitHub CLI
+      - name: Set GH token for GitHub CLI
         run: |
           echo "GH_TOKEN=${{ steps.app-token.outputs.token }}" >> "$GITHUB_ENV"
-          export GH_TOKEN="${{ steps.app-token.outputs.token }}"
-          gh auth status
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
