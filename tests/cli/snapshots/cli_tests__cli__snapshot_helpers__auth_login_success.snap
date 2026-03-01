@@ -4,12 +4,5 @@ expression: normalized
 ---
 FastSkill [VERSION]
 Logging in to registry: http://[VERSION].1:[PORT]
-[TIMESTAMP] DEBUG hyper::client::connect::http: connecting to [VERSION].1:37993
-[TIMESTAMP] DEBUG hyper::client::connect::http: connected to [VERSION].1:37993
-[TIMESTAMP] DEBUG hyper::proto::h1::io: flushed 135 bytes
-[TIMESTAMP] DEBUG hyper::proto::h1::io: parsed 3 headers
-[TIMESTAMP] DEBUG hyper::proto::h1::conn: incoming body is content-length (35 bytes)
-[TIMESTAMP] DEBUG hyper::proto::h1::conn: incoming body completed
-[TIMESTAMP] DEBUG hyper::client::pool: pooling idle connection for ("http", [VERSION].1:37993)
 [OK] Successfully logged in to http://[VERSION].1:[PORT]
 Token saved and will be used automatically

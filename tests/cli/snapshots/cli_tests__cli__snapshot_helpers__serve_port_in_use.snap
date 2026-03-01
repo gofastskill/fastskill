@@ -3,16 +3,6 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-[TIMESTAMP] DEBUG fastskill::cli::config: Using skills_directory from skill-project.toml: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing FastSkill service v[VERSION]
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Initialized filesystem storage at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing service components...
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Filesystem storage initialized at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Service initialization complete
-[TIMESTAMP]  INFO fastskill::cli::commands::serve: Starting FastSkill HTTP server on localhost:18084
 FastSkill HTTP server starting...
   Listening on: http://localhost:18084
-[TIMESTAMP]  INFO fastskill::http::server: Serving UI at /
-[TIMESTAMP]  INFO fastskill::http::server: No CORS configuration found - denying all origins
-[TIMESTAMP]  INFO fastskill::http::server: Starting FastSkill HTTP server on [VERSION].1:18084
 Error: Validation error: Server error: Address already in use (os error 98)

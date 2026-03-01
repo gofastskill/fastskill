@@ -3,11 +3,4 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-[TIMESTAMP] DEBUG fastskill::cli::config: Using skills_directory from skill-project.toml: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing FastSkill service v[VERSION]
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Initialized filesystem storage at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing service components...
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Filesystem storage initialized at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Service initialization complete
-[TIMESTAMP]  INFO fastskill::cli::commands::reindex: Reindexing vector index for skills directory: /nonexistent/path
 Error: Configuration error: Skills directory does not exist: /nonexistent/path

@@ -5,13 +5,6 @@ expression: normalized
 FastSkill [VERSION]
 Skill Information
 
-[TIMESTAMP] DEBUG fastskill::cli::config: Using skills_directory from skill-project.toml: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing FastSkill service v[VERSION]
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Initialized filesystem storage at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Initializing service components...
-[TIMESTAMP]  INFO fastskill::storage::filesystem: Filesystem storage initialized at: [TEMP_DIR]
-[TIMESTAMP]  INFO fastskill::core::service: Auto-indexed 1 skills from filesystem
-[TIMESTAMP]  INFO fastskill::core::service: Service initialization complete
 Installed Skills (1):
 
   • test-skill (v[VERSION])
