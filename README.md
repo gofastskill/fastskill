@@ -71,7 +71,7 @@ fastskill init
 - **Semantic Search**: Find skills using OpenAI embeddings and natural language queries with high accuracy
 - **Registry Services**: Publish, version, and distribute skills via registry
 - **Manifest System**: Declarative dependency management with lock files for reproducible installations
-- **HTTP API**: RESTful service layer for agent integration (requires authentication for protected endpoints)
+- **HTTP API**: RESTful service layer for agent integration (local `fastskill serve` API is unauthenticated)
 - **Web UI**: Browse and manage skills through web interface
 
 ## Compatible Agents
@@ -472,9 +472,6 @@ FastSkill looks for skills in the following locations:
 | `FASTSKILL_API_URL` | Base URL for registry API |
 | `FASTSKILL_API_TOKEN` | Authentication token for registry API |
 | `FASTSKILL_CONFIG_DIR` | Path to FastSkill configuration directory |
-| `FASTSKILL_JWT_SECRET` | Secret for JWT token generation (HTTP API) |
-| `FASTSKILL_JWT_ISSUER` | JWT issuer claim (default: `fastskill`) |
-| `FASTSKILL_JWT_EXPIRY` | JWT token expiry in seconds |
 | `FASTSKILL_STATIC_DIR` | Path to static files for HTTP server |
 
 ### Quick Setup

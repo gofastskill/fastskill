@@ -113,9 +113,8 @@ HTTP Layer (src/http/) - independent of CLI, uses same service layer
 
 - **`src/http/`** - HTTP API server (13 files)
   - `server.rs` - Axum server setup and router configuration
-  - `handlers/` - API endpoint handlers (skills, search, registry, auth, etc.)
+  - `handlers/` - API endpoint handlers (skills, search, registry, manifest, etc.)
   - `models.rs` - Request/response types (`ApiResponse<T>`, error handling)
-  - `auth/` - JWT authentication middleware and role-based access
 
 - **`src/storage/`** - Storage backends (5 files)
   - `filesystem.rs` - File-based skill storage with metadata caching
@@ -277,7 +276,7 @@ FastSkill is **async-first** using Tokio:
 1. Create handler module in `src/http/handlers/`
 2. Define request/response types in `src/http/models.rs`
 3. Add route to Axum router in `src/http/server.rs`
-4. Apply authentication middleware if needed via `src/http/auth/`
+4. Keep handlers consistent with local `fastskill serve` unauthenticated API behavior
 
 ### Extending repository support
 
