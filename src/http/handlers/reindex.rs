@@ -1,6 +1,5 @@
 //! Reindex endpoint handlers
 
-use crate::http::auth::roles::EndpointPermissions;
 use crate::http::errors::HttpResult;
 use crate::http::handlers::AppState;
 use crate::http::models::*;
@@ -15,9 +14,6 @@ pub async fn reindex_all(
     State(_state): State<AppState>,
     Json(_request): Json<ReindexRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ReindexResponse>>> {
-    // Check permissions
-    let _check = EndpointPermissions::REINDEX.check(None);
-
     let start_time = Instant::now();
 
     // For now, return a mock response (reindexing needs to be implemented)
@@ -37,9 +33,6 @@ pub async fn reindex_skill(
     Path(_skill_id): Path<String>,
     Json(_request): Json<ReindexRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ReindexResponse>>> {
-    // Check permissions
-    let _check = EndpointPermissions::REINDEX_SKILL.check(None);
-
     let start_time = Instant::now();
 
     // For now, return a mock response

@@ -156,45 +156,6 @@ pub struct StatusResponse {
     pub uptime_seconds: u64,
 }
 
-/// JWT token request (for local development)
-#[derive(Debug, Deserialize, Validate, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TokenRequest {
-    #[validate(length(min = 1, max = 50))]
-    pub role: String,
-
-    pub username: Option<String>,
-}
-
-/// JWT token response
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TokenResponse {
-    pub token: String,
-    pub token_type: String,
-    pub expires_in: i64,
-    pub role: String,
-}
-
-/// JWT claims structure
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Claims {
-    pub sub: String,  // subject (user id)
-    pub role: String, // user role
-    pub exp: usize,   // expiration time
-    pub iat: usize,   // issued at
-    pub iss: String,  // issuer
-}
-
-/// Verify token response
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyResponse {
-    pub valid: bool,
-    pub role: Option<String>,
-    pub expires_at: Option<String>,
-}
-
 /// Source response for registry
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -1,7 +1,6 @@
 //! Search endpoint handlers
 
 use crate::core::embedding::EmbeddingService;
-use crate::http::auth::roles::EndpointPermissions;
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
@@ -14,9 +13,6 @@ pub async fn search_skills(
     State(state): State<AppState>,
     Json(request): Json<SearchRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<SearchResponse>>> {
-    // Check permissions
-    let _check = EndpointPermissions::SEARCH.check(None);
-
     // Validate request
     request.validate().map_err(|e| {
         HttpError::ValidationError(
