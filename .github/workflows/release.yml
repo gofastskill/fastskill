@@ -502,23 +502,57 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Validate Homebrew formula in tap CI
+      - name: Prepare Homebrew update branch
+        id: hb-branch
+        run: |
+          VERSION="${{ needs.verify-version.outputs.version }}"
+          BRANCH="ci/release-v${VERSION}-${{ github.run_id }}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push Homebrew branch
+        id: hb-commit
+        run: |
+          set -euo pipefail
+          BRANCH="${{ steps.hb-branch.outputs.branch }}"
+          VERSION="${{ needs.verify-version.outputs.version }}"
+          cd homebrew-cli
+
+          git checkout -B "$BRANCH"
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit for Homebrew formula"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/fastskill.rb
+          git commit -m "chore: update fastskill to v${VERSION}"
+          git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" "$BRANCH"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Validate Homebrew branch in tap CI
+        if: steps.hb-commit.outputs.has_changes == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ needs.verify-version.outputs.version }}"
+          BRANCH="${{ steps.hb-branch.outputs.branch }}"
           gh workflow run validate-formula.yml \
             --repo gofastskill/homebrew-cli \
-            --ref main \
+            --ref "$BRANCH" \
             -f version="$VERSION"
 
           RUN_ID=""
-          for _ in {1..30}; do
+          for _ in {1..60}; do
             RUN_ID=$(gh run list \
               --repo gofastskill/homebrew-cli \
               --workflow validate-formula.yml \
               --event workflow_dispatch \
-              --json databaseId,status,displayTitle \
-              -q ".[] | select(.displayTitle == \"Validate formula for $VERSION\") | .databaseId" \
+              --json databaseId,status,headBranch,displayTitle \
+              -q ".[] | select(.headBranch == \"$BRANCH\") | .databaseId" \
               | head -n 1)
             if [ -n "$RUN_ID" ]; then
               break
@@ -535,20 +569,19 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Commit and push Homebrew changes
+      - name: Merge validated Homebrew branch to main
+        if: steps.hb-commit.outputs.has_changes == 'true'
         run: |
+          set -euo pipefail
+          BRANCH="${{ steps.hb-branch.outputs.branch }}"
           cd homebrew-cli
-          VERSION="${{ needs.verify-version.outputs.version }}"
-
-          if git diff --quiet && git diff --staged --quiet; then
-            echo "No changes to commit for Homebrew formula"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add .
-            git commit -m "chore: update fastskill to v${VERSION}"
-            git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" main
-          fi
+          git fetch origin main "$BRANCH"
+          git checkout main
+          git merge --ff-only "origin/$BRANCH"
+          git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" main
+          git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" --delete "$BRANCH"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout scoop-bucket repo
         uses: actions/checkout@v4
