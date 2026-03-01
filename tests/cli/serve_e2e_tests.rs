@@ -8,6 +8,8 @@ use super::snapshot_helpers::{
     assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
 };
 use std::fs;
+use std::io::ErrorKind;
+use std::net::TcpListener;
 use std::net::TcpStream;
 use std::process::Command;
 use std::thread;
@@ -23,6 +25,20 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
         thread::sleep(Duration::from_millis(100));
     }
     false
+}
+
+fn can_bind_localhost_or_skip() -> bool {
+    match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => {
+            drop(listener);
+            true
+        }
+        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+            eprintln!("Skipping test: unable to bind localhost socket ({err})");
+            false
+        }
+        Err(err) => panic!("failed to bind localhost socket for test setup: {err}"),
+    }
 }
 
 const PROJECT_TOML: &str = "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n";
@@ -48,6 +64,10 @@ fn test_serve_invalid_port_error() {
 
 #[test]
 fn test_serve_default_host_port() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
@@ -78,6 +98,10 @@ fn test_serve_default_host_port() {
 
 #[test]
 fn test_serve_custom_port() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
@@ -108,6 +132,10 @@ fn test_serve_custom_port() {
 
 #[test]
 fn test_serve_custom_host() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
@@ -138,6 +166,10 @@ fn test_serve_custom_host() {
 
 #[test]
 fn test_serve_starts_without_registry_config() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
@@ -156,6 +188,10 @@ fn test_serve_starts_without_registry_config() {
 
 #[test]
 fn test_serve_port_already_in_use_error() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();

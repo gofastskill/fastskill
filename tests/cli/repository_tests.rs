@@ -49,7 +49,7 @@ async fn test_scan_directory_for_skills() {
     assert!(skills_dir.join("skill2").join("SKILL.md").exists());
 }
 
-/// T026: Integration test for fastskill registry add updating repositories in skill-project.toml
+/// T026: Integration test for fastskill sources add updating repositories in skill-project.toml
 #[test]
 fn test_registry_add_updates_repositories_in_skill_project_toml() {
     use fastskill::core::manifest::SkillProjectToml;
@@ -74,7 +74,7 @@ web-scraper = "1.0.0"
     // Load project
     let mut project = SkillProjectToml::load_from_file(&project_toml).unwrap();
 
-    // Simulate adding a repository (what registry add command would do)
+    // Simulate adding a repository (what sources add command would do)
     let tool = project
         .tool
         .get_or_insert_with(|| ToolSection { fastskill: None });
