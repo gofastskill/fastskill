@@ -5,7 +5,6 @@ expression: normalized
 FastSkill [VERSION]
 Updating skills...
 
-
 Skills that would be updated:
 
   • dev-tools (from Git { url: "https://github.com/org/dev-tools.git", branch: Some("main"), tag: None, subdir: None })
