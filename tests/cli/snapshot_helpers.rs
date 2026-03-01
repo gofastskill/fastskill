@@ -179,6 +179,47 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
             .to_string();
     }
 
+    // Normalize network-dependent git and socket errors to keep snapshots stable
+    // across environments with different DNS/network policies.
+    result = regex::Regex::new(
+        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+WARN fastskill::storage::git: Git operation failed with network error.*\n?",
+    )
+    .unwrap()
+    .replace_all(&result, "")
+    .to_string();
+
+    result = regex::Regex::new(r"fatal: unable to access '[^']+': [^\n]+")
+        .unwrap()
+        .replace_all(&result, "[GIT_NETWORK_ERROR]")
+        .to_string();
+
+    result =
+        regex::Regex::new(r"remote: Repository not found\.\nfatal: repository '[^']+' not found")
+            .unwrap()
+            .replace_all(&result, "[GIT_NETWORK_ERROR]")
+            .to_string();
+
+    result = regex::Regex::new(r"tcp (?:connect|open) error: [^\n]+")
+        .unwrap()
+        .replace_all(&result, "tcp connect error: [NETWORK_ERROR]")
+        .to_string();
+
+    result = regex::Regex::new(r"\n\n  (Installing|Updating)")
+        .unwrap()
+        .replace_all(&result, "\n  $1")
+        .to_string();
+
+    result = regex::Regex::new(r"(?m)^(  (?:Installing|Updating) [^\n]*\n)\n")
+        .unwrap()
+        .replace_all(&result, "$1")
+        .to_string();
+
+    // Collapse extra blank lines created by normalization.
+    result = regex::Regex::new(r"\n{3,}")
+        .unwrap()
+        .replace_all(&result, "\n\n")
+        .to_string();
+
     if settings.normalize_timestamps {
         // Normalize ISO 8601 timestamps
         result =

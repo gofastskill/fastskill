@@ -121,7 +121,7 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add the repository to your project
-fastskill registry add my-skills-repo \
+fastskill sources add my-skills-repo \
   --repo-type git-marketplace \
   --url https://github.com/your-org/my-skills-repo.git \
   --priority 0
@@ -446,7 +446,7 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add repository
-fastskill registry add company-tools \
+fastskill sources add company-tools \
   --repo-type zip-url \
   --url https://skills.company.com/ \
   --priority 0
@@ -679,7 +679,7 @@ priority = 0
 **5. Test Local Repository**
 ```bash
 # Add local repository
-fastskill registry add local-dev \
+fastskill sources add local-dev \
   --repo-type local \
   --url ~/local-skills \
   --priority 0
@@ -753,7 +753,7 @@ git add .
 git commit -m "Add experimental skills"
 
 # Or reference external git repos
-fastskill registry add external-dev \
+fastskill sources add external-dev \
   --repo-type git-marketplace \
   --url ~/projects/external-skills \
   --priority 1
@@ -820,7 +820,7 @@ priority = 1
 # GitHub Actions example
 - name: Test local skills
   run: |
-    fastskill registry add test-repo \
+    fastskill sources add test-repo \
       --repo-type local \
       --url ./test-skills
 
@@ -848,7 +848,7 @@ Sources without `marketplace.json` will not appear in the registry.
 Add a new repository using the CLI:
 
 ```bash
-fastskill registry add new-source --type git-marketplace --url https://github.com/user/repo.git --priority 0
+fastskill sources add new-source --type git-marketplace --url https://github.com/user/repo.git --priority 0
 ```
 
 Or edit `skill-project.toml` directly:

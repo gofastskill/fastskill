@@ -9,11 +9,23 @@ use super::snapshot_helpers::{
 };
 use serde_json::json;
 use std::fs;
+use std::io::ErrorKind;
 use tempfile::TempDir;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
+
+async fn start_mock_server_or_skip() -> Option<MockServer> {
+    match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => Some(MockServer::builder().listener(listener).start().await),
+        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+            eprintln!("Skipping test: unable to bind local mock server socket ({err})");
+            None
+        }
+        Err(err) => panic!("failed to bind local mock server socket: {err}"),
+    }
+}
 
 #[tokio::test]
 async fn test_auth_login_success() {
@@ -22,7 +34,9 @@ async fn test_auth_login_success() {
     fs::create_dir_all(&config_dir).unwrap();
 
     // Mock server with /auth/token endpoint
-    let mock_server = MockServer::start().await;
+    let Some(mock_server) = start_mock_server_or_skip().await else {
+        return;
+    };
     Mock::given(method("POST"))
         .and(path("/auth/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -62,7 +76,9 @@ async fn test_auth_login_with_custom_role() {
     fs::create_dir_all(&config_dir).unwrap();
 
     // Mock server with /auth/token endpoint
-    let mock_server = MockServer::start().await;
+    let Some(mock_server) = start_mock_server_or_skip().await else {
+        return;
+    };
     Mock::given(method("POST"))
         .and(path("/auth/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -132,7 +148,9 @@ async fn test_auth_login_invalid_credentials_error() {
     fs::create_dir_all(&config_dir).unwrap();
 
     // Mock server that returns 401 Unauthorized
-    let mock_server = MockServer::start().await;
+    let Some(mock_server) = start_mock_server_or_skip().await else {
+        return;
+    };
     Mock::given(method("POST"))
         .and(path("/auth/token"))
         .respond_with(ResponseTemplate::new(401).set_body_string("Invalid credentials"))

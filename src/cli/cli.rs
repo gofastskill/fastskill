@@ -23,7 +23,7 @@ use crate::cli::error::{CliError, CliResult};
                          Run 'fastskill init --skills-dir <path>' to create a new project.\n\n\
                          Examples:\n\
                            fastskill add ./my-skill           # Add skill from folder\n\
-                           fastskill registry add local-skills --repo-type local /path/to/skills  # Add local repository\n\
+                           fastskill sources add local-skills --repo-type local /path/to/skills  # Add local repository\n\
                            fastskill \"text processing\"        # Search for skills\n\
                            fastskill disable skill-id          # Disable a skill")]
 #[command(arg_required_else_help = true)]

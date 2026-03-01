@@ -10,11 +10,9 @@ Found 4 skills to install
   Installing local-skill...
   Installing remote-skill...
   Installing web-scraper...
-
 [OK] Installation complete
    Updated skills.lock
-  [ERROR] Failed to install dev-tools: Git clone failed: Custom error: Git command failed: remote: Repository not found.
-fatal: repository 'https://github.com/org/dev-tools.git/' not found
+  [ERROR] Failed to install dev-tools: Git clone failed: Custom error: Git command failed: [GIT_NETWORK_ERROR]
 
   [ERROR] Failed to install local-skill: Invalid skill source: Local path does not exist: [TEMP_DIR]
   [ERROR] Failed to install remote-skill: Configuration error: ZIP URL installation not yet implemented

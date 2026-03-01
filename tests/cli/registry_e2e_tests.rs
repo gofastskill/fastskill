@@ -8,9 +8,21 @@ use super::snapshot_helpers::{
     assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
 };
 use std::fs;
+use std::io::ErrorKind;
 use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+async fn start_mock_server_or_skip() -> Option<MockServer> {
+    match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => Some(MockServer::builder().listener(listener).start().await),
+        Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+            eprintln!("Skipping test: unable to bind local mock server socket ({err})");
+            None
+        }
+        Err(err) => panic!("failed to bind local mock server socket: {err}"),
+    }
+}
 
 #[test]
 fn test_sources_list_empty() {
@@ -442,7 +454,9 @@ async fn test_sources_test_connectivity() {
     .unwrap();
 
     // Mock server for testing
-    let mock_server = MockServer::start().await;
+    let Some(mock_server) = start_mock_server_or_skip().await else {
+        return;
+    };
     Mock::given(method("GET"))
         .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
