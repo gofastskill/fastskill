@@ -120,9 +120,11 @@ echo -e "${YELLOW}Running tests with cargo-nextest...${NC}" >&2
 # First run security-sensitive tests explicitly and ensure they exist
 echo -e "${YELLOW}Checking for ZIP slip security tests...${NC}" >&2
 
-# Run just the security tests by running all tests and filtering
+# Run just the security tests by running all tests and filtering (allow non-zero so we can report)
+set +e
 FULL_TEST_OUTPUT=$(cargo nextest run --all-features 2>&1)
 FULL_EXIT_CODE=$?
+set -e
 
 # Check if security tests ran and passed
 SECURITY_TESTS_PASSED=true
