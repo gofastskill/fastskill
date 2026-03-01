@@ -115,21 +115,9 @@ curl -X GET http://localhost:8080/api/status
 curl -X GET http://localhost:8080/
 ```
 
-#### Authentication Endpoints
+#### Authentication Model
 
-```bash
-# Generate JWT token
-curl -X POST http://localhost:8080/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "role": "manager",
-    "username": "optional-username"
-  }'
-
-# Verify token
-curl -X GET http://localhost:8080/auth/verify \
-  -H "Authorization: Bearer <token>"
-```
+Local `fastskill serve` endpoints are unauthenticated. Requests to `/api/*` and `/v1/*` do not require JWT or API-key headers.
 
 #### Claude Code API Endpoints
 
@@ -183,14 +171,13 @@ curl -X GET http://localhost:8080/api/registry/sources/:name/marketplace
 # Refresh all sources
 curl -X POST http://localhost:8080/api/registry/refresh
 
-# Publish skill package (requires authentication)
+# Publish skill package (no auth headers required on local serve)
 curl -X POST http://localhost:8080/api/registry/publish \
   -H "Content-Type: multipart/form-data" \
   -F "package=@skill-package.zip"
 
 # Get publish job status
-curl -X GET http://localhost:8080/api/registry/publish/status/:job_id \
-  -H "Authorization: Bearer <token>"
+curl -X GET http://localhost:8080/api/registry/publish/status/:job_id
 ```
 
 #### Manifest Endpoints (when --enable-registry is used)
@@ -469,12 +456,7 @@ let results = join_all(tasks).await;
 
 <Accordion title="Authentication Issues">
   <Info>
-  **JWT token errors**: Verify your token is valid and not expired. Generate a new token if needed.
-  ```bash
-  curl -X POST http://localhost:8080/auth/token \
-    -H "Content-Type: application/json" \
-    -d '{"role": "manager", "username": "optional-username"}'
-  ```
+  Local `fastskill serve` does not enforce built-in authentication. If access control is required, place the service behind a reverse proxy or private network boundary.
   </Info>
 </Accordion>
 </AccordionGroup>

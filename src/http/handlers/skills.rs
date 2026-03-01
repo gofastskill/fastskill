@@ -1,6 +1,5 @@
 //! Skills CRUD endpoint handlers
 
-use crate::http::auth::roles::EndpointPermissions;
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
@@ -43,8 +42,6 @@ fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> s
 pub async fn list_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillsListResponse>>> {
-    let _check = EndpointPermissions::SKILLS_LIST.check(None);
-
     let skills = state.service.skill_manager().list_skills(None).await?;
 
     let skill_responses: Vec<SkillResponse> = skills
@@ -75,7 +72,6 @@ pub async fn get_skill(
     Path(skill_id): Path<String>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
     // Check permissions
-    let _check = EndpointPermissions::SKILLS_GET.check(None);
 
     let skills = state.service.skill_manager().list_skills(None).await?;
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
@@ -105,7 +101,6 @@ pub async fn create_skill(
     Json(_request): Json<SkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
     // Check permissions (write access required)
-    let _check = EndpointPermissions::SKILLS_CREATE.check(None);
 
     // Validate request
     _request.validate().map_err(|e| {
@@ -146,7 +141,6 @@ pub async fn update_skill(
     Json(request): Json<SkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
     // Check permissions
-    let _check = EndpointPermissions::SKILLS_UPDATE.check(None);
 
     // Validate request
     request.validate().map_err(|e| {
@@ -177,8 +171,6 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
-    let _check = EndpointPermissions::SKILLS_DELETE.check(None);
-
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
 
@@ -251,8 +243,6 @@ pub async fn upgrade_skills(
     State(state): State<AppState>,
     Json(payload): Json<Option<UpgradeRequest>>,
 ) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
-    let _check = EndpointPermissions::SKILLS_UPDATE.check(None);
-
     let project_path = state.project_file_path.clone();
     let filter_id = payload
         .and_then(|p| p.skill_id)

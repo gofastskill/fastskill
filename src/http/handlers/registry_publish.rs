@@ -2,15 +2,12 @@
 
 use crate::core::metadata::parse_yaml_frontmatter;
 use crate::core::registry::staging::{StagingManager, StagingStatus};
-use crate::http::auth::jwt::JwtService;
-use crate::http::auth::roles::{EndpointPermissions, UserRole};
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
 use crate::security::validate_path_component;
 use axum::{
     extract::{Multipart, Path, State},
-    http::{header, HeaderMap},
     Json,
 };
 use serde::Serialize;
@@ -48,54 +45,11 @@ pub struct PublishStatusResponse {
 /// POST /api/registry/publish - Publish a skill package
 pub async fn publish_package(
     State(state): State<AppState>,
-    headers: HeaderMap,
     mut multipart: Multipart,
 ) -> HttpResult<Json<ApiResponse<PublishResponse>>> {
-    // Check authentication
-    let jwt_service = JwtService::from_env()
-        .map_err(|e| HttpError::InternalServerError(format!("JWT service error: {:?}", e)))?;
-
-    // Extract and validate token from headers
-    let token = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
-        .or_else(|| {
-            headers
-                .get("x-api-key")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .ok_or_else(|| HttpError::Unauthorized("No authentication token provided".to_string()))?;
-
-    let claims = jwt_service.validate_token(&token)?;
-    let user_role = UserRole::parse_role(&claims.role)
-        .map_err(|e| HttpError::Unauthorized(format!("Invalid role in token: {}", e)))?;
-
-    // Check permissions
-    let check = EndpointPermissions::REGISTRY_PUBLISH.check(Some(&user_role));
-    if !check.allowed {
-        return Err(HttpError::Forbidden(format!(
-            "Insufficient permissions. Required: {}, Got: {}",
-            check.required_role, user_role
-        )));
-    }
-
-    let uploaded_by = Some(claims.sub.clone());
-
-    // Extract scope from user account (claims.sub)
-    // If sub is "org/user", use "org" as scope; if "user", use "user" as scope
-    let user_scope = if claims.sub.contains('/') {
-        claims
-            .sub
-            .split('/')
-            .next()
-            .unwrap_or(&claims.sub)
-            .to_string()
-    } else {
-        claims.sub.clone()
-    };
+    // Set fixed identity values for anonymous publishing
+    let uploaded_by = Some("anonymous".to_string());
+    let user_scope = "anonymous".to_string();
 
     // Get staging manager
     let staging_dir = state
@@ -235,39 +189,7 @@ pub async fn publish_package(
 pub async fn get_publish_status(
     Path(job_id): Path<String>,
     State(state): State<AppState>,
-    headers: HeaderMap,
 ) -> HttpResult<Json<ApiResponse<PublishStatusResponse>>> {
-    // Check authentication
-    let jwt_service = JwtService::from_env()
-        .map_err(|e| HttpError::InternalServerError(format!("JWT service error: {:?}", e)))?;
-
-    // Extract and validate token from headers
-    let token = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
-        .or_else(|| {
-            headers
-                .get("x-api-key")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .ok_or_else(|| HttpError::Unauthorized("No authentication token provided".to_string()))?;
-
-    let claims = jwt_service.validate_token(&token)?;
-    let user_role = UserRole::parse_role(&claims.role)
-        .map_err(|e| HttpError::Unauthorized(format!("Invalid role in token: {}", e)))?;
-
-    // Check permissions
-    let check = EndpointPermissions::REGISTRY_PUBLISH_STATUS.check(Some(&user_role));
-    if !check.allowed {
-        return Err(HttpError::Forbidden(format!(
-            "Insufficient permissions. Required: {}, Got: {}",
-            check.required_role, user_role
-        )));
-    }
-
     // Get staging manager
     let staging_dir = state
         .service
