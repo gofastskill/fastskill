@@ -16,11 +16,15 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-/// Install skills from skill-project.toml [dependencies]
+/// Apply manifest: install skills from skill-project.toml [dependencies]
 ///
-/// Reads dependencies from skill-project.toml at the project root.
+/// This is the canonical command for manifest-driven workflow.
+///
+/// Reads dependencies from skill-project.toml [dependencies] at the project root.
 /// Installs to the skills directory configured in [tool.fastskill].skills_directory.
 /// Creates or updates skills.lock for reproducible installations.
+///
+/// Use --lock to install exact versions from skills.lock instead of resolving from manifest.
 #[derive(Debug, Args)]
 pub struct InstallArgs {
     /// Exclude skills from these groups (like poetry --without dev)

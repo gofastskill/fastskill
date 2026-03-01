@@ -221,19 +221,26 @@ fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
     Ok(skill_dirs)
 }
 
-/// Add a new skill and update skill-project.toml [dependencies]
+/// Add a skill (two operational modes)
 ///
-/// Adds the skill to skill-project.toml [dependencies] section and updates skills.lock.
+/// Mode 1: Manifest-managed (when skill-project.toml exists)
+/// - Adds the skill to skill-project.toml [dependencies] section
+/// - Updates skills.lock
+/// - Use 'fastskill install' afterward to apply the changes
+///
+/// Mode 2: Local-only (when no skill-project.toml or --global flag)
+/// - Registers skill directly to local installation
+/// - Skill is available immediately but not tracked in project manifest
+///
 /// Supports git URLs, local paths, ZIP files, and registry skill IDs.
-///
 /// Local paths are automatically converted to absolute paths in skill-project.toml.
 #[derive(Debug, Args)]
 pub struct AddArgs {
     /// Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@1.2.3)
     pub source: String,
 
-    /// Override source type (registry, github, local)
-    /// Default is registry for skill IDs
+    /// Override source type (registry, github/git, local)
+    /// Default is registry for skill IDs. Use 'github' or 'git' for git repositories.
     #[arg(long)]
     pub source_type: Option<String>,
 
