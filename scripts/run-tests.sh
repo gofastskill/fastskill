@@ -1,19 +1,22 @@
 #!/bin/bash
 
 # Newton Test Runner Script
-# Runs tests with cargo-nextest, captures results, and generates statistics
+# Runs tests with cargo-nextest, captures results, and emits report to stdout (text or JSON).
 #
 # Usage: ./run-tests.sh [OPTIONS]
 #
 # Options:
-#   -o, --output FILE    Output markdown report file (default: test_results.md)
-#   -j, --json FILE      JSON results file (default: test_results.json)
-#   -h, --help           Show this help message
+#   -f, --format FORMAT  Output format: text (default) or json. Report goes to stdout.
+#   -o, --output FILE   Optional: write markdown report to FILE.
+#   -j, --json FILE     Optional: write JSON results to FILE.
+#   -h, --help          Show this help message.
+#
+# Default: text report to stdout only. Use -o/-j to write to files.
 
 set -e  # Exit on any error
 
-# Default: write under target/test_results/ so the script has no side effects in the working tree
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+OUTPUT_FORMAT="text"
 OUTPUT_FILE=""
 JSON_FILE=""
 
@@ -29,9 +32,10 @@ error_exit() {
     echo "Usage: $0 [OPTIONS]" >&2
     echo "" >&2
     echo "Options:" >&2
-    echo "  -o, --output FILE    Output markdown report file (default: target/test_results/test_results.md)" >&2
-    echo "  -j, --json FILE      JSON results file (default: target/test_results/test_results.json)" >&2
-    echo "  -h, --help           Show this help message" >&2
+    echo "  -f, --format FORMAT   Output format: text (default) or json. Report to stdout." >&2
+    echo "  -o, --output FILE     Optional: write markdown report to FILE." >&2
+    echo "  -j, --json FILE       Optional: write JSON results to FILE." >&2
+    echo "  -h, --help            Show this help message." >&2
     exit 1
 }
 
@@ -47,6 +51,13 @@ check_command() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -f|--format)
+            if [[ "$2" != "text" && "$2" != "json" ]]; then
+                error_exit "Format must be 'text' or 'json', got: $2"
+            fi
+            OUTPUT_FORMAT="$2"
+            shift 2
+            ;;
         -o|--output)
             OUTPUT_FILE="$2"
             shift 2
@@ -58,14 +69,17 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Newton Test Runner Script"
             echo ""
-            echo "Runs tests with cargo-nextest, captures results, and generates statistics"
+            echo "Runs tests with cargo-nextest, captures results, and emits report to stdout (text or JSON)."
             echo ""
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  -o, --output FILE    Output markdown report file (default: target/test_results/test_results.md)"
-            echo "  -j, --json FILE      JSON results file (default: target/test_results/test_results.json)"
-            echo "  -h, --help           Show this help message"
+            echo "  -f, --format FORMAT   Output format: text (default) or json. Report goes to stdout."
+            echo "  -o, --output FILE     Optional: write markdown report to FILE."
+            echo "  -j, --json FILE       Optional: write JSON results to FILE."
+            echo "  -h, --help            Show this help message."
+            echo ""
+            echo "Default: text report to stdout only. -o and -j are optional and only write when a path is given."
             echo ""
             echo "Requirements:"
             echo "  - cargo-nextest: Fast test runner for Rust"
@@ -99,16 +113,6 @@ cd "$NEWTON_DIR"
 # Format check (same as CI: check only, no fix)
 echo -e "${YELLOW}Running format check (cargo fmt --all -- --check)...${NC}" >&2
 cargo fmt --all -- --check
-
-# Default output under target/test_results/ (gitignored) when -o/-j not given
-if [ -z "$OUTPUT_FILE" ]; then
-    mkdir -p target/test_results
-    OUTPUT_FILE="target/test_results/test_results.md"
-fi
-if [ -z "$JSON_FILE" ]; then
-    mkdir -p target/test_results
-    JSON_FILE="target/test_results/test_results.json"
-fi
 
 # Run tests and capture output
 echo -e "${YELLOW}Running tests with cargo-nextest...${NC}" >&2
@@ -285,11 +289,9 @@ if [ -n "$FAILED" ] && [ "$FAILED" -gt 0 ]; then
     FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -A 5 -B 1 "FAIL\|✗" | grep "^\s*[^-]*test.*" | sed 's/.*--- \(.*\) ---.*/\1/' | grep -v "^\s*$" | head -10)
 fi
 
-# Create structured JSON output
-echo -e "${YELLOW}Generating JSON output...${NC}" >&2
+# Build JSON content (for stdout and/or file)
 if [ "$COMPILATION_FAILED" = true ]; then
-    # Create JSON for compilation errors
-    cat > "$JSON_FILE" << EOF
+    JSON_CONTENT=$(cat << EOF
 {
   "status": "compilation_failed",
   "timestamp": "$TIMESTAMP",
@@ -310,9 +312,9 @@ if [ "$COMPILATION_FAILED" = true ]; then
   }
 }
 EOF
+)
 else
-    # Create JSON for successful test runs
-    cat > "$JSON_FILE" << EOF
+    JSON_CONTENT=$(cat << EOF
 {
   "status": "completed",
   "timestamp": "$TIMESTAMP",
@@ -333,142 +335,155 @@ else
   }
 }
 EOF
+)
 fi
 
-# Generate comprehensive report
-echo -e "${YELLOW}Generating report: $OUTPUT_FILE${NC}" >&2
+# Progress message
+if [ -n "$OUTPUT_FILE" ] || [ -n "$JSON_FILE" ]; then
+    echo -e "${YELLOW}Generating report...${NC}" >&2
+    [ -n "$OUTPUT_FILE" ] && echo -e "${YELLOW}  Markdown: $OUTPUT_FILE${NC}" >&2
+    [ -n "$JSON_FILE" ] && echo -e "${YELLOW}  JSON: $JSON_FILE${NC}" >&2
+else
+    echo -e "${YELLOW}Generating report (stdout, format: $OUTPUT_FORMAT)...${NC}" >&2
+fi
 
-{
-    echo "# Newton Test Results Report"
-    echo "Generated: $TIMESTAMP"
-    echo "Command: $0"
-    echo "Output File: $OUTPUT_FILE"
-    echo "JSON File: $JSON_FILE"
-    echo ""
-
-    echo "## Overall Status"
-    if [ "$COMPILATION_FAILED" = true ]; then
-        echo "❌ **COMPILATION FAILED** - Code does not compile, tests cannot run"
-    elif [ "$EXIT_CODE" -eq 0 ]; then
-        echo "✅ **PASSED** - All tests completed successfully"
-    else
-        echo "❌ **FAILED** - Some tests failed"
+# Emit report: stdout and/or files
+if [ "$OUTPUT_FORMAT" = "json" ]; then
+    echo "$JSON_CONTENT"
+    if [ -n "$JSON_FILE" ]; then
+        mkdir -p "$(dirname "$JSON_FILE")"
+        echo "$JSON_CONTENT" > "$JSON_FILE"
     fi
-    echo ""
+else
+    # Text report (TTY variant: no Files section)
+    print_text_report() {
+        echo "# Newton Test Results Report"
+        echo "Generated: $TIMESTAMP"
+        echo "Command: $0"
+        echo ""
 
-    echo "## Test Statistics"
-    if [ "$COMPILATION_FAILED" = true ]; then
-        echo "- **Status:** Compilation failed - no tests executed"
-        echo "- **Total Tests:** N/A"
-        echo "- **Passed:** N/A"
-        echo "- **Failed:** N/A"
-        echo "- **Skipped:** N/A"
-        echo "- **Passing Rate:** N/A"
-    else
-        echo "- **Total Tests:** $TOTAL"
-        echo "- **Passed:** $PASSED"
-        echo "- **Failed:** $FAILED"
-        echo "- **Skipped:** $SKIPPED"
-        echo "- **Passing Rate:** ${PASSING_PERCENTAGE}%"
-    fi
-    echo ""
+        echo "## Overall Status"
+        if [ "$COMPILATION_FAILED" = true ]; then
+            echo "COMPILATION FAILED - Code does not compile, tests cannot run"
+        elif [ "$EXIT_CODE" -eq 0 ]; then
+            echo "PASSED - All tests completed successfully"
+        else
+            echo "FAILED - Some tests failed"
+        fi
+        echo ""
 
-    # Progress bar visualization
-    if [ "$COMPILATION_FAILED" = true ]; then
-        echo "## Progress Visualization"
-        echo "\`\`\`"
-        echo "[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] COMPILATION FAILED"
-        echo "\`\`\`"
+        echo "## Test Statistics"
+        if [ "$COMPILATION_FAILED" = true ]; then
+            echo "- Status: Compilation failed - no tests executed"
+            echo "- Total Tests: N/A"
+            echo "- Passed: N/A"
+            echo "- Failed: N/A"
+            echo "- Skipped: N/A"
+            echo "- Passing Rate: N/A"
+        else
+            echo "- Total Tests: $TOTAL"
+            echo "- Passed: ${PASSED:-0}"
+            echo "- Failed: ${FAILED:-0}"
+            echo "- Skipped: ${SKIPPED:-0}"
+            echo "- Passing Rate: ${PASSING_PERCENTAGE}%"
+        fi
         echo ""
-    elif [ "$TOTAL" -gt 0 ]; then
-        echo "## Progress Visualization"
-        BAR_WIDTH=30
-        FILLED=$((PASSED * BAR_WIDTH / TOTAL))
-        EMPTY=$((BAR_WIDTH - FILLED))
 
-        echo "\`\`\`"
-        printf "["
-        for ((i=0; i<FILLED; i++)); do printf "█"; done
-        for ((i=0; i<EMPTY; i++)); do printf "░"; done
-        printf "] %d%% (%d/%d)\n" "$PASSING_PERCENTAGE" "$PASSED" "$TOTAL"
-        echo "\`\`\`"
-        echo ""
-    else
-        echo "## Progress Visualization"
-        echo "\`\`\`"
-        echo "[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] No tests found"
-        echo "\`\`\`"
-        echo ""
-    fi
-
-    # Failed tests section
-    if [ -n "$FAILED_TESTS" ] && [ "$FAILED" -gt 0 ]; then
-        echo "## Failed Tests"
-        echo ""
-        echo "The following tests failed:"
-        echo ""
-        echo "\`\`\`"
-        echo "$FAILED_TESTS"
-        echo "\`\`\`"
-        echo ""
-    fi
-
-    # Test duration (if available in summary)
-    DURATION_LINE=$(echo "$TEST_OUTPUT" | grep "Summary.*\[" | head -1)
-    if [ -n "$DURATION_LINE" ]; then
-        DURATION=$(echo "$DURATION_LINE" | sed -n 's/.*\[\s*\([0-9.]*\)s\].*/\1/p')
-        if [ -n "$DURATION" ]; then
-            echo "## Performance"
-            echo "- **Test Duration:** ${DURATION}s"
+        if [ "$COMPILATION_FAILED" = true ]; then
+            echo "## Progress Visualization"
+            echo "[..............................] COMPILATION FAILED"
+            echo ""
+        elif [ "$TOTAL" -gt 0 ]; then
+            echo "## Progress Visualization"
+            BAR_WIDTH=30
+            FILLED=$((PASSED * BAR_WIDTH / TOTAL))
+            EMPTY=$((BAR_WIDTH - FILLED))
+            printf "["
+            for ((i=0; i<FILLED; i++)); do printf "#"; done
+            for ((i=0; i<EMPTY; i++)); do printf "."; done
+            printf "] %d%% (%d/%d)\n" "$PASSING_PERCENTAGE" "$PASSED" "$TOTAL"
+            echo ""
+        else
+            echo "## Progress Visualization"
+            echo "[..............................] No tests found"
             echo ""
         fi
+
+        if [ -n "$FAILED_TESTS" ] && [ "$FAILED" -gt 0 ]; then
+            echo "## Failed Tests"
+            echo ""
+            echo "$FAILED_TESTS"
+            echo ""
+        fi
+
+        DURATION_LINE=$(echo "$TEST_OUTPUT" | grep "Summary.*\[" | head -1)
+        if [ -n "$DURATION_LINE" ]; then
+            DURATION=$(echo "$DURATION_LINE" | sed -n 's/.*\[\s*\([0-9.]*\)s\].*/\1/p')
+            if [ -n "$DURATION" ]; then
+                echo "## Performance"
+                echo "- Test Duration: ${DURATION}s"
+                echo ""
+            fi
+        fi
+    }
+
+    print_text_report
+    if [ -n "$OUTPUT_FILE" ]; then
+        mkdir -p "$(dirname "$OUTPUT_FILE")"
+        {
+            print_text_report
+            echo "## Files"
+            echo "- Markdown Report: $OUTPUT_FILE"
+            [ -n "$JSON_FILE" ] && echo "- JSON results: $JSON_FILE"
+            echo ""
+        } > "$OUTPUT_FILE"
     fi
+    if [ -n "$JSON_FILE" ]; then
+        mkdir -p "$(dirname "$JSON_FILE")"
+        echo "$JSON_CONTENT" > "$JSON_FILE"
+    fi
+fi
 
-    echo "## Files"
-    echo "- **Raw Test Output:** \`$JSON_FILE\`"
-    echo "- **Markdown Report:** \`$OUTPUT_FILE\`"
-    echo ""
-
-    echo "## Raw Test Output"
-    echo "Complete test output is saved in: \`$JSON_FILE\`"
-    echo ""
-    echo "You can analyze it with standard Unix tools:"
-    echo "\`\`\`bash"
-    echo "# Count total tests"
-    echo "grep -c 'PASS\\|FAIL\\|SKIP' $JSON_FILE"
-    echo ""
-    echo "# Show failed tests"
-    echo "grep -A 2 -B 2 'FAIL' $JSON_FILE"
-    echo "\`\`\`"
-
-} > "$OUTPUT_FILE"
-
-# Console output summary
-echo -e "${GREEN}Report generated successfully!${NC}" >&2
+# Console summary (stderr)
+if [ -n "$OUTPUT_FILE" ] || [ -n "$JSON_FILE" ]; then
+    echo -e "${GREEN}Report generated successfully!${NC}" >&2
+else
+    echo -e "${GREEN}Report written to stdout.${NC}" >&2
+fi
 echo "" >&2
 
 if [ "$COMPILATION_FAILED" = true ]; then
-    echo "📊 Test Summary:" >&2
+    echo "Test Summary:" >&2
     echo "  Status: COMPILATION FAILED - no tests executed" >&2
-    echo -e "${RED}❌ Code does not compile. Check $OUTPUT_FILE for compilation errors.${NC}" >&2
+    if [ -n "$OUTPUT_FILE" ]; then
+        echo -e "${RED}Code does not compile. Check $OUTPUT_FILE for compilation errors.${NC}" >&2
+    else
+        echo -e "${RED}Code does not compile. See report above.${NC}" >&2
+    fi
 else
-    echo "📊 Test Summary:" >&2
+    echo "Test Summary:" >&2
     echo "  Total: $TOTAL tests" >&2
-    echo "  Passed: $PASSED (${PASSING_PERCENTAGE}%)" >&2
-    echo "  Failed: $FAILED" >&2
-    echo "  Skipped: $SKIPPED" >&2
+    echo "  Passed: ${PASSED:-0} (${PASSING_PERCENTAGE}%)" >&2
+    echo "  Failed: ${FAILED:-0}" >&2
+    echo "  Skipped: ${SKIPPED:-0}" >&2
     echo "" >&2
 
     if [ "$EXIT_CODE" -eq 0 ]; then
-        echo -e "${GREEN}✅ All tests passed!${NC}" >&2
+        echo -e "${GREEN}All tests passed!${NC}" >&2
     else
-        echo -e "${RED}❌ Some tests failed. Check $OUTPUT_FILE for details.${NC}" >&2
+        if [ -n "$OUTPUT_FILE" ]; then
+            echo -e "${RED}Some tests failed. Check $OUTPUT_FILE for details.${NC}" >&2
+        else
+            echo -e "${RED}Some tests failed. See report above.${NC}" >&2
+        fi
     fi
 fi
 
 echo "" >&2
-echo "📁 Files created:" >&2
-echo "  Markdown report: $OUTPUT_FILE" >&2
-echo "  Raw output: $JSON_FILE" >&2
+if [ -n "$OUTPUT_FILE" ] || [ -n "$JSON_FILE" ]; then
+    echo "Files created:" >&2
+    [ -n "$OUTPUT_FILE" ] && echo "  Markdown report: $OUTPUT_FILE" >&2
+    [ -n "$JSON_FILE" ] && echo "  JSON: $JSON_FILE" >&2
+fi
 
 exit $EXIT_CODE
