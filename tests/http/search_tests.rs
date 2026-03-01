@@ -38,14 +38,8 @@ async fn create_test_app_state(
     let mut service = fastskill::FastSkillService::new(config).await.unwrap();
     service.initialize().await.unwrap();
 
-    let jwt_service = Arc::new(
-        fastskill::http::auth::jwt::JwtService::from_env()
-            .expect("Failed to create JWT service for tests"),
-    );
-
     fastskill::http::handlers::AppState {
         service: Arc::new(service),
-        jwt_service,
         start_time: std::time::SystemTime::now(),
         project_file_path: std::path::PathBuf::from("skill-project.toml"),
         project_root: skills_dir.to_path_buf(),

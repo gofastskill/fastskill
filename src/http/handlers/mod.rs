@@ -1,6 +1,5 @@
 //! HTTP request handlers
 
-pub mod auth;
 pub mod claude_api;
 pub mod manifest;
 pub mod registry;

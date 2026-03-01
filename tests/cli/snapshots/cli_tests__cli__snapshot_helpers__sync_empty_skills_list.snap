@@ -3,4 +3,18 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
+[TIMESTAMP] DEBUG fastskill::cli::config: Using skills_directory from skill-project.toml: [TEMP_DIR]
+[TIMESTAMP]  INFO fastskill::core::service: Initializing FastSkill service v[VERSION]
+[TIMESTAMP]  INFO fastskill::storage::filesystem: Initialized filesystem storage at: [TEMP_DIR]
+[TIMESTAMP]  INFO fastskill::core::service: Initializing service components...
+[TIMESTAMP]  INFO fastskill::storage::filesystem: Filesystem storage initialized at: [TEMP_DIR]
+[TIMESTAMP]  INFO fastskill::core::service: Service initialization complete
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Resolved metadata file: [TEMP_DIR]
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Agent key: None
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Override path: None
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Agents file: [TEMP_DIR]
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Found 0 installed skills
+[TIMESTAMP] DEBUG fastskill::cli::utils::agents_md: Parsed 0 skills from AGENTS.md
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Current skill IDs in AGENTS.md: {}
+[TIMESTAMP] DEBUG fastskill::cli::commands::sync: Selected 0 skills
 [OK] Removed all skills from AGENTS.md

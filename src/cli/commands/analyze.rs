@@ -1418,7 +1418,8 @@ mod tests {
                 distance_to_centroid: 0.05,
             }],
         };
-        let json = serde_json::to_string(&cluster).unwrap();
+        #[allow(clippy::expect_used)] // Test code - serialization should not fail
+        let json = serde_json::to_string(&cluster).expect("Cluster serialization should not fail");
         assert!(json.contains("my-skill"));
         assert!(json.contains("cluster_id"));
         assert!(json.contains("representative"));
@@ -1449,7 +1450,9 @@ mod tests {
             }],
         };
 
-        let json = serde_json::to_string_pretty(&output).unwrap();
+        #[allow(clippy::expect_used)] // Test code - serialization should not fail
+        let json =
+            serde_json::to_string_pretty(&output).expect("Output serialization should not fail");
         assert!(json.contains("\"effective_floor\""));
         assert!(json.contains("0.93"));
         assert!(json.contains("\"high\""));

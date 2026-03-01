@@ -3,8 +3,7 @@
 use crate::core::registry::{StagingManager, ValidationWorker, ValidationWorkerConfig};
 use crate::core::service::{FastSkillService, ServiceConfig};
 use crate::http::handlers::{
-    auth, claude_api, manifest, registry, registry_publish, reindex, search, skills, status,
-    AppState,
+    claude_api, manifest, registry, registry_publish, reindex, search, skills, status, AppState,
 };
 use axum::{
     body::Body,
@@ -331,12 +330,9 @@ impl FastSkillServer {
             .route("/api/reindex/:id", post(reindex::reindex_skill))
     }
 
-    /// Create authentication routes
-    fn create_auth_routes() -> Router<AppState> {
-        Router::new()
-            .route("/auth/token", post(auth::generate_token))
-            .route("/auth/verify", get(auth::verify_token))
-            .route("/api/status", get(status::status))
+    /// Create status routes
+    fn create_status_routes() -> Router<AppState> {
+        Router::new().route("/api/status", get(status::status))
     }
 
     /// Create Claude Code v1 API routes
@@ -439,7 +435,7 @@ impl FastSkillServer {
         let router = Router::new()
             .merge(Self::create_skill_routes())
             .merge(Self::create_search_routes())
-            .merge(Self::create_auth_routes())
+            .merge(Self::create_status_routes())
             .merge(Self::create_claude_api_routes())
             .merge(Self::create_ui_routes())
             .merge(Self::create_registry_routes())
@@ -453,10 +449,6 @@ impl FastSkillServer {
                     .layer(CompressionLayer::new())
                     .layer(build_cors_layer(self.service.config())),
             )
-            .layer(axum::middleware::from_fn_with_state(
-                state.jwt_service.clone(),
-                crate::http::auth::middleware::auth_middleware,
-            ))
             .with_state(state))
     }
 

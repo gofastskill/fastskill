@@ -254,8 +254,10 @@ fn parse_json(stdout: &str) -> serde_json::Value {
         })
         .collect::<Vec<&str>>()
         .join("\n");
-    serde_json::from_str(json_str.trim())
-        .unwrap_or_else(|e| panic!("Output is not valid JSON: {}\nRaw stdout: {}", e, stdout))
+    serde_json::from_str(json_str.trim()).unwrap_or_else(|e| {
+        eprintln!("Output is not valid JSON: {}\nRaw stdout: {}", e, stdout);
+        serde_json::Value::Null
+    })
 }
 
 // --------------------------------------------------------------------------
