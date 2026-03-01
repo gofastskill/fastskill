@@ -2,7 +2,7 @@
 source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-Remove skills from the skills database
+Uninstall skills (only way to stop using skills, removes from manifest and local installation)
 
 Usage: fastskill remove [OPTIONS] [SKILL_IDS]...
 
@@ -12,6 +12,13 @@ Arguments:
 Options:
   -f, --force  Force removal without confirmation
   -h, --help   Print help
+
+Uninstalls skills completely - this is the only way to stop using skills.
+Removes from both local installation and project manifest (skill-project.toml).
+Updates skills.lock to reflect the removal.
+
+For manifest-managed projects: removes from [dependencies] and updates lock.
+For local-only skills: removes from local installation only.
 
 Examples:
   fastskill remove my-skill-id

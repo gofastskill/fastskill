@@ -11,10 +11,16 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use tokio::fs;
 
-/// Remove skills and update skill-project.toml [dependencies]
+/// Uninstall skills (only way to stop using skills)
 ///
-/// Removes skills from both the installation and skill-project.toml [dependencies].
-/// Updates skills.lock to reflect removals.
+/// This is the only command to completely stop using skills after the removal of 'disable'.
+///
+/// Behavior:
+/// - For manifest-managed projects: Removes from skill-project.toml [dependencies] and local installation
+/// - For local-only skills: Removes from local installation only
+/// - Always updates skills.lock to reflect removals (when manifest exists)
+///
+/// Use this command when you want to completely stop using a skill.
 #[derive(Debug, Args)]
 pub struct RemoveArgs {
     /// Skill IDs to remove

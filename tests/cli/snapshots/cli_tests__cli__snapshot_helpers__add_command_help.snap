@@ -2,7 +2,7 @@
 source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-Add a new skill to the skills database
+Add a skill (two modes: add to project manifest OR register skill locally)
 
 Usage: fastskill add [OPTIONS] <SOURCE>
 
@@ -10,7 +10,7 @@ Arguments:
   <SOURCE>  Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@[VERSION])
 
 Options:
-      --source-type <SOURCE_TYPE>  Override source type (registry, github, local) Default is registry for skill IDs
+      --source-type <SOURCE_TYPE>  Override source type (registry, github/git, local) Default is registry for skill IDs. Use 'github' or 'git' for git repositories
       --branch <BRANCH>            Git branch to checkout (only for git URLs)
       --tag <TAG>                  Git tag to checkout (only for git URLs)
   -f, --force                      Force registration even if skill already exists
@@ -19,6 +19,17 @@ Options:
   -r, --recursive                  Add all skills found under the directory (only for local folders)
   -h, --help                       Print help
 
+Two operational modes:
+
+1. Manifest-managed: Adds dependency to skill-project.toml [dependencies]
+   - Requires skill-project.toml to exist
+   - Use 'fastskill install' afterward to apply changes
+
+2. Local-only: Register skill directly to local installation
+   - Works without skill-project.toml
+   - Skill available immediately but not in manifest
+
 Examples:
-  fastskill add ./my-skill
-  fastskill add pptx@[VERSION]
+  fastskill add pptx@[VERSION]     # Add to manifest or local
+  fastskill add ./my-skill     # Add local folder
+  fastskill add --editable ./dev-skill  # Development mode

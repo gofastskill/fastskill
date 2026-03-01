@@ -18,10 +18,17 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Update skills from skill-project.toml [dependencies] to latest versions
+/// Update skills to latest versions (behavior matrix affects manifest, lock, and installed state)
+///
+/// Behavior Matrix:
+/// - 'fastskill update' (no skill specified): Updates all skills, modifies skills.lock
+/// - 'fastskill update <skill-id>': Updates specific skill only, modifies skills.lock
+/// - 'fastskill update --check': Check-only mode, no modifications to any files
+/// - 'fastskill update --dry-run': Preview changes without applying them
 ///
 /// Reads dependencies from skill-project.toml and updates installed skills.
-/// Updates skills.lock with new versions.
+/// Always updates skills.lock with new versions (except in check/dry-run modes).
+/// Use 'fastskill install --lock' to apply lock file changes without version resolution.
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Skill ID to update (if not specified, updates all)
