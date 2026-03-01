@@ -26,10 +26,10 @@ use clap::Subcommand;
 #[derive(Debug, Subcommand)]
 #[command(about = "FastSkill CLI commands")]
 pub enum Commands {
-    /// Add a new skill from zip file, folder, or git URL
+    /// Add a skill (two modes: add to project manifest OR register skill locally)
     #[command(
-        about = "Add a new skill to the skills database",
-        after_help = "Examples:\n  fastskill add ./my-skill\n  fastskill add pptx@1.2.3"
+        about = "Add a skill (two modes: add to project manifest OR register skill locally)",
+        after_help = "Two operational modes:\n\n1. Manifest-managed: Adds dependency to skill-project.toml [dependencies]\n   - Requires skill-project.toml to exist\n   - Use 'fastskill install' afterward to apply changes\n\n2. Local-only: Register skill directly to local installation\n   - Works without skill-project.toml\n   - Skill available immediately but not in manifest\n\nExamples:\n  fastskill add pptx@1.2.3     # Add to manifest or local\n  fastskill add ./my-skill     # Add local folder\n  fastskill add --editable ./dev-skill  # Development mode"
     )]
     Add(add::AddArgs),
 
@@ -61,10 +61,10 @@ pub enum Commands {
     )]
     Init(init::InitArgs),
 
-    /// Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock
+    /// Apply manifest: install skills from skill-project.toml [dependencies] (canonical command for manifest-driven workflow)
     #[command(
-        about = "Install skills from skill-project.toml [dependencies] into configured skills directory; creates or updates skills.lock",
-        after_help = "Examples:\n  fastskill install\n  fastskill install --lock"
+        about = "Apply manifest: install skills from skill-project.toml [dependencies] (canonical command for manifest-driven workflow)",
+        after_help = "This is the primary command for installing project dependencies.\nReads from skill-project.toml [dependencies] and creates/updates skills.lock.\n\nExamples:\n  fastskill install\n  fastskill install --lock  # Install exact versions from skills.lock"
     )]
     Install(install::InstallArgs),
 
@@ -82,10 +82,10 @@ pub enum Commands {
     )]
     Reindex(reindex::ReindexArgs),
 
-    /// Remove one or more skills
+    /// Uninstall skills (only way to stop using skills, removes from manifest and local installation)
     #[command(
-        about = "Remove skills from the skills database",
-        after_help = "Examples:\n  fastskill remove my-skill-id\n  fastskill remove skill-a skill-b --force"
+        about = "Uninstall skills (only way to stop using skills, removes from manifest and local installation)",
+        after_help = "Uninstalls skills completely - this is the only way to stop using skills.\nRemoves from both local installation and project manifest (skill-project.toml).\nUpdates skills.lock to reflect the removal.\n\nFor manifest-managed projects: removes from [dependencies] and updates lock.\nFor local-only skills: removes from local installation only.\n\nExamples:\n  fastskill remove my-skill-id\n  fastskill remove skill-a skill-b --force"
     )]
     Remove(remove::RemoveArgs),
 
@@ -152,10 +152,10 @@ pub enum Commands {
     )]
     Sources(sources::SourcesArgs),
 
-    /// Update skills to latest from source
+    /// Update skills to latest versions (behavior matrix: affects manifest, lock, and/or installed state)
     #[command(
-        about = "Update skills to latest versions",
-        after_help = "Examples:\n  fastskill update\n  fastskill update --check"
+        about = "Update skills to latest versions (behavior matrix: affects manifest, lock, and/or installed state)",
+        after_help = "Behavior Matrix:\n- 'fastskill update' (no args): Updates all skills, modifies lock file\n- 'fastskill update <skill-id>': Updates specific skill, modifies lock file  \n- 'fastskill update --check': Check-only mode, no modifications\n- 'fastskill update --dry-run': Preview changes without applying\n\nRelated to 'fastskill install --lock' for applying lock-only updates.\n\nExamples:\n  fastskill update\n  fastskill update my-skill\n  fastskill update --check"
     )]
     Update(update::UpdateArgs),
 
