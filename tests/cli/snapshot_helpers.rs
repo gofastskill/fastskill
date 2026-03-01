@@ -204,6 +204,11 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         .replace_all(&result, "tcp connect error: [NETWORK_ERROR]")
         .to_string();
 
+    result = regex::Regex::new(r"\n\n  (Installing|Updating)")
+        .unwrap()
+        .replace_all(&result, "\n  $1")
+        .to_string();
+
     // Collapse extra blank lines created by normalization.
     result = regex::Regex::new(r"\n{3,}")
         .unwrap()
