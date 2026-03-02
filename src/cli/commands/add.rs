@@ -659,7 +659,7 @@ async fn add_from_registry(ctx: &AddContext<'_>, skill_id_input: &str) -> CliRes
     let repo_manager = RepositoryManager::from_definitions(repositories);
     let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
         CliError::Config(
-            "No default repository configured. Use 'fastskill sources add' to add a repository."
+            "No default repository configured. Use 'fastskill repos add' to add a repository."
                 .to_string(),
         )
     })?;

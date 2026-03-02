@@ -5,8 +5,9 @@ use fastskill::FastSkillService;
 use std::sync::Arc;
 
 use crate::cli::commands::{
-    add, analyze, auth, disable, init, install, list, package, publish, read, registry, reindex,
-    remove, search, serve, show, sources, sync, update, version, Commands,
+    add, analyze, auth, disable, init, install, list, marketplace, package, publish, read,
+    registry, reindex, remove, repos, search, serve, show, sources, sync, update, version,
+    Commands,
 };
 use crate::cli::config::create_service_config;
 use crate::cli::error::{CliError, CliResult};
@@ -23,7 +24,7 @@ use crate::cli::error::{CliError, CliResult};
                          Run 'fastskill init --skills-dir <path>' to create a new project.\n\n\
                          Examples:\n\
                            fastskill add ./my-skill           # Add skill from folder\n\
-                           fastskill sources add local-skills --repo-type local /path/to/skills  # Add local repository\n\
+                           fastskill repos add local-skills --repo-type local /path/to/skills    # Add local repository\n\
                            fastskill \"text processing\"        # Search for skills\n\
                            fastskill disable skill-id          # Disable a skill")]
 #[command(arg_required_else_help = true)]
@@ -95,6 +96,14 @@ impl Cli {
             return sources::execute_sources(args).await;
         }
 
+        if let Some(Commands::Repos(args)) = self.command {
+            return repos::execute_repos(args).await;
+        }
+
+        if let Some(Commands::Marketplace(args)) = self.command {
+            return marketplace::execute_marketplace(args).await;
+        }
+
         if let Some(Commands::Auth(args)) = self.command {
             return auth::execute_auth(args).await;
         }
@@ -142,6 +151,8 @@ impl Cli {
             | Some(Commands::Publish(_))
             | Some(Commands::Registry(_))
             | Some(Commands::Sources(_))
+            | Some(Commands::Repos(_))
+            | Some(Commands::Marketplace(_))
             | Some(Commands::Auth(_))
             | Some(Commands::Version(_)) => unreachable!("Handled above"),
             None => {
