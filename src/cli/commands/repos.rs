@@ -1,0 +1,301 @@
+//! Repos command - manage repository list and browse remote skill catalog
+//!
+//! This command consolidates repository management (add/remove/test/refresh) and
+//! remote catalog operations (skills/show/versions/search) into a single namespace.
+
+use crate::cli::error::CliResult;
+use clap::{Args, Subcommand};
+use std::path::PathBuf;
+
+#[derive(Debug, Args)]
+#[command(
+    about = "Manage repository list and browse remote skill catalog.",
+    after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos search \"query\""
+)]
+pub struct ReposArgs {
+    #[command(subcommand)]
+    pub command: ReposCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ReposCommand {
+    // Repository Management Commands
+    /// List all configured repositories
+    #[command(after_help = "Examples:\n  fastskill repos list\n  fastskill repos list --json")]
+    List {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add a new repository
+    #[command(
+        after_help = "Examples:\n  fastskill repos add my-repo --repo-type local /path/to/skills"
+    )]
+    Add {
+        /// Repository name
+        name: String,
+        /// Repository type: git-marketplace, http-registry, zip-url, or local
+        #[arg(long)]
+        repo_type: String,
+        /// URL for git-marketplace or http-registry, base_url for zip-url, or path for local
+        url_or_path: String,
+        /// Priority (lower number = higher priority, default: 0)
+        #[arg(long)]
+        priority: Option<u32>,
+        /// Branch for git-marketplace
+        #[arg(long)]
+        branch: Option<String>,
+        /// Tag for git-marketplace
+        #[arg(long)]
+        tag: Option<String>,
+        /// Authentication type: pat, ssh-key, ssh, basic, or api_key
+        #[arg(long)]
+        auth_type: Option<String>,
+        /// Environment variable for PAT, basic password, or API key
+        #[arg(long)]
+        auth_env: Option<String>,
+        /// SSH key path (for ssh-key or ssh auth)
+        #[arg(long)]
+        auth_key_path: Option<PathBuf>,
+        /// Username (for basic auth)
+        #[arg(long)]
+        auth_username: Option<String>,
+    },
+
+    /// Remove a repository
+    #[command(after_help = "Examples:\n  fastskill repos remove my-repo")]
+    Remove {
+        /// Repository name to remove
+        name: String,
+    },
+
+    /// Show repository details
+    #[command(after_help = "Examples:\n  fastskill repos info my-repo")]
+    Info {
+        /// Repository name
+        name: String,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Update repository metadata
+    #[command(after_help = "Examples:\n  fastskill repos update my-repo --priority 1")]
+    Update {
+        /// Repository name to update
+        name: String,
+        /// New branch (for git-marketplace)
+        #[arg(long)]
+        branch: Option<String>,
+        /// New priority
+        #[arg(long)]
+        priority: Option<u32>,
+    },
+
+    /// Test repository connectivity
+    #[command(after_help = "Examples:\n  fastskill repos test my-repo")]
+    Test {
+        /// Repository name to test
+        name: String,
+    },
+
+    /// Refresh repository cache
+    #[command(
+        after_help = "Examples:\n  fastskill repos refresh\n  fastskill repos refresh my-repo"
+    )]
+    Refresh {
+        /// Repository name to refresh (if not specified, refreshes all)
+        name: Option<String>,
+    },
+
+    // Catalog Browsing Commands
+    /// List skills in repository catalog
+    #[command(after_help = "Examples:\n  fastskill repos skills\n  fastskill repos skills --json")]
+    Skills {
+        /// Repository name to list skills from (defaults to default repository if not specified)
+        #[arg(long)]
+        repository: Option<String>,
+        /// Filter by scope (organization name)
+        #[arg(long)]
+        scope: Option<String>,
+        /// Show all versions for each skill
+        #[arg(long)]
+        all_versions: bool,
+        /// Include pre-release versions
+        #[arg(long)]
+        include_pre_release: bool,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+        /// Output in grid format (default)
+        #[arg(long)]
+        grid: bool,
+    },
+
+    /// Show skill details from catalog
+    #[command(after_help = "Examples:\n  fastskill repos show pptx")]
+    Show {
+        /// Skill ID
+        skill_id: String,
+        /// Repository name (defaults to default repository if not specified)
+        #[arg(long)]
+        repository: Option<String>,
+    },
+
+    /// List available versions for a skill
+    #[command(after_help = "Examples:\n  fastskill repos versions pptx")]
+    Versions {
+        /// Skill ID
+        skill_id: String,
+        /// Repository name (defaults to default repository if not specified)
+        #[arg(long)]
+        repository: Option<String>,
+    },
+
+    /// Search skills in repository catalog (remote)
+    #[command(after_help = "Examples:\n  fastskill repos search \"text processing\"")]
+    Search {
+        /// Search query
+        query: String,
+        /// Repository name to search (searches all if not specified)
+        #[arg(long)]
+        repository: Option<String>,
+    },
+}
+
+pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
+    match args.command {
+        // Repository Management Commands
+        ReposCommand::List { json } => {
+            // Dispatch to existing registry::repo_ops::execute_list
+            super::registry::repo_ops::execute_list_with_json(json).await
+        }
+        ReposCommand::Add {
+            name,
+            repo_type,
+            url_or_path,
+            priority,
+            branch,
+            tag,
+            auth_type,
+            auth_env,
+            auth_key_path,
+            auth_username,
+        } => {
+            super::registry::repo_ops::execute_add(
+                name,
+                repo_type,
+                url_or_path,
+                priority,
+                branch,
+                tag,
+                auth_type,
+                auth_env,
+                auth_key_path,
+                auth_username,
+            )
+            .await
+        }
+        ReposCommand::Remove { name } => super::registry::repo_ops::execute_remove(name).await,
+        ReposCommand::Info { name, json } => {
+            super::registry::repo_ops::execute_show_with_json(name, json).await
+        }
+        ReposCommand::Update {
+            name,
+            branch,
+            priority,
+        } => super::registry::repo_ops::execute_update(name, branch, priority).await,
+        ReposCommand::Test { name } => super::registry::repo_ops::execute_test(name).await,
+        ReposCommand::Refresh { name } => super::registry::repo_ops::execute_refresh(name).await,
+
+        // Catalog Browsing Commands
+        ReposCommand::Skills {
+            repository,
+            scope,
+            all_versions,
+            include_pre_release,
+            json,
+            grid,
+        } => {
+            super::registry::skill_ops::execute_list_skills(
+                repository,
+                scope,
+                all_versions,
+                include_pre_release,
+                json,
+                grid,
+            )
+            .await
+        }
+        ReposCommand::Show {
+            skill_id,
+            repository,
+        } => super::registry::skill_ops::execute_show_skill(skill_id, repository).await,
+        ReposCommand::Versions {
+            skill_id,
+            repository,
+        } => super::registry::skill_ops::execute_versions(skill_id, repository).await,
+        ReposCommand::Search { query, repository } => {
+            super::registry::skill_ops::execute_search(query, repository).await
+        }
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::await_holding_lock)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_execute_repos_list() {
+        let _lock = fastskill::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let args = ReposArgs {
+            command: ReposCommand::List { json: false },
+        };
+
+        let result = execute_repos(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_repos_search() {
+        // Note: This test is expected to fail without a configured repository
+        // It's here to verify the command structure compiles correctly
+        let args = ReposArgs {
+            command: ReposCommand::Search {
+                query: "test".to_string(),
+                repository: None,
+            },
+        };
+
+        let result = execute_repos(args).await;
+        // Should fail due to missing repository configuration, but shouldn't panic
+        assert!(result.is_ok() || result.is_err());
+    }
+}

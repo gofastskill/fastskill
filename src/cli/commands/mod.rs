@@ -7,12 +7,14 @@ pub mod disable;
 pub mod init;
 pub mod install;
 pub mod list;
+pub mod marketplace;
 pub mod package;
 pub mod publish;
 pub mod read;
 pub mod registry;
 pub mod reindex;
 pub mod remove;
+pub mod repos;
 pub mod search;
 pub mod serve;
 pub mod show;
@@ -75,6 +77,13 @@ pub enum Commands {
     )]
     List(list::ListArgs),
 
+    /// Marketplace generation and management
+    #[command(
+        about = "Create and manage skill marketplace artifacts",
+        after_help = "Examples:\n  fastskill marketplace create\n  fastskill marketplace create --path ./skills --name my-marketplace"
+    )]
+    Marketplace(marketplace::MarketplaceArgs),
+
     /// Reindex the vector index by scanning skills directory
     #[command(
         about = "Reindex the vector index for semantic search",
@@ -112,10 +121,18 @@ pub enum Commands {
 
     /// Manage repositories and browse/search the registry catalog (remote)
     #[command(
+        hide = true,
         about = "Manage repositories and browse/search the registry catalog (remote)",
         after_help = "Examples:\n  fastskill registry list-skills\n  fastskill registry search \"query\""
     )]
     Registry(registry::RegistryArgs),
+
+    /// Manage repository list and browse remote skill catalog
+    #[command(
+        about = "Manage repository list and browse remote skill catalog.",
+        after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos search \"query\""
+    )]
+    Repos(repos::ReposArgs),
 
     /// Search installed skills by query (local semantic search)
     #[command(
@@ -147,6 +164,7 @@ pub enum Commands {
 
     /// Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace
     #[command(
+        hide = true,
         visible_alias = "source",
         after_help = "Examples:\n  fastskill sources list\n  fastskill sources add my-repo --repo-type local /path/to/skills"
     )]

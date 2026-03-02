@@ -7,27 +7,27 @@ FastSkill CLI - Manage skills and run operations
 Usage: fastskill [OPTIONS] [QUERY] [COMMAND]
 
 Commands:
-  add       Add a skill (two modes: add to project manifest OR register skill locally)
-  analyze   Diagnostic and analysis commands
-  auth      Manage authentication for registries
-  disable   Disable skills by ID
-  init      Initialize skill-project.toml in current skill directory
-  install   Apply manifest: install skills from skill-project.toml [dependencies] (canonical command for manifest-driven workflow)
-  list      List installed skills and reconcile with skill-project.toml and skills.lock (shows name, description, and flags by default; use --details for full info)
-  reindex   Reindex the vector index for semantic search
-  remove    Uninstall skills (only way to stop using skills, removes from manifest and local installation)
-  package   Package skills into ZIP artifacts with versioning
-  publish   Publish artifacts to S3 blob storage
-  read      Stream skill documentation (SKILL.md content) to stdout
-  registry  Manage repositories and browse/search the registry catalog (remote)
-  search    Search installed skills by query (local semantic search)
-  serve     Start the FastSkill HTTP API server
-  show      Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
-  sync      Sync installed skills to the agent's metadata file
-  sources   Manage skill sources (repositories): list, add, remove, show, update, test, refresh; create marketplace [aliases: source]
-  update    Update skills to latest versions (behavior matrix: affects manifest, lock, and/or installed state)
-  version   Display FastSkill version
-  help      Print this message or the help of the given subcommand(s)
+  add          Add a skill (two modes: add to project manifest OR register skill locally)
+  analyze      Diagnostic and analysis commands
+  auth         Manage authentication for registries
+  disable      Disable skills by ID
+  init         Initialize skill-project.toml in current skill directory
+  install      Apply manifest: install skills from skill-project.toml [dependencies] (canonical command for manifest-driven workflow)
+  list         List installed skills and reconcile with skill-project.toml and skills.lock (shows name, description, and flags by default; use --details for full info)
+  marketplace  Create and manage skill marketplace artifacts
+  reindex      Reindex the vector index for semantic search
+  remove       Uninstall skills (only way to stop using skills, removes from manifest and local installation)
+  package      Package skills into ZIP artifacts with versioning
+  publish      Publish artifacts to S3 blob storage
+  read         Stream skill documentation (SKILL.md content) to stdout
+  repos        Manage repository list and browse remote skill catalog.
+  search       Search installed skills by query (local semantic search)
+  serve        Start the FastSkill HTTP API server
+  show         Show metadata for one or all installed skills (name, version, description, source); use --tree for dependency tree
+  sync         Sync installed skills to the agent's metadata file
+  update       Update skills to latest versions (behavior matrix: affects manifest, lock, and/or installed state)
+  version      Display FastSkill version
+  help         Print this message or the help of the given subcommand(s)
 
 Arguments:
   [QUERY]  Search query string (used when no subcommand is specified)
