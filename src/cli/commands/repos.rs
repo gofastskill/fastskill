@@ -10,7 +10,7 @@ use std::path::PathBuf;
 #[derive(Debug, Args)]
 #[command(
     about = "Manage repository list and browse remote skill catalog.",
-    after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos search \"query\""
+    after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos versions pptx"
 )]
 pub struct ReposArgs {
     #[command(subcommand)]
@@ -152,16 +152,6 @@ pub enum ReposCommand {
         #[arg(long)]
         repository: Option<String>,
     },
-
-    /// Search skills in repository catalog (remote)
-    #[command(after_help = "Examples:\n  fastskill repos search \"text processing\"")]
-    Search {
-        /// Search query
-        query: String,
-        /// Repository name to search (searches all if not specified)
-        #[arg(long)]
-        repository: Option<String>,
-    },
 }
 
 pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
@@ -236,9 +226,6 @@ pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
             skill_id,
             repository,
         } => super::registry::skill_ops::execute_versions(skill_id, repository).await,
-        ReposCommand::Search { query, repository } => {
-            super::registry::skill_ops::execute_search(query, repository).await
-        }
     }
 }
 
@@ -284,13 +271,17 @@ skills_directory = ".claude/skills"
     }
 
     #[tokio::test]
-    async fn test_execute_repos_search() {
+    async fn test_execute_repos_skills() {
         // Note: This test is expected to fail without a configured repository
         // It's here to verify the command structure compiles correctly
         let args = ReposArgs {
-            command: ReposCommand::Search {
-                query: "test".to_string(),
+            command: ReposCommand::Skills {
                 repository: None,
+                scope: None,
+                all_versions: false,
+                include_pre_release: false,
+                json: false,
+                grid: false,
             },
         };
 

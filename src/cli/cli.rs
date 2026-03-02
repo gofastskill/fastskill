@@ -25,7 +25,8 @@ use crate::cli::error::{CliError, CliResult};
                          Examples:\n\
                            fastskill add ./my-skill           # Add skill from folder\n\
                            fastskill repos add local-skills --repo-type local /path/to/skills    # Add local repository\n\
-                           fastskill \"text processing\"        # Search for skills\n\
+                           fastskill pptx                     # Read skill documentation (SKILL.md)\n\
+                           fastskill search \"text processing\" # Search for skills\n\
                            fastskill disable skill-id          # Disable a skill")]
 #[command(arg_required_else_help = true)]
 pub struct Cli {
@@ -40,9 +41,9 @@ pub struct Cli {
     #[arg(short, long, help = "Enable verbose output")]
     pub verbose: bool,
 
-    /// Search query (positional argument when no subcommand is used)
-    #[arg(help = "Search query string (used when no subcommand is specified)")]
-    pub query: Option<String>,
+    /// Skill ID (positional argument when no subcommand is used - routes to read command)
+    #[arg(help = "Skill ID to read (used when no subcommand is specified)")]
+    pub skill_id: Option<String>,
 
     /// Use user-level global skills directory (~/.config/fastskill/skills)
     #[arg(long, help = "Use global skills directory")]
@@ -156,19 +157,14 @@ impl Cli {
             | Some(Commands::Auth(_))
             | Some(Commands::Version(_)) => unreachable!("Handled above"),
             None => {
-                // No subcommand - treat as search query
-                if let Some(query) = self.query {
-                    let search_args = search::SearchArgs {
-                        query,
-                        limit: 10,
-                        format: "table".to_string(),
-                        embedding: None,
-                    };
-                    search::execute_search(&service, search_args).await
+                // No subcommand - treat as skill ID for read command
+                if let Some(skill_id) = self.skill_id {
+                    let read_args = read::ReadArgs { skill_id };
+                    read::execute_read(Arc::new(service), read_args).await
                 } else {
                     // This shouldn't happen due to arg_required_else_help, but handle it
                     Err(CliError::Config(
-                        "No command or search query specified".to_string(),
+                        "No command or skill ID specified".to_string(),
                     ))
                 }
             }

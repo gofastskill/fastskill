@@ -123,21 +123,21 @@ pub enum Commands {
     #[command(
         hide = true,
         about = "Manage repositories and browse/search the registry catalog (remote)",
-        after_help = "Examples:\n  fastskill registry list-skills\n  fastskill registry search \"query\""
+        after_help = "Examples:\n  fastskill registry list-skills\n  fastskill search \"query\""
     )]
     Registry(registry::RegistryArgs),
 
     /// Manage repository list and browse remote skill catalog
     #[command(
         about = "Manage repository list and browse remote skill catalog.",
-        after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos search \"query\""
+        after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos versions pptx"
     )]
     Repos(repos::ReposArgs),
 
-    /// Search installed skills by query (local semantic search)
+    /// Search skills by query with explicit scope flags (remote default)
     #[command(
-        about = "Search installed skills by query (local semantic search)",
-        after_help = "Examples:\n  fastskill search \"text processing\"\n  fastskill search \"query\" -l 5 -f json"
+        about = "Search skills by query with explicit scope flags (remote default)",
+        after_help = "Examples:\n  fastskill search \"text processing\"\n  fastskill search \"text processing\" --local\n  fastskill search \"pptx\" --repo my-repo\n  fastskill search \"query\" -l 5 --json"
     )]
     Search(search::SearchArgs),
 
