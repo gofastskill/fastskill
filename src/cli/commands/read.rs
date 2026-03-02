@@ -14,7 +14,7 @@ use std::sync::Arc;
 pub struct ReadArgs {
     /// Skill ID to read
     #[arg(help = "Skill identifier (e.g., 'pptx', 'scope/pptx', 'pptx@1.2.3')")]
-    skill_id: String,
+    pub skill_id: String,
 }
 
 /// Execute the read command

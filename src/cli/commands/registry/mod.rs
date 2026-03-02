@@ -17,7 +17,7 @@ use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
 #[command(
-    after_help = "Examples:\n  fastskill registry list-skills\n  fastskill registry search \"query\""
+    after_help = "Examples:\n  fastskill registry list-skills\n  fastskill search \"query\" (use the unified search command)"
 )]
 pub struct RegistryArgs {
     #[command(subcommand)]
@@ -70,26 +70,16 @@ pub enum RegistryCommand {
         #[arg(long)]
         repository: Option<String>,
     },
-
-    /// Search skills in registry catalog (remote)
-    #[command(after_help = "Examples:\n  fastskill registry search \"text processing\"")]
-    Search {
-        /// Search query
-        query: String,
-        /// Repository name to search (searches all if not specified)
-        #[arg(long)]
-        repository: Option<String>,
-    },
 }
 
 pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
     // Print deprecation warning
     eprintln!("⚠️  Warning: The 'registry' command is deprecated and will be removed in a future version.");
-    eprintln!("   Please use 'fastskill repos' for catalog browsing instead:");
+    eprintln!("   Please use 'fastskill repos' for catalog browsing and 'fastskill search' for searching:");
     eprintln!("   - 'registry list-skills' → 'repos skills'");
     eprintln!("   - 'registry show-skill' → 'repos show'");
     eprintln!("   - 'registry versions' → 'repos versions'");
-    eprintln!("   - 'registry search' → 'repos search'");
+    eprintln!("   - 'registry search' → 'search' (remote search is the default)");
     eprintln!();
 
     match args.command {
@@ -119,9 +109,6 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
             skill_id,
             repository,
         } => skill_ops::execute_versions(skill_id, repository).await,
-        RegistryCommand::Search { query, repository } => {
-            skill_ops::execute_search(query, repository).await
-        }
     }
 }
 
@@ -129,20 +116,4 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
 #[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_execute_registry_search() {
-        // Note: This test is expected to fail without a configured repository
-        // It's here to verify the command structure compiles correctly
-        let args = RegistryArgs {
-            command: RegistryCommand::Search {
-                query: "test".to_string(),
-                repository: None,
-            },
-        };
-
-        let result = execute_registry(args).await;
-        // Should fail due to missing repository configuration, but shouldn't panic
-        assert!(result.is_ok() || result.is_err());
-    }
 }
