@@ -105,11 +105,6 @@ fn registry_versions_help_shows_examples() {
 }
 
 #[test]
-fn registry_search_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["registry", "search", "--help"]);
-}
-
-#[test]
 fn reindex_help_shows_examples() {
     help_succeeds_and_contains_examples(&["reindex", "--help"]);
 }

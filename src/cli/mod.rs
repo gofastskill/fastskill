@@ -8,6 +8,8 @@ pub mod commands;
 pub mod config;
 pub mod config_file;
 pub mod error;
+pub mod output;
+pub mod search;
 pub mod utils;
 
 // Re-export main types for convenience

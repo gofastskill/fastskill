@@ -1,20 +1,27 @@
 ---
 source: tests/cli/snapshot_helpers.rs
+assertion_line: 253
 expression: normalized
 ---
-Search installed skills by query (local semantic search)
+Search skills by query with explicit scope flags (remote default)
 
 Usage: fastskill search [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  Search query over installed skills (local semantic search)
+  <QUERY>  Search query string
 
 Options:
+      --local                  Search local/installed skills only
+      --remote                 Search remote skill catalogs (default, can be explicit for scripts)
+      --repo <REPO>            Limit remote search to specific repository (remote scope only)
   -l, --limit <LIMIT>          Maximum number of results (default: 10) [default: 10]
-  -f, --format <FORMAT>        Output format (table, json, xml) [default: table]
-      --embedding <EMBEDDING>  Use embedding search (true), text search only (false), or auto-detect (not specified) [possible values: true, false]
+  -f, --format <FORMAT>        Output format: table, json, grid, xml (default: table)
+      --json                   Shorthand for --format json
+      --embedding <EMBEDDING>  Use embedding search: true, false, or auto Only applies to local search; ignored for remote search [possible values: true, false, auto]
   -h, --help                   Print help
 
 Examples:
   fastskill search "text processing"
-  fastskill search "query" -l 5 -f json
+  fastskill search "text processing" --local
+  fastskill search "pptx" --repo my-repo
+  fastskill search "query" -l 5 --json
