@@ -329,3 +329,5 @@ repomix-output.xml
 coverage-after
 coverage-before
 skill-project.toml
+# Local opencode runtime state
+.opencode/opencode.json
