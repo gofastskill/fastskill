@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Newton Test Runner Script
-# Runs tests with cargo-nextest, captures results, and emits report to stdout (text or JSON).
+# Runs format check, then tests with cargo-nextest; captures results and emits report to stdout (text or JSON).
 #
 # Usage: ./run-tests.sh [OPTIONS]
 #
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Newton Test Runner Script"
             echo ""
-            echo "Runs tests with cargo-nextest, captures results, and emits report to stdout (text or JSON)."
+            echo "Runs format check, then tests with cargo-nextest; captures results and emits report to stdout (text or JSON)."
             echo ""
             echo "Usage: $0 [OPTIONS]"
             echo ""

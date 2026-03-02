@@ -22,6 +22,13 @@ set -e
 
 echo "🔒 Running security validation..."
 
+# 0. Check formatting (match run-tests.sh)
+echo "  → Running cargo fmt --check..."
+if ! cargo fmt --check 2>&1; then
+  echo "❌ Format check failed. Run 'cargo fmt' to fix."
+  exit 1
+fi
+
 # 1. Run Cargo Clippy with security lints
 echo "  → Running Clippy with security lints..."
 if ! cargo clippy --all-targets --all-features -- \
