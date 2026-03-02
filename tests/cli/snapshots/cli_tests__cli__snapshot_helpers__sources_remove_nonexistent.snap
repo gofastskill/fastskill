@@ -3,4 +3,9 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
+⚠️  Warning: The 'sources' command is deprecated and will be removed in a future version.
+   Please use 'fastskill repos' for repository management instead.
+   - Repository operations: fastskill repos add/remove/info/test/refresh
+   - For marketplace creation, use: fastskill marketplace create
+
 Error: Configuration error: Failed to remove repository: Custom error: Repository 'nonexistent-repo' not found

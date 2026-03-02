@@ -83,6 +83,15 @@ pub enum RegistryCommand {
 }
 
 pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
+    // Print deprecation warning
+    eprintln!("⚠️  Warning: The 'registry' command is deprecated and will be removed in a future version.");
+    eprintln!("   Please use 'fastskill repos' for catalog browsing instead:");
+    eprintln!("   - 'registry list-skills' → 'repos skills'");
+    eprintln!("   - 'registry show-skill' → 'repos show'");
+    eprintln!("   - 'registry versions' → 'repos versions'");
+    eprintln!("   - 'registry search' → 'repos search'");
+    eprintln!();
+
     match args.command {
         RegistryCommand::ListSkills {
             repository,

@@ -145,6 +145,15 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         .replace_all(&result, "")
         .to_string();
 
+    // Strip structured log lines emitted by tracing subscribers so snapshots focus
+    // on user-facing CLI output and are stable across environment log settings.
+    result = regex::Regex::new(
+        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+(?:TRACE|DEBUG|INFO|WARN|ERROR)\s+[^\n]*\n?",
+    )
+    .unwrap()
+    .replace_all(&result, "")
+    .to_string();
+
     if settings.normalize_versions {
         // Normalize version numbers (semantic versioning)
         result = regex::Regex::new(r"\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?")
