@@ -1,0 +1,10 @@
+---
+source: tests/cli/snapshot_helpers.rs
+assertion_line: 259
+expression: normalized
+---
+Error: error: unrecognized subcommand 'remove'
+
+Usage: fastskill registry <COMMAND>
+
+For more information, try '--help'.

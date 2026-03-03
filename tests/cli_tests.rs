@@ -358,19 +358,15 @@ fn test_registry_add_validation_missing_url() {
 
 #[test]
 fn test_registry_remove_nonexistent_error() {
-    use std::fs;
-    use tempfile::TempDir;
-
-    let temp_dir = TempDir::new().unwrap();
-    let config_dir = temp_dir.path().join("config");
-    fs::create_dir_all(&config_dir).unwrap();
-
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["sources", "remove", "nonexistent-repo"],
+        &["registry", "remove", "nonexistent-repo"],
         None,
     );
     assert!(!result.success);
-    assert!(result.stderr.contains("not found") || result.stderr.contains("error"));
+    assert!(
+        result.stderr.contains("unrecognized subcommand 'remove'")
+            || result.stderr.contains("error")
+    );
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
         "registry_remove_nonexistent",
