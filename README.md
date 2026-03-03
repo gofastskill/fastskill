@@ -331,12 +331,18 @@ fastskill add ./skills -r
 # Index skills for semantic search
 fastskill reindex
 
-# Search for skills (semantic by default)
+# Search for skills (remote catalog by default)
 fastskill search "powerpoint presentation"
 fastskill search "data processing" --limit 5
 
+# Search local/installed skills only
+fastskill search "pptx" --local
+
 # Search using keyword-only (no API key required)
 fastskill search --embedding false "powerpoint"
+
+# Search specific repository
+fastskill search "text processing" --repo my-repo
 ```
 
 ## Essential Commands
@@ -347,7 +353,7 @@ fastskill search --embedding false "powerpoint"
 | `fastskill remove <skill-id>` | Remove skill from database |
 | `fastskill show` | List installed skills and metadata |
 | `fastskill update` | Update skills to latest versions |
-| `fastskill search "query"` | Semantic search for skills |
+| `fastskill search "query"` | Search skills (remote catalog by default, use --local for installed) |
 | `fastskill reindex` | Rebuild vector index for search |
 | `fastskill serve` | Start HTTP API server |
 | `fastskill init` | Initialize skill-project.toml |
@@ -366,7 +372,9 @@ fastskill update                     # Update skills to latest versions
 ### Search and Discovery
 
 ```bash
-fastskill search "query"             # Semantic search
+fastskill search "query"             # Search remote catalog (default)
+fastskill search "query" --local     # Search installed/local skills
+fastskill search "query" --repo my-repo  # Search specific repository
 fastskill reindex                    # Rebuild search index
 ```
 
@@ -432,7 +440,7 @@ fastskill repos versions pptx
 <Info>
 **Command Architecture**:
 - Use `fastskill repos` for repository management (add, remove, list, test, refresh) and catalog browsing (skills, show, versions)
-- Use `fastskill search` for semantic search of installed skills
+- Use `fastskill search` for searching skills (remote catalog by default, use --local for installed skills, --repo for specific repository)
 </Info>
 
 For detailed repository setup, usage, and management instructions, see [docs/REGISTRY.md](docs/REGISTRY.md).
@@ -540,12 +548,18 @@ If `fastskill add` fails with git or network errors:
 
 ### Search returns no results
 
-If `fastskill search` returns no results:
+If `fastskill search --local` returns no results:
 
 1. Run `fastskill reindex` to rebuild the search index
 2. Verify `OPENAI_API_KEY` is set and valid
 3. Check embedding configuration in `[tool.fastskill.embedding]`
 4. Ensure skills are installed (`fastskill show`)
+
+If `fastskill search` (remote) returns no results:
+
+1. Verify repositories are configured (`fastskill repos list`)
+2. Check repository connectivity (`fastskill repos test <repo-name>`)
+3. Refresh repository cache (`fastskill repos refresh`)
 
 ## Documentation
 

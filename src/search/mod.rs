@@ -67,21 +67,6 @@ impl fmt::Display for SearchResultItem {
     }
 }
 
-/// Execute a search query and return unified results
-pub async fn execute(
-    query: SearchQuery,
-    service: &fastskill::FastSkillService,
-) -> Result<Vec<SearchResultItem>, SearchError> {
-    let scope = query.scope.clone();
-    match scope {
-        SearchScope::Local => local::execute_local_search(query, service).await,
-        SearchScope::Remote => remote::execute_remote_search(query, None).await,
-        SearchScope::RemoteRepo(repo_name) => {
-            remote::execute_remote_search(query, Some(repo_name)).await
-        }
-    }
-}
-
 /// Search-specific error types
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
@@ -90,15 +75,22 @@ pub enum SearchError {
     #[error("Validation error: {0}")]
     Validation(String),
     #[error("Service error: {0}")]
-    Service(#[from] fastskill::ServiceError),
+    Service(#[from] crate::ServiceError),
+    #[error("Repository error: {0}")]
+    Repository(String),
 }
 
-impl From<SearchError> for crate::cli::error::CliError {
-    fn from(err: SearchError) -> Self {
-        match err {
-            SearchError::Config(msg) => crate::cli::error::CliError::Config(msg),
-            SearchError::Validation(msg) => crate::cli::error::CliError::Validation(msg),
-            SearchError::Service(err) => crate::cli::error::CliError::Service(err),
+/// Execute a search query and return unified results
+pub async fn execute(
+    query: SearchQuery,
+    service: &crate::FastSkillService,
+) -> Result<Vec<SearchResultItem>, SearchError> {
+    let scope = query.scope.clone();
+    match scope {
+        SearchScope::Local => local::execute_local_search(query, service).await,
+        SearchScope::Remote => remote::execute_remote_search(query, None).await,
+        SearchScope::RemoteRepo(repo_name) => {
+            remote::execute_remote_search(query, Some(repo_name)).await
         }
     }
 }

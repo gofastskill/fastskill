@@ -4,10 +4,9 @@
 //! skill catalogs with explicit scope control via flags.
 
 use crate::cli::error::{CliError, CliResult};
-use crate::cli::output::{self, OutputFormat};
-use crate::cli::search::{self, SearchQuery, SearchScope};
 use clap::Args;
-use fastskill::FastSkillService;
+use fastskill::output;
+use fastskill::{FastSkillService, OutputFormat, SearchQuery, SearchScope};
 
 /// Search for skills by query string with scope control
 #[derive(Debug, Args)]
@@ -64,7 +63,7 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     };
 
     // Execute search
-    let results = search::execute(query, service).await?;
+    let results = fastskill::execute(query, service).await?;
 
     // Format and output results
     if results.is_empty() {
@@ -118,7 +117,7 @@ fn determine_output_format(args: &SearchArgs) -> CliResult<OutputFormat> {
         args.format
             .as_deref()
             .unwrap_or("table")
-            .parse()
+            .parse::<OutputFormat>()
             .map_err(CliError::Config)
     }
 }

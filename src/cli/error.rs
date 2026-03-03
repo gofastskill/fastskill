@@ -107,6 +107,9 @@ pub enum CliError {
     #[error("Service error: {0}")]
     Service(#[from] fastskill::ServiceError),
 
+    #[error("Search error: {0}")]
+    Search(#[from] fastskill::SearchError),
+
     #[error("Validation error: {0}")]
     Validation(String),
 

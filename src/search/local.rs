@@ -4,7 +4,7 @@
 //! using either embedding-based semantic search or fallback text search.
 
 use super::{SearchError, SearchQuery, SearchResultItem};
-use fastskill::{EmbeddingService, FastSkillService};
+use crate::{EmbeddingService, FastSkillService};
 
 /// Execute local search query
 pub async fn execute_local_search(
@@ -93,28 +93,30 @@ async fn perform_embedding_search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResultItem>, SearchError> {
-    let embedding_config = service.config().embedding.as_ref()
+    let embedding_config = service
+        .config()
+        .embedding
+        .as_ref()
         .ok_or_else(|| {
-            let searched_paths = crate::cli::config_file::get_config_search_paths();
-            let mut error_msg = "Error: Embedding configuration required but not found.\n\nSearched locations:\n".to_string();
-            for path in searched_paths {
-                error_msg.push_str(&format!("  - {}\n", path.display()));
-            }
-            error_msg.push_str("\nTo set up FastSkill, run:\n  fastskill init\n\nOr manually add to skill-project.toml:\n  [tool.fastskill.embedding]\n  openai_base_url = \"https://api.openai.com/v1\"\n  embedding_model = \"text-embedding-3-small\"\n\nThen set your API key:\n  export OPENAI_API_KEY=\"your-key-here\"\n");
-            SearchError::Config(error_msg)
+            SearchError::Config(
+                "Embedding configuration required but not found. Please configure embedding settings in skill-project.toml and set OPENAI_API_KEY environment variable.".to_string()
+            )
         })?;
 
     let vector_index_service = service
         .vector_index_service()
         .ok_or_else(|| SearchError::Config("Vector index service not available".to_string()))?;
 
-    // Get API key
-    let api_key = crate::cli::config_file::get_openai_api_key()
-        .map_err(|e| SearchError::Config(format!("API key error: {}", e)))?;
+    // Get API key from environment
+    let api_key = std::env::var("OPENAI_API_KEY").map_err(|e| {
+        SearchError::Config(format!(
+            "Failed to get OPENAI_API_KEY from environment: {}",
+            e
+        ))
+    })?;
 
     // Initialize embedding service
-    let embedding_service =
-        fastskill::OpenAIEmbeddingService::from_config(embedding_config, api_key);
+    let embedding_service = crate::OpenAIEmbeddingService::from_config(embedding_config, api_key);
 
     // Generate query embedding
     let query_embedding = embedding_service.embed_query(query).await.map_err(|e| {

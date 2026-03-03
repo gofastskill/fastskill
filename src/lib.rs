@@ -52,6 +52,8 @@ pub mod core;
 pub mod events;
 pub mod execution;
 pub mod http;
+pub mod output;
+pub mod search;
 pub mod security;
 pub mod storage;
 pub mod validation;
@@ -70,6 +72,10 @@ pub use core::tool_calling::{AvailableTool, ToolCallingService, ToolResult};
 pub use core::vector_index::{
     IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl,
 };
+
+// Re-export search and output types
+pub use output::OutputFormat;
+pub use search::{execute, SearchError, SearchQuery, SearchResultItem, SearchScope};
 
 // Re-export commonly used types
 pub use async_trait::async_trait;
