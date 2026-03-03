@@ -7,6 +7,12 @@ description: "FastSkill CLI commands for skill search, vector indexing, and repo
 
 Discovery commands help you find, index, and manage skills in your FastSkill ecosystem. These commands provide semantic search, vector indexing, and repository management capabilities.
 
+<Info>
+**Command Architecture**:
+- **Repository Management**: Use `fastskill repos` for all repository operations (add, remove, list, test, refresh) and catalog browsing (skills, show, versions)
+- **Skill Discovery**: Use the top-level `fastskill search` command for semantic search across installed skills
+</Info>
+
 <Note>
 For detailed documentation on specific commands, see the dedicated command pages linked below.
 </Note>
@@ -92,38 +98,35 @@ fastskill reindex --max-concurrent 5
 - When search results are stale or incomplete
 - When skill content has changed
 
-### fastskill sources
+### fastskill repos
 
-Manage skill sources (repositories) for discovering and installing skills. Supports multiple repository types with authentication and priority-based resolution.
+Manage skill repositories for discovering and installing skills. Supports multiple repository types with authentication and priority-based resolution. This is the **primary command** for repository management and catalog browsing.
 
 <Info>
-See [sources Command](/cli-reference/sources-command) for complete documentation with subcommands and authentication.
+See [repos Command](/cli-reference/repository-command) for complete documentation with subcommands and authentication.
 </Info>
 
 ```bash
-# List all configured sources
-fastskill sources list
+# List all configured repositories
+fastskill repos list
 
-# Add new source
-fastskill sources add team-tools --type git-marketplace --url https://github.com/team/skills.git
+# Add new repository
+fastskill repos add team-tools --repo-type git-marketplace https://github.com/team/skills.git
 
-# Remove source
-fastskill sources remove team-tools
+# Remove repository
+fastskill repos remove team-tools
 
-# Show source details
-fastskill sources show team-tools
+# Show repository details
+fastskill repos info team-tools
 
-# Update source configuration
-fastskill sources update team-tools --priority 1
+# Update repository configuration
+fastskill repos update team-tools --priority 1
 
-# Test source connectivity
-fastskill sources test team-tools
+# Test repository connectivity
+fastskill repos test team-tools
 
-# Refresh source cache
-fastskill sources refresh
-
-# Create marketplace.json from directory
-fastskill sources create ./skills --output marketplace.json
+# Refresh repository cache
+fastskill repos refresh
 ```
 
 **What it does**:
@@ -131,7 +134,6 @@ fastskill sources create ./skills --output marketplace.json
 - Supports multiple repository types: `git-marketplace`, `http-registry`, `zip-url`, `local`
 - Handles authentication: PAT, SSH key, SSH, Basic Auth, API Key
 - Implements priority-based conflict resolution (lower priority = higher precedence)
-- Creates marketplace.json for git-marketplace repositories
 
 **Repository Types**:
 
@@ -191,18 +193,9 @@ When skills are available in multiple repositories, priority determines the orde
 - Default priority: 0
 - Higher priority values are checked later
 
-### fastskill registry
-
-Legacy alias for sources command. Provides same functionality with different subcommand names.
-
 <Warning>
-The `registry` command is a legacy alias. Use `fastskill sources` for new code. Both commands have identical functionality.
+**Deprecated Commands**: The legacy `sources` and `registry` commands are deprecated and will be removed. Use `fastskill repos` for all repository management operations.
 </Warning>
-
-```bash
-# Add repository
-fastskill sources add team-tools --type git-marketplace --url https://github.com/team/skills.git
-```
 
 ## Search and Reindex Workflow
 
@@ -309,15 +302,15 @@ fastskill search "skill name or description"
 
 <Accordion title="Repository not found">
   <Tip>
-  **Invalid repository name**: Check repository name with `fastskill sources list`.
+  **Invalid repository name**: Check repository name with `fastskill repos list`.
   </Tip>
 
   <Tip>
-  **Repository URL incorrect**: Verify URL is accessible with `fastskill sources test <name>`.
+  **Repository URL incorrect**: Verify URL is accessible with `fastskill repos test <name>`.
   </Tip>
 
   <Tip>
-  **Authentication failed**: Verify authentication type and credentials with `fastskill sources show <name>`.
+  **Authentication failed**: Verify authentication type and credentials with `fastskill repos info <name>`.
   </Tip>
 </Accordion>
 </AccordionGroup>
@@ -338,7 +331,7 @@ fastskill search "skill name or description"
 </Step>
 
 <Step title="Test repositories after configuration">
-  Use `fastskill sources test <name>` to verify repositories are accessible before using them.
+  Use `fastskill repos test <name>` to verify repositories are accessible before using them.
 </Step>
 
 <Step title="Control API concurrency for reindexing">
@@ -349,7 +342,7 @@ fastskill search "skill name or description"
 ## See Also
 
 - [Install Command](/cli-reference/install-command) - Install skills from repositories
-- [Sources Command](/cli-reference/sources-command) - Complete sources management documentation
+- [repos Command](/cli-reference/repository-command) - Primary repository management and catalog browsing documentation
 - [Search Command](/cli-reference/search-command) - Detailed search command documentation
 - [Embedding Search](/search/embedding-search) - Semantic search architecture details
 - [Repository System](/registry/repository-architecture) - Repository types and configuration

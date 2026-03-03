@@ -5,8 +5,14 @@ expression: normalized
 FastSkill [VERSION]
 [INFO] Testing repository: unreachable-repo...
 ⚠️  Warning: The 'sources' command is deprecated and will be removed in a future version.
-   Please use 'fastskill repos' for repository management instead.
-   - Repository operations: fastskill repos add/remove/info/test/refresh
-   - For marketplace creation, use: fastskill marketplace create
+   Please use 'fastskill repos' for repository management instead:
+   - 'sources list' → 'repos list'
+   - 'sources add' → 'repos add'
+   - 'sources remove' → 'repos remove'
+   - 'sources show' → 'repos info'
+   - 'sources update' → 'repos update'
+   - 'sources test' → 'repos test'
+   - 'sources refresh' → 'repos refresh'
+   - 'sources create' → 'marketplace create'
 
 Error: Configuration error: Repository 'unreachable-repo' test failed: Client error: HTTP request failed: error sending request for url (http://localhost:9999/api/registry/index/skills): error trying to connect: tcp connect error: [NETWORK_ERROR]

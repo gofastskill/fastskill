@@ -408,6 +408,33 @@ FastSkill provides a unified repository system for managing all skill storage lo
 
 All repository types are configured in `skill-project.toml` under `[[tool.fastskill.repositories]]`.
 
+### Repository Management
+
+Use the `repos` command to manage repositories and browse remote catalogs:
+
+```bash
+# List repositories
+fastskill repos list
+
+# Add a repository
+fastskill repos add my-repo --repo-type local /path/to/skills
+
+# Browse catalog skills
+fastskill repos skills
+
+# Show skill details
+fastskill repos show pptx
+
+# Show available versions
+fastskill repos versions pptx
+```
+
+<Info>
+**Command Architecture**:
+- Use `fastskill repos` for repository management (add, remove, list, test, refresh) and catalog browsing (skills, show, versions)
+- Use `fastskill search` for semantic search of installed skills
+</Info>
+
 For detailed repository setup, usage, and management instructions, see [docs/REGISTRY.md](docs/REGISTRY.md).
 
 ## Configuration
