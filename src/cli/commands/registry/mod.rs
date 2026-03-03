@@ -75,7 +75,6 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
         ("registry list-skills", "repos skills"),
         ("registry show-skill", "repos show"),
         ("registry versions", "repos versions"),
-        ("registry search", "search"),
     ];
     emit_deprecation_warning("registry", "repos", "catalog browsing", &mappings);
 

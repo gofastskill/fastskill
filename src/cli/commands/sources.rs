@@ -205,15 +205,6 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
             description,
             version,
         } => {
-            // Additional migration guidance for create subcommand
-            let create_mappings = vec![("sources create", "marketplace create")];
-            emit_deprecation_warning(
-                "sources create",
-                "marketplace create",
-                "marketplace generation",
-                &create_mappings,
-            );
-
             super::registry::marketplace::execute_create(
                 path,
                 output,

@@ -159,6 +159,71 @@ fn test_registry_deprecation_warnings_and_forwarding() {
 }
 
 #[test]
+fn test_sources_create_emits_single_deprecation_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+
+    let skill_dir = temp_dir.path().join("create-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: create-skill\ndescription: create test\nversion: 1.0.0\n---\n# create-skill\n",
+    )
+    .unwrap();
+    fs::write(
+        skill_dir.join("skill-project.toml"),
+        "[metadata]\nid = \"create-skill\"\n",
+    )
+    .unwrap();
+
+    let output_path = temp_dir.path().join("marketplace.json");
+    let create = run_fastskill_command(
+        &[
+            "sources",
+            "create",
+            "--path",
+            temp_dir.path().to_str().unwrap(),
+            "--output",
+            output_path.to_str().unwrap(),
+            "--name",
+            "legacy-marketplace",
+        ],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        create.success,
+        "sources create failed: {}{}",
+        create.stdout, create.stderr
+    );
+    assert!(output_path.exists());
+
+    let warning_count = create
+        .stderr
+        .matches("Warning: The 'sources' command is deprecated")
+        .count();
+    assert_eq!(
+        warning_count, 1,
+        "expected one deprecation warning, stderr:\n{}",
+        create.stderr
+    );
+}
+
+#[test]
+fn test_registry_remove_is_rejected_by_parser() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+
+    let result = run_fastskill_command(
+        &["registry", "remove", "nonexistent-repo"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success);
+    assert!(result.stderr.contains("unrecognized subcommand 'remove'"));
+}
+
+#[test]
 fn test_legacy_commands_hidden_from_top_level_help() {
     let result = run_fastskill_command(&["--help"], None);
     assert!(result.success);
