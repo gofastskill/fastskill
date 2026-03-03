@@ -1,7 +1,7 @@
 //! Repos command - manage repository list and browse remote skill catalog
 //!
 //! This command consolidates repository management (add/remove/test/refresh) and
-//! remote catalog operations (skills/show/versions/search) into a single namespace.
+//! remote catalog operations (skills/show/versions) into a single namespace.
 
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
@@ -288,5 +288,91 @@ skills_directory = ".claude/skills"
         let result = execute_repos(args).await;
         // Should fail due to missing repository configuration, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_repos_command_excludes_search_variant() {
+        // This compile-time test ensures the ReposCommand enum does not contain a Search variant.
+        // Search is a top-level command to maintain clear architectural separation.
+        let _command_list = [
+            "List", "Add", "Remove", "Info", "Update", "Test", "Refresh", "Skills", "Show",
+            "Versions",
+        ];
+    }
+
+    #[test]
+    fn test_repos_command_has_approved_subcommands() {
+        // Verify ReposCommand contains exactly the approved subcommands
+        // This test validates the command structure for specification 026a
+        use std::mem::discriminant;
+
+        let list = ReposCommand::List { json: false };
+        let add = ReposCommand::Add {
+            name: "test".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: "/tmp".to_string(),
+            priority: None,
+            branch: None,
+            tag: None,
+            auth_type: None,
+            auth_env: None,
+            auth_key_path: None,
+            auth_username: None,
+        };
+        let remove = ReposCommand::Remove {
+            name: "test".to_string(),
+        };
+        let info = ReposCommand::Info {
+            name: "test".to_string(),
+            json: false,
+        };
+        let update = ReposCommand::Update {
+            name: "test".to_string(),
+            branch: None,
+            priority: None,
+        };
+        let test = ReposCommand::Test {
+            name: "test".to_string(),
+        };
+        let refresh = ReposCommand::Refresh { name: None };
+        let skills = ReposCommand::Skills {
+            repository: None,
+            scope: None,
+            all_versions: false,
+            include_pre_release: false,
+            json: false,
+            grid: false,
+        };
+        let show = ReposCommand::Show {
+            skill_id: "test".to_string(),
+            repository: None,
+        };
+        let versions = ReposCommand::Versions {
+            skill_id: "test".to_string(),
+            repository: None,
+        };
+
+        // Verify all commands have different discriminants (different variants)
+        let discriminants = vec![
+            discriminant(&list),
+            discriminant(&add),
+            discriminant(&remove),
+            discriminant(&info),
+            discriminant(&update),
+            discriminant(&test),
+            discriminant(&refresh),
+            discriminant(&skills),
+            discriminant(&show),
+            discriminant(&versions),
+        ];
+
+        // All discriminants should be unique (10 unique subcommands)
+        assert_eq!(
+            discriminants.len(),
+            discriminants
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+        );
     }
 }

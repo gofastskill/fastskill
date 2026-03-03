@@ -300,28 +300,28 @@ fastskill remove my-skill-id --force
 fastskill remove skill1 skill2 skill3
 ```
 
-### fastskill registry
+### fastskill repos
 
-Manage skill repositories for discovering and installing skills.
+Manage skill repositories and browse remote skill catalog for discovering and installing skills.
 
 ```bash
 # Add a repository
-fastskill sources add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
+fastskill repos add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
 
 # List all repositories
-fastskill registry list
+fastskill repos list
 
 # Remove a repository
-fastskill registry remove team-tools
+fastskill repos remove team-tools
 
 # Update repository metadata
-fastskill registry update team-tools --branch develop
+fastskill repos update team-tools --branch develop
 
 # List skills from a repository
-fastskill registry list-skills
+fastskill repos skills
 
-# Search for skills
-fastskill registry search "web scraping"
+# Show skill details
+fastskill repos show skill-id
 ```
 
 ### fastskill list

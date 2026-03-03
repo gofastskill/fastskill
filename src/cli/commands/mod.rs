@@ -3,6 +3,7 @@
 pub mod add;
 pub mod analyze;
 pub mod auth;
+pub mod common;
 pub mod disable;
 pub mod init;
 pub mod install;

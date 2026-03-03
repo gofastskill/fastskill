@@ -1,15 +1,29 @@
 ---
 title: "Sources Command"
-description: "FastSkill CLI command for managing skill repositories and sources."
+description: "FastSkill CLI command for managing skill repositories and sources (deprecated)."
 ---
+
+<Warning>
+⚠️ **Deprecation Notice**: The `sources` command is **deprecated** and will be removed in a future version.
+
+**Please migrate to the consolidated `repos` command for all repository management operations.**
+
+For more information, see the [repos Command](/cli-reference/repository-command) documentation.
+</Warning>
 
 ## Overview
 
-The `sources` command manages skill repositories (sources) where skills can be discovered and installed. Sources include Git marketplaces, HTTP registries, ZIP URLs, and local directories. Each source can have priority-based conflict resolution and authentication support.
+The `sources` command is **transitional legacy documentation** provided for backward compatibility. All `sources` command functionality has been consolidated into the [`repos`](/cli-reference/repository-command) command, which is now the primary interface for repository management in FastSkill.
 
 <Info>
-The `sources` command is an alias for `registry` operations focused on repository management. For browsing registry catalogs, use `registry list-skills` or `registry search`.
+**Primary Command**: Use `fastskill repos` for all repository management operations.
 </Info>
+
+<Info>
+**Skill Discovery**: Use the top-level `fastskill search` command for semantic search of installed skills.
+</Info>
+
+The `sources` command manages skill repositories (sources) where skills can be discovered and installed. Sources include Git marketplaces, HTTP registries, ZIP URLs, and local directories. Each source can have priority-based conflict resolution and authentication support.
 
 ## Subcommands
 
@@ -17,11 +31,15 @@ The `sources` command is an alias for `registry` operations focused on repositor
 
 List all configured repositories.
 
+<Warning>
+**Deprecated**: Use `fastskill repos list` instead.
+</Warning>
+
 ```bash
-# List repositories in table format
+# List repositories in table format (deprecated - use repos list)
 fastskill sources list
 
-# List in JSON format
+# List in JSON format (deprecated - use repos list --json)
 fastskill sources list --json
 ```
 
@@ -42,32 +60,36 @@ local-dev        local             ./skills                    2
 
 Add a new repository to your skill sources.
 
+<Warning>
+**Deprecated**: Use `fastskill repos add` instead.
+</Warning>
+
 ```bash
-# Add HTTP registry
+# Add HTTP registry (deprecated - use repos add)
 fastskill sources add public --repo-type http-registry https://api.fastskill.io --priority 0
 
-# Add Git marketplace
+# Add Git marketplace (deprecated - use repos add)
 fastskill sources add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
 
-# Add ZIP URL source
+# Add ZIP URL source (deprecated - use repos add)
 fastskill sources add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
 
-# Add local directory
+# Add local directory (deprecated - use repos add)
 fastskill sources add local-dev --repo-type local ./skills --priority 3
 
-# Add with authentication (PAT)
+# Add with authentication (PAT) (deprecated - use repos add)
 fastskill sources add private-repo --repo-type git-marketplace https://github.com/team/private.git \
   --auth-type pat --auth-env GITHUB_TOKEN
 
-# Add with SSH key
+# Add with SSH key (deprecated - use repos add)
 fastskill sources add private-repo --repo-type git-marketplace https://github.com/team/private.git \
   --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
 
-# Add with basic auth
+# Add with basic auth (deprecated - use repos add)
 fastskill sources add registry --repo-type http-registry https://api.example.com \
   --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
 
-# Add with API key
+# Add with API key (deprecated - use repos add)
 fastskill sources add registry --repo-type http-registry https://api.example.com \
   --auth-type api-key --auth-env API_KEY
 ```
@@ -114,11 +136,15 @@ fastskill sources add registry --repo-type http-registry https://api.example.com
 
 Remove a repository from your sources.
 
+<Warning>
+**Deprecated**: Use `fastskill repos remove` instead.
+</Warning>
+
 ```bash
-# Remove a repository
+# Remove a repository (deprecated - use repos remove)
 fastskill sources remove team-skills
 
-# Remove multiple repositories
+# Remove multiple repositories (deprecated - use repos remove)
 fastskill sources remove team-skills local-dev
 ```
 
@@ -131,11 +157,15 @@ fastskill sources remove team-skills local-dev
 
 Display detailed information about a specific repository.
 
+<Warning>
+**Deprecated**: Use `fastskill repos info` instead.
+</Warning>
+
 ```bash
-# Show repository details
+# Show repository details (deprecated - use repos info)
 fastskill sources show public-registry
 
-# Show in JSON format
+# Show in JSON format (deprecated - use repos info --json)
 fastskill sources show team-skills --json
 ```
 
@@ -153,14 +183,18 @@ Auth: pat (GITHUB_TOKEN)
 
 Update repository metadata.
 
+<Warning>
+**Deprecated**: Use `fastskill repos update` instead.
+</Warning>
+
 ```bash
-# Update branch
+# Update branch (deprecated - use repos update)
 fastskill sources update team-skills --branch develop
 
-# Update priority
+# Update priority (deprecated - use repos update)
 fastskill sources update public-registry --priority 0
 
-# Update both
+# Update both (deprecated - use repos update)
 fastskill sources update team-skills --branch main --priority 2
 ```
 
@@ -175,11 +209,15 @@ fastskill sources update team-skills --branch main --priority 2
 
 Test repository connectivity and accessibility.
 
+<Warning>
+**Deprecated**: Use `fastskill repos test` instead.
+</Warning>
+
 ```bash
-# Test a repository
+# Test a repository (deprecated - use repos test)
 fastskill sources test public-registry
 
-# Test git marketplace
+# Test git marketplace (deprecated - use repos test)
 fastskill sources test team-skills
 ```
 
@@ -198,11 +236,15 @@ fastskill sources test team-skills
 
 Refresh repository cache (re-fetch from source).
 
+<Warning>
+**Deprecated**: Use `fastskill repos refresh` instead.
+</Warning>
+
 ```bash
-# Refresh specific repository
+# Refresh specific repository (deprecated - use repos refresh)
 fastskill sources refresh team-skills
 
-# Refresh all repositories
+# Refresh all repositories (deprecated - use repos refresh)
 fastskill sources refresh
 ```
 
@@ -220,20 +262,24 @@ fastskill sources refresh
 
 Create `marketplace.json` from a directory containing skills. This is useful for setting up a Git marketplace repository.
 
+<Warning>
+**Deprecated**: Use `fastskill marketplace create` instead.
+</Warning>
+
 ```bash
-# Create marketplace.json from current directory
+# Create marketplace.json from current directory (deprecated - use marketplace create)
 fastskill sources create
 
-# Create from specific directory
+# Create from specific directory (deprecated - use marketplace create)
 fastskill sources create --path ./skills
 
-# Specify output location
+# Specify output location (deprecated - use marketplace create)
 fastskill sources create --output .claude-plugin/marketplace.json
 
-# Set base URL for download links
+# Set base URL for download links (deprecated - use marketplace create)
 fastskill sources create --base-url https://cdn.example.com/skills/
 
-# Set repository metadata
+# Set repository metadata (deprecated - use marketplace create)
 fastskill sources create \
   --name "My Skills" \
   --owner-name "Developer" \
@@ -286,6 +332,10 @@ fastskill sources create \
 ```
 
 ## Configuration File Location
+
+<Warning>
+**Note**: While sources configuration is stored in `skill-project.toml`, the `sources` command is deprecated. Use `fastskill repos` commands to manage this configuration.
+</Warning>
 
 Sources are stored in `skill-project.toml` at project root:
 
@@ -382,20 +432,39 @@ fastskill sources add local-dev --repo-type local ./skills --priority 2
 - `team-skills` (priority 1): `pptx v1.2.0`
 - Result: `pptx v1.0.0` is used (from higher priority source)
 
+## Migration Guide
+
+<Warning>
+All `sources` commands are deprecated. Use the following mappings to migrate to the new `repos` command:
+
+| Old Command | New Command |
+|------------|-------------|
+| `fastskill sources list` | `fastskill repos list` |
+| `fastskill sources add` | `fastskill repos add` |
+| `fastskill sources remove` | `fastskill repos remove` |
+| `fastskill sources show` | `fastskill repos info` |
+| `fastskill sources update` | `fastskill repos update` |
+| `fastskill sources test` | `fastskill repos test` |
+| `fastskill sources refresh` | `fastskill repos refresh` |
+| `fastskill sources create` | `fastskill marketplace create` |
+</Warning>
+
 ## Examples
 
-### Setting up a development environment
+### Setting up a development environment (with migration to repos)
 
 ```bash
-# Add public registry
-fastskill sources add public --repo-type http-registry https://api.fastskill.io --priority 0
+# Old way (deprecated):
+# fastskill sources add public --repo-type http-registry https://api.fastskill.io --priority 0
+# fastskill sources add team --repo-type git-marketplace https://github.com/team/skills.git \
+#   --auth-type pat --auth-env GITHUB_TOKEN --priority 1
+# fastskill sources add local-dev --repo-type local ./skills --priority 2
 
-# Add team repository
-fastskill sources add team --repo-type git-marketplace https://github.com/team/skills.git \
+# New way (recommended):
+fastskill repos add public --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill repos add team --repo-type git-marketplace https://github.com/team/skills.git \
   --auth-type pat --auth-env GITHUB_TOKEN --priority 1
-
-# Add local development directory
-fastskill sources add local-dev --repo-type local ./skills --priority 2
+fastskill repos add local-dev --repo-type local ./skills --priority 2
 ```
 
 ### Creating a Git marketplace

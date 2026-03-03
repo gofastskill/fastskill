@@ -1,10 +1,6 @@
 //! Registry command implementation - browse the registry catalog
 //!
-//! This command provides access to registry catalog operations for browsing and searching
-//! skills in remote repositories.
-//!
-//! For repository management (list, add, remove, show, update, test, refresh, create),
-//! use the `sources` command instead.
+//! This command is deprecated. Use `repos` for catalog browsing and `search` for searching.
 
 pub mod formatters;
 pub mod helpers;
@@ -12,6 +8,7 @@ pub mod marketplace;
 pub mod repo_ops;
 pub mod skill_ops;
 
+use crate::cli::commands::common::emit_deprecation_warning;
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
 
@@ -73,14 +70,13 @@ pub enum RegistryCommand {
 }
 
 pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
-    // Print deprecation warning
-    eprintln!("⚠️  Warning: The 'registry' command is deprecated and will be removed in a future version.");
-    eprintln!("   Please use 'fastskill repos' for catalog browsing and 'fastskill search' for searching:");
-    eprintln!("   - 'registry list-skills' → 'repos skills'");
-    eprintln!("   - 'registry show-skill' → 'repos show'");
-    eprintln!("   - 'registry versions' → 'repos versions'");
-    eprintln!("   - 'registry search' → 'search' (remote search is the default)");
-    eprintln!();
+    // Print standardized deprecation warning
+    let mappings = vec![
+        ("registry list-skills", "repos skills"),
+        ("registry show-skill", "repos show"),
+        ("registry versions", "repos versions"),
+    ];
+    emit_deprecation_warning("registry", "repos", "catalog browsing", &mappings);
 
     match args.command {
         RegistryCommand::ListSkills {

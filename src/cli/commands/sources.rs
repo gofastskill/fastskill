@@ -1,7 +1,8 @@
 //! Sources command - manage skill sources (repositories)
 //!
-//! For browsing the registry catalog, use `registry` command.
+//! This command is deprecated. Use `repos` for repository management.
 
+use crate::cli::commands::common::emit_deprecation_warning;
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
@@ -139,14 +140,18 @@ pub enum SourcesCommand {
 }
 
 pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
-    // Print deprecation warning
-    eprintln!(
-        "⚠️  Warning: The 'sources' command is deprecated and will be removed in a future version."
-    );
-    eprintln!("   Please use 'fastskill repos' for repository management instead.");
-    eprintln!("   - Repository operations: fastskill repos add/remove/info/test/refresh");
-    eprintln!("   - For marketplace creation, use: fastskill marketplace create");
-    eprintln!();
+    // Print standardized deprecation warning
+    let mappings = vec![
+        ("sources list", "repos list"),
+        ("sources add", "repos add"),
+        ("sources remove", "repos remove"),
+        ("sources show", "repos info"),
+        ("sources update", "repos update"),
+        ("sources test", "repos test"),
+        ("sources refresh", "repos refresh"),
+        ("sources create", "marketplace create"),
+    ];
+    emit_deprecation_warning("sources", "repos", "repository management", &mappings);
 
     match args.command {
         SourcesCommand::List { json } => {
@@ -200,18 +205,6 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
             description,
             version,
         } => {
-            eprintln!("⚠️  Warning: 'sources create' has moved to 'marketplace create'");
-            eprintln!(
-                "   Run: fastskill marketplace create --path {} {}",
-                path.display(),
-                if let Some(ref n) = name {
-                    format!("--name {}", n)
-                } else {
-                    "".to_string()
-                }
-            );
-            eprintln!();
-
             super::registry::marketplace::execute_create(
                 path,
                 output,

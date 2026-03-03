@@ -213,6 +213,12 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         .replace_all(&result, "tcp connect error: [NETWORK_ERROR]")
         .to_string();
 
+    // Ignore standalone network placeholders when transient git failures are logged on stdout.
+    result = regex::Regex::new(r"(?m)^\[GIT_NETWORK_ERROR\]\n?")
+        .unwrap()
+        .replace_all(&result, "")
+        .to_string();
+
     result = regex::Regex::new(r"\n\n  (Installing|Updating)")
         .unwrap()
         .replace_all(&result, "\n  $1")
