@@ -3,8 +3,6 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-Skill Information
-
 Skill: test-skill
   ID: test-skill
   Version: [VERSION]
