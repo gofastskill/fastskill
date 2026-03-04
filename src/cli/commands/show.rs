@@ -6,12 +6,14 @@
 //! With no skill_id argument, lists all installed skills with minimal details.
 //! With a skill_id, shows detailed metadata for that specific skill.
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::config::{create_service_config, get_skill_search_locations_for_display};
 use crate::cli::error::{CliError, CliResult, SkillNotFoundMessage};
+use chrono::Utc;
 use clap::Args;
 use fastskill::core::lock::SkillsLock;
 use fastskill::core::{ProjectConfig, SkillDefinition};
-use fastskill::FastSkillService;
+use fastskill::{FastSkillService, OutputFormat};
 use std::path::PathBuf;
 
 /// Show skill details
@@ -23,16 +25,26 @@ pub struct ShowArgs {
     /// Show dependency tree
     #[arg(long)]
     tree: bool,
+
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
+    pub json: bool,
 }
 
 pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+
     println!("Skill Information");
     println!();
 
     let (config, lock_opt) = load_config_and_lock()?;
     match lock_opt {
-        Some(lock) => run_with_lock(lock, &args, &config)?,
-        None => run_with_service(args).await?,
+        Some(lock) => run_with_lock(lock, &args, &config, format)?,
+        None => run_with_service(args, format).await?,
     }
     Ok(())
 }
@@ -52,7 +64,12 @@ fn load_config_and_lock() -> CliResult<(ProjectConfig, Option<SkillsLock>)> {
     Ok((config, lock_opt))
 }
 
-fn run_with_lock(lock: SkillsLock, args: &ShowArgs, config: &ProjectConfig) -> CliResult<()> {
+fn run_with_lock(
+    lock: SkillsLock,
+    args: &ShowArgs,
+    config: &ProjectConfig,
+    format: OutputFormat,
+) -> CliResult<()> {
     if let Some(skill_id) = &args.skill_id {
         if let Some(skill) = lock.skills.iter().find(|s| s.id == skill_id.as_str()) {
             print_skill_details(skill);
@@ -68,7 +85,7 @@ fn run_with_lock(lock: SkillsLock, args: &ShowArgs, config: &ProjectConfig) -> C
             paths,
         )));
     }
-    print_lock_list(&lock, args.tree);
+    print_lock_list(&lock, args.tree, format)?;
     Ok(())
 }
 
@@ -77,18 +94,59 @@ fn search_paths_from_config(config: &ProjectConfig) -> Vec<(PathBuf, String)> {
         .unwrap_or_else(|_| vec![(config.skills_directory.clone(), "project".to_string())])
 }
 
-fn print_lock_list(lock: &SkillsLock, tree: bool) {
-    println!("Installed Skills ({}):\n", lock.skills.len());
-    for skill in &lock.skills {
-        println!("  • {} (v{})", skill.name, skill.version);
-        if tree {
-            println!("    Groups: {:?}", skill.groups);
-            println!("    Source: {:?}", skill.source);
+fn print_lock_list(lock: &SkillsLock, tree: bool, format: OutputFormat) -> CliResult<()> {
+    let now = Utc::now();
+    let skills: Vec<SkillDefinition> = lock
+        .skills
+        .iter()
+        .map(|s| {
+            let id = fastskill::SkillId::new(s.id.clone()).map_err(|_| {
+                CliError::Validation(format!("Invalid skill ID format in lock file: {}", s.id))
+            })?;
+            Ok(SkillDefinition {
+                id,
+                name: s.name.clone(),
+                description: format!("Skill from {}", s.name),
+                version: s.version.clone(),
+                author: None,
+                enabled: true,
+                created_at: now,
+                updated_at: now,
+                skill_file: PathBuf::from(format!("/skills/{}", s.id)),
+                reference_files: None,
+                script_files: None,
+                asset_files: None,
+                execution_environment: None,
+                dependencies: None,
+                timeout: None,
+                source_url: None,
+                source_type: None,
+                source_branch: None,
+                source_tag: None,
+                source_subdir: None,
+                installed_from: None,
+                commit_hash: None,
+                fetched_at: None,
+                editable: s.editable,
+            })
+        })
+        .collect::<Result<Vec<_>, CliError>>()?;
+
+    let formatted_output =
+        fastskill::output::format_show_results(&skills, format).map_err(CliError::Config)?;
+    print!("{}", formatted_output);
+
+    if tree {
+        for skill in &lock.skills {
+            println!("  Groups: {:?}", skill.groups);
+            println!("  Source: {:?}", skill.source);
         }
     }
+
+    Ok(())
 }
 
-async fn run_with_service(args: ShowArgs) -> CliResult<()> {
+async fn run_with_service(args: ShowArgs, format: OutputFormat) -> CliResult<()> {
     let config = create_service_config(false, None, None)?;
     let mut service = FastSkillService::new(config)
         .await
@@ -98,7 +156,7 @@ async fn run_with_service(args: ShowArgs) -> CliResult<()> {
     if let Some(skill_id) = &args.skill_id {
         return run_show_one_from_service(&service, skill_id).await;
     }
-    run_show_all_from_service(&service).await
+    run_show_all_from_service(&service, format).await
 }
 
 async fn run_show_one_from_service(service: &FastSkillService, skill_id: &str) -> CliResult<()> {
@@ -138,16 +196,20 @@ fn print_skill_from_service(skill: &SkillDefinition) {
     }
 }
 
-async fn run_show_all_from_service(service: &FastSkillService) -> CliResult<()> {
+async fn run_show_all_from_service(
+    service: &FastSkillService,
+    format: OutputFormat,
+) -> CliResult<()> {
     let skills = service
         .skill_manager()
         .list_skills(None)
         .await
         .map_err(CliError::Service)?;
-    println!("Installed Skills ({}):\n", skills.len());
-    for skill in skills {
-        println!("  • {} (v{})", skill.name, skill.version);
-    }
+
+    let formatted_output =
+        fastskill::output::format_show_results(&skills, format).map_err(CliError::Config)?;
+    print!("{}", formatted_output);
+
     Ok(())
 }
 
@@ -213,6 +275,8 @@ skills_directory = ".claude/skills"
         let args = ShowArgs {
             skill_id: None,
             tree: false,
+            format: None,
+            json: false,
         };
 
         // Should not crash even if no lock file exists
@@ -231,6 +295,8 @@ skills_directory = ".claude/skills"
         let args = ShowArgs {
             skill_id: Some("invalid@skill@id".to_string()),
             tree: false,
+            format: None,
+            json: false,
         };
 
         let result = execute_show(args).await;
@@ -249,6 +315,8 @@ skills_directory = ".claude/skills"
         let args = ShowArgs {
             skill_id: Some("nonexistent@1.0.0".to_string()),
             tree: false,
+            format: None,
+            json: false,
         };
 
         let result = execute_show(args).await;
@@ -308,6 +376,8 @@ source = { path = ".claude/skills/test-skill" }
             let args = ShowArgs {
                 skill_id: None,
                 tree: false,
+                format: None,
+                json: false,
             };
             let result = execute_show(args).await;
             assert!(result.is_ok() || result.is_err());
@@ -330,6 +400,8 @@ Description: A test skill for coverage
             let args = ShowArgs {
                 skill_id: Some("test-skill".to_string()),
                 tree: false,
+                format: None,
+                json: false,
             };
             let result = execute_show(args).await;
             assert!(result.is_ok() || result.is_err());

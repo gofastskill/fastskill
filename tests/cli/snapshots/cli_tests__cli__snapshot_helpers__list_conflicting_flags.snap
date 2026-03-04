@@ -1,6 +1,7 @@
 ---
 source: tests/cli/snapshot_helpers.rs
+assertion_line: 259
 expression: normalized
 ---
 FastSkill [VERSION]
-Error: Configuration error: Cannot use both --json and --grid flags. Use only one.
+Error: Configuration error: Error: --json and --format cannot be used together. Use one output selector.

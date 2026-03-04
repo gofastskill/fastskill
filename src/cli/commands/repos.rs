@@ -5,6 +5,7 @@
 
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
+use fastskill::OutputFormat;
 use std::path::PathBuf;
 
 #[derive(Debug, Args)]
@@ -125,12 +126,12 @@ pub enum ReposCommand {
         /// Include pre-release versions
         #[arg(long)]
         include_pre_release: bool,
-        /// Output in JSON format
-        #[arg(long)]
+        /// Output format: table, json, grid (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid")]
+        format: Option<OutputFormat>,
+        /// Shorthand for --format json
+        #[arg(long, help = "Shorthand for --format json")]
         json: bool,
-        /// Output in grid format (default)
-        #[arg(long)]
-        grid: bool,
     },
 
     /// Show skill details from catalog
@@ -205,16 +206,16 @@ pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
             scope,
             all_versions,
             include_pre_release,
+            format,
             json,
-            grid,
         } => {
             super::registry::skill_ops::execute_list_skills(
                 repository,
                 scope,
                 all_versions,
                 include_pre_release,
+                format,
                 json,
-                grid,
             )
             .await
         }
@@ -280,8 +281,8 @@ skills_directory = ".claude/skills"
                 scope: None,
                 all_versions: false,
                 include_pre_release: false,
+                format: None,
                 json: false,
-                grid: false,
             },
         };
 
@@ -340,8 +341,8 @@ skills_directory = ".claude/skills"
             scope: None,
             all_versions: false,
             include_pre_release: false,
+            format: None,
             json: false,
-            grid: false,
         };
         let show = ReposCommand::Show {
             skill_id: "test".to_string(),

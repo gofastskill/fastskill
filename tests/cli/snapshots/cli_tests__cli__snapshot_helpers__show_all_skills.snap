@@ -5,6 +5,7 @@ expression: normalized
 FastSkill [VERSION]
 Skill Information
 
-Installed Skills (1):
-
-  • test-skill (v[VERSION])
+Skill: test-skill
+  ID: test-skill
+  Version: [VERSION]
+  Description: A test skill for show command

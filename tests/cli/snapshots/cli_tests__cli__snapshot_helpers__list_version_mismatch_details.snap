@@ -4,6 +4,6 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-Name        Description  Version  In manifest  In lock  Installed  Source path                                         Type  Flags            
-----------------------------------------------------------------------------------------------------------------------------------------------
-test-skill  Test skill   [VERSION]    Y            -        Y          [TEMP_DIR]  -     missing from lock
+ID          Name        Description  Version  Manifest  Lock  Installed  Source Path                                         Type  Flags            
+----------------------------------------------------------------------------------------------------------------------------------------------------
+test-skill  test-skill  Test skill   [VERSION]    Y         -     Y          [TEMP_DIR]  -     missing from lock
