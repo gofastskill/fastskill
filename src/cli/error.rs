@@ -270,6 +270,9 @@ impl CliError {
             CliError::SkillNotFound(_) => 1,
             // System errors (IO, config, service) -> exit code 2
             CliError::Io(_) | CliError::Config(_) | CliError::Service(_) => 2,
+            // Search errors: map underlying service failures to system error code
+            CliError::Search(fastskill::SearchError::Service(_)) => 2,
+            CliError::Search(_) => 1,
             // Windows symlink permission error -> exit code 2
             CliError::WindowsSymlinkPermission(_) => 2,
             // Editable not supported -> exit code 2
@@ -277,5 +280,24 @@ impl CliError {
             // Other errors default to 1
             _ => 1,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CliError;
+
+    #[test]
+    fn search_service_error_uses_system_exit_code() {
+        let error = CliError::Search(fastskill::SearchError::Service(
+            fastskill::ServiceError::Custom("boom".to_string()),
+        ));
+        assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn search_validation_error_uses_user_error_exit_code() {
+        let error = CliError::Search(fastskill::SearchError::Validation("invalid".to_string()));
+        assert_eq!(error.exit_code(), 1);
     }
 }

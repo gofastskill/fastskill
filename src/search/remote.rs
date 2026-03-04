@@ -14,6 +14,8 @@ pub async fn execute_remote_search(
     query: SearchQuery,
     repository_filter: Option<String>,
 ) -> Result<Vec<SearchResultItem>, SearchError> {
+    let strict_repository = repository_filter.is_some();
+
     // Load repository definitions from default locations
     let definitions = load_repository_definitions()?;
 
@@ -32,26 +34,44 @@ pub async fn execute_remote_search(
     for repo in repos {
         match repo_manager.get_client(&repo.name).await {
             Ok(client) => {
-                if let Ok(results) = client.search(&query.query).await {
-                    for result in results {
-                        let result_item = SearchResultItem {
-                            id: result.name.clone(),
-                            name: result.name,
-                            description: if result.description.is_empty() {
-                                None
-                            } else {
-                                Some(result.description)
-                            },
-                            source: repo.name.clone(),
-                            similarity: None, // Remote search doesn't provide similarity scores
-                            path: None,
-                            repository: Some(repo.name.clone()),
-                        };
-                        all_results.push(result_item);
+                match client.search(&query.query).await {
+                    Ok(results) => {
+                        for result in results {
+                            let result_item = SearchResultItem {
+                                id: result.name.clone(),
+                                name: result.name,
+                                description: if result.description.is_empty() {
+                                    None
+                                } else {
+                                    Some(result.description)
+                                },
+                                source: repo.name.clone(),
+                                similarity: None, // Remote search doesn't provide similarity scores
+                                path: None,
+                                repository: Some(repo.name.clone()),
+                            };
+                            all_results.push(result_item);
+                        }
+                    }
+                    Err(e) => {
+                        if strict_repository {
+                            return Err(SearchError::Repository(format!(
+                                "Search on '{}' failed: {}",
+                                repo.name, e
+                            )));
+                        }
                     }
                 }
             }
-            Err(_) => continue, // Skip repositories that fail to load
+            Err(e) => {
+                if strict_repository {
+                    return Err(SearchError::Repository(format!(
+                        "Failed to load client for '{}': {}",
+                        repo.name, e
+                    )));
+                }
+                continue;
+            } // Skip repositories that fail to load when searching across all repos
         }
     }
 
@@ -151,5 +171,92 @@ fn convert_repository_definition(
         config,
         auth,
         storage: None, // Not used in manifest format
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use once_cell::sync::Lazy;
+    use std::fs;
+    use std::path::Path;
+    use std::sync::{Mutex, MutexGuard};
+    use tempfile::TempDir;
+
+    static CWD_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    struct CurrentDirGuard {
+        previous: std::path::PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::current_dir().expect("failed to read current directory");
+            std::env::set_current_dir(path).expect("failed to set current directory");
+            Self { previous }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
+    }
+
+    fn enter_temp_workspace() -> (MutexGuard<'static, ()>, TempDir, CurrentDirGuard) {
+        let lock = CWD_LOCK.lock().expect("failed to lock cwd mutex");
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let guard = CurrentDirGuard::set(temp_dir.path());
+        (lock, temp_dir, guard)
+    }
+
+    fn write_project_with_invalid_repo(repo_name: &str) {
+        let project_toml = format!(
+            r#"
+[dependencies]
+
+[[tool.fastskill.repositories]]
+name = "{repo_name}"
+type = "http-registry"
+priority = 0
+index_url = "not-a-valid-url"
+"#
+        );
+
+        fs::write("skill-project.toml", project_toml)
+            .expect("failed to write skill-project.toml for test");
+    }
+
+    fn sample_query() -> SearchQuery {
+        SearchQuery {
+            query: "test".to_string(),
+            scope: super::super::SearchScope::Remote,
+            limit: 10,
+            embedding: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_repo_filter_returns_repository_error_on_client_init_failure() {
+        let (_lock, _temp_dir, _guard) = enter_temp_workspace();
+        write_project_with_invalid_repo("broken");
+
+        let result = execute_remote_search(sample_query(), Some("broken".to_string())).await;
+        match result {
+            Err(SearchError::Repository(msg)) => {
+                assert!(msg.contains("broken"), "unexpected message: {msg}");
+            }
+            other => panic!("expected repository error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_all_repos_skips_invalid_repository_client_errors() {
+        let (_lock, _temp_dir, _guard) = enter_temp_workspace();
+        write_project_with_invalid_repo("broken");
+
+        let result = execute_remote_search(sample_query(), None).await;
+        assert!(result.is_ok(), "search across all repos should not fail");
+        assert!(result.unwrap().is_empty());
     }
 }

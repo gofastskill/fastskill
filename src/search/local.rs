@@ -108,12 +108,7 @@ async fn perform_embedding_search(
         .ok_or_else(|| SearchError::Config("Vector index service not available".to_string()))?;
 
     // Get API key from environment
-    let api_key = std::env::var("OPENAI_API_KEY").map_err(|e| {
-        SearchError::Config(format!(
-            "Failed to get OPENAI_API_KEY from environment: {}",
-            e
-        ))
-    })?;
+    let api_key = load_openai_api_key()?;
 
     // Initialize embedding service
     let embedding_service = crate::OpenAIEmbeddingService::from_config(embedding_config, api_key);
@@ -161,4 +156,52 @@ async fn perform_embedding_search(
         .collect();
 
     Ok(results)
+}
+
+fn load_openai_api_key() -> Result<String, SearchError> {
+    let api_key = std::env::var("OPENAI_API_KEY").map_err(|e| {
+        SearchError::Config(format!(
+            "Failed to get OPENAI_API_KEY from environment: {}",
+            e
+        ))
+    })?;
+
+    if api_key.trim().is_empty() {
+        return Err(SearchError::Config(
+            "OPENAI_API_KEY environment variable is set but empty".to_string(),
+        ));
+    }
+
+    Ok(api_key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_openai_api_key;
+    use super::SearchError;
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    #[test]
+    fn load_openai_api_key_rejects_empty_values() {
+        let _lock = ENV_LOCK.lock().expect("failed to lock env mutex");
+
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "   ");
+        }
+
+        let result = load_openai_api_key();
+        match result {
+            Err(SearchError::Config(msg)) => {
+                assert!(msg.contains("set but empty"), "unexpected message: {msg}");
+            }
+            other => panic!("expected config error, got: {:?}", other),
+        }
+
+        unsafe {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+    }
 }
