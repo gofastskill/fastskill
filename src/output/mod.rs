@@ -3,7 +3,7 @@
 //! This module provides shared output formatting capabilities that can be used
 //! by multiple CLI commands to ensure consistent output styling.
 
-use crate::cli::search::SearchResultItem;
+use crate::search::SearchResultItem;
 use serde_json;
 use std::fmt;
 

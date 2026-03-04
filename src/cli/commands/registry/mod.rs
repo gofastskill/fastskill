@@ -110,6 +110,4 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
-mod tests {
-    use super::*;
-}
+mod tests {}
