@@ -3,6 +3,7 @@
 //! This command consolidates repository management (add/remove/test/refresh) and
 //! remote catalog operations (skills/show/versions) into a single namespace.
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
 use fastskill::OutputFormat;
@@ -22,8 +23,13 @@ pub struct ReposArgs {
 pub enum ReposCommand {
     // Repository Management Commands
     /// List all configured repositories
-    #[command(after_help = "Examples:\n  fastskill repos list\n  fastskill repos list --json")]
+    #[command(
+        after_help = "Examples:\n  fastskill repos list\n  fastskill repos list --format xml\n  fastskill repos list --json"
+    )]
     List {
+        /// Output format: table, json, grid, xml (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+        format: Option<OutputFormat>,
         /// Output in JSON format
         #[arg(long)]
         json: bool,
@@ -72,10 +78,15 @@ pub enum ReposCommand {
     },
 
     /// Show repository details
-    #[command(after_help = "Examples:\n  fastskill repos info my-repo")]
+    #[command(
+        after_help = "Examples:\n  fastskill repos info my-repo\n  fastskill repos info my-repo --format xml"
+    )]
     Info {
         /// Repository name
         name: String,
+        /// Output format: table, json, grid, xml (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+        format: Option<OutputFormat>,
         /// Output in JSON format
         #[arg(long)]
         json: bool,
@@ -126,8 +137,8 @@ pub enum ReposCommand {
         /// Include pre-release versions
         #[arg(long)]
         include_pre_release: bool,
-        /// Output format: table, json, grid (default: table)
-        #[arg(long, value_enum, help = "Output format: table, json, grid")]
+        /// Output format: table, json, grid, xml (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
         format: Option<OutputFormat>,
         /// Shorthand for --format json
         #[arg(long, help = "Shorthand for --format json")]
@@ -158,9 +169,9 @@ pub enum ReposCommand {
 pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
     match args.command {
         // Repository Management Commands
-        ReposCommand::List { json } => {
-            // Dispatch to existing registry::repo_ops::execute_list
-            super::registry::repo_ops::execute_list_with_json(json).await
+        ReposCommand::List { format, json } => {
+            let resolved_format = validate_format_args(&format, json)?;
+            super::registry::repo_ops::execute_list_with_format(resolved_format).await
         }
         ReposCommand::Add {
             name,
@@ -189,8 +200,9 @@ pub async fn execute_repos(args: ReposArgs) -> CliResult<()> {
             .await
         }
         ReposCommand::Remove { name } => super::registry::repo_ops::execute_remove(name).await,
-        ReposCommand::Info { name, json } => {
-            super::registry::repo_ops::execute_show_with_json(name, json).await
+        ReposCommand::Info { name, format, json } => {
+            let resolved_format = validate_format_args(&format, json)?;
+            super::registry::repo_ops::execute_show_with_format(name, resolved_format).await
         }
         ReposCommand::Update {
             name,
@@ -264,7 +276,10 @@ skills_directory = ".claude/skills"
         fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
         let args = ReposArgs {
-            command: ReposCommand::List { json: false },
+            command: ReposCommand::List {
+                format: None,
+                json: false,
+            },
         };
 
         let result = execute_repos(args).await;
@@ -307,7 +322,10 @@ skills_directory = ".claude/skills"
         // This test validates the command structure for specification 026a
         use std::mem::discriminant;
 
-        let list = ReposCommand::List { json: false };
+        let list = ReposCommand::List {
+            format: None,
+            json: false,
+        };
         let add = ReposCommand::Add {
             name: "test".to_string(),
             repo_type: "local".to_string(),
@@ -325,6 +343,7 @@ skills_directory = ".claude/skills"
         };
         let info = ReposCommand::Info {
             name: "test".to_string(),
+            format: None,
             json: false,
         };
         let update = ReposCommand::Update {

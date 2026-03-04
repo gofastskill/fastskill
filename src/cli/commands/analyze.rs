@@ -51,8 +51,8 @@ pub enum AnalyzeSubcommand {
 /// Matrix command arguments
 #[derive(Debug, Args, Clone)]
 pub struct MatrixArgs {
-    /// Output format: table, json, grid (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
@@ -102,8 +102,8 @@ pub struct ClusterArgs {
     )]
     pub min_size: usize,
 
-    /// Output format: table, json, grid (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
@@ -150,8 +150,8 @@ pub struct DuplicatesArgs {
     )]
     pub severity: SeverityFilter,
 
-    /// Output format: table, json, grid (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json

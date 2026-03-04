@@ -1,22 +1,39 @@
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
+use fastskill::OutputFormat;
 use std::path::PathBuf;
 
 #[allow(dead_code)] // Used by legacy registry command paths if needed
 pub async fn execute_list() -> CliResult<()> {
-    execute_list_with_json(false).await
+    execute_list_with_format(OutputFormat::Table).await
 }
 
 pub async fn execute_list_with_json(json: bool) -> CliResult<()> {
+    let format = if json {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Table
+    };
+    execute_list_with_format(format).await
+}
+
+pub async fn execute_list_with_format(format: OutputFormat) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
     let repos = repo_manager.list_repositories();
 
-    if json {
-        let json_output = serde_json::to_string_pretty(&repos)
-            .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-        println!("{}", json_output);
-    } else {
-        println!("{}", super::formatters::format_repository_list(&repos));
+    match format {
+        OutputFormat::Json => {
+            let json_output = serde_json::to_string_pretty(&repos)
+                .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
+            println!("{}", json_output);
+        }
+        OutputFormat::Table => println!("{}", super::formatters::format_repository_list(&repos)),
+        OutputFormat::Grid => {
+            println!("{}", super::formatters::format_repository_list_grid(&repos))
+        }
+        OutputFormat::Xml => {
+            println!("{}", super::formatters::format_repository_list_xml(&repos))
+        }
     }
     Ok(())
 }
@@ -77,22 +94,41 @@ pub async fn execute_remove(name: String) -> CliResult<()> {
 
 #[allow(dead_code)] // Used by legacy registry command paths if needed
 pub async fn execute_show(name: String) -> CliResult<()> {
-    execute_show_with_json(name, false).await
+    execute_show_with_format(name, OutputFormat::Table).await
 }
 
 pub async fn execute_show_with_json(name: String, json: bool) -> CliResult<()> {
+    let format = if json {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Table
+    };
+    execute_show_with_format(name, format).await
+}
+
+pub async fn execute_show_with_format(name: String, format: OutputFormat) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
 
     let repo = repo_manager
         .get_repository(&name)
         .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?;
 
-    if json {
-        let json_output = serde_json::to_string_pretty(&repo)
-            .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-        println!("{}", json_output);
-    } else {
-        println!("{}", super::formatters::format_repository_details(repo));
+    match format {
+        OutputFormat::Json => {
+            let json_output = serde_json::to_string_pretty(&repo)
+                .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
+            println!("{}", json_output);
+        }
+        OutputFormat::Table => println!("{}", super::formatters::format_repository_details(repo)),
+        OutputFormat::Grid => {
+            println!(
+                "{}",
+                super::formatters::format_repository_details_grid(repo)
+            )
+        }
+        OutputFormat::Xml => {
+            println!("{}", super::formatters::format_repository_details_xml(repo))
+        }
     }
 
     Ok(())

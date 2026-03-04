@@ -41,8 +41,8 @@ pub enum RegistryCommand {
         /// Include pre-release versions
         #[arg(long)]
         include_pre_release: bool,
-        /// Output format: table, json, grid (default: table)
-        #[arg(long, value_enum, help = "Output format: table, json, grid")]
+        /// Output format: table, json, grid, xml (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
         format: Option<OutputFormat>,
         /// Shorthand for --format json
         #[arg(long, help = "Shorthand for --format json")]

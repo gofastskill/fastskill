@@ -38,9 +38,6 @@ pub struct ShowArgs {
 pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
     let format = validate_format_args(&args.format, args.json)?;
 
-    println!("Skill Information");
-    println!();
-
     let (config, lock_opt) = load_config_and_lock()?;
     match lock_opt {
         Some(lock) => run_with_lock(lock, &args, &config, format)?,
@@ -72,7 +69,11 @@ fn run_with_lock(
 ) -> CliResult<()> {
     if let Some(skill_id) = &args.skill_id {
         if let Some(skill) = lock.skills.iter().find(|s| s.id == skill_id.as_str()) {
-            print_skill_details(skill);
+            let skill_definition = locked_skill_to_definition(skill)?;
+            let formatted_output =
+                fastskill::output::format_show_results(&[skill_definition], format)
+                    .map_err(CliError::Config)?;
+            print!("{}", formatted_output);
             if args.tree {
                 println!("\nDependency Tree:");
                 println!("   (Dependency tree not yet implemented)");
@@ -95,41 +96,10 @@ fn search_paths_from_config(config: &ProjectConfig) -> Vec<(PathBuf, String)> {
 }
 
 fn print_lock_list(lock: &SkillsLock, tree: bool, format: OutputFormat) -> CliResult<()> {
-    let now = Utc::now();
     let skills: Vec<SkillDefinition> = lock
         .skills
         .iter()
-        .map(|s| {
-            let id = fastskill::SkillId::new(s.id.clone()).map_err(|_| {
-                CliError::Validation(format!("Invalid skill ID format in lock file: {}", s.id))
-            })?;
-            Ok(SkillDefinition {
-                id,
-                name: s.name.clone(),
-                description: format!("Skill from {}", s.name),
-                version: s.version.clone(),
-                author: None,
-                enabled: true,
-                created_at: now,
-                updated_at: now,
-                skill_file: PathBuf::from(format!("/skills/{}", s.id)),
-                reference_files: None,
-                script_files: None,
-                asset_files: None,
-                execution_environment: None,
-                dependencies: None,
-                timeout: None,
-                source_url: None,
-                source_type: None,
-                source_branch: None,
-                source_tag: None,
-                source_subdir: None,
-                installed_from: None,
-                commit_hash: None,
-                fetched_at: None,
-                editable: s.editable,
-            })
-        })
+        .map(locked_skill_to_definition)
         .collect::<Result<Vec<_>, CliError>>()?;
 
     let formatted_output =
@@ -154,12 +124,16 @@ async fn run_with_service(args: ShowArgs, format: OutputFormat) -> CliResult<()>
     service.initialize().await.map_err(CliError::Service)?;
 
     if let Some(skill_id) = &args.skill_id {
-        return run_show_one_from_service(&service, skill_id).await;
+        return run_show_one_from_service(&service, skill_id, format).await;
     }
     run_show_all_from_service(&service, format).await
 }
 
-async fn run_show_one_from_service(service: &FastSkillService, skill_id: &str) -> CliResult<()> {
+async fn run_show_one_from_service(
+    service: &FastSkillService,
+    skill_id: &str,
+    format: OutputFormat,
+) -> CliResult<()> {
     let skill_id_parsed = fastskill::SkillId::new(skill_id.to_string())
         .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
     let skill = service
@@ -168,7 +142,9 @@ async fn run_show_one_from_service(service: &FastSkillService, skill_id: &str) -
         .await
         .map_err(CliError::Service)?;
     if let Some(skill) = skill {
-        print_skill_from_service(&skill);
+        let formatted_output =
+            fastskill::output::format_show_results(&[skill], format).map_err(CliError::Config)?;
+        print!("{}", formatted_output);
         return Ok(());
     }
     let paths = get_skill_search_locations_for_display(false).unwrap_or_else(|_| {
@@ -181,19 +157,6 @@ async fn run_show_one_from_service(service: &FastSkillService, skill_id: &str) -
         skill_id.to_string(),
         paths,
     )))
-}
-
-fn print_skill_from_service(skill: &SkillDefinition) {
-    println!("Skill: {}", skill.name);
-    println!("  ID: {}", skill.id);
-    println!("  Version: {}", skill.version);
-    println!("  Description: {}", skill.description);
-    if let Some(source_type) = &skill.source_type {
-        println!("  Source Type: {:?}", source_type);
-    }
-    if let Some(source_url) = &skill.source_url {
-        println!("  Source URL: {}", source_url);
-    }
 }
 
 async fn run_show_all_from_service(
@@ -213,17 +176,43 @@ async fn run_show_all_from_service(
     Ok(())
 }
 
-fn print_skill_details(skill: &fastskill::core::lock::LockedSkillEntry) {
-    println!("Skill: {}", skill.name);
-    println!("  ID: {}", skill.id);
-    println!("  Version: {}", skill.version);
-    if let Some(commit_hash) = &skill.commit_hash {
-        println!("  Commit: {}", commit_hash);
-    }
-    println!("  Fetched: {}", skill.fetched_at);
-    println!("  Groups: {:?}", skill.groups);
-    println!("  Editable: {}", skill.editable);
-    println!("  Source: {:?}", skill.source);
+fn locked_skill_to_definition(
+    skill: &fastskill::core::lock::LockedSkillEntry,
+) -> Result<SkillDefinition, CliError> {
+    let now = Utc::now();
+    let id = fastskill::SkillId::new(skill.id.clone()).map_err(|_| {
+        CliError::Validation(format!(
+            "Invalid skill ID format in lock file: {}",
+            skill.id
+        ))
+    })?;
+
+    Ok(SkillDefinition {
+        id,
+        name: skill.name.clone(),
+        description: format!("Skill from {}", skill.name),
+        version: skill.version.clone(),
+        author: None,
+        enabled: true,
+        created_at: now,
+        updated_at: now,
+        skill_file: PathBuf::from(format!("/skills/{}", skill.id)),
+        reference_files: None,
+        script_files: None,
+        asset_files: None,
+        execution_environment: None,
+        dependencies: None,
+        timeout: None,
+        source_url: None,
+        source_type: None,
+        source_branch: None,
+        source_tag: None,
+        source_subdir: None,
+        installed_from: None,
+        commit_hash: None,
+        fetched_at: None,
+        editable: skill.editable,
+    })
 }
 
 #[cfg(test)]

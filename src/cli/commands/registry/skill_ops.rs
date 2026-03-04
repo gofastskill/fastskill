@@ -70,10 +70,12 @@ pub async fn execute_list_skills(
         }
     };
 
-    println!(
-        "{}",
-        messages::info(&format!("Listing skills from repository: {}", repo_name))
-    );
+    if matches!(resolved_format, OutputFormat::Table | OutputFormat::Grid) {
+        println!(
+            "{}",
+            messages::info(&format!("Listing skills from repository: {}", repo_name))
+        );
+    }
 
     let http_client = CratesRegistryClient::new(repo_def)
         .map_err(|e| CliError::Config(format!("Failed to create HTTP registry client: {}", e)))?;
@@ -90,7 +92,17 @@ pub async fn execute_list_skills(
         .map_err(|e| CliError::Config(format!("Failed to fetch skills from registry: {}", e)))?;
 
     if summaries.is_empty() {
-        println!("{}", messages::warning("No skills found in repository"));
+        match resolved_format {
+            OutputFormat::Json => {
+                println!("[]");
+            }
+            OutputFormat::Xml => {
+                super::formatters::format_xml_output(&summaries)?;
+            }
+            OutputFormat::Table | OutputFormat::Grid => {
+                println!("{}", messages::warning("No skills found in repository"));
+            }
+        }
         return Ok(());
     }
 
@@ -100,9 +112,13 @@ pub async fn execute_list_skills(
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
             println!("{}", json_output);
         }
-        OutputFormat::Grid | OutputFormat::Table | OutputFormat::Xml => {
+        OutputFormat::Table => {
+            super::formatters::format_table_output(&summaries, all_versions)?;
+        }
+        OutputFormat::Grid => {
             super::formatters::format_grid_output(&summaries, all_versions)?;
         }
+        OutputFormat::Xml => super::formatters::format_xml_output(&summaries)?,
     }
 
     Ok(())
