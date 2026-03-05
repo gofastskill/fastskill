@@ -39,7 +39,7 @@ fn should_use_colors() -> bool {
 pub struct ReindexArgs {
     /// Skills directory path (overrides default discovery)
     #[arg(long, help = "Skills directory path")]
-    skills_dir: Option<std::path::PathBuf>,
+    pub skills_dir: Option<std::path::PathBuf>,
 
     /// Force re-indexing of all skills (ignore existing hashes)
     #[arg(long, help = "Force re-indexing of all skills")]
@@ -53,21 +53,13 @@ pub struct ReindexArgs {
     )]
     max_concurrent: usize,
 
-    /// Enable verbose output
-    #[arg(
-        short,
-        long,
-        help = "Show detailed progress for each skill being processed"
-    )]
-    verbose: bool,
+    /// Show progress bars and processing details
+    #[arg(long, help = "Show progress bars and processing details")]
+    progress: bool,
 
-    /// Quiet mode - suppress progress output
-    #[arg(
-        short,
-        long,
-        help = "Suppress progress output, show only final summary"
-    )]
-    quiet: bool,
+    /// Suppress progress output, show only final summary
+    #[arg(long, help = "Suppress progress output")]
+    no_progress: bool,
 }
 
 #[derive(Debug)]
@@ -94,14 +86,14 @@ struct ProgressTracker {
     skipped: usize,
     failed: usize,
     start_time: std::time::Instant,
-    verbose: bool,
-    quiet: bool,
+    progress: bool,
+    no_progress: bool,
     show_progress: bool,
 }
 
 impl ProgressTracker {
-    fn new(total: usize, verbose: bool, quiet: bool) -> Self {
-        let show_progress = should_show_progress() && !quiet;
+    fn new(total: usize, progress: bool, no_progress: bool) -> Self {
+        let show_progress = should_show_progress() && !no_progress;
 
         Self {
             total,
@@ -109,15 +101,15 @@ impl ProgressTracker {
             skipped: 0,
             failed: 0,
             start_time: std::time::Instant::now(),
-            verbose,
-            quiet,
+            progress,
+            no_progress,
             show_progress,
         }
     }
 
     fn record_success(&mut self, skill_id: &str) {
         self.completed += 1;
-        if self.verbose {
+        if self.progress {
             println!("  ✓ Indexed: {}", skill_id);
         }
         self.print_progress();
@@ -125,7 +117,7 @@ impl ProgressTracker {
 
     fn record_skip(&mut self, skill_id: &str, reason: &str) {
         self.skipped += 1;
-        if self.verbose {
+        if self.progress {
             println!("  ⊘ Skipped: {} ({})", skill_id, reason);
         }
         self.print_progress();
@@ -133,14 +125,14 @@ impl ProgressTracker {
 
     fn record_failure(&mut self, skill_id: &str, error: &str) {
         self.failed += 1;
-        if self.verbose {
+        if self.progress {
             eprintln!("  ✗ Failed: {} - {}", skill_id, error);
         }
         self.print_progress();
     }
 
     fn print_progress(&self) {
-        if !self.show_progress || self.verbose {
+        if !self.show_progress || self.progress {
             return;
         }
 
@@ -162,11 +154,11 @@ impl ProgressTracker {
     }
 
     fn finish(&self) {
-        if self.quiet {
+        if self.no_progress {
             return;
         }
 
-        if self.show_progress && !self.verbose {
+        if self.show_progress && !self.progress {
             println!();
         }
 
@@ -222,12 +214,12 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
     // Find all SKILL.md files
     let skill_files = find_skill_files(&skills_dir)?;
 
-    if !args.quiet {
+    if !args.no_progress {
         println!("Found {} skills to process", skill_files.len());
     }
 
     if skill_files.is_empty() {
-        if !args.quiet {
+        if !args.no_progress {
             println!("No skills found in {}", skills_dir.display());
         }
         return Ok(());
@@ -247,8 +239,8 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
     // Initialize progress tracker with Arc<Mutex> for thread-safe updates
     let progress = Arc::new(Mutex::new(ProgressTracker::new(
         skill_files.len(),
-        args.verbose,
-        args.quiet,
+        args.progress,
+        args.no_progress,
     )));
 
     // Process skills concurrently with semaphore for rate limiting
@@ -336,7 +328,7 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
             }
         }
 
-        if cleanup_removed_count > 0 && !args.quiet {
+        if cleanup_removed_count > 0 && !args.no_progress {
             println!("Removed {} stale entries from index", cleanup_removed_count);
         }
     } else {
@@ -540,8 +532,8 @@ Test skill content"#,
 
         assert_eq!(tracker.total, 5);
         assert_eq!(tracker.completed, 0);
-        assert!(tracker.verbose);
-        assert!(!tracker.quiet);
+        assert!(tracker.progress);
+        assert!(!tracker.no_progress);
     }
 
     #[tokio::test]
@@ -550,7 +542,7 @@ Test skill content"#,
 
         assert_eq!(tracker.total, 5);
         assert!(!tracker.show_progress);
-        assert!(tracker.quiet);
+        assert!(tracker.no_progress);
     }
 
     #[tokio::test]
@@ -602,28 +594,28 @@ Test skill content"#,
         let mut service = FastSkillService::new(config).await.unwrap();
         service.initialize().await.unwrap();
 
-        // Test verbose mode
-        let verbose_args = ReindexArgs {
+        // Test progress mode
+        let progress_args = ReindexArgs {
             skills_dir: Some(skills_dir.clone()),
             force: true,
             max_concurrent: 2,
-            verbose: true,
-            quiet: false,
+            progress: true,
+            no_progress: false,
         };
 
         // May fail due to missing API key, but args should be accepted
-        let _ = execute_reindex(&service, verbose_args).await;
+        let _ = execute_reindex(&service, progress_args).await;
 
-        // Test quiet mode
-        let quiet_args = ReindexArgs {
+        // Test no_progress mode
+        let no_progress_args = ReindexArgs {
             skills_dir: Some(skills_dir),
             force: true,
             max_concurrent: 2,
-            verbose: false,
-            quiet: true,
+            progress: false,
+            no_progress: true,
         };
 
-        let _ = execute_reindex(&service, quiet_args).await;
+        let _ = execute_reindex(&service, no_progress_args).await;
     }
 
     #[tokio::test]
@@ -675,8 +667,8 @@ Test skill content"#,
             skills_dir: None,
             force: false,
             max_concurrent: 5,
-            verbose: false,
-            quiet: false,
+            progress: false,
+            no_progress: false,
         };
 
         let result = execute_reindex(&service, args).await;
@@ -709,8 +701,8 @@ Test skill content"#,
             skills_dir: Some(nonexistent_dir),
             force: false,
             max_concurrent: 5,
-            verbose: false,
-            quiet: false,
+            progress: false,
+            no_progress: false,
         };
 
         let result = execute_reindex(&service, args).await;
@@ -739,8 +731,8 @@ Test skill content"#,
             skills_dir: None,
             force: true,
             max_concurrent: 5,
-            verbose: false,
-            quiet: false,
+            progress: false,
+            no_progress: false,
         };
 
         // Should succeed with empty directory (no skills to index)
@@ -783,8 +775,8 @@ Description: A test skill for coverage
             skills_dir: Some(skills_dir),
             force: true,
             max_concurrent: 2,
-            verbose: false,
-            quiet: false,
+            progress: false,
+            no_progress: false,
         };
 
         let result = execute_reindex(&service, args).await;
@@ -835,8 +827,8 @@ Description: Second skill
             skills_dir: Some(skills_dir),
             force: true,
             max_concurrent: 2,
-            verbose: false,
-            quiet: false,
+            progress: false,
+            no_progress: false,
         };
 
         // First reindex with both skills

@@ -34,6 +34,10 @@ pub struct ListArgs {
     /// Show detailed information (version, manifest/lock/installed status, source path, type)
     #[arg(long, help = "Show detailed information")]
     pub details: bool,
+
+    /// Skills directory path (overrides default discovery)
+    #[arg(long, help = "Skills directory path")]
+    pub skills_dir: Option<std::path::PathBuf>,
 }
 
 /// Extract source path and type from SkillSource
@@ -237,6 +241,7 @@ mod tests {
             format: Some(OutputFormat::Table),
             json: true,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;
@@ -290,6 +295,7 @@ mod tests {
             format: None,
             json: false,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;
@@ -344,6 +350,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;
@@ -417,6 +424,7 @@ source = { path = ".claude/skills/test-skill" }
             format: None,
             json: false,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;
@@ -464,6 +472,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;
@@ -511,6 +520,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            skills_dir: None,
         };
 
         let result = execute_list(&service, args, false).await;

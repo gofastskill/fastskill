@@ -17,6 +17,7 @@ Options:
   -f, --format <FORMAT>          Output format: table, json, grid, xml (default: table)
       --json                     Shorthand for --format json
       --embedding <EMBEDDING>    Use embedding search: true, false, or auto Only applies to local search; ignored for remote search [possible values: true, false, auto]
+      --skills-dir <SKILLS_DIR>  Skills directory path
   -h, --help                     Print help
 
 Examples:

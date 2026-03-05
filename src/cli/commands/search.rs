@@ -42,6 +42,10 @@ pub struct SearchArgs {
     /// Only applies to local search; ignored for remote search
     #[arg(long, value_parser = ["true", "false", "auto"])]
     pub embedding: Option<String>,
+
+    /// Skills directory path (overrides default discovery)
+    #[arg(long, help = "Skills directory path")]
+    pub skills_dir: Option<std::path::PathBuf>,
 }
 
 pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> CliResult<()> {
@@ -155,6 +159,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let result = validate_search_args(&args);
@@ -175,6 +180,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: Some("false".to_string()),
+            skills_dir: None,
         };
 
         let result = validate_search_args(&args);
@@ -192,6 +198,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let result = validate_search_args(&args);
@@ -209,6 +216,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -226,6 +234,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -243,6 +252,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -260,6 +270,7 @@ mod tests {
             format: Some("table".to_string()),
             json: true,
             embedding: None,
+            skills_dir: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -277,6 +288,7 @@ mod tests {
             format: Some("xml".to_string()),
             json: false,
             embedding: None,
+            skills_dir: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -304,6 +316,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: Some("false".to_string()), // Force text search
+            skills_dir: None,
         };
 
         let result = execute_search(&service, args).await;
@@ -322,6 +335,7 @@ mod tests {
             format: Some("table".to_string()),
             json: true,
             embedding: None,
+            skills_dir: None,
         };
 
         let result = validate_search_args(&args);
@@ -339,6 +353,7 @@ mod tests {
             format: Some("table".to_string()),
             json: false,
             embedding: Some("auto".to_string()),
+            skills_dir: None,
         };
 
         let mode = determine_embedding_mode(&args);
