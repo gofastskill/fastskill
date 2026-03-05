@@ -54,6 +54,13 @@ impl PublishContext {
         // Validate mutually exclusive flags
         validate_publish_args(&args)?;
 
+        // Emit TERM_001 warning for URL --target
+        if let Some(target) = &args.target {
+            if Url::parse(target).is_ok() {
+                eprintln!("[TERM_001] --target URL is deprecated. Use --registry <name> instead.");
+            }
+        }
+
         // Determine target URL or path
         let target = determine_target(&args)?;
         let is_url = Url::parse(&target).is_ok();

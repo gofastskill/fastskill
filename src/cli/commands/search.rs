@@ -23,8 +23,8 @@ pub struct SearchArgs {
     pub remote: bool,
 
     /// Limit remote search to specific repository (remote scope only)
-    #[arg(long)]
-    pub repo: Option<String>,
+    #[arg(long, alias = "repo")]
+    pub repository: Option<String>,
 
     /// Maximum number of results (default: 10)
     #[arg(short, long, default_value = "10")]
@@ -80,10 +80,11 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
 
 /// Validate search arguments for conflicting options
 fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
-    // Validate --repo flag only works with remote search
-    if args.repo.is_some() && args.local {
+    // Validate --repository flag only works with remote search
+    if args.repository.is_some() && args.local {
         return Err(CliError::Config(
-            "Error: --repo is only valid for remote search. Omit --local or --repo.".to_string(),
+            "Error: --repository is only valid for remote search. Omit --local or --repository."
+                .to_string(),
         ));
     }
 
@@ -101,7 +102,7 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
 fn determine_search_scope(args: &SearchArgs) -> CliResult<SearchScope> {
     if args.local {
         Ok(SearchScope::Local)
-    } else if let Some(repo_name) = &args.repo {
+    } else if let Some(repo_name) = &args.repository {
         Ok(SearchScope::RemoteRepo(repo_name.clone()))
     } else {
         // Default to remote search (even if --remote is not explicit)
@@ -144,12 +145,12 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_validate_search_args_local_and_repo_conflict() {
+    fn test_validate_search_args_local_and_repository_conflict() {
         let args = SearchArgs {
             query: "test".to_string(),
             local: true,
             remote: false,
-            repo: Some("my-repo".to_string()),
+            repository: Some("my-repo".to_string()),
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -159,7 +160,7 @@ mod tests {
         let result = validate_search_args(&args);
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("--repo is only valid for remote search"));
+            assert!(msg.contains("--repository is only valid for remote search"));
         }
     }
 
@@ -169,7 +170,7 @@ mod tests {
             query: "test".to_string(),
             local: true,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -181,12 +182,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_search_args_valid_remote_with_repo() {
+    fn test_validate_search_args_valid_remote_with_repository() {
         let args = SearchArgs {
             query: "test".to_string(),
             local: false,
             remote: true,
-            repo: Some("my-repo".to_string()),
+            repository: Some("my-repo".to_string()),
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -203,7 +204,7 @@ mod tests {
             query: "test".to_string(),
             local: true,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -215,12 +216,12 @@ mod tests {
     }
 
     #[test]
-    fn test_determine_search_scope_remote_with_repo() {
+    fn test_determine_search_scope_remote_with_repository() {
         let args = SearchArgs {
             query: "test".to_string(),
             local: false,
             remote: false,
-            repo: Some("my-repo".to_string()),
+            repository: Some("my-repo".to_string()),
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -237,7 +238,7 @@ mod tests {
             query: "test".to_string(),
             local: false,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -254,7 +255,7 @@ mod tests {
             query: "test".to_string(),
             local: false,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: true,
@@ -271,7 +272,7 @@ mod tests {
             query: "test".to_string(),
             local: false,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("xml".to_string()),
             json: false,
@@ -298,7 +299,7 @@ mod tests {
             query: "nonexistent".to_string(),
             local: true,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: false,
@@ -316,7 +317,7 @@ mod tests {
             query: "test".to_string(),
             local: false,
             remote: true,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: true,
@@ -333,7 +334,7 @@ mod tests {
             query: "test".to_string(),
             local: true,
             remote: false,
-            repo: None,
+            repository: None,
             limit: 10,
             format: Some("table".to_string()),
             json: false,
