@@ -4,6 +4,6 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-Name        Description  Flags            
-------------------------------------------
-test-skill  Test skill   missing from lock
+ID          Name        Description  Flags            
+------------------------------------------------------
+test-skill  test-skill  Test skill   missing from lock

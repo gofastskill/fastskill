@@ -242,57 +242,7 @@ pub fn validate_skill_structure(skill_path: &Path, verbose: bool) -> CliResult<(
     }
 }
 
-/// Format skill output for display
-#[allow(dead_code)]
-pub fn format_skill_output(skills: &[fastskill::SkillDefinition], format: OutputFormat) -> String {
-    match format {
-        OutputFormat::Table => format_skills_table(skills),
-        OutputFormat::Json => format_skills_json(skills),
-    }
-}
-
-/// Output format options
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-pub enum OutputFormat {
-    Table,
-    Json,
-}
-
 // Re-export for use in other modules
-
-#[allow(dead_code)]
-fn format_skills_table(skills: &[fastskill::SkillDefinition]) -> String {
-    if skills.is_empty() {
-        return "No skills found.".to_string();
-    }
-
-    let mut output = format!(
-        "{:<30} {:<15} {:<10} {:<50}\n",
-        "ID", "Version", "Status", "Description"
-    );
-    output.push_str(&format!("{:-<105}\n", ""));
-
-    for skill in skills {
-        let status = if skill.enabled { "Enabled" } else { "Disabled" };
-        let description = if skill.description.len() > 47 {
-            format!("{}...", &skill.description[..47])
-        } else {
-            skill.description.clone()
-        };
-        output.push_str(&format!(
-            "{:<30} {:<15} {:<10} {:<50}\n",
-            skill.id, skill.version, status, description
-        ));
-    }
-
-    output
-}
-
-#[allow(dead_code)]
-fn format_skills_json(skills: &[fastskill::SkillDefinition]) -> String {
-    serde_json::to_string_pretty(skills).unwrap_or_else(|e| format!("Error serializing: {}", e))
-}
 
 #[cfg(test)]
 mod tests {

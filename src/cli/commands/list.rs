@@ -7,47 +7,32 @@
 //! folder), skill-project.toml [dependencies], and skills.lock. Outputs one table with flags
 //! for missing from folder, missing from lock, missing from manifest.
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{manifest_required_message, CliError, CliResult};
-use crate::cli::utils::messages;
 use clap::Args;
 use fastskill::core::lock::SkillsLock;
 use fastskill::core::manifest::{SkillProjectToml, SkillSource};
 use fastskill::core::project::resolve_project_file;
 use fastskill::core::service::FastSkillService;
+use fastskill::output::ListRow;
+use fastskill::OutputFormat;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
 
-/// One row for the list table: union of all skills with presence and gap flags.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ListRow {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub version: Option<String>,
-    pub in_manifest: bool,
-    pub in_lock: bool,
-    pub installed: bool,
-    pub source_path: Option<String>,
-    pub source_type: Option<String>,
-    pub missing_from_folder: bool,
-    pub missing_from_lock: bool,
-    pub missing_from_manifest: bool,
-}
-
 /// List locally installed skills
 #[derive(Debug, Args)]
 pub struct ListArgs {
-    /// Output in JSON format
-    #[arg(long)]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
-    /// Output in grid format (default)
-    #[arg(long)]
-    pub grid: bool,
-
     /// Show detailed information (version, manifest/lock/installed status, source path, type)
-    #[arg(long)]
+    #[arg(long, help = "Show detailed information")]
     pub details: bool,
 }
 
@@ -71,12 +56,8 @@ pub async fn execute_list(
     args: ListArgs,
     _global: bool,
 ) -> CliResult<()> {
-    // Validate conflicting flags
-    if args.json && args.grid {
-        return Err(CliError::Config(
-            "Cannot use both --json and --grid flags. Use only one.".to_string(),
-        ));
-    }
+    // Validate format arguments
+    let format = validate_format_args(&args.format, args.json)?;
 
     // Require manifest: resolve from current directory
     let current_dir = env::current_dir()
@@ -221,146 +202,11 @@ pub async fn execute_list(
         .collect();
     rows.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let output_format = if args.json { "json" } else { "grid" };
-    match output_format {
-        "json" => {
-            let json_output = serde_json::to_string_pretty(&rows)
-                .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-            println!("{}", json_output);
-        }
-        "grid" => {
-            format_list_grid(&rows, args.details)?;
-        }
-        _ => unreachable!(),
-    }
+    let formatted_output = fastskill::output::format_list_results(&rows, format, args.details)
+        .map_err(CliError::Config)?;
+    println!("{}", formatted_output);
 
     Ok(())
-}
-
-/// Format list output as grid table: one row per skill with In manifest, In lock, Installed, and Flags.
-fn format_list_grid(rows: &[ListRow], details: bool) -> CliResult<()> {
-    if rows.is_empty() {
-        println!(
-            "{}",
-            messages::info("No skills (manifest is empty and nothing installed)")
-        );
-        return Ok(());
-    }
-
-    if details {
-        // Details view: Name, Description, Version, In manifest, In lock, Installed, Source path, Type, Flags
-        let headers = [
-            "Name",
-            "Description",
-            "Version",
-            "In manifest",
-            "In lock",
-            "Installed",
-            "Source path",
-            "Type",
-            "Flags",
-        ];
-        let mut col_widths = vec![0; headers.len()];
-        for (i, h) in headers.iter().enumerate() {
-            col_widths[i] = h.len();
-        }
-        for row in rows {
-            col_widths[0] = col_widths[0].max(row.name.len());
-            col_widths[1] = col_widths[1].max(row.description.len());
-            col_widths[2] = col_widths[2].max(row.version.as_deref().unwrap_or("-").len());
-            col_widths[3] = col_widths[3].max(1);
-            col_widths[4] = col_widths[4].max(1);
-            col_widths[5] = col_widths[5].max(1);
-            col_widths[6] = col_widths[6].max(row.source_path.as_deref().unwrap_or("-").len());
-            col_widths[7] = col_widths[7].max(row.source_type.as_deref().unwrap_or("-").len());
-            let flags = build_flags_str(row);
-            col_widths[8] = col_widths[8].max(flags.len());
-        }
-
-        let header_row: Vec<String> = headers
-            .iter()
-            .enumerate()
-            .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
-            .collect();
-        println!();
-        println!("{}", header_row.join("  "));
-        println!("{}", "-".repeat(header_row.join("  ").len()));
-
-        for row in rows {
-            let version = row.version.as_deref().unwrap_or("-");
-            let in_manifest = if row.in_manifest { "Y" } else { "-" };
-            let in_lock = if row.in_lock { "Y" } else { "-" };
-            let installed = if row.installed { "Y" } else { "-" };
-            let source_path = row.source_path.as_deref().unwrap_or("-");
-            let source_type = row.source_type.as_deref().unwrap_or("-");
-            let flags = build_flags_str(row);
-            let line = [
-                format!("{:width$}", row.name, width = col_widths[0]),
-                format!("{:width$}", row.description, width = col_widths[1]),
-                format!("{:width$}", version, width = col_widths[2]),
-                format!("{:width$}", in_manifest, width = col_widths[3]),
-                format!("{:width$}", in_lock, width = col_widths[4]),
-                format!("{:width$}", installed, width = col_widths[5]),
-                format!("{:width$}", source_path, width = col_widths[6]),
-                format!("{:width$}", source_type, width = col_widths[7]),
-                format!("{:width$}", flags, width = col_widths[8]),
-            ];
-            println!("{}", line.join("  "));
-        }
-    } else {
-        // Default view: Name, Description, Flags
-        let headers = ["Name", "Description", "Flags"];
-        let mut col_widths = vec![0; headers.len()];
-        for (i, h) in headers.iter().enumerate() {
-            col_widths[i] = h.len();
-        }
-        for row in rows {
-            col_widths[0] = col_widths[0].max(row.name.len());
-            col_widths[1] = col_widths[1].max(row.description.len());
-            let flags = build_flags_str(row);
-            col_widths[2] = col_widths[2].max(flags.len());
-        }
-
-        let header_row: Vec<String> = headers
-            .iter()
-            .enumerate()
-            .map(|(i, h)| format!("{:width$}", *h, width = col_widths[i]))
-            .collect();
-        println!();
-        println!("{}", header_row.join("  "));
-        println!("{}", "-".repeat(header_row.join("  ").len()));
-
-        for row in rows {
-            let flags = build_flags_str(row);
-            let line = [
-                format!("{:width$}", row.name, width = col_widths[0]),
-                format!("{:width$}", row.description, width = col_widths[1]),
-                format!("{:width$}", flags, width = col_widths[2]),
-            ];
-            println!("{}", line.join("  "));
-        }
-    }
-
-    println!();
-    Ok(())
-}
-
-fn build_flags_str(row: &ListRow) -> String {
-    let mut parts = Vec::new();
-    if row.missing_from_folder {
-        parts.push("missing from folder");
-    }
-    if row.missing_from_lock {
-        parts.push("missing from lock");
-    }
-    if row.missing_from_manifest {
-        parts.push("missing from manifest");
-    }
-    if parts.is_empty() {
-        "-".to_string()
-    } else {
-        parts.join("; ")
-    }
 }
 
 #[allow(
@@ -377,7 +223,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn test_execute_list_conflicting_flags() {
+    async fn test_execute_list_format_conflict() {
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
             skill_storage_path: temp_dir.path().to_path_buf(),
@@ -386,18 +232,19 @@ mod tests {
         let mut service = FastSkillService::new(config).await.unwrap();
         service.initialize().await.unwrap();
 
+        // Test conflicting --json and --format flags
         let args = ListArgs {
+            format: Some(OutputFormat::Table),
             json: true,
-            grid: true,
             details: false,
         };
 
         let result = execute_list(&service, args, false).await;
         assert!(result.is_err());
-        if let Err(CliError::Config(_)) = result {
-            // Expected error type
+        if let Err(CliError::Config(msg)) = result {
+            assert!(msg.contains("--json and --format cannot be used together"));
         } else {
-            panic!("Expected Config error for conflicting flags");
+            panic!("Expected Config error for format conflict");
         }
     }
 
@@ -440,8 +287,8 @@ mod tests {
         service.initialize().await.unwrap();
 
         let args = ListArgs {
+            format: None,
             json: false,
-            grid: false,
             details: false,
         };
 
@@ -494,8 +341,8 @@ skills_directory = ".claude/skills"
         service.initialize().await.unwrap();
 
         let args = ListArgs {
+            format: None,
             json: false,
-            grid: false,
             details: false,
         };
 
@@ -567,8 +414,8 @@ source = { path = ".claude/skills/test-skill" }
         service.initialize().await.unwrap();
 
         let args = ListArgs {
+            format: None,
             json: false,
-            grid: false,
             details: false,
         };
 
@@ -614,8 +461,8 @@ skills_directory = ".claude/skills"
         service.initialize().await.unwrap();
 
         let args = ListArgs {
-            json: true,
-            grid: false,
+            format: None,
+            json: false,
             details: false,
         };
 
@@ -661,9 +508,9 @@ skills_directory = ".claude/skills"
         service.initialize().await.unwrap();
 
         let args = ListArgs {
+            format: None,
             json: false,
-            grid: false,
-            details: true,
+            details: false,
         };
 
         let result = execute_list(&service, args, false).await;

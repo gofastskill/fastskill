@@ -1,10 +1,12 @@
 //! Diagnostic and analysis commands for skill relationships and quality
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use clap::{Args, Subcommand};
 use fastskill::core::analysis::SimilarityPair;
 use fastskill::core::vector_index::IndexedSkill;
 use fastskill::FastSkillService;
+use fastskill::OutputFormat;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -49,8 +51,12 @@ pub enum AnalyzeSubcommand {
 /// Matrix command arguments
 #[derive(Debug, Args, Clone)]
 pub struct MatrixArgs {
-    /// Output in JSON format
-    #[arg(long, help = "Output in JSON format")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Similarity threshold (0.0 to 1.0) - only show pairs above this threshold
@@ -96,8 +102,12 @@ pub struct ClusterArgs {
     )]
     pub min_size: usize,
 
-    /// Output in JSON format
-    #[arg(long, help = "Output in JSON format")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 }
 
@@ -140,8 +150,12 @@ pub struct DuplicatesArgs {
     )]
     pub severity: SeverityFilter,
 
-    /// Output in JSON format
-    #[arg(long, help = "Output in JSON format")]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 }
 
@@ -250,6 +264,9 @@ pub async fn execute_analyze(service: &FastSkillService, command: AnalyzeCommand
 
 /// Execute the matrix command
 pub async fn execute_matrix(service: &FastSkillService, args: MatrixArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     // Get vector index service
     let vector_index_service = service.vector_index_service().ok_or_else(|| {
         CliError::Config("Vector index not available. Run 'fastskill reindex' first.".to_string())
@@ -267,7 +284,7 @@ pub async fn execute_matrix(service: &FastSkillService, args: MatrixArgs) -> Cli
     }
 
     // Show progress for large collections
-    if !args.json && all_skills.len() > 50 {
+    if !use_json && all_skills.len() > 50 {
         let total_comparisons = all_skills.len() * (all_skills.len() - 1) / 2;
         println!(
             "Calculating {} pairwise comparisons for {} skills...",
@@ -275,7 +292,7 @@ pub async fn execute_matrix(service: &FastSkillService, args: MatrixArgs) -> Cli
             all_skills.len()
         );
         println!("This may take a moment for large skill collections.");
-    } else if !args.json {
+    } else if !use_json {
         println!(
             "Calculating pairwise similarities for {} skills...",
             all_skills.len()
@@ -286,7 +303,7 @@ pub async fn execute_matrix(service: &FastSkillService, args: MatrixArgs) -> Cli
     let similarity_matrix = build_similarity_matrix(&all_skills, &args);
 
     // Output results
-    if args.json {
+    if use_json {
         let filtered: Vec<&SimilarityPair> = if args.threshold > 0.0 {
             similarity_matrix
                 .iter()
@@ -344,6 +361,9 @@ fn build_similarity_matrix(all_skills: &[IndexedSkill], args: &MatrixArgs) -> Ve
 
 /// Execute the cluster command
 pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     let vector_index_service = service.vector_index_service().ok_or_else(|| {
         CliError::Config("Vector index not available. Run 'fastskill reindex' first.".to_string())
     })?;
@@ -366,13 +386,13 @@ pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> C
     }
 
     if k > n {
-        if !args.json {
+        if !use_json {
             eprintln!("Warning: only {} skills available, reducing k to {}", n, n);
         }
         k = n;
     }
 
-    if !args.json {
+    if !use_json {
         println!("Clustering {} skills into {} groups...", n, k);
     }
 
@@ -446,7 +466,7 @@ pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> C
         .filter(|c| c.size >= args.min_size)
         .collect();
 
-    if args.json {
+    if use_json {
         let json_output = serde_json::to_string_pretty(&clusters)
             .map_err(|e| CliError::Validation(format!("Failed to serialize JSON: {}", e)))?;
         println!("{}", json_output);
@@ -631,6 +651,9 @@ fn print_cluster_output(clusters: &[ClusterOutput], total_skills: usize, actual_
 
 /// Execute the duplicates command
 pub async fn execute_duplicates(service: &FastSkillService, args: DuplicatesArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     let vector_index_service = service.vector_index_service().ok_or_else(|| {
         CliError::Config("Vector index not available. Run 'fastskill reindex' first.".to_string())
     })?;
@@ -649,7 +672,7 @@ pub async fn execute_duplicates(service: &FastSkillService, args: DuplicatesArgs
     let s_floor = severity_floor_value(&args.severity, args.threshold);
     let effective_floor = args.threshold.max(s_floor);
 
-    if !args.json {
+    if !use_json {
         println!(
             "Scanning {} skills for duplicates (threshold: {:.2})...",
             n, args.threshold
@@ -708,7 +731,7 @@ pub async fn execute_duplicates(service: &FastSkillService, args: DuplicatesArgs
     // Apply limit
     pairs.truncate(args.limit);
 
-    if args.json {
+    if use_json {
         let output = DuplicatesJsonOutput {
             threshold: args.threshold,
             effective_floor,

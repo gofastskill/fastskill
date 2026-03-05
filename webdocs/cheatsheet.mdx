@@ -19,7 +19,7 @@ Quick reference for common FastSkill operations.
 | Editable install | `fastskill add ./dev-skill -e` | Creates symlink/reference to local path, changes reflect immediately without reinstall |
 | Folder of skills | `fastskill add ./skills -r` | Adds all skills under directory (each dir with SKILL.md); only for local directory |
 | Read skill | `fastskill read my-skill-id` | Retrieves skill documentation and base directory path in agent-optimized format |
-| List installed | `fastskill list` | Lists locally installed skills with reconciliation status (grid format) |
+| List installed | `fastskill list` | Lists locally installed skills with reconciliation status (table format) |
 | List installed (JSON) | `fastskill list --json` | Lists locally installed skills in JSON format with reconciliation status |
 | Remove skill | `fastskill remove my-skill-id` | Removes skill from skills directory, updates `skill-project.toml` and `skills.lock`, prompts for confirmation |
 | Force remove | `fastskill remove my-skill-id --force` | Removes skill without confirmation prompt |
@@ -65,7 +65,7 @@ Quick reference for common FastSkill operations.
 | Update repository | `fastskill sources update repo-name --branch main --priority 1` | Updates repository metadata (branch, priority) |
 | Test repository | `fastskill sources test repo-name` | Tests repository connectivity and accessibility |
 | Refresh repositories | `fastskill sources refresh` | Refreshes repository cache (re-fetches from source) |
-| List registry skills | `fastskill registry list-skills` | Lists all skills from HTTP registry (grid format) |
+| List registry skills | `fastskill registry list-skills` | Lists all skills from HTTP registry (table format) |
 | List registry skills (JSON) | `fastskill registry list-skills --json` | Lists all skills from HTTP registry in JSON format |
 | List by scope | `fastskill registry list-skills --scope acme` | Lists skills filtered by scope from HTTP registry |
 | List all versions | `fastskill registry list-skills --all-versions` | Lists all versions of each skill from HTTP registry |

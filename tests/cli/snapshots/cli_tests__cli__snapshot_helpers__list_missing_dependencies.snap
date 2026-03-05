@@ -4,7 +4,7 @@ expression: normalized
 ---
 FastSkill [VERSION]
 
-Name         Description  Flags                                 
-----------------------------------------------------------------
-dev-tools    -            missing from folder; missing from lock
-web-scraper  -            missing from folder; missing from lock
+ID           Name         Description  Flags                                 
+-----------------------------------------------------------------------------
+dev-tools    dev-tools    -            missing from folder; missing from lock
+web-scraper  web-scraper  -            missing from folder; missing from lock

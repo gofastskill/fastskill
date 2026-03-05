@@ -227,7 +227,7 @@ fastskill repos refresh
 List skills in repository catalog.
 
 ```bash
-# List all skills from default repository (grid format)
+# List all skills from default repository (table format, default)
 fastskill repos skills
 
 # Filter by scope
@@ -242,6 +242,9 @@ fastskill repos skills --include-pre-release
 # JSON output
 fastskill repos skills --json
 
+# Grid format
+fastskill repos skills --format grid
+
 # Combined options
 fastskill repos skills --scope acme --all-versions --json
 ```
@@ -250,8 +253,8 @@ fastskill repos skills --scope acme --all-versions --json
 - `--scope <SCOPE>`: Filter skills by scope (exact match)
 - `--all-versions`: Include all versions for each skill (default: latest only)
 - `--include-pre-release`: Include pre-release versions (default: exclude)
-- `--json`: Output in JSON format (mutually exclusive with `--grid`)
-- `--grid`: Output in grid table format (default, mutually exclusive with `--json`)
+- `--format <table|json|grid>`: Output format (default: table)
+- `--json`: Shorthand for --format json (mutually exclusive with --format)
 - `--repository <NAME>`: Repository name to list skills from (defaults to default repository if not specified)
 
 **Output Format**:

@@ -701,18 +701,18 @@ async fn test_list_skills_json_scope_flag() {
 }
 
 #[tokio::test]
-async fn test_conflicting_json_grid_flags() {
-    // Test T035: Integration test for conflicting --json and --grid flags
-    // This test verifies that the CLI validation catches conflicting flags
-    // Note: This is tested at the CLI level, so we test the validation logic
+async fn test_conflicting_json_format_flags() {
+    // Test T035: Integration test for conflicting --json and --format flags
+    // This test verifies that CLI validation catches conflicting flags
+    // Note: This is tested at the CLI level, so we test validation logic
 
     // The validation happens in execute_list_skills() which checks:
-    // if json && grid { return Err(...) }
-    // This is already implemented and tested implicitly through the code structure
-    // For a full integration test, we would need to test the actual CLI command execution
-    // which is beyond the scope of unit/integration tests for the HTTP client
+    // if args.json && args.format.is_some() { return Err(...) }
+    // This is already implemented and tested implicitly through code structure
+    // For a full integration test, we would need to test actual CLI command execution
+    // which is beyond the scope of unit/integration tests for HTTP client
 
-    // Verify the validation logic exists in the code
+    // Verify validation logic exists in the code
     // (This is a placeholder test - actual CLI testing would require process execution)
     assert!(
         true,
@@ -1176,13 +1176,13 @@ async fn test_version_mismatches_reconciliation() {
 
 #[tokio::test]
 async fn test_conflicting_list_flags() {
-    // Test T060: Integration test for conflicting flags `fastskill list --json --grid`
-    // This test verifies the validation logic exists
+    // Test T060: Integration test for conflicting flags `fastskill list --json --format json`
+    // This test verifies validation logic exists
     // Full CLI testing would require process execution
 
     // The validation happens in execute_list() which checks:
-    // if args.json && args.grid { return Err(...) }
-    // This is already implemented in the code
+    // if args.json && args.format.is_some() { return Err(...) }
+    // This is already implemented in code
     assert!(
         true,
         "Conflicting flags validation is implemented in execute_list()"

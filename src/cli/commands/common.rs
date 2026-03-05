@@ -1,5 +1,8 @@
 //! Common utilities for CLI commands
 
+use crate::cli::error::{CliError, CliResult};
+use fastskill::OutputFormat;
+
 /// Emit a standardized deprecation warning with migration guidance.
 pub fn emit_deprecation_warning(
     legacy_command: &str,
@@ -19,6 +22,19 @@ pub fn emit_deprecation_warning(
         eprintln!("   - '{}' → '{}'", legacy_sub, new_path);
     }
     eprintln!();
+}
+
+/// Validate format arguments and return resolved format
+pub fn validate_format_args(format: &Option<OutputFormat>, json: bool) -> CliResult<OutputFormat> {
+    match (format, json) {
+        (Some(_), true) => Err(CliError::Config(
+            "Error: --json and --format cannot be used together. Use one output selector."
+                .to_string(),
+        )),
+        (Some(f), false) => Ok(f.clone()),
+        (None, true) => Ok(OutputFormat::Json),
+        (None, false) => Ok(OutputFormat::Table), // Default
+    }
 }
 
 #[cfg(test)]

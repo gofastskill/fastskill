@@ -195,14 +195,13 @@ fn test_list_conflicting_flags_error() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["list", "--json", "--grid"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["list", "--json", "--format", "json"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
-    assert!(
-        result.stderr.contains("error")
-            || result.stderr.contains("Cannot use both")
-            || result.stderr.contains("cannot be used with")
-    );
+    assert!(result.stderr.contains("error") || result.stderr.contains("cannot be used together"));
 
     assert_snapshot_with_settings(
         "list_conflicting_flags",

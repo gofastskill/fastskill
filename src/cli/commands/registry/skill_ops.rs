@@ -1,21 +1,19 @@
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
 use fastskill::core::registry_index::ListSkillsOptions;
 use fastskill::core::repository::{CratesRegistryClient, RepositoryType};
+use fastskill::OutputFormat;
 
 pub async fn execute_list_skills(
     repository: Option<String>,
     scope: Option<String>,
     all_versions: bool,
     include_pre_release: bool,
+    format: Option<OutputFormat>,
     json: bool,
-    grid: bool,
 ) -> CliResult<()> {
-    if json && grid {
-        return Err(CliError::Config(
-            "Cannot use both --json and --grid flags. Use only one.".to_string(),
-        ));
-    }
+    let resolved_format = validate_format_args(&format, json)?;
 
     if let Some(ref scope) = scope {
         if scope.is_empty() {
@@ -72,10 +70,12 @@ pub async fn execute_list_skills(
         }
     };
 
-    println!(
-        "{}",
-        messages::info(&format!("Listing skills from repository: {}", repo_name))
-    );
+    if matches!(resolved_format, OutputFormat::Table | OutputFormat::Grid) {
+        println!(
+            "{}",
+            messages::info(&format!("Listing skills from repository: {}", repo_name))
+        );
+    }
 
     let http_client = CratesRegistryClient::new(repo_def)
         .map_err(|e| CliError::Config(format!("Failed to create HTTP registry client: {}", e)))?;
@@ -92,21 +92,33 @@ pub async fn execute_list_skills(
         .map_err(|e| CliError::Config(format!("Failed to fetch skills from registry: {}", e)))?;
 
     if summaries.is_empty() {
-        println!("{}", messages::warning("No skills found in repository"));
+        match resolved_format {
+            OutputFormat::Json => {
+                println!("[]");
+            }
+            OutputFormat::Xml => {
+                super::formatters::format_xml_output(&summaries)?;
+            }
+            OutputFormat::Table | OutputFormat::Grid => {
+                println!("{}", messages::warning("No skills found in repository"));
+            }
+        }
         return Ok(());
     }
 
-    let output_format = if json { "json" } else { "grid" };
-    match output_format {
-        "json" => {
+    match resolved_format {
+        OutputFormat::Json => {
             let json_output = serde_json::to_string_pretty(&summaries)
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
             println!("{}", json_output);
         }
-        "grid" => {
+        OutputFormat::Table => {
+            super::formatters::format_table_output(&summaries, all_versions)?;
+        }
+        OutputFormat::Grid => {
             super::formatters::format_grid_output(&summaries, all_versions)?;
         }
-        _ => unreachable!(),
+        OutputFormat::Xml => super::formatters::format_xml_output(&summaries)?,
     }
 
     Ok(())

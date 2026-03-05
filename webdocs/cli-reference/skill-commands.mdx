@@ -329,19 +329,24 @@ fastskill repos show skill-id
 List locally installed skills with reconciliation against project and lock files. Similar to `pip list` or `uv list`.
 
 ```bash
-# List all installed skills (grid format)
+# List all installed skills (table format, default)
 fastskill list
 
 # List in JSON format
 fastskill list --json
 
 # Explicitly request grid format
-fastskill list --grid
+fastskill list --format grid
+
+# XML output for agent consumption
+fastskill list --format xml
 ```
 
 **Output Format**:
-- **Grid (default)**: Human-readable table with columns: id, version, description, source, installed_path, installed_at (if available), status
+- **Table (default)**: Human-readable table with columns: id, name, description, flags
+- **Grid**: Simple list format for commands with many columns
 - **JSON**: Machine-readable array with same fields plus reconciliation status
+- **XML**: Structured XML for agent consumption
 
 **Reconciliation Status**:
 - `ok`: Skill is installed and matches project/lock files
@@ -350,8 +355,8 @@ fastskill list --grid
 - `mismatch`: Installed version differs from `skills.lock`
 
 **Options**:
-- `--json`: Output in JSON format (mutually exclusive with `--grid`)
-- `--grid`: Output in grid table format (default, mutually exclusive with `--json`)
+- `--format <table|json|grid|xml>`: Output format (default: table)
+- `--json`: Shorthand for --format json (mutually exclusive with --format)
 
 **Example JSON Output**:
 ```json

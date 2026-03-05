@@ -11,6 +11,7 @@ pub mod skill_ops;
 use crate::cli::commands::common::emit_deprecation_warning;
 use crate::cli::error::CliResult;
 use clap::{Args, Subcommand};
+use fastskill::OutputFormat;
 
 #[derive(Debug, Args)]
 #[command(
@@ -40,12 +41,12 @@ pub enum RegistryCommand {
         /// Include pre-release versions
         #[arg(long)]
         include_pre_release: bool,
-        /// Output in JSON format
-        #[arg(long)]
+        /// Output format: table, json, grid, xml (default: table)
+        #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+        format: Option<OutputFormat>,
+        /// Shorthand for --format json
+        #[arg(long, help = "Shorthand for --format json")]
         json: bool,
-        /// Output in grid format (default)
-        #[arg(long)]
-        grid: bool,
     },
 
     /// Show skill details
@@ -84,16 +85,16 @@ pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
             scope,
             all_versions,
             include_pre_release,
+            format,
             json,
-            grid,
         } => {
             skill_ops::execute_list_skills(
                 repository,
                 scope,
                 all_versions,
                 include_pre_release,
+                format,
                 json,
-                grid,
             )
             .await
         }

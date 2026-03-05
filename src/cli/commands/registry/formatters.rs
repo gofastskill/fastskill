@@ -9,7 +9,7 @@ pub fn format_repository_list(repos: &[&RepositoryDefinition]) -> String {
     } else {
         let mut output = format!("Configured Repositories ({}):\n", repos.len());
         for repo in repos {
-            let repo_type_str = repo_type_to_string(repo.repo_type.clone());
+            let repo_type_str = repo_type_to_string(&repo.repo_type);
             output.push_str(&format!(
                 "  • {} (type: {}, priority: {})\n",
                 repo.name, repo_type_str, repo.priority
@@ -21,7 +21,7 @@ pub fn format_repository_list(repos: &[&RepositoryDefinition]) -> String {
 
 pub fn format_repository_details(repo: &RepositoryDefinition) -> String {
     let mut output = String::new();
-    let repo_type_str = repo_type_to_string(repo.repo_type.clone());
+    let repo_type_str = repo_type_to_string(&repo.repo_type);
 
     output.push_str(&format!("Repository: {}\n", repo.name));
     output.push_str(&format!("  Type: {}\n", repo_type_str));
@@ -59,7 +59,7 @@ pub fn format_repository_details(repo: &RepositoryDefinition) -> String {
     output
 }
 
-fn repo_type_to_string(repo_type: RepositoryType) -> &'static str {
+pub(crate) fn repo_type_to_string(repo_type: &RepositoryType) -> &'static str {
     match repo_type {
         RepositoryType::GitMarketplace => "git-marketplace",
         RepositoryType::HttpRegistry => "http-registry",
@@ -68,7 +68,7 @@ fn repo_type_to_string(repo_type: RepositoryType) -> &'static str {
     }
 }
 
-pub fn format_grid_output(
+pub fn format_table_output(
     summaries: &[fastskill::core::registry_index::SkillSummary],
     all_versions: bool,
 ) -> CliResult<()> {
@@ -130,4 +130,177 @@ pub fn format_grid_output(
 
     println!();
     Ok(())
+}
+
+pub fn format_grid_output(
+    summaries: &[fastskill::core::registry_index::SkillSummary],
+    _all_versions: bool,
+) -> CliResult<()> {
+    if summaries.is_empty() {
+        println!("No skills found.");
+        return Ok(());
+    }
+
+    for summary in summaries {
+        println!(
+            "- {}/{} ({})",
+            summary.scope, summary.name, summary.latest_version
+        );
+    }
+    Ok(())
+}
+
+pub fn format_xml_output(
+    summaries: &[fastskill::core::registry_index::SkillSummary],
+) -> CliResult<()> {
+    println!("{}", summaries_to_xml(summaries));
+    Ok(())
+}
+
+pub fn format_repository_list_grid(repos: &[&RepositoryDefinition]) -> String {
+    if repos.is_empty() {
+        return "No repositories configured.".to_string();
+    }
+
+    let mut output = String::new();
+    for repo in repos {
+        let repo_type_str = repo_type_to_string(&repo.repo_type);
+        output.push_str(&format!(
+            "- {} [{}] priority={}\n",
+            repo.name, repo_type_str, repo.priority
+        ));
+    }
+    output
+}
+
+pub fn format_repository_details_grid(repo: &RepositoryDefinition) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("name={}\n", repo.name));
+    output.push_str(&format!("type={}\n", repo_type_to_string(&repo.repo_type)));
+    output.push_str(&format!("priority={}\n", repo.priority));
+
+    match &repo.config {
+        RepositoryConfig::GitMarketplace { url, branch, tag } => {
+            output.push_str(&format!("url={}\n", url));
+            if let Some(b) = branch {
+                output.push_str(&format!("branch={}\n", b));
+            }
+            if let Some(t) = tag {
+                output.push_str(&format!("tag={}\n", t));
+            }
+        }
+        RepositoryConfig::HttpRegistry { index_url } => {
+            output.push_str(&format!("index_url={}\n", index_url));
+        }
+        RepositoryConfig::ZipUrl { base_url } => {
+            output.push_str(&format!("base_url={}\n", base_url));
+        }
+        RepositoryConfig::Local { path } => {
+            output.push_str(&format!("path={}\n", path.display()));
+        }
+    }
+
+    output
+}
+
+pub fn format_repository_list_xml(repos: &[&RepositoryDefinition]) -> String {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<repositories>\n");
+    for repo in repos {
+        xml.push_str(&format!(
+            "  <repository name=\"{}\" type=\"{}\" priority=\"{}\" />\n",
+            escape_xml(&repo.name),
+            repo_type_to_string(&repo.repo_type),
+            repo.priority
+        ));
+    }
+    xml.push_str("</repositories>\n");
+    xml
+}
+
+pub fn format_repository_details_xml(repo: &RepositoryDefinition) -> String {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<repository>\n");
+    xml.push_str(&format!("  <name>{}</name>\n", escape_xml(&repo.name)));
+    xml.push_str(&format!(
+        "  <type>{}</type>\n",
+        repo_type_to_string(&repo.repo_type)
+    ));
+    xml.push_str(&format!("  <priority>{}</priority>\n", repo.priority));
+
+    match &repo.config {
+        RepositoryConfig::GitMarketplace { url, branch, tag } => {
+            xml.push_str("  <config kind=\"git-marketplace\">\n");
+            xml.push_str(&format!("    <url>{}</url>\n", escape_xml(url)));
+            if let Some(b) = branch {
+                xml.push_str(&format!("    <branch>{}</branch>\n", escape_xml(b)));
+            }
+            if let Some(t) = tag {
+                xml.push_str(&format!("    <tag>{}</tag>\n", escape_xml(t)));
+            }
+            xml.push_str("  </config>\n");
+        }
+        RepositoryConfig::HttpRegistry { index_url } => {
+            xml.push_str("  <config kind=\"http-registry\">\n");
+            xml.push_str(&format!(
+                "    <index_url>{}</index_url>\n",
+                escape_xml(index_url)
+            ));
+            xml.push_str("  </config>\n");
+        }
+        RepositoryConfig::ZipUrl { base_url } => {
+            xml.push_str("  <config kind=\"zip-url\">\n");
+            xml.push_str(&format!(
+                "    <base_url>{}</base_url>\n",
+                escape_xml(base_url)
+            ));
+            xml.push_str("  </config>\n");
+        }
+        RepositoryConfig::Local { path } => {
+            xml.push_str("  <config kind=\"local\">\n");
+            xml.push_str(&format!(
+                "    <path>{}</path>\n",
+                escape_xml(&path.display().to_string())
+            ));
+            xml.push_str("  </config>\n");
+        }
+    }
+
+    xml.push_str("</repository>\n");
+    xml
+}
+
+fn summaries_to_xml(summaries: &[fastskill::core::registry_index::SkillSummary]) -> String {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<skills>\n");
+    for summary in summaries {
+        xml.push_str(&format!(
+            "  <skill scope=\"{}\" name=\"{}\">\n",
+            escape_xml(&summary.scope),
+            escape_xml(&summary.name)
+        ));
+        xml.push_str(&format!(
+            "    <description>{}</description>\n",
+            escape_xml(&summary.description)
+        ));
+        xml.push_str(&format!(
+            "    <latest_version>{}</latest_version>\n",
+            escape_xml(&summary.latest_version)
+        ));
+        if let Some(published_at) = summary.published_at {
+            xml.push_str(&format!(
+                "    <published>{}</published>\n",
+                published_at.format("%Y-%m-%d")
+            ));
+        }
+        xml.push_str("  </skill>\n");
+    }
+    xml.push_str("</skills>\n");
+    xml
+}
+
+fn escape_xml(input: &str) -> String {
+    input
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 }
