@@ -29,6 +29,10 @@ pub struct RemoveArgs {
     /// Force removal without confirmation
     #[arg(short, long)]
     pub force: bool,
+
+    /// Skills directory path (overrides default discovery)
+    #[arg(long, help = "Skills directory path")]
+    pub skills_dir: Option<std::path::PathBuf>,
 }
 
 /// Check if a skill exists in the registry
@@ -317,6 +321,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec![],
             force: false,
+            skills_dir: None,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -342,6 +347,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["invalid@skill@id".to_string()],
             force: true,
+            skills_dir: None,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -367,6 +373,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["nonexistent@1.0.0".to_string()],
             force: true,
+            skills_dir: None,
         };
 
         // This should fail because the skill doesn't exist
@@ -439,6 +446,7 @@ source = { path = ".claude/skills/test-skill" }
         let args = RemoveArgs {
             skill_ids: vec!["test-skill".to_string()],
             force: true,
+            skills_dir: None,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -517,6 +525,7 @@ source = { path = ".claude/skills/test-skill" }
         let args = RemoveArgs {
             skill_ids: vec!["test-skill".to_string()],
             force: true,
+            skills_dir: None,
         };
 
         let result = execute_remove(&service, args, false).await;

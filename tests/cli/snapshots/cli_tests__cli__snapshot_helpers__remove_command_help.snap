@@ -10,8 +10,9 @@ Arguments:
   [SKILL_IDS]...  Skill IDs to remove
 
 Options:
-  -f, --force  Force removal without confirmation
-  -h, --help   Print help
+  -f, --force                    Force removal without confirmation
+      --skills-dir <SKILLS_DIR>  Skills directory path
+  -h, --help                     Print help
 
 Uninstalls skills completely - this is the only way to stop using skills.
 Removes from both local installation and project manifest (skill-project.toml).

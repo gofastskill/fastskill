@@ -114,8 +114,17 @@ impl Cli {
         let command = self.command;
         let global = self.global;
 
+        // Extract skills_dir override from command if present
+        let skills_dir_override = match &command {
+            Some(Commands::List(args)) => args.skills_dir.clone(),
+            Some(Commands::Search(args)) => args.skills_dir.clone(),
+            Some(Commands::Remove(args)) => args.skills_dir.clone(),
+            Some(Commands::Reindex(args)) => args.skills_dir.clone(),
+            _ => None,
+        };
+
         // Create service configuration with resolved skills directory
-        let config = create_service_config(global, None, None)?;
+        let config = create_service_config(global, skills_dir_override, None)?;
 
         if self.verbose {
             println!(

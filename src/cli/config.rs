@@ -157,11 +157,30 @@ pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
 /// Create service configuration with resolved skills directory
 pub fn create_service_config(
     global: bool,
-    _skills_dir_override: Option<PathBuf>,
+    skills_dir_override: Option<PathBuf>,
     _sources_path_override: Option<PathBuf>,
 ) -> CliResult<ServiceConfig> {
-    // Resolve skills storage directory from skill-project.toml or global location
-    let resolved_dir = resolve_skills_storage_directory(global)?;
+    // Resolve skills storage directory with precedence:
+    // 1. skills_dir_override (if provided)
+    // 2. global flag
+    // 3. project config
+    let resolved_dir = if let Some(override_dir) = skills_dir_override {
+        // Warn if both --skills-dir and --global are provided
+        if global {
+            tracing::warn!(
+                "Both --skills-dir and --global provided; using --skills-dir: {}",
+                override_dir.display()
+            );
+        }
+        debug!(
+            "Using skills directory from --skills-dir override: {}",
+            override_dir.display()
+        );
+        override_dir
+    } else {
+        // Fall back to normal resolution
+        resolve_skills_storage_directory(global)?
+    };
 
     // Load configuration from file if available
     let config_file = crate::cli::config_file::load_config()?;

@@ -33,6 +33,10 @@ pub struct ShowArgs {
     /// Shorthand for --format json
     #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
+
+    /// Skills directory path (overrides default discovery)
+    #[arg(long, help = "Skills directory path")]
+    pub skills_dir: Option<std::path::PathBuf>,
 }
 
 pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
@@ -266,6 +270,7 @@ skills_directory = ".claude/skills"
             tree: false,
             format: None,
             json: false,
+            skills_dir: None,
         };
 
         // Should not crash even if no lock file exists
@@ -286,6 +291,7 @@ skills_directory = ".claude/skills"
             tree: false,
             format: None,
             json: false,
+            skills_dir: None,
         };
 
         let result = execute_show(args).await;
@@ -306,6 +312,7 @@ skills_directory = ".claude/skills"
             tree: false,
             format: None,
             json: false,
+            skills_dir: None,
         };
 
         let result = execute_show(args).await;
@@ -367,6 +374,7 @@ source = { path = ".claude/skills/test-skill" }
                 tree: false,
                 format: None,
                 json: false,
+                skills_dir: None,
             };
             let result = execute_show(args).await;
             assert!(result.is_ok() || result.is_err());
@@ -391,6 +399,7 @@ Description: A test skill for coverage
                 tree: false,
                 format: None,
                 json: false,
+                skills_dir: None,
             };
             let result = execute_show(args).await;
             assert!(result.is_ok() || result.is_err());

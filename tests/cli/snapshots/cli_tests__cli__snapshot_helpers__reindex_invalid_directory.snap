@@ -3,4 +3,4 @@ source: tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 FastSkill [VERSION]
-Error: Configuration error: Skills directory does not exist: /nonexistent/path
+Error: Service error: Custom error: Failed to create storage directory: Permission denied (os error 13)
