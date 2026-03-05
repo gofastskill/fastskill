@@ -138,7 +138,7 @@ pub enum Commands {
     /// Search skills by query with explicit scope flags (remote default)
     #[command(
         about = "Search skills by query with explicit scope flags (remote default)",
-        after_help = "Examples:\n  fastskill search \"text processing\"\n  fastskill search \"text processing\" --local\n  fastskill search \"pptx\" --repo my-repo\n  fastskill search \"query\" -l 5 --json"
+        after_help = "Examples:\n  fastskill search \"text processing\"\n  fastskill search \"text processing\" --local\n  fastskill search \"pptx\" --repository my-repo\n  fastskill search \"query\" -l 5 --json"
     )]
     Search(search::SearchArgs),
 

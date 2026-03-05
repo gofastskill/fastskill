@@ -54,6 +54,13 @@ impl PublishContext {
         // Validate mutually exclusive flags
         validate_publish_args(&args)?;
 
+        // Emit TERM_001 warning for URL --target
+        if let Some(target) = &args.target {
+            if Url::parse(target).is_ok() {
+                eprintln!("[TERM_001] --target URL is deprecated. Use --registry <name> instead.");
+            }
+        }
+
         // Determine target URL or path
         let target = determine_target(&args)?;
         let is_url = Url::parse(&target).is_ok();
@@ -575,5 +582,54 @@ Description: A test skill for coverage
         let result = execute_publish(args).await;
         // May fail due to missing S3 config or other issues, but should process the zip
         assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_publish_context_url_target_emits_term_001() {
+        let temp_dir = TempDir::new().unwrap();
+        let artifacts_dir = temp_dir.path().join("artifacts");
+        fs::create_dir_all(&artifacts_dir).unwrap();
+
+        create_test_zip(&artifacts_dir, "test-skill");
+
+        let args = PublishArgs {
+            artifacts: artifacts_dir,
+            registry: None,
+            target: Some("https://registry.example.com".to_string()),
+            wait: false,
+            no_wait: true,
+            max_wait: 300,
+        };
+
+        // Note: TERM_001 warning is emitted to stderr during PublishContext::new
+        // This test verifies the context creation succeeds with a URL target
+        let result = PublishContext::new(args);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_publish_context_local_path_no_warning() {
+        let temp_dir = TempDir::new().unwrap();
+        let artifacts_dir = temp_dir.path().join("artifacts");
+        fs::create_dir_all(&artifacts_dir).unwrap();
+
+        let target_dir = temp_dir.path().join("target");
+        fs::create_dir_all(&target_dir).unwrap();
+
+        create_test_zip(&artifacts_dir, "test-skill");
+
+        let args = PublishArgs {
+            artifacts: artifacts_dir,
+            registry: None,
+            target: Some(target_dir.display().to_string()),
+            wait: false,
+            no_wait: true,
+            max_wait: 300,
+        };
+
+        // Note: No TERM_001 warning is emitted for local path targets
+        // This test verifies the context creation succeeds with a local path
+        let result = PublishContext::new(args);
+        assert!(result.is_ok());
     }
 }
