@@ -198,3 +198,105 @@ fn test_show_invalid_skill_id_format() {
         &cli_snapshot_settings(),
     );
 }
+
+#[test]
+fn test_show_installed_locked_conflict() {
+    let result = run_fastskill_command(&["show", "--installed", "--locked"], None);
+
+    assert!(!result.success);
+    assert!(result.stderr.contains("--installed") && result.stderr.contains("--locked"));
+}
+
+#[test]
+fn test_show_locked_with_skills_dir_validation() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["show", "--locked", "--skills-dir", "/tmp/skills"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success);
+    assert!(
+        result.stderr.contains("--locked")
+            && result.stderr.contains("--skills-dir")
+            && result.stderr.contains("does not support")
+    );
+}
+
+#[test]
+fn test_show_locked_with_global_validation() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["--global", "show", "--locked"], Some(temp_dir.path()));
+
+    assert!(!result.success);
+    assert!(
+        result.stderr.contains("--locked")
+            && result.stderr.contains("--global")
+            && result.stderr.contains("does not support")
+    );
+}
+
+#[test]
+fn test_show_locked_mode_no_lock_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["show", "--locked"], Some(temp_dir.path()));
+
+    assert!(!result.success);
+    assert!(result.stderr.contains("skills.lock") || result.stderr.contains("lock"));
+}
+
+#[test]
+fn test_show_installed_mode_explicit() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    let skill_content = r#"---
+name: test-skill
+description: A test skill for installed mode
+version: 1.0.0
+---
+# Test Skill
+"#;
+    fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["show", "--installed"], Some(temp_dir.path()));
+
+    assert!(result.success);
+    assert!(result.stdout.contains("test-skill"));
+}

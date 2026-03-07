@@ -209,3 +209,37 @@ fn test_list_conflicting_flags_error() {
         &cli_snapshot_settings(),
     );
 }
+
+#[test]
+fn test_list_skills_dir_with_global_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    let custom_dir = temp_dir.path().join("custom-skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(&custom_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "--global",
+            "list",
+            "--skills-dir",
+            custom_dir.to_str().unwrap(),
+        ],
+        Some(temp_dir.path()),
+    );
+
+    assert!(result.success);
+    assert!(
+        result.stderr.contains("warning")
+            && result.stderr.contains("--skills-dir")
+            && result.stderr.contains("--global"),
+        "Expected warning about --skills-dir and --global, got: {}",
+        result.stderr
+    );
+}
