@@ -24,7 +24,6 @@ struct AddContext<'a> {
     force: bool,
     editable: bool,
     groups: Vec<String>,
-    verbose: bool,
     global: bool,
 }
 
@@ -345,12 +344,7 @@ fn ensure_manifest() -> CliResult<()> {
     Ok(())
 }
 
-pub async fn execute_add(
-    service: &FastSkillService,
-    args: AddArgs,
-    verbose: bool,
-    global: bool,
-) -> CliResult<()> {
+pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
     ensure_manifest()?;
     let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
     let ctx = AddContext {
@@ -358,7 +352,6 @@ pub async fn execute_add(
         force: args.force,
         editable: args.editable,
         groups,
-        verbose,
         global,
     };
     let source = resolve_source(&args);
@@ -446,7 +439,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
     let _temp_dir = extract_zip_to_temp(&canonical_zip_path)?;
     let extract_path = _temp_dir.path();
     let skill_path = find_skill_in_directory(extract_path)?;
-    validate_skill_structure(&skill_path, ctx.verbose)?;
+    validate_skill_structure(&skill_path)?;
     let skill_def = create_skill_from_path(&skill_path, "zip", false)?;
     let version = skill_def.version.clone();
     let target = InstallTarget {
@@ -470,7 +463,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
 
 async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
-    validate_skill_structure(folder_path, ctx.verbose)?;
+    validate_skill_structure(folder_path)?;
     let skill_def = create_skill_from_path(folder_path, "local", ctx.editable)?;
 
     // Canonicalize the folder path to get absolute path
@@ -552,7 +545,7 @@ async fn add_from_git(
     info!("Adding skill from git URL: {}", git_url);
     let (_temp_dir, skill_path, skill_def, branch_opt, tag_opt) =
         clone_and_validate_skill(git_url, branch, tag).await?;
-    validate_skill_structure(&skill_path, ctx.verbose)?;
+    validate_skill_structure(&skill_path)?;
     let git_info = parse_git_url(git_url)?;
     let target = InstallTarget {
         storage_dir: ctx
@@ -622,7 +615,6 @@ async fn download_registry_package(
     repo_client: &(dyn fastskill::core::repository::RepositoryClient + Send + Sync),
     skill_id_full: &str,
     version: &str,
-    verbose: bool,
 ) -> CliResult<(TempDir, PathBuf, SkillDefinition)> {
     let zip_data = repo_client
         .download(skill_id_full, version)
@@ -646,7 +638,7 @@ async fn download_registry_package(
             _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
         })?;
     let skill_path = find_skill_in_directory(&extract_path)?;
-    validate_skill_structure(&skill_path, verbose)?;
+    validate_skill_structure(&skill_path)?;
     let skill_def = create_skill_from_path(&skill_path, "registry", false)?;
     Ok((temp_dir, skill_path, skill_def))
 }
@@ -696,8 +688,7 @@ async fn add_from_registry(ctx: &AddContext<'_>, skill_id_input: &str) -> CliRes
         skill_id_full, version
     );
     let (_temp_dir, skill_path, skill_def) =
-        download_registry_package(repo_client.as_ref(), &skill_id_full, &version, ctx.verbose)
-            .await?;
+        download_registry_package(repo_client.as_ref(), &skill_id_full, &version).await?;
 
     if skill_def.id.as_str() != expected_id {
         return Err(CliError::Config(format!(
@@ -927,7 +918,7 @@ mod tests {
             group: None,
             recursive: false,
         };
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
     }
 
@@ -985,7 +976,7 @@ mod tests {
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
         assert!(
             result.is_err(),
             "Expected error when no manifest: {:?}",
@@ -1059,7 +1050,7 @@ Name: test-skill
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
         // May succeed or fail depending on various factors, but should exercise the code path
         assert!(result.is_ok() || result.is_err());
     }
@@ -1145,7 +1136,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
         assert!(result.is_ok(), "Add failed: {:?}", result);
 
         // Verify skill-project.toml contains absolute path
@@ -1252,7 +1243,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
         assert!(result.is_ok(), "Add failed: {:?}", result);
 
         // Verify skill-project.toml contains the absolute path
@@ -1327,7 +1318,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
 
         assert!(
             result.is_ok(),
@@ -1409,7 +1400,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
 
         assert!(result.is_ok(), "Add should succeed: {:?}", result);
 
@@ -1478,7 +1469,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
 
         assert!(result.is_ok(), "Add should succeed: {:?}", result);
 
@@ -1546,7 +1537,7 @@ skills_directory = ".claude/skills"
             recursive: false,
         };
 
-        let result = execute_add(&service, args, false, false).await;
+        let result = execute_add(&service, args, false).await;
 
         assert!(result.is_err(), "Should fail due to invalid name");
     }

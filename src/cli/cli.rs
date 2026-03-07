@@ -126,13 +126,6 @@ impl Cli {
         // Create service configuration with resolved skills directory
         let config = create_service_config(global, skills_dir_override, None)?;
 
-        if self.verbose {
-            println!(
-                "Using skills directory: {}",
-                config.skill_storage_path.display()
-            );
-        }
-
         // Initialize service
         let mut service = FastSkillService::new(config)
             .await
@@ -141,9 +134,7 @@ impl Cli {
 
         // Handle commands
         match command {
-            Some(Commands::Add(args)) => {
-                add::execute_add(&service, args, self.verbose, global).await
-            }
+            Some(Commands::Add(args)) => add::execute_add(&service, args, global).await,
             Some(Commands::Analyze(args)) => analyze::execute_analyze(&service, args).await,
             Some(Commands::Disable(args)) => disable::execute_disable(&service, args).await,
             Some(Commands::List(args)) => list::execute_list(&service, args, global).await,
