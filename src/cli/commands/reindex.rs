@@ -54,11 +54,15 @@ pub struct ReindexArgs {
     max_concurrent: usize,
 
     /// Show progress bars and processing details
-    #[arg(long, help = "Show progress bars and processing details")]
+    #[arg(
+        long,
+        conflicts_with = "no_progress",
+        help = "Show progress bars and processing details"
+    )]
     progress: bool,
 
     /// Suppress progress output, show only final summary
-    #[arg(long, help = "Suppress progress output")]
+    #[arg(long, conflicts_with = "progress", help = "Suppress progress output")]
     no_progress: bool,
 }
 
@@ -175,6 +179,13 @@ impl ProgressTracker {
 }
 
 pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> CliResult<()> {
+    // Runtime validation guard for progress flags (defense-in-depth)
+    if args.progress && args.no_progress {
+        return Err(CliError::Validation(
+            "--progress and --no-progress cannot be used together".to_string(),
+        ));
+    }
+
     // Check if embedding is configured
     let embedding_config = service.config().embedding.as_ref().ok_or_else(|| {
         let searched_paths = crate::cli::config_file::get_config_search_paths();

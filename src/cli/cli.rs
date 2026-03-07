@@ -56,8 +56,8 @@ impl Cli {
         // Display version on initialization
         println!("FastSkill {}", fastskill::VERSION);
 
-        // Initialize logging
-        fastskill::init_logging();
+        // Initialize logging with verbose flag
+        fastskill::init_logging_with_verbose(self.verbose);
 
         // Handle version command early (no service needed)
         if let Some(Commands::Version(args)) = self.command {
@@ -78,7 +78,7 @@ impl Cli {
         }
 
         if let Some(Commands::Show(args)) = self.command {
-            return show::execute_show(args).await;
+            return show::execute_show(args, self.global).await;
         }
 
         if let Some(Commands::Package(args)) = self.command {

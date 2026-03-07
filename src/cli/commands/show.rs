@@ -37,16 +37,65 @@ pub struct ShowArgs {
     /// Skills directory path (overrides default discovery)
     #[arg(long, help = "Skills directory path")]
     pub skills_dir: Option<std::path::PathBuf>,
+
+    /// Read from skills.lock only (do not initialize service)
+    #[arg(
+        long,
+        conflicts_with = "installed",
+        help = "Read from skills.lock only"
+    )]
+    pub locked: bool,
+
+    /// Read installed state from storage (default mode)
+    #[arg(
+        long,
+        conflicts_with = "locked",
+        help = "Read installed state from storage"
+    )]
+    pub installed: bool,
 }
 
-pub async fn execute_show(args: ShowArgs) -> CliResult<()> {
+pub async fn execute_show(args: ShowArgs, global: bool) -> CliResult<()> {
     let format = validate_format_args(&args.format, args.json)?;
 
-    let (config, lock_opt) = load_config_and_lock()?;
-    match lock_opt {
-        Some(lock) => run_with_lock(lock, &args, &config, format)?,
-        None => run_with_service(args, format).await?,
+    // Validate flag combinations
+    validate_show_args(&args, global)?;
+
+    if args.locked {
+        // Locked mode: read only from skills.lock
+        let (config, lock_opt) = load_config_and_lock()?;
+        match lock_opt {
+            Some(lock) => run_with_lock(lock, &args, &config, format)?,
+            None => {
+                return Err(CliError::Config(
+                    "No skills.lock found. Run 'fastskill install' to generate one.".to_string(),
+                ));
+            }
+        }
+    } else {
+        // Installed mode (default): use FastSkillService
+        run_with_service(&args, format, global).await?;
     }
+    Ok(())
+}
+
+fn validate_show_args(args: &ShowArgs, global: bool) -> CliResult<()> {
+    // --locked + --skills-dir is invalid
+    if args.locked && args.skills_dir.is_some() {
+        return Err(CliError::Validation(
+            "--locked mode does not support --skills-dir (lock file uses project-relative paths)"
+                .to_string(),
+        ));
+    }
+
+    // --locked + --global is invalid
+    if args.locked && global {
+        return Err(CliError::Validation(
+            "--locked mode does not support --global (lock file uses project-relative paths)"
+                .to_string(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -120,8 +169,8 @@ fn print_lock_list(lock: &SkillsLock, tree: bool, format: OutputFormat) -> CliRe
     Ok(())
 }
 
-async fn run_with_service(args: ShowArgs, format: OutputFormat) -> CliResult<()> {
-    let config = create_service_config(false, None, None)?;
+async fn run_with_service(args: &ShowArgs, format: OutputFormat, global: bool) -> CliResult<()> {
+    let config = create_service_config(global, args.skills_dir.clone(), None)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;
@@ -271,10 +320,12 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             skills_dir: None,
+            locked: false,
+            installed: false,
         };
 
         // Should not crash even if no lock file exists
-        let result = execute_show(args).await;
+        let result = execute_show(args, false).await;
         // Result may be Ok or Err depending on service initialization, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
 
@@ -292,9 +343,11 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             skills_dir: None,
+            locked: false,
+            installed: false,
         };
 
-        let result = execute_show(args).await;
+        let result = execute_show(args, false).await;
         // Should fail with validation error or config error
         assert!(result.is_err());
 
@@ -313,9 +366,11 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             skills_dir: None,
+            locked: false,
+            installed: false,
         };
 
-        let result = execute_show(args).await;
+        let result = execute_show(args, false).await;
         // Should fail because skill doesn't exist or invalid format
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         match &result {
@@ -375,8 +430,10 @@ source = { path = ".claude/skills/test-skill" }
                 format: None,
                 json: false,
                 skills_dir: None,
+                locked: true,
+                installed: false,
             };
-            let result = execute_show(args).await;
+            let result = execute_show(args, false).await;
             assert!(result.is_ok() || result.is_err());
         })
         .await;
@@ -400,10 +457,67 @@ Description: A test skill for coverage
                 format: None,
                 json: false,
                 skills_dir: None,
+                locked: false,
+                installed: false,
             };
-            let result = execute_show(args).await;
+            let result = execute_show(args, false).await;
             assert!(result.is_ok() || result.is_err());
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_validate_show_args_locked_with_skills_dir() {
+        let args = ShowArgs {
+            skill_id: None,
+            tree: false,
+            format: None,
+            json: false,
+            skills_dir: Some(PathBuf::from("/tmp/skills")),
+            locked: true,
+            installed: false,
+        };
+        let result = validate_show_args(&args, false);
+        assert!(result.is_err());
+        if let Err(CliError::Validation(msg)) = result {
+            assert!(msg.contains("--locked mode does not support --skills-dir"));
+        } else {
+            panic!("Expected Validation error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_show_args_locked_with_global() {
+        let args = ShowArgs {
+            skill_id: None,
+            tree: false,
+            format: None,
+            json: false,
+            skills_dir: None,
+            locked: true,
+            installed: false,
+        };
+        let result = validate_show_args(&args, true);
+        assert!(result.is_err());
+        if let Err(CliError::Validation(msg)) = result {
+            assert!(msg.contains("--locked mode does not support --global"));
+        } else {
+            panic!("Expected Validation error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_show_args_installed_mode_valid() {
+        let args = ShowArgs {
+            skill_id: None,
+            tree: false,
+            format: None,
+            json: false,
+            skills_dir: Some(PathBuf::from("/tmp/skills")),
+            locked: false,
+            installed: true,
+        };
+        let result = validate_show_args(&args, false);
+        assert!(result.is_ok());
     }
 }

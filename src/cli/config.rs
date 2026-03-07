@@ -167,10 +167,12 @@ pub fn create_service_config(
     let resolved_dir = if let Some(override_dir) = skills_dir_override {
         // Warn if both --skills-dir and --global are provided
         if global {
-            tracing::warn!(
+            let warning_msg = format!(
                 "Both --skills-dir and --global provided; using --skills-dir: {}",
                 override_dir.display()
             );
+            eprintln!("warning: {}", warning_msg);
+            tracing::warn!("{}", warning_msg);
         }
         debug!(
             "Using skills directory from --skills-dir override: {}",
