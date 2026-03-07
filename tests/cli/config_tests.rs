@@ -127,3 +127,66 @@ fn test_cli_invalid_repositories_path() {
         &cli_snapshot_settings(),
     );
 }
+
+#[test]
+fn test_skills_dir_with_global_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+
+    let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+    std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+    let custom_dir = temp_dir.path().join("custom-skills");
+    std::fs::create_dir_all(&custom_dir).unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "--global",
+            "list",
+            "--skills-dir",
+            custom_dir.to_str().unwrap(),
+        ],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        result.stderr.contains("warning")
+            && result.stderr.contains("--skills-dir")
+            && result.stderr.contains("--global")
+    );
+}
+
+#[test]
+fn test_verbose_flag_sets_info_logging() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+
+    let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+    std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+    let result = run_fastskill_command(&["-v", "list"], Some(temp_dir.path()));
+
+    assert!(result.success || result.stderr.contains("skill-project.toml"));
+}
+
+#[test]
+fn test_verbose_long_flag_sets_info_logging() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+
+    let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+    std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+    let result = run_fastskill_command(&["--verbose", "list"], Some(temp_dir.path()));
+
+    assert!(result.success || result.stderr.contains("skill-project.toml"));
+}

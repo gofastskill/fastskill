@@ -5,7 +5,8 @@
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 use super::snapshot_helpers::{
-    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command_with_env,
+    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
+    run_fastskill_command_with_env,
 };
 use std::fs;
 use tempfile::TempDir;
@@ -225,4 +226,12 @@ embedding_model = "text-embedding-3-small"
         &format!("{}{}", result.stdout, result.stderr),
         &cli_snapshot_settings(),
     );
+}
+
+#[test]
+fn test_reindex_progress_conflict() {
+    let result = run_fastskill_command(&["reindex", "--progress", "--no-progress"], None);
+
+    assert!(!result.success);
+    assert!(result.stderr.contains("--progress") && result.stderr.contains("--no-progress"));
 }

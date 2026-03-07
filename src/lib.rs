@@ -90,12 +90,22 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Initialize logging for the service layer (safe for testing)
 pub fn init_logging() {
+    init_logging_with_verbose(false)
+}
+
+/// Initialize logging for the service layer with optional verbose mode
+pub fn init_logging_with_verbose(verbose: bool) {
     // Only initialize logging once
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| {
         use tracing_subscriber::EnvFilter;
 
-        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "fastskill=warn".into());
+        let default_level = if verbose {
+            "fastskill=info"
+        } else {
+            "fastskill=warn"
+        };
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| default_level.into());
 
         let subscriber = tracing_subscriber::fmt().with_env_filter(filter).finish();
 
