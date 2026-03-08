@@ -102,14 +102,14 @@ pub enum Commands {
     /// Package skills into ZIP artifacts
     #[command(
         about = "Package skills into ZIP artifacts with versioning",
-        after_help = "Examples:\n  fastskill package\n  fastskill package --skills pptx --output ./out"
+        after_help = "PRESETS (recommended):\n  fastskill package auto              # Auto-detect changed skills\n  fastskill package skill <id>        # Package specific skill(s)\n\nADVANCED OPTIONS:\n  fastskill package --detect-changes  # Hash-based change detection\n  fastskill package --git-diff base head  # Git-based change detection\n  fastskill package --skills id1 id2  # Package specific skills\n  fastskill package --force           # Package all skills"
     )]
     Package(package::PackageArgs),
 
-    /// Publish artifacts to blob storage
+    /// Publish artifacts to registry API or local folder
     #[command(
-        about = "Publish artifacts to S3 blob storage",
-        after_help = "Examples:\n  fastskill publish\n  fastskill publish --target ./local-folder"
+        about = "Publish artifacts to remote API or local folder",
+        after_help = "TARGET MODES (mutually exclusive):\n  --api-url <url>     Publish to API endpoint\n  --local-dir <path>   Publish to local directory\n  --registry <name>    Use configured repository\n  (default)            Use FASTSKILL_API_URL environment variable\n\nEXAMPLES:\n  fastskill publish --api-url https://example.com\n  fastskill publish --local-dir ./output\n  fastskill publish --registry official --wait"
     )]
     Publish(publish::PublishArgs),
 
