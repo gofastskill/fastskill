@@ -1,6 +1,5 @@
 ---
 source: tests/cli/snapshot_helpers.rs
-assertion_line: 253
 expression: normalized
 ---
 FastSkill CLI - Manage skills and run operations
@@ -19,7 +18,7 @@ Commands:
   reindex      Reindex the vector index for semantic search
   remove       Uninstall skills (only way to stop using skills, removes from manifest and local installation)
   package      Package skills into ZIP artifacts with versioning
-  publish      Publish artifacts to S3 blob storage
+  publish      Publish artifacts to remote API or local folder
   read         Stream skill documentation (SKILL.md content) to stdout
   repos        Manage repository list and browse remote skill catalog.
   search       Search skills by query with explicit scope flags (remote default)

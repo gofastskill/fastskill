@@ -2,7 +2,7 @@
 
 use crate::cli::error::{CliError, CliResult};
 use crate::cli::utils::messages;
-use clap::Args;
+use clap::{Args, Subcommand};
 use fastskill::core::build_cache::BuildCache;
 use fastskill::core::change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
@@ -14,13 +14,48 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 use walkdir::WalkDir;
 
+/// Package preset subcommands for simplified workflows
+#[derive(Debug, Clone, Subcommand)]
+pub enum PackagePreset {
+    /// Auto-detect and package changed skills (hash-based detection)
+    Auto {
+        /// Force package all skills regardless of changes
+        #[arg(long)]
+        force: bool,
+    },
+    /// Package specific skills by ID
+    Skill {
+        /// Skill IDs to package
+        #[arg(required = true)]
+        skills: Vec<String>,
+        /// Bump version type (major, minor, patch)
+        #[arg(long, value_enum)]
+        bump: Option<BumpTypeArg>,
+    },
+}
+
 /// Package skills into ZIP artifacts
 ///
 /// Reads skill metadata from skill-project.toml [metadata] section (skill-level context).
 /// Includes skill dependencies from skill-project.toml [dependencies] if present.
+///
+/// PRESETS (recommended for common workflows):
+///   fastskill package auto              # Auto-detect changed skills
+///   fastskill package skill <id>        # Package specific skill(s)
+///
+/// ADVANCED OPTIONS (for power users):
+///   fastskill package --detect-changes  # Hash-based change detection
+///   fastskill package --git-diff base head  # Git-based change detection
+///   fastskill package --skills id1 id2  # Package specific skills
+///   fastskill package --force           # Package all skills
 #[derive(Debug, Args)]
 pub struct PackageArgs {
-    /// Auto-detect changed skills
+    /// Package preset command
+    #[command(subcommand)]
+    pub preset: Option<PackagePreset>,
+
+    // ===== Advanced options (grouped for help clarity) =====
+    /// Auto-detect changed skills (hash-based)
     #[arg(long)]
     pub detect_changes: bool,
 
@@ -61,7 +96,7 @@ pub struct PackageArgs {
     pub recursive: bool,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum)]
+#[derive(Debug, Clone, PartialEq, clap::ValueEnum)]
 pub enum BumpTypeArg {
     Major,
     Minor,
@@ -78,8 +113,57 @@ impl From<BumpTypeArg> for BumpType {
     }
 }
 
-pub async fn execute_package(args: PackageArgs) -> CliResult<()> {
+/// Validate package arguments for conflicting preset and manual flags (PKG_001)
+fn validate_package_args(args: &PackageArgs) -> CliResult<()> {
+    if args.preset.is_some() {
+        let has_conflicting_flags =
+            args.skills.is_some() || args.detect_changes || args.git_diff.is_some() || args.force;
+
+        if has_conflicting_flags {
+            return Err(CliError::Validation(
+                "PKG_001: Cannot combine preset with manual flags. Use preset OR advanced flags, not both."
+                    .to_string(),
+            ));
+        }
+    }
+
+    match &args.preset {
+        Some(PackagePreset::Skill { skills, .. }) if skills.is_empty() => {
+            return Err(CliError::Validation(
+                "PKG_002: Package skill preset requires at least one skill ID".to_string(),
+            ));
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Map preset to equivalent flag combinations
+fn map_preset_to_flags(preset: &PackagePreset, args: &mut PackageArgs) {
+    match preset {
+        PackagePreset::Auto { force } => {
+            args.detect_changes = true;
+            args.force = *force;
+        }
+        PackagePreset::Skill { skills, bump } => {
+            args.skills = Some(skills.clone());
+            args.bump = bump.clone();
+        }
+    }
+}
+
+pub async fn execute_package(mut args: PackageArgs) -> CliResult<()> {
     info!("Starting package command");
+
+    // Validate and apply preset if provided
+    validate_package_args(&args)?;
+
+    // Extract and apply preset before mutation
+    let preset = args.preset.clone();
+    if let Some(ref p) = preset {
+        map_preset_to_flags(p, &mut args);
+    }
 
     // Determine which skills to package
     let skills_to_package = if let Some(skill_ids) = args.skills {
@@ -354,6 +438,7 @@ mod tests {
         let nonexistent_dir = temp_dir.path().join("nonexistent");
 
         let args = PackageArgs {
+            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -378,6 +463,7 @@ mod tests {
         fs::create_dir_all(&skills_dir).unwrap();
 
         let args = PackageArgs {
+            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -402,6 +488,7 @@ mod tests {
         fs::create_dir_all(&skills_dir).unwrap();
 
         let args = PackageArgs {
+            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: Some(vec!["test-skill".to_string()]),
@@ -501,5 +588,144 @@ mod tests {
 
         let skills = get_all_skills_recursive(&nonexistent_dir).unwrap();
         assert_eq!(skills.len(), 0);
+    }
+
+    #[test]
+    fn test_validate_package_args_preset_conflict_pkg_001() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Auto { force: false }),
+            detect_changes: true, // Conflict!
+            git_diff: None,
+            skills: None,
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        let result = validate_package_args(&args);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PKG_001")));
+    }
+
+    #[test]
+    fn test_validate_package_args_preset_with_skills_conflict() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Auto { force: false }),
+            detect_changes: false,
+            git_diff: None,
+            skills: Some(vec!["skill1".to_string()]), // Conflict!
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        let result = validate_package_args(&args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_package_args_preset_skill_empty_pkg_002() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Skill {
+                skills: vec![], // Empty skills list
+                bump: None,
+            }),
+            detect_changes: false,
+            git_diff: None,
+            skills: None,
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        let result = validate_package_args(&args);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PKG_002")));
+    }
+
+    #[test]
+    fn test_validate_package_args_preset_valid() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Auto { force: true }),
+            detect_changes: false,
+            git_diff: None,
+            skills: None,
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        let result = validate_package_args(&args);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_map_preset_to_flags_auto() {
+        let preset = PackagePreset::Auto { force: true };
+        let mut args = PackageArgs {
+            preset: None,
+            detect_changes: false,
+            git_diff: None,
+            skills: None,
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        map_preset_to_flags(&preset, &mut args);
+
+        assert!(args.detect_changes);
+        assert!(args.force);
+    }
+
+    #[test]
+    fn test_map_preset_to_flags_skill() {
+        let preset = PackagePreset::Skill {
+            skills: vec!["skill1".to_string(), "skill2".to_string()],
+            bump: Some(BumpTypeArg::Patch),
+        };
+        let mut args = PackageArgs {
+            preset: None,
+            detect_changes: false,
+            git_diff: None,
+            skills: None,
+            bump: None,
+            auto_bump: false,
+            output: PathBuf::from("./artifacts"),
+            force: false,
+            dry_run: false,
+            skills_dir: PathBuf::from("./skills"),
+            recursive: false,
+        };
+
+        map_preset_to_flags(&preset, &mut args);
+
+        assert_eq!(
+            args.skills,
+            Some(vec!["skill1".to_string(), "skill2".to_string()])
+        );
+        assert_eq!(args.bump, Some(BumpTypeArg::Patch));
     }
 }

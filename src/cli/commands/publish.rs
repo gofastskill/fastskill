@@ -10,30 +10,37 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 use url::Url;
 
-/// Publish artifacts to registry API or local folder
+/// Publish artifacts to remote API or local folder
+///
+/// MODES (mutually exclusive):
+///   --api-url <url>     Publish to API endpoint (e.g., https://api.example.com)
+///   --local-dir <path>  Publish to local directory
+///   --registry <name>   Use configured repository
+///   (default)           Use FASTSKILL_API_URL environment variable
 #[derive(Debug, Args)]
 pub struct PublishArgs {
     /// Package file or directory containing ZIP artifacts
     #[arg(short, long, default_value = "./artifacts")]
     pub artifacts: PathBuf,
 
-    /// Registry name from repositories.toml (mutually exclusive with --target)
+    /// Repository name from configuration (mutually exclusive with --api-url and --local-dir)
     #[arg(long)]
     pub registry: Option<String>,
 
-    /// Target: API URL (e.g., https://registry.example.com) or local folder path
-    /// If not specified, defaults to API mode using FASTSKILL_API_URL env var
-    /// Mutually exclusive with --registry
-    #[arg(short, long)]
-    pub target: Option<String>,
+    /// API URL for publishing (e.g., https://api.example.com)
+    /// Mutually exclusive with --local-dir and --registry
+    #[arg(long)]
+    pub api_url: Option<String>,
 
-    /// Wait for validation to complete (only for API mode, default: true)
+    /// Local directory for publishing
+    /// Mutually exclusive with --api-url and --registry
+    #[arg(long)]
+    pub local_dir: Option<String>,
+
+    /// Wait for validation to complete (default: true for API mode)
+    /// For local mode, this flag has no effect
     #[arg(long, default_value = "true")]
     pub wait: bool,
-
-    /// Don't wait for validation to complete (overrides --wait)
-    #[arg(long)]
-    pub no_wait: bool,
 
     /// Maximum wait time in seconds (default: 300)
     #[arg(long, default_value = "300")]
@@ -41,6 +48,7 @@ pub struct PublishArgs {
 }
 
 /// Context for publish operations
+#[derive(Debug)]
 struct PublishContext {
     target: String,
     packages: Vec<PathBuf>,
@@ -51,15 +59,8 @@ struct PublishContext {
 
 impl PublishContext {
     fn new(args: PublishArgs) -> CliResult<Self> {
-        // Validate mutually exclusive flags
-        validate_publish_args(&args)?;
-
-        // Emit TERM_001 warning for URL --target
-        if let Some(target) = &args.target {
-            if Url::parse(target).is_ok() {
-                eprintln!("[TERM_001] --target URL is deprecated. Use --registry <name> instead.");
-            }
-        }
+        // Validate mutually exclusive target flags (PUB_001)
+        validate_publish_target_exclusive(&args)?;
 
         // Determine target URL or path
         let target = determine_target(&args)?;
@@ -69,8 +70,8 @@ impl PublishContext {
         let packages = collect_packages(&args.artifacts)?;
         validate_packages(&packages, &args.artifacts)?;
 
-        // Apply --no-wait override
-        let wait = if args.no_wait { false } else { args.wait };
+        // Wait defaults to false (user must explicitly enable it)
+        let wait = args.wait;
 
         Ok(Self {
             target,
@@ -82,11 +83,16 @@ impl PublishContext {
     }
 }
 
-/// Validate publish arguments (mutual exclusivity)
-fn validate_publish_args(args: &PublishArgs) -> CliResult<()> {
-    if args.registry.is_some() && args.target.is_some() {
-        return Err(CliError::Config(
-            "Cannot specify both --registry and --target. Use one or the other.".to_string(),
+/// Validate that only one target mode is specified (PUB_001)
+fn validate_publish_target_exclusive(args: &PublishArgs) -> CliResult<()> {
+    let target_count = [&args.registry, &args.api_url, &args.local_dir]
+        .iter()
+        .filter(|t| t.is_some())
+        .count();
+
+    if target_count > 1 {
+        return Err(CliError::Validation(
+            "PUB_001: Cannot specify multiple target modes. Use only one of: --registry, --api-url, --local-dir".to_string(),
         ));
     }
     Ok(())
@@ -96,12 +102,17 @@ fn validate_publish_args(args: &PublishArgs) -> CliResult<()> {
 fn determine_target(args: &PublishArgs) -> CliResult<String> {
     if let Some(registry_name) = &args.registry {
         determine_target_from_registry(registry_name)
+    } else if let Some(api_url) = &args.api_url {
+        Ok(api_url.clone())
+    } else if let Some(local_dir) = &args.local_dir {
+        Ok(local_dir.clone())
     } else {
-        Ok(args
-            .target
-            .clone()
-            .or_else(|| std::env::var("FASTSKILL_API_URL").ok())
-            .unwrap_or_else(|| "http://localhost:8080".to_string()))
+        // Default: Use FASTSKILL_API_URL env var
+        std::env::var("FASTSKILL_API_URL").map_err(|_| {
+            CliError::Validation(
+                "PUB_002: No target specified and FASTSKILL_API_URL not set. Use --api-url, --local-dir, --registry, or set FASTSKILL_API_URL".to_string(),
+            )
+        })
     }
 }
 
@@ -481,13 +492,13 @@ mod tests {
     use tempfile::TempDir;
 
     /// Create test publish args
-    fn create_test_args(artifacts: PathBuf, target: Option<String>, wait: bool) -> PublishArgs {
+    fn create_test_args(artifacts: PathBuf, local_dir: Option<String>, wait: bool) -> PublishArgs {
         PublishArgs {
             artifacts,
             registry: None,
-            target,
+            api_url: None,
+            local_dir,
             wait,
-            no_wait: !wait,
             max_wait: 300,
         }
     }
@@ -521,7 +532,12 @@ Description: A test skill for coverage
         let temp_dir = TempDir::new().unwrap();
         let nonexistent_path = temp_dir.path().join("nonexistent");
 
-        let args = create_test_args(nonexistent_path, None, true);
+        // Provide a target to avoid PUB_002 error
+        let args = create_test_args(
+            nonexistent_path,
+            Some("/tmp/test-publish".to_string()),
+            true,
+        );
 
         let result = execute_publish(args).await;
         assert!(result.is_err());
@@ -585,7 +601,7 @@ Description: A test skill for coverage
     }
 
     #[test]
-    fn test_publish_context_url_target_emits_term_001() {
+    fn test_publish_context_api_url_target() {
         let temp_dir = TempDir::new().unwrap();
         let artifacts_dir = temp_dir.path().join("artifacts");
         fs::create_dir_all(&artifacts_dir).unwrap();
@@ -595,20 +611,19 @@ Description: A test skill for coverage
         let args = PublishArgs {
             artifacts: artifacts_dir,
             registry: None,
-            target: Some("https://registry.example.com".to_string()),
+            api_url: Some("https://registry.example.com".to_string()),
+            local_dir: None,
             wait: false,
-            no_wait: true,
             max_wait: 300,
         };
 
-        // Note: TERM_001 warning is emitted to stderr during PublishContext::new
-        // This test verifies the context creation succeeds with a URL target
+        // This test verifies the context creation succeeds with an API URL target
         let result = PublishContext::new(args);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_publish_context_local_path_no_warning() {
+    fn test_publish_context_local_path() {
         let temp_dir = TempDir::new().unwrap();
         let artifacts_dir = temp_dir.path().join("artifacts");
         fs::create_dir_all(&artifacts_dir).unwrap();
@@ -621,15 +636,75 @@ Description: A test skill for coverage
         let args = PublishArgs {
             artifacts: artifacts_dir,
             registry: None,
-            target: Some(target_dir.display().to_string()),
+            api_url: None,
+            local_dir: Some(target_dir.display().to_string()),
             wait: false,
-            no_wait: true,
             max_wait: 300,
         };
 
-        // Note: No TERM_001 warning is emitted for local path targets
         // This test verifies the context creation succeeds with a local path
         let result = PublishContext::new(args);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_publish_context_conflicting_targets_pub_001() {
+        let temp_dir = TempDir::new().unwrap();
+        let artifacts_dir = temp_dir.path().join("artifacts");
+        fs::create_dir_all(&artifacts_dir).unwrap();
+
+        create_test_zip(&artifacts_dir, "test-skill");
+
+        // Test: both api_url and local_dir specified (should fail)
+        let args = PublishArgs {
+            artifacts: artifacts_dir.clone(),
+            registry: None,
+            api_url: Some("https://registry.example.com".to_string()),
+            local_dir: Some("/tmp/target".to_string()),
+            wait: false,
+            max_wait: 300,
+        };
+
+        let result = PublishContext::new(args);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PUB_001")));
+
+        // Test: both registry and api_url specified (should fail)
+        let args = PublishArgs {
+            artifacts: artifacts_dir.clone(),
+            registry: Some("my-registry".to_string()),
+            api_url: Some("https://registry.example.com".to_string()),
+            local_dir: None,
+            wait: false,
+            max_wait: 300,
+        };
+
+        let result = PublishContext::new(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_publish_context_no_target_pub_002() {
+        let temp_dir = TempDir::new().unwrap();
+        let artifacts_dir = temp_dir.path().join("artifacts");
+        fs::create_dir_all(&artifacts_dir).unwrap();
+
+        create_test_zip(&artifacts_dir, "test-skill");
+
+        // Test: no target specified and no env var (should fail)
+        let args = PublishArgs {
+            artifacts: artifacts_dir,
+            registry: None,
+            api_url: None,
+            local_dir: None,
+            wait: false,
+            max_wait: 300,
+        };
+
+        let result = PublishContext::new(args);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PUB_002")));
     }
 }

@@ -2,8 +2,10 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
+use assert_cmd::Command;
 use fastskill::core::manifest::SkillProjectToml;
 use fastskill::core::packaging::package_skill;
+use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
@@ -97,4 +99,118 @@ dependency2 = { source = "git", url = "https://github.com/org/dep2.git" }
     assert_eq!(deps.dependencies.len(), 2);
     assert!(deps.dependencies.contains_key("dependency1"));
     assert!(deps.dependencies.contains_key("dependency2"));
+}
+
+/// Test package auto preset command
+#[test]
+fn test_package_auto_preset() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join("skills");
+    let output_dir = temp_dir.path().join("artifacts");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        r#"---
+name: test-skill
+description: A test skill
+version: 1.0.0
+author: Test
+tags: []
+capabilities: []
+---
+# Test Skill
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        skill_dir.join("skill-project.toml"),
+        r#"
+[metadata]
+id = "test-skill"
+version = "1.0.0"
+"#,
+    )
+    .unwrap();
+
+    let mut cmd = Command::cargo_bin("fastskill").unwrap();
+    cmd.current_dir(&skills_dir)
+        .arg("package")
+        .arg("auto")
+        .arg("--force");
+
+    cmd.assert().success();
+}
+
+/// Test package skill preset command
+#[test]
+fn test_package_skill_preset() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        r#"---
+name: test-skill
+description: A test skill
+version: 1.0.0
+author: Test
+tags: []
+capabilities: []
+---
+# Test Skill
+"#,
+    )
+    .unwrap();
+
+    fs::write(
+        skill_dir.join("skill-project.toml"),
+        r#"
+[metadata]
+id = "test-skill"
+version = "1.0.0"
+"#,
+    )
+    .unwrap();
+
+    let mut cmd = Command::cargo_bin("fastskill").unwrap();
+    cmd.current_dir(&skills_dir)
+        .arg("package")
+        .arg("skill")
+        .arg("test-skill");
+
+    cmd.assert().success();
+}
+
+/// Test package preset shows help correctly
+#[test]
+fn test_package_preset_help() {
+    let mut cmd = Command::cargo_bin("fastskill").unwrap();
+    cmd.arg("package").arg("auto").arg("--help");
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Auto-detect and package changed skills",
+    ));
+}
+
+/// Test package skill preset empty skills error (PKG_002)
+#[test]
+fn test_package_skill_preset_empty_error() {
+    let temp_dir = TempDir::new().unwrap();
+
+    let mut cmd = Command::cargo_bin("fastskill").unwrap();
+    cmd.current_dir(temp_dir.path()).arg("package").arg("skill");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("required"));
 }
