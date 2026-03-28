@@ -37,9 +37,9 @@ pub struct PublishArgs {
     #[arg(long)]
     pub local_dir: Option<String>,
 
-    /// Wait for validation to complete (default: false for API mode)
+    /// Wait for validation to complete (default: true for API mode)
     /// For local mode, this flag has no effect
-    #[arg(long)]
+    #[arg(long, default_value = "true")]
     pub wait: bool,
 
     /// Maximum wait time in seconds (default: 300)

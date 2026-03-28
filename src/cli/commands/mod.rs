@@ -109,7 +109,7 @@ pub enum Commands {
     /// Publish artifacts to registry API or local folder
     #[command(
         about = "Publish artifacts to remote API or local folder",
-        after_help = "TARGET MODES (mutually exclusive):\n  --api-url <url>     Publish to API endpoint\n  --local-dir <path>   Publish to local directory\n  --registry <name>    Use configured repository\n  (default)            Use FASTSKILL_API_URL environment variable\n\nEXAMPLES:\n  fastskill publish --api-url https://example.com\n  fastskill publish --local-dir ./output\n  fastskill publish --registry official --wait"
+        after_help = "TARGET MODES (mutually exclusive):\n  --api-url <url>     Publish to API endpoint\n  --local-dir <path>   Publish to local directory\n  --registry <name>    Use configured repository\n  (default)            Use FASTSKILL_API_URL environment variable\n\nWAIT BEHAVIOR:\n  By default, waits for API validation to complete (--wait=true)\n  Use --wait=false to return immediately after upload\n\nEXAMPLES:\n  fastskill publish --api-url https://example.com\n  fastskill publish --local-dir ./output\n  fastskill publish --registry official\n  fastskill publish --api-url https://example.com --wait=false"
     )]
     Publish(publish::PublishArgs),
 
