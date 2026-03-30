@@ -323,9 +323,16 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
                 );
             }
             Err(e) => {
+                let context = match &item.parent_skill {
+                    Some(parent) => format!(" (required by {})", parent),
+                    None => String::new(),
+                };
                 eprintln!(
                     "  {}",
-                    messages::error(&format!("Failed to install {}: {}", item.entry.id, e))
+                    messages::error(&format!(
+                        "Failed to install {}{}: {}",
+                        item.entry.id, context, e
+                    ))
                 );
                 failed_skills.push(item.entry.id.to_string());
             }
