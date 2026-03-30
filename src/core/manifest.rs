@@ -268,6 +268,16 @@ pub struct FastSkillToolConfig {
     /// Optional HTTP server configuration
     #[serde(default)]
     pub server: Option<HttpServerConfigToml>,
+    /// Maximum dependency depth for recursive install (default: 5)
+    #[serde(default = "default_install_depth")]
+    pub install_depth: u32,
+    /// Skip transitive dependency resolution entirely (default: false)
+    #[serde(default)]
+    pub skip_transitive: bool,
+}
+
+fn default_install_depth() -> u32 {
+    5
 }
 
 /// HTTP server configuration in TOML format

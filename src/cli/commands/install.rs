@@ -5,6 +5,7 @@ use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
+    dependency_resolver::DependencyResolver,
     lock::SkillsLock,
     manifest::SkillProjectToml,
     project::resolve_project_file,
@@ -38,6 +39,10 @@ pub struct InstallArgs {
     /// Install from skills.lock (exact versions) instead of resolving from skill-project.toml
     #[arg(long)]
     lock: bool,
+
+    /// Maximum transitive dependency depth (overrides config file setting)
+    #[arg(long)]
+    depth: Option<u32>,
 }
 
 pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
@@ -110,6 +115,19 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     let sources_manager = create_sources_manager_from_repositories(&repo_manager)
         .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
 
+    // Determine effective depth limit and skip_transitive flag from config then CLI override
+    let (config_depth, config_skip_transitive) = if project_file_result.found {
+        SkillProjectToml::load_from_file(&project_file_path)
+            .ok()
+            .and_then(|p| p.tool)
+            .and_then(|t| t.fastskill)
+            .map(|cfg| (cfg.install_depth, cfg.skip_transitive))
+            .unwrap_or((5, false))
+    } else {
+        (5, false)
+    };
+    let effective_depth = args.depth.unwrap_or(config_depth);
+
     // T027: Load from skill-project.toml or lock file
     let skills_to_install = if args.lock {
         // Lock file already checked above, so it exists
@@ -162,7 +180,44 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
         // Sort entries by ID for deterministic output
         entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
-        entries
+
+        // Recursively resolve transitive dependencies unless disabled
+        if config_skip_transitive {
+            entries
+        } else {
+            let mut resolver = DependencyResolver::new(effective_depth);
+            let resolved = resolver
+                .resolve_dependencies(entries, &skills_dir)
+                .await
+                .map_err(|e| CliError::Config(format!("Dependency resolution failed: {}", e)))?;
+
+            // Apply group filters to transitive dependencies as well
+            let exclude_groups2 = args.without.as_deref();
+            let only_groups2 = args.only.as_deref();
+
+            let mut filtered: Vec<_> = resolved.into_iter().map(|i| i.entry).collect();
+
+            if let Some(exclude) = exclude_groups2 {
+                filtered.retain(|entry| {
+                    !entry
+                        .groups
+                        .iter()
+                        .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
+                });
+            }
+
+            if let Some(only) = only_groups2 {
+                filtered.retain(|entry| {
+                    entry
+                        .groups
+                        .iter()
+                        .any(|g| only.iter().any(|on| on == g.as_str()))
+                        || entry.groups.is_empty()
+                });
+            }
+
+            filtered
+        }
     };
 
     println!("Found {} skills to install", skills_to_install.len());
@@ -383,6 +438,7 @@ mod tests {
             without: None,
             only: None,
             lock: false,
+            depth: None,
         };
 
         let result = execute_install(args).await;
@@ -434,6 +490,7 @@ mod tests {
             without: None,
             only: None,
             lock: true,
+            depth: None,
         };
 
         let result = execute_install(args).await;
@@ -481,6 +538,7 @@ mod tests {
             without: None,
             only: None,
             lock: false,
+            depth: None,
         };
 
         // Should succeed with empty manifest (no skills to install) or fail on service/repos; shouldn't panic
@@ -534,6 +592,7 @@ test-skill = { path = "source-skill" }
             without: None,
             only: None,
             lock: false,
+            depth: None,
         };
 
         let result = execute_install(args).await;
