@@ -249,6 +249,8 @@ impl RepositoryManager {
                     embedding: None,
                     repositories: Some(manifest_repos),
                     server: None,
+                    install_depth: 5,
+                    skip_transitive: false,
                 }),
             });
         } else if let Some(ref mut tool) = project.tool {
@@ -258,6 +260,8 @@ impl RepositoryManager {
                     embedding: None,
                     repositories: Some(manifest_repos),
                     server: None,
+                    install_depth: 5,
+                    skip_transitive: false,
                 });
             } else if let Some(ref mut fastskill) = tool.fastskill {
                 fastskill.repositories = Some(manifest_repos);

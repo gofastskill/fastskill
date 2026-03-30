@@ -175,6 +175,12 @@ fn convert_repository_definition(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::await_holding_lock
+)]
 mod tests {
     use super::*;
     use once_cell::sync::Lazy;

@@ -47,6 +47,12 @@ pub struct LockedSkillEntry {
     pub groups: Vec<String>,
     #[serde(default)]
     pub editable: bool,
+    /// Depth in the dependency tree (0 = direct dependency)
+    #[serde(default)]
+    pub depth: u32,
+    /// ID of the skill that pulled this one in (for transitive deps)
+    #[serde(default)]
+    pub parent_skill: Option<String>,
 }
 
 /// Lock file errors
@@ -143,10 +149,12 @@ impl SkillsLock {
                 source_branch: skill.source_branch.clone(),
                 commit_hash: skill.commit_hash.clone(),
                 fetched_at: skill.fetched_at.unwrap_or(skill.created_at),
-                checksum: None, // TODO: Calculate checksum
+                checksum: None,
                 dependencies: skill.dependencies.clone().unwrap_or_default(),
-                groups: Vec::new(), // TODO: Extract groups from manifest when available
+                groups: Vec::new(),
                 editable: skill.editable,
+                depth: 0,
+                parent_skill: None,
             };
 
             locked_skills.push(locked_entry);
@@ -164,6 +172,16 @@ impl SkillsLock {
 
     /// Update lock file with a new skill
     pub fn update_skill(&mut self, skill: &SkillDefinition) {
+        self.update_skill_with_depth(skill, 0, None);
+    }
+
+    /// Update lock file with a new skill including depth and parent information
+    pub fn update_skill_with_depth(
+        &mut self,
+        skill: &SkillDefinition,
+        depth: u32,
+        parent_skill: Option<String>,
+    ) {
         // Remove existing entry if present
         self.skills.retain(|s| s.id != skill.id.as_str());
 
@@ -211,10 +229,12 @@ impl SkillsLock {
             source_branch: skill.source_branch.clone(),
             commit_hash: skill.commit_hash.clone(),
             fetched_at: skill.fetched_at.unwrap_or(skill.created_at),
-            checksum: None, // TODO: Calculate checksum
+            checksum: None,
             dependencies: skill.dependencies.clone().unwrap_or_default(),
             groups: Vec::new(),
             editable: skill.editable,
+            depth,
+            parent_skill,
         };
 
         self.skills.push(locked_entry);

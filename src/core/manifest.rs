@@ -23,8 +23,7 @@ pub struct ManifestMetadata {
 pub struct SkillEntry {
     pub id: String,
     pub source: SkillSource,
-    #[serde(default)]
-    pub version: Option<String>,
+    pub version: String,
     #[serde(default)]
     pub groups: Vec<String>,
     #[serde(default)]
@@ -268,6 +267,16 @@ pub struct FastSkillToolConfig {
     /// Optional HTTP server configuration
     #[serde(default)]
     pub server: Option<HttpServerConfigToml>,
+    /// Maximum dependency depth for recursive install (default: 5)
+    #[serde(default = "default_install_depth")]
+    pub install_depth: u32,
+    /// Skip transitive dependency resolution entirely (default: false)
+    #[serde(default)]
+    pub skip_transitive: bool,
+}
+
+fn default_install_depth() -> u32 {
+    5
 }
 
 /// HTTP server configuration in TOML format
@@ -582,7 +591,7 @@ impl SkillProjectToml {
                 entries.push(SkillEntry {
                     id: skill_id.clone(),
                     source,
-                    version,
+                    version: version.unwrap_or_else(|| "*".to_string()),
                     groups,
                     editable,
                 });
@@ -624,16 +633,19 @@ mod tests {
             [[skills]]
             id = "web-scraper"
             source = { type = "git", url = "https://github.com/org/repo.git", branch = "main" }
+            version = "*"
 
             [[skills]]
             id = "dev-tools"
             source = { type = "git", url = "https://github.com/org/dev-tools.git" }
             groups = ["dev"]
+            version = "*"
 
             [[skills]]
             id = "monitoring"
             source = { type = "source", name = "team-tools", skill = "monitoring", version = "2.1.0" }
             groups = ["prod"]
+            version = "2.1.0"
         "#;
 
         let manifest: SkillsManifest = toml::from_str(toml_content).unwrap();

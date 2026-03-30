@@ -176,6 +176,7 @@ fn load_openai_api_key() -> Result<String, SearchError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::load_openai_api_key;
     use super::SearchError;

@@ -5,6 +5,7 @@ pub mod blob_storage;
 pub mod build_cache;
 pub mod change_detection;
 pub mod dependencies;
+pub mod dependency_resolver;
 pub mod embedding;
 pub mod loading;
 pub mod lock;
@@ -37,6 +38,7 @@ pub use change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
 };
 pub use dependencies::*;
+pub use dependency_resolver::{DependencyResolutionError, DependencyResolver, SkillInstallItem};
 pub use embedding::*;
 pub use loading::*;
 pub use lock::*;

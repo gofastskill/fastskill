@@ -1,6 +1,6 @@
 //! Integration tests for registry list-skills command
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //!
 //! Tests the HTTP endpoint integration for listing skills from a registry
 

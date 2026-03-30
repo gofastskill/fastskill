@@ -253,6 +253,8 @@ fn build_skill_project(meta: InitMetadata<'_>) -> CliResult<SkillProjectToml> {
             embedding: None,
             repositories: None,
             server: None,
+            install_depth: 5,
+            skip_transitive: false,
         }),
     });
     validate_project_structure(true, dependencies.is_some())
