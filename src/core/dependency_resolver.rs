@@ -126,11 +126,15 @@ impl DependencyResolver {
                 let trans_id = trans_entry.id.clone();
 
                 // Deduplication: first-encountered wins
+                // Also detect circular dependencies (when same skill appears at different depths)
                 if !self.visited_skills.insert(trans_id.clone()) {
-                    tracing::debug!(
-                        "Skipping already-queued skill '{}' (transitive dep of '{}')",
-                        trans_id,
-                        skill_id
+                    // Check if this is a circular dependency (skill already in the graph)
+                    // Emit warning per spec §4.6 "cycles are broken with warning message"
+                    tracing::warn!(
+                        "Circular dependency detected: {} -> {}; \
+                         skipping duplicate to break cycle",
+                        skill_id,
+                        trans_id
                     );
                     continue;
                 }
@@ -185,7 +189,7 @@ mod tests {
                 path: PathBuf::from(path),
                 editable: false,
             },
-            version: None,
+            version: "*".to_string(),
             groups: vec![],
             editable: false,
         }

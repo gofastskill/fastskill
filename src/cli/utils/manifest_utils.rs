@@ -20,6 +20,17 @@ pub fn update_lock_file(
     skill: &SkillDefinition,
     groups: Vec<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    update_lock_file_with_depth(lock_path, skill, groups, 0, None)
+}
+
+/// Update skills.lock with installed skill state including depth and parent info
+pub fn update_lock_file_with_depth(
+    lock_path: &Path,
+    skill: &SkillDefinition,
+    groups: Vec<String>,
+    depth: u32,
+    parent_skill: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Ensure parent directory of lock file exists
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -40,8 +51,8 @@ pub fn update_lock_file(
         }
     };
 
-    // Update lock with skill
-    lock.update_skill(skill);
+    // Update lock with skill including depth and parent info
+    lock.update_skill_with_depth(skill, depth, parent_skill);
 
     // Update groups (we need to modify the locked entry)
     if let Some(locked_entry) = lock.skills.iter_mut().find(|s| s.id == skill.id.as_str()) {

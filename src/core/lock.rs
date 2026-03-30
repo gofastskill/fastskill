@@ -172,6 +172,16 @@ impl SkillsLock {
 
     /// Update lock file with a new skill
     pub fn update_skill(&mut self, skill: &SkillDefinition) {
+        self.update_skill_with_depth(skill, 0, None);
+    }
+
+    /// Update lock file with a new skill including depth and parent information
+    pub fn update_skill_with_depth(
+        &mut self,
+        skill: &SkillDefinition,
+        depth: u32,
+        parent_skill: Option<String>,
+    ) {
         // Remove existing entry if present
         self.skills.retain(|s| s.id != skill.id.as_str());
 
@@ -223,8 +233,8 @@ impl SkillsLock {
             dependencies: skill.dependencies.clone().unwrap_or_default(),
             groups: Vec::new(),
             editable: skill.editable,
-            depth: 0,
-            parent_skill: None,
+            depth,
+            parent_skill,
         };
 
         self.skills.push(locked_entry);

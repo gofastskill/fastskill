@@ -5,9 +5,9 @@ use crate::cli::error::{manifest_required_message, CliError, CliResult};
 use crate::cli::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill::core::{
-    dependency_resolver::DependencyResolver,
+    dependency_resolver::{DependencyResolver, SkillInstallItem},
     lock::SkillsLock,
-    manifest::SkillProjectToml,
+    manifest::{SkillEntry, SkillProjectToml},
     project::resolve_project_file,
     repository::{RepositoryConfig, RepositoryManager, RepositoryType},
     sources::{SourceAuth, SourceConfig, SourcesManager},
@@ -45,9 +45,43 @@ pub struct InstallArgs {
     depth: Option<u32>,
 }
 
+/// Configuration for recursive install
+#[derive(Debug, Clone)]
+pub struct RecursiveInstallConfig {
+    pub max_depth: u32,
+    pub exclude_groups: Option<Vec<String>>,
+    pub only_groups: Option<Vec<String>>,
+    pub skip_transitive: bool,
+}
+
+impl RecursiveInstallConfig {
+    pub fn from_args_and_config(
+        args: &InstallArgs,
+        config_depth: u32,
+        config_skip_transitive: bool,
+    ) -> Self {
+        Self {
+            max_depth: args.depth.unwrap_or(config_depth),
+            exclude_groups: args.without.clone(),
+            only_groups: args.only.clone(),
+            skip_transitive: config_skip_transitive,
+        }
+    }
+}
+
 pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     println!("Installing skills...");
     println!();
+
+    // Validate depth argument (must be > 0 if provided)
+    if let Some(depth) = args.depth {
+        if depth == 0 {
+            return Err(CliError::InvalidDepth(
+                "Depth must be greater than 0. Use --depth 1 for direct dependencies only."
+                    .to_string(),
+            ));
+        }
+    }
 
     // T027: Resolve skill-project.toml from project root
     let current_dir = env::current_dir()
@@ -126,19 +160,34 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     } else {
         (5, false)
     };
-    let effective_depth = args.depth.unwrap_or(config_depth);
+
+    // Build recursive install config
+    let recursive_config =
+        RecursiveInstallConfig::from_args_and_config(&args, config_depth, config_skip_transitive);
 
     // T027: Load from skill-project.toml or lock file
-    let skills_to_install = if args.lock {
+    let skills_to_install: Vec<SkillInstallItem> = if args.lock {
         // Lock file already checked above, so it exists
         let lock = SkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
 
         println!("Using lock file ({} skills)", lock.skills.len());
 
-        // Convert lock entries to installable entries
-        // For now, we'll install from lock file
-        vec![] // TODO: Convert lock entries to install format
+        // Convert lock entries to installable items
+        lock.skills
+            .into_iter()
+            .map(|locked| SkillInstallItem {
+                entry: SkillEntry {
+                    id: locked.id,
+                    source: locked.source,
+                    version: locked.version,
+                    editable: locked.editable,
+                    groups: locked.groups,
+                },
+                depth: locked.depth,
+                parent_skill: locked.parent_skill,
+            })
+            .collect()
     } else {
         // Load from skill-project.toml (manifest already required above when !args.lock)
         let project = SkillProjectToml::load_from_file(&project_file_path)
@@ -182,42 +231,56 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 
         // Recursively resolve transitive dependencies unless disabled
-        if config_skip_transitive {
+        let resolved_items = if recursive_config.skip_transitive {
             entries
+                .into_iter()
+                .map(|entry| SkillInstallItem {
+                    entry,
+                    depth: 0,
+                    parent_skill: None,
+                })
+                .collect()
         } else {
-            let mut resolver = DependencyResolver::new(effective_depth);
-            let resolved = resolver
+            let mut resolver = DependencyResolver::new(recursive_config.max_depth);
+            resolver
                 .resolve_dependencies(entries, &skills_dir)
                 .await
-                .map_err(|e| CliError::Config(format!("Dependency resolution failed: {}", e)))?;
+                .map_err(|e| CliError::Config(format!("Dependency resolution failed: {}", e)))?
+        };
 
-            // Apply group filters to transitive dependencies as well
-            let exclude_groups2 = args.without.as_deref();
-            let only_groups2 = args.only.as_deref();
+        // Apply group filters to resolved dependencies
+        let filtered_items: Vec<SkillInstallItem> = if recursive_config.skip_transitive {
+            resolved_items
+        } else {
+            let exclude_groups = recursive_config.exclude_groups.as_deref();
+            let only_groups = recursive_config.only_groups.as_deref();
 
-            let mut filtered: Vec<_> = resolved.into_iter().map(|i| i.entry).collect();
+            let mut filtered = resolved_items;
 
-            if let Some(exclude) = exclude_groups2 {
-                filtered.retain(|entry| {
-                    !entry
+            if let Some(exclude) = exclude_groups {
+                filtered.retain(|item| {
+                    !item
+                        .entry
                         .groups
                         .iter()
                         .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
                 });
             }
 
-            if let Some(only) = only_groups2 {
-                filtered.retain(|entry| {
-                    entry
+            if let Some(only) = only_groups {
+                filtered.retain(|item| {
+                    item.entry
                         .groups
                         .iter()
                         .any(|g| only.iter().any(|on| on == g.as_str()))
-                        || entry.groups.is_empty()
+                        || item.entry.groups.is_empty()
                 });
             }
 
             filtered
-        }
+        };
+
+        filtered_items
     };
 
     println!("Found {} skills to install", skills_to_install.len());
@@ -237,34 +300,48 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     // Install each skill
     let mut installed_skills = Vec::new();
     let mut failed_skills = Vec::new();
-    for entry in skills_to_install {
-        println!("  Installing {}...", entry.id);
+    for item in &skills_to_install {
+        println!("  Installing {} (depth {})...", item.entry.id, item.depth);
         match install_utils::install_skill_from_entry(
             &service,
-            entry.clone(),
+            item.entry.clone(),
             sources_manager.as_ref(),
         )
         .await
         {
             Ok(skill_def) => {
-                installed_skills.push((skill_def, entry.groups.clone(), entry.editable));
-                println!("  {}", messages::ok(&format!("Installed {}", entry.id)));
+                installed_skills.push((
+                    skill_def,
+                    item.entry.groups.clone(),
+                    item.entry.editable,
+                    item.depth,
+                    item.parent_skill.clone(),
+                ));
+                println!(
+                    "  {}",
+                    messages::ok(&format!("Installed {}", item.entry.id))
+                );
             }
             Err(e) => {
                 eprintln!(
                     "  {}",
-                    messages::error(&format!("Failed to install {}: {}", entry.id, e))
+                    messages::error(&format!("Failed to install {}: {}", item.entry.id, e))
                 );
-                failed_skills.push(entry.id.to_string());
-                // Continue with other skills
+                failed_skills.push(item.entry.id.to_string());
             }
         }
     }
 
-    // Update lock file with all installed skills
-    for (skill_def, groups, _editable) in installed_skills {
-        manifest_utils::update_lock_file(&lock_path, &skill_def, groups)
-            .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
+    // Update lock file with all installed skills including depth and parent info
+    for (skill_def, groups, _editable, depth, parent_skill) in installed_skills {
+        manifest_utils::update_lock_file_with_depth(
+            &lock_path,
+            &skill_def,
+            groups,
+            depth,
+            parent_skill,
+        )
+        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
     }
 
     println!();

@@ -14,7 +14,7 @@ fn local_entry(id: &str) -> SkillEntry {
             path: PathBuf::from(format!("local/{}", id)),
             editable: false,
         },
-        version: None,
+        version: "*".to_string(),
         groups: vec![],
         editable: false,
     }
@@ -226,9 +226,6 @@ async fn test_topological_sort_is_stable() {
 
 #[tokio::test]
 async fn test_install_depth_default_from_config() {
-    // Verify that FastSkillToolConfig defaults install_depth to 5
-    use fastskill::core::manifest::{FastSkillToolConfig, ToolSection};
-
     let toml_str = r#"
 [tool.fastskill]
 skills_directory = ".claude/skills"
