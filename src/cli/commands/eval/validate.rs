@@ -1,10 +1,12 @@
 //! Eval validate subcommand - configuration and file validation
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use aikit_sdk::{is_agent_available, is_runnable, runnable_agents};
 use clap::Args;
 use fastskill::core::project::resolve_project_file;
 use fastskill::eval::config::resolve_eval_config;
+use fastskill::OutputFormat;
 use std::env;
 
 /// Arguments for `fastskill eval validate`
@@ -18,8 +20,12 @@ pub struct ValidateArgs {
     #[arg(long, value_parser = validate_agent_key_parser)]
     pub agent: Option<String>,
 
-    /// Output as JSON
-    #[arg(long)]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 }
 
@@ -37,6 +43,9 @@ fn validate_agent_key_parser(s: &str) -> Result<String, String> {
 
 /// Execute the `eval validate` command
 pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
@@ -75,7 +84,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
         }
     }
 
-    if args.json {
+    if use_json {
         let output = serde_json::json!({
             "valid": true,
             "prompts_path": eval_config.prompts_path,

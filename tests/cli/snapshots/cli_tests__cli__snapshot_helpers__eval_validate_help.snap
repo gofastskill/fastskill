@@ -7,9 +7,10 @@ Validate eval configuration and files
 Usage: fastskill eval validate [OPTIONS]
 
 Options:
-      --agent <AGENT>  Check agent availability for the specified agent key
-      --json           Output as JSON
-  -h, --help           Print help
+      --agent <AGENT>    Check agent availability for the specified agent key
+      --format <FORMAT>  Output format: table, json, grid, xml
+      --json             Shorthand for --format json
+  -h, --help             Print help
 
 Examples:
   fastskill eval validate

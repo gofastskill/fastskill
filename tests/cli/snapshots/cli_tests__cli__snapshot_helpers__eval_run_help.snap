@@ -12,7 +12,8 @@ Options:
       --model <MODEL>            Optional model override forwarded to the agent
       --case <CASE>              Filter: run only the case with this ID
       --tag <TAG>                Filter: run only cases with this tag
-      --json                     Output as JSON
+      --format <FORMAT>          Output format: table, json, grid, xml
+      --json                     Shorthand for --format json
       --no-fail                  Do not fail with non-zero exit code on suite failure
   -h, --help                     Print help
 

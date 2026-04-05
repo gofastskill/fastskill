@@ -1,5 +1,6 @@
 //! Trace event types for eval case execution
 
+use aikit_sdk::{AgentEvent, AgentEventPayload};
 use serde::{Deserialize, Serialize};
 
 /// A single line in a trace.jsonl file
@@ -25,6 +26,31 @@ pub enum TracePayload {
     Error { message: String },
     /// Case timed out
     Timeout,
+}
+
+/// Convert aikit-sdk AgentEvent to internal TraceEvent
+pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
+    events
+        .iter()
+        .map(|ev| {
+            let payload = match &ev.payload {
+                AgentEventPayload::JsonLine(value) => TracePayload::RawJson {
+                    data: value.clone(),
+                },
+                AgentEventPayload::RawLine(line) => TracePayload::RawLine { line: line.clone() },
+                AgentEventPayload::RawBytes(bytes) => {
+                    use base64::{engine::general_purpose::STANDARD, Engine as _};
+                    TracePayload::RawBytes {
+                        b64: STANDARD.encode(bytes),
+                    }
+                }
+            };
+            TraceEvent {
+                seq: ev.seq as usize,
+                payload,
+            }
+        })
+        .collect()
 }
 
 /// Convert raw stdout lines to trace events

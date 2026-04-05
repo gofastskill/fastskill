@@ -8,7 +8,8 @@ Usage: fastskill eval report [OPTIONS] --run-dir <RUN_DIR>
 
 Options:
       --run-dir <RUN_DIR>  Path to the specific run directory
-      --json               Output as JSON
+      --format <FORMAT>    Output format: table, json, grid, xml
+      --json               Shorthand for --format json
   -h, --help               Print help
 
 Examples:

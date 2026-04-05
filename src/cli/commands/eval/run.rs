@@ -1,5 +1,6 @@
 //! Eval run subcommand - case execution orchestration
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use aikit_sdk::{is_agent_available, is_runnable, runnable_agents};
 use chrono::Utc;
@@ -12,7 +13,8 @@ use fastskill::eval::checks::load_checks;
 use fastskill::eval::config::resolve_eval_config;
 use fastskill::eval::runner::{run_eval_case, CaseRunOptions};
 use fastskill::eval::suite::load_suite;
-use fastskill::eval::trace::{stdout_to_trace, trace_to_jsonl};
+use fastskill::eval::trace::trace_to_jsonl;
+use fastskill::OutputFormat;
 use std::env;
 use std::path::PathBuf;
 
@@ -43,8 +45,12 @@ pub struct RunArgs {
     #[arg(long)]
     pub tag: Option<String>,
 
-    /// Output as JSON
-    #[arg(long)]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Do not fail with non-zero exit code on suite failure
@@ -66,6 +72,9 @@ fn validate_agent_key_for_run(s: &str) -> Result<String, String> {
 
 /// Execute the `eval run` command
 pub async fn execute_run(args: RunArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
@@ -144,22 +153,26 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
         timeout_seconds: eval_config.timeout_seconds,
     };
 
-    eprintln!(
-        "Running {} eval case(s) with agent '{}'...",
-        suite.cases.len(),
-        args.agent
-    );
+    if !use_json {
+        eprintln!(
+            "Running {} eval case(s) with agent '{}'...",
+            suite.cases.len(),
+            args.agent
+        );
+    }
 
     let mut case_results = Vec::new();
     let mut case_summaries = Vec::new();
 
     for case in &suite.cases {
-        eprintln!("  Running case '{}'...", case.id);
+        if !use_json {
+            eprintln!("  Running case '{}'...", case.id);
+        }
 
         let (run_output, case_result) = run_eval_case(case, &run_opts, &checks).await;
 
-        // Build trace
-        let trace_events = stdout_to_trace(&run_output.stdout);
+        // Build trace from stdout (since runner collects it)
+        let trace_events = fastskill::eval::trace::stdout_to_trace(&run_output.stdout);
         let trace_jsonl = trace_to_jsonl(&trace_events);
 
         // Write artifacts
@@ -171,10 +184,12 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
             &trace_jsonl,
             &case_result,
         ) {
-            eprintln!(
-                "  warning: failed to write artifacts for case '{}': {}",
-                case.id, e
-            );
+            if !use_json {
+                eprintln!(
+                    "  warning: failed to write artifacts for case '{}': {}",
+                    case.id, e
+                );
+            }
         }
 
         let summary_entry = CaseSummary {
@@ -217,10 +232,12 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
 
     // Write summary
     if let Err(e) = write_summary(&run_dir, &summary) {
-        eprintln!("warning: failed to write summary.json: {}", e);
+        if !use_json {
+            eprintln!("warning: failed to write summary.json: {}", e);
+        }
     }
 
-    if args.json {
+    if use_json {
         println!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()

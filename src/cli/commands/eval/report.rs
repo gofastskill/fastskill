@@ -1,8 +1,10 @@
 //! Eval report subcommand - artifact summary and formatting
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use clap::Args;
 use fastskill::eval::artifacts::read_summary;
+use fastskill::OutputFormat;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill eval report`
@@ -16,13 +18,20 @@ pub struct ReportArgs {
     #[arg(long, required = true)]
     pub run_dir: PathBuf,
 
-    /// Output as JSON
-    #[arg(long)]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 }
 
 /// Execute the `eval report` command
 pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
             "EVAL_ARTIFACTS_CORRUPT: Run directory does not exist: {}",
@@ -37,7 +46,7 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
         ))
     })?;
 
-    if args.json {
+    if use_json {
         println!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()

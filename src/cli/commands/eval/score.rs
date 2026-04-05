@@ -1,9 +1,11 @@
 //! Eval score subcommand - offline re-scoring from saved artifacts
 
+use crate::cli::commands::common::validate_format_args;
 use crate::cli::error::{CliError, CliResult};
 use clap::Args;
 use fastskill::eval::artifacts::{read_summary, write_summary, CaseStatus};
 use fastskill::eval::checks::load_checks;
+use fastskill::OutputFormat;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill eval score`
@@ -17,8 +19,12 @@ pub struct ScoreArgs {
     #[arg(long, required = true)]
     pub run_dir: PathBuf,
 
-    /// Output as JSON
-    #[arg(long)]
+    /// Output format: table, json, grid, xml (default: table)
+    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
+    pub format: Option<OutputFormat>,
+
+    /// Shorthand for --format json
+    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Do not fail with non-zero exit code on suite failure
@@ -28,6 +34,9 @@ pub struct ScoreArgs {
 
 /// Execute the `eval score` command
 pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
+    let format = validate_format_args(&args.format, args.json)?;
+    let use_json = format == OutputFormat::Json;
+
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
             "EVAL_ARTIFACTS_CORRUPT: Run directory does not exist: {}",
@@ -108,7 +117,7 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
     write_summary(&args.run_dir, &summary)
         .map_err(|e| CliError::Config(format!("Failed to write updated summary.json: {}", e)))?;
 
-    if args.json {
+    if use_json {
         println!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()
