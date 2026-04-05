@@ -255,6 +255,7 @@ fn build_skill_project(meta: InitMetadata<'_>) -> CliResult<SkillProjectToml> {
             server: None,
             install_depth: 5,
             skip_transitive: false,
+            eval: None,
         }),
     });
     validate_project_structure(true, dependencies.is_some())

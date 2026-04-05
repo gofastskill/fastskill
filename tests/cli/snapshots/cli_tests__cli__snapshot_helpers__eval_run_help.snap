@@ -1,0 +1,20 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Run eval cases against an agent
+
+Usage: fastskill eval run [OPTIONS] --agent <AGENT> --output-dir <OUTPUT_DIR>
+
+Options:
+      --agent <AGENT>            Agent to use for execution (required)
+      --output-dir <OUTPUT_DIR>  Output directory for artifacts (required)
+      --model <MODEL>            Optional model override forwarded to the agent
+      --case <CASE>              Filter: run only the case with this ID
+      --tag <TAG>                Filter: run only cases with this tag
+      --json                     Output as JSON
+      --no-fail                  Do not fail with non-zero exit code on suite failure
+  -h, --help                     Print help
+
+Examples:
+  fastskill eval run --agent codex --output-dir [TEMP_DIR]

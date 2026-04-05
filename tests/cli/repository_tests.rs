@@ -85,6 +85,7 @@ web-scraper = "1.0.0"
         server: None,
         install_depth: 5,
         skip_transitive: false,
+        eval: None,
     });
     let repos = fastskill_config.repositories.get_or_insert_with(Vec::new);
 

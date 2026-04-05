@@ -273,6 +273,33 @@ pub struct FastSkillToolConfig {
     /// Skip transitive dependency resolution entirely (default: false)
     #[serde(default)]
     pub skip_transitive: bool,
+    /// Optional evaluation configuration
+    #[serde(default)]
+    pub eval: Option<EvalConfigToml>,
+}
+
+/// Evaluation configuration in TOML format ([tool.fastskill.eval])
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvalConfigToml {
+    /// Path to prompts CSV file (relative to skill project root)
+    pub prompts: PathBuf,
+    /// Optional path to checks TOML file
+    #[serde(default)]
+    pub checks: Option<PathBuf>,
+    /// Timeout in seconds for each eval case execution
+    #[serde(default = "default_eval_timeout_seconds")]
+    pub timeout_seconds: u64,
+    /// When true, `eval run` / `eval validate --agent` fail fast if the agent CLI is not available
+    #[serde(default = "default_fail_on_missing_agent")]
+    pub fail_on_missing_agent: bool,
+}
+
+fn default_eval_timeout_seconds() -> u64 {
+    900
+}
+
+fn default_fail_on_missing_agent() -> bool {
+    true
 }
 
 fn default_install_depth() -> u32 {

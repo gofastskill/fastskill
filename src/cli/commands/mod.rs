@@ -5,6 +5,7 @@ pub mod analyze;
 pub mod auth;
 pub mod common;
 pub mod disable;
+pub mod eval;
 pub mod init;
 pub mod install;
 pub mod list;
@@ -56,6 +57,13 @@ pub enum Commands {
         after_help = "Examples:\n  fastskill disable my-skill-id"
     )]
     Disable(disable::DisableArgs),
+
+    /// Evaluation commands for skill quality assurance
+    #[command(
+        about = "Evaluation commands for skill quality assurance",
+        after_help = "Examples:\n  fastskill eval validate\n  fastskill eval run --agent codex --output-dir /tmp/evals"
+    )]
+    Eval(eval::EvalCommand),
 
     /// Initialize skill-project.toml for skill authors
     #[command(

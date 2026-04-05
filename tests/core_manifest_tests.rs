@@ -170,6 +170,7 @@ fn test_validation_project_level() {
                 server: None,
                 install_depth: 5,
                 skip_transitive: false,
+                eval: None,
             }),
         }),
     };

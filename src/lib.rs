@@ -49,6 +49,7 @@
 //! ```
 
 pub mod core;
+pub mod eval;
 pub mod events;
 pub mod execution;
 pub mod http;

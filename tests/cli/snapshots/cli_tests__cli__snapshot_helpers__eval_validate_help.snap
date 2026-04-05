@@ -1,0 +1,16 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Validate eval configuration and files
+
+Usage: fastskill eval validate [OPTIONS]
+
+Options:
+      --agent <AGENT>  Check agent availability for the specified agent key
+      --json           Output as JSON
+  -h, --help           Print help
+
+Examples:
+  fastskill eval validate
+  fastskill eval validate --agent codex

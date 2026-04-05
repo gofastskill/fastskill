@@ -7,6 +7,7 @@ pub mod add_tests;
 pub mod analyze_cluster_tests;
 pub mod auth_e2e_tests;
 pub mod config_tests;
+pub mod eval_tests;
 pub mod example_tests;
 pub mod help_tests;
 pub mod init_tests;
