@@ -3,7 +3,7 @@
 use crate::eval::artifacts::{CaseResult, CaseStatus};
 use crate::eval::checks::{run_checks, CheckDefinition};
 use crate::eval::suite::EvalCase;
-use crate::eval::trace::{agent_events_to_trace, trace_to_jsonl};
+use crate::eval::trace::{agent_events_to_trace, trace_to_jsonl, TraceEvent, TracePayload};
 use aikit_sdk::{run_agent_events, AgentEvent, RunOptions};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -42,6 +42,12 @@ pub enum RunnerError {
     ExecutionFailed(String),
 }
 
+/// Result of agent execution within spawn_blocking
+struct AgentExecutionResult {
+    result: Result<aikit_sdk::RunResult, aikit_sdk::RunError>,
+    events: Vec<AgentEvent>,
+}
+
 /// Run a single eval case using aikit_sdk::run_agent_events via spawn_blocking.
 ///
 /// This is the sole agent execution path per spec (acceptance criterion 29).
@@ -62,18 +68,18 @@ pub async fn run_eval_case(
         None => opts.project_root.clone(),
     };
 
-    // Build RunOptions using available aikit-sdk API
+    // Build RunOptions - note: aikit-sdk doesn't have with_timeout/with_current_dir yet
     let run_opts = RunOptions::new()
         .with_model(model.clone().unwrap_or_default())
         .with_yolo(true)
         .with_stream(true);
 
-    // Run agent in a blocking thread to avoid blocking the async runtime
-    let timeout_duration = Duration::from_secs(timeout_secs);
     let working_dir_clone = working_dir.clone();
 
-    let result = tokio::task::spawn_blocking(move || {
-        // Change to working directory before spawning the agent
+    // Run agent in a blocking thread to avoid blocking the async runtime
+    // We implement timeout ourselves using tokio::time::timeout
+    let spawn_result = tokio::task::spawn_blocking(move || {
+        // Change to working directory before spawning agent
         let original_dir = std::env::current_dir().ok();
         let dir_changed = std::env::set_current_dir(&working_dir_clone).is_ok();
 
@@ -91,35 +97,42 @@ pub async fn run_eval_case(
             }
         }
 
-        (result, events)
+        AgentExecutionResult { result, events }
     });
 
     // Apply timeout wrapper
-    let timed_result = tokio::time::timeout(timeout_duration, result).await;
+    let timeout_duration = Duration::from_secs(timeout_secs);
+    let timed_result = tokio::time::timeout(timeout_duration, spawn_result).await;
 
     let (run_output, trace_events) = match timed_result {
-        Ok(Ok((Ok(run_result), events))) => {
-            let exit_code = run_result.exit_code();
-            let output = CaseRunOutput {
-                stdout: run_result.stdout,
-                stderr: run_result.stderr,
-                exit_code,
-                timed_out: false,
-            };
-            let trace = agent_events_to_trace(&events);
-            (output, trace)
-        }
-        Ok(Ok((Err(e), events))) => {
-            let trace = agent_events_to_trace(&events);
-            let output = CaseRunOutput {
-                stdout: vec![],
-                stderr: format!("Agent execution failed: {}", e).into_bytes(),
-                exit_code: None,
-                timed_out: false,
-            };
-            (output, trace)
+        Ok(Ok(exec_result)) => {
+            // spawn_blocking succeeded, check agent result
+            match exec_result.result {
+                Ok(run_result) => {
+                    let exit_code = run_result.exit_code();
+                    let output = CaseRunOutput {
+                        stdout: run_result.stdout,
+                        stderr: run_result.stderr,
+                        exit_code,
+                        timed_out: false,
+                    };
+                    let trace = agent_events_to_trace(&exec_result.events);
+                    (output, trace)
+                }
+                Err(e) => {
+                    let trace = agent_events_to_trace(&exec_result.events);
+                    let output = CaseRunOutput {
+                        stdout: vec![],
+                        stderr: format!("Agent execution failed: {}", e).into_bytes(),
+                        exit_code: None,
+                        timed_out: false,
+                    };
+                    (output, trace)
+                }
+            }
         }
         Ok(Err(e)) => {
+            // spawn_blocking itself failed
             let output = CaseRunOutput {
                 stdout: vec![],
                 stderr: format!("spawn_blocking failed: {}", e).into_bytes(),
@@ -136,7 +149,12 @@ pub async fn run_eval_case(
                 exit_code: None,
                 timed_out: true,
             };
-            (output, vec![])
+            // Add a timeout marker to the trace
+            let timeout_event = TraceEvent {
+                seq: 0,
+                payload: TracePayload::Timeout,
+            };
+            (output, vec![timeout_event])
         }
     };
 
@@ -147,7 +165,7 @@ pub async fn run_eval_case(
     // Count raw_json events
     let command_count = trace_events
         .iter()
-        .filter(|e| matches!(&e.payload, crate::eval::trace::TracePayload::RawJson { .. }))
+        .filter(|e| matches!(&e.payload, TracePayload::RawJson { .. }))
         .count();
 
     // Run deterministic checks
