@@ -21,7 +21,7 @@ use std::path::PathBuf;
 #[derive(Debug, Args)]
 #[command(
     about = "Run eval cases against an agent",
-    after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent claude --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
+    after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
 )]
 pub struct RunArgs {
     /// Agent to use for execution (required)

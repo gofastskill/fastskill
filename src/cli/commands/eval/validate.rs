@@ -13,7 +13,7 @@ use std::env;
 #[derive(Debug, Args)]
 #[command(
     about = "Validate eval configuration and files",
-    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex"
+    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex\n  fastskill eval validate --agent agent"
 )]
 pub struct ValidateArgs {
     /// Check agent availability for the specified agent key

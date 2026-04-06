@@ -12,7 +12,7 @@ use clap::{Args, Subcommand};
 #[derive(Debug, Args)]
 #[command(
     about = "Evaluation commands for skill quality assurance",
-    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval run --agent codex --output-dir /tmp/evals"
+    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir /tmp/evals"
 )]
 pub struct EvalCommand {
     #[command(subcommand)]
@@ -25,7 +25,7 @@ pub enum EvalSubcommand {
     /// Validate eval configuration and files
     #[command(
         about = "Validate eval configuration and files",
-        after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex"
+        after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex\n  fastskill eval validate --agent agent"
     )]
     Validate(validate::ValidateArgs),
 
