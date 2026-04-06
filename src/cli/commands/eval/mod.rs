@@ -32,7 +32,7 @@ pub enum EvalSubcommand {
     /// Run eval cases against an agent
     #[command(
         about = "Run eval cases against an agent",
-        after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals"
+        after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
     )]
     Run(run::RunArgs),
 
