@@ -1,6 +1,6 @@
 [package]
 name = "fastskill"
-version = "0.9.101"
+version = "0.9.102"
 edition = "2021"
 description = "FastSkill is a AI Skills management tool"
 authors = ["aroff"]
