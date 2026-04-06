@@ -19,7 +19,9 @@ pub fn package_skill(
     package_skill_with_id(skill_path, output_dir, version, None)
 }
 
-/// Package a skill directory into a ZIP file with explicit skill ID
+/// Package a skill directory into a ZIP file with explicit skill ID.
+///
+/// The `evals/` subtree is excluded from the archive (local eval suites are not published).
 pub fn package_skill_with_id(
     skill_path: &Path,
     output_dir: &Path,

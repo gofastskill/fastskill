@@ -11,9 +11,8 @@ use fastskill::eval::artifacts::{
 };
 use fastskill::eval::checks::load_checks;
 use fastskill::eval::config::resolve_eval_config;
-use fastskill::eval::runner::{run_eval_case, CaseRunOptions};
+use fastskill::eval::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
 use fastskill::eval::suite::load_suite;
-use fastskill::eval::trace::trace_to_jsonl;
 use fastskill::OutputFormat;
 use std::env;
 use std::path::PathBuf;
@@ -70,8 +69,16 @@ fn validate_agent_key_for_run(s: &str) -> Result<String, String> {
     }
 }
 
-/// Execute the `eval run` command
+/// Execute the `eval run` command using the default aikit-backed runner.
 pub async fn execute_run(args: RunArgs) -> CliResult<()> {
+    execute_run_with_runner(args, &AikitEvalRunner).await
+}
+
+/// Execute `eval run` with an injectable [`EvalRunner`] (tests or future adapters).
+pub async fn execute_run_with_runner<R: EvalRunner + ?Sized>(
+    args: RunArgs,
+    runner: &R,
+) -> CliResult<()> {
     let format = validate_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
@@ -169,11 +176,8 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
             eprintln!("  Running case '{}'...", case.id);
         }
 
-        let (run_output, case_result) = run_eval_case(case, &run_opts, &checks).await;
-
-        // Build trace from stdout (since runner collects it)
-        let trace_events = fastskill::eval::trace::stdout_to_trace(&run_output.stdout);
-        let trace_jsonl = trace_to_jsonl(&trace_events);
+        let (run_output, case_result, trace_jsonl) =
+            runner.run_case(case, &run_opts, &checks).await;
 
         // Write artifacts
         if let Err(e) = write_case_artifacts(

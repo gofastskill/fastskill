@@ -6,3 +6,7 @@ pub mod config;
 pub mod runner;
 pub mod suite;
 pub mod trace;
+
+pub use runner::{
+    run_eval_case, AikitEvalRunner, CaseRunOptions, CaseRunOutput, EvalRunner, RunnerError,
+};

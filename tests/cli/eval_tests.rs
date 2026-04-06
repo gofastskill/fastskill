@@ -4,6 +4,7 @@
 
 use super::snapshot_helpers::{
     assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
+    run_fastskill_command_with_env,
 };
 
 #[test]
@@ -210,4 +211,91 @@ fn test_eval_report_nonexistent_run_dir() {
         "Expected error about nonexistent dir, got: {}",
         combined
     );
+}
+
+#[test]
+fn test_eval_run_persists_event_trace_jsonl() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrace-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    // Create a fake `agent` executable so aikit_sdk::is_agent_available("agent") succeeds.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trace-case",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    let run_dir = summary["run_dir"].as_str().unwrap();
+    let trace_path = std::path::Path::new(run_dir)
+        .join("trace-case")
+        .join("trace.jsonl");
+    let trace_jsonl = fs::read_to_string(&trace_path).unwrap();
+
+    assert!(
+        trace_jsonl.contains("\"type\":\"raw_json\""),
+        "expected persisted trace.jsonl to contain raw_json event, got: {}",
+        trace_jsonl
+    );
+
+    let result_path = std::path::Path::new(run_dir)
+        .join("trace-case")
+        .join("result.json");
+    let case_result: Value =
+        serde_json::from_str(&fs::read_to_string(result_path).unwrap()).unwrap();
+    assert_eq!(case_result["command_count"], 1);
 }

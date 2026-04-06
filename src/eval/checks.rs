@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+use crate::eval::trace::{TraceEvent, TracePayload};
+
 /// A deterministic check definition loaded from checks.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "name")]
@@ -108,6 +110,15 @@ pub fn run_checks(
         .collect()
 }
 
+/// Count trace events with payload type `raw_json`.
+pub fn count_raw_json_events(trace_jsonl: &str) -> usize {
+    trace_jsonl
+        .lines()
+        .filter_map(|line| serde_json::from_str::<TraceEvent>(line).ok())
+        .filter(|event| matches!(event.payload, TracePayload::RawJson { .. }))
+        .count()
+}
+
 fn run_single_check(
     check: &CheckDefinition,
     stdout_content: &str,
@@ -165,10 +176,7 @@ fn run_single_check(
         }
         CheckDefinition::MaxCommandCount { limit, .. } => {
             // Count raw_json trace lines
-            let count = trace_jsonl
-                .lines()
-                .filter(|line| line.contains("\"raw_json\""))
-                .count();
+            let count = count_raw_json_events(trace_jsonl);
             let passed = count <= *limit;
             let message = if passed {
                 None
@@ -259,9 +267,9 @@ mod tests {
             limit: 5,
             required: true,
         };
-        let trace = r#"{"type":"raw_json","seq":0}
-{"type":"raw_json","seq":1}
-{"type":"raw_line","seq":2}"#;
+        let trace = r#"{"seq":0,"payload":{"type":"raw_json","data":{"cmd":"a"}}}
+{"seq":1,"payload":{"type":"raw_json","data":{"cmd":"b"}}}
+{"seq":2,"payload":{"type":"raw_line","line":"ok"}}"#;
         let results = run_checks(&[check], "", trace, Path::new("/tmp"));
         assert!(results[0].passed);
     }
@@ -272,11 +280,18 @@ mod tests {
             limit: 1,
             required: true,
         };
-        let trace = r#"{"type":"raw_json","seq":0}
-{"type":"raw_json","seq":1}
-{"type":"raw_json","seq":2}"#;
+        let trace = r#"{"seq":0,"payload":{"type":"raw_json","data":{"cmd":"a"}}}
+{"seq":1,"payload":{"type":"raw_json","data":{"cmd":"b"}}}
+{"seq":2,"payload":{"type":"raw_json","data":{"cmd":"c"}}}"#;
         let results = run_checks(&[check], "", trace, Path::new("/tmp"));
         assert!(!results[0].passed);
+    }
+
+    #[test]
+    fn test_count_raw_json_events_ignores_substring_only() {
+        let trace = r#"{"seq":0,"payload":{"type":"raw_line","line":"mentions raw_json text"}}
+{"seq":1,"payload":{"type":"raw_json","data":{"cmd":"x"}}}"#;
+        assert_eq!(count_raw_json_events(trace), 1);
     }
 
     #[test]
