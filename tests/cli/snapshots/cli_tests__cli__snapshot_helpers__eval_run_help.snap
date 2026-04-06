@@ -19,3 +19,5 @@ Options:
 
 Examples:
   fastskill eval run --agent codex --output-dir [TEMP_DIR]
+  fastskill eval run --agent agent --output-dir ./evals --case my-case
+  fastskill eval run --agent codex --output-dir ./evals --tag basic
