@@ -1,0 +1,16 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Show a report for a completed eval run
+
+Usage: fastskill eval report [OPTIONS] --run-dir <RUN_DIR>
+
+Options:
+      --run-dir <RUN_DIR>  Path to the specific run directory
+      --format <FORMAT>    Output format: table, json, grid, xml
+      --json               Shorthand for --format json
+  -h, --help               Print help
+
+Examples:
+  fastskill eval report --run-dir [TEMP_DIR]

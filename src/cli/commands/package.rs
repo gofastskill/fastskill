@@ -48,6 +48,9 @@ pub enum PackagePreset {
 ///   fastskill package --git-diff base head  # Git-based change detection
 ///   fastskill package --skills id1 id2  # Package specific skills
 ///   fastskill package --force           # Package all skills
+///
+/// Note: the `evals/` directory is omitted from packaged skill ZIPs; exclusion is enforced in
+/// `fastskill::core::packaging` when building archives, not in this CLI module.
 #[derive(Debug, Args)]
 pub struct PackageArgs {
     /// Package preset command

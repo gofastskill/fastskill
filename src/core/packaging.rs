@@ -19,7 +19,9 @@ pub fn package_skill(
     package_skill_with_id(skill_path, output_dir, version, None)
 }
 
-/// Package a skill directory into a ZIP file with explicit skill ID
+/// Package a skill directory into a ZIP file with explicit skill ID.
+///
+/// The `evals/` subtree is excluded from the archive (local eval suites are not published).
 pub fn package_skill_with_id(
     skill_path: &Path,
     output_dir: &Path,
@@ -157,6 +159,11 @@ pub fn package_skill_with_id(
             continue;
         }
 
+        // Skip evals/ directory from published artifacts
+        if relative_path_str.starts_with("evals/") || relative_path_str == "evals" {
+            continue;
+        }
+
         // Read file content
         let mut file_content = Vec::new();
         let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
@@ -216,6 +223,11 @@ pub fn package_skill_with_id(
         let relative_path_str = relative_path.to_string_lossy();
 
         if relative_path_str.contains(".git/") {
+            continue;
+        }
+
+        // Skip evals/ directory from published artifacts
+        if relative_path_str.starts_with("evals/") || relative_path_str == "evals" {
             continue;
         }
 

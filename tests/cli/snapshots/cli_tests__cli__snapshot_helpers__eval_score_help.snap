@@ -1,0 +1,17 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Re-score saved eval artifacts without running the agent again
+
+Usage: fastskill eval score [OPTIONS] --run-dir <RUN_DIR>
+
+Options:
+      --run-dir <RUN_DIR>  Path to the run directory to re-score
+      --format <FORMAT>    Output format: table, json, grid, xml
+      --json               Shorthand for --format json
+      --no-fail            Do not fail with non-zero exit code on suite failure
+  -h, --help               Print help
+
+Examples:
+  fastskill eval score --run-dir [TEMP_DIR]

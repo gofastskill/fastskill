@@ -5,7 +5,7 @@ use fastskill::FastSkillService;
 use std::sync::Arc;
 
 use crate::cli::commands::{
-    add, analyze, auth, disable, init, install, list, marketplace, package, publish, read,
+    add, analyze, auth, disable, eval, init, install, list, marketplace, package, publish, read,
     registry, reindex, remove, repos, search, serve, show, sources, sync, update, version,
     Commands,
 };
@@ -109,6 +109,10 @@ impl Cli {
             return auth::execute_auth(args).await;
         }
 
+        if let Some(Commands::Eval(args)) = self.command {
+            return eval::execute_eval(args).await;
+        }
+
         // For other commands, we need to restore self.command, so we need a different approach
         // Actually, if we get here, command was None or not Init/Repository/Package/Publish/RegistryIndex
         let command = self.command;
@@ -155,6 +159,7 @@ impl Cli {
             | Some(Commands::Repos(_))
             | Some(Commands::Marketplace(_))
             | Some(Commands::Auth(_))
+            | Some(Commands::Eval(_))
             | Some(Commands::Version(_)) => unreachable!("Handled above"),
             None => {
                 // No subcommand - treat as skill ID for read command

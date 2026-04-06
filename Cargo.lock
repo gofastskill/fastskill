@@ -42,12 +42,13 @@ dependencies = [
 
 [[package]]
 name = "aikit-sdk"
-version = "0.1.49"
-source = "git+https://github.com/goaikit/aikit?branch=main#60577a3d43d1396b24e2879644f8cf5b93408a4f"
+version = "0.1.50"
+source = "git+https://github.com/goaikit/aikit?branch=main#7380ef9c33c7915d32679da98a818cf7116967fb"
 dependencies = [
  "glob",
  "reqwest 0.12.28",
  "serde",
+ "serde_json",
  "tempfile",
  "toml",
  "walkdir",
