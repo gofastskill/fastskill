@@ -5,7 +5,9 @@ use crate::cli::error::{CliError, CliResult};
 use aikit_sdk::{is_agent_available, is_runnable, runnable_agents};
 use clap::Args;
 use fastskill::core::project::resolve_project_file;
+use fastskill::eval::checks::load_checks;
 use fastskill::eval::config::resolve_eval_config;
+use fastskill::eval::suite::load_suite;
 use fastskill::OutputFormat;
 use std::env;
 
@@ -67,6 +69,23 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     let eval_config = resolve_eval_config(&resolution.path, &project_root)
         .map_err(|e| CliError::Config(e.to_string()))?;
 
+    // Parse and validate prompts CSV
+    let suite =
+        load_suite(&eval_config.prompts_path).map_err(|e| CliError::Config(e.to_string()))?;
+    let case_count = suite.cases.len();
+
+    // Parse and validate checks TOML if present and exists
+    let check_count = if let Some(ref checks_path) = eval_config.checks_path {
+        if checks_path.exists() {
+            let checks = load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?;
+            checks.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
     // Check agent availability if --agent was specified
     if let Some(ref agent_key) = args.agent {
         let available = is_agent_available(agent_key);
@@ -92,6 +111,8 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "timeout_seconds": eval_config.timeout_seconds,
             "fail_on_missing_agent": eval_config.fail_on_missing_agent,
             "project_root": eval_config.project_root,
+            "case_count": case_count,
+            "check_count": check_count,
         });
         println!(
             "{}",
@@ -100,8 +121,10 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     } else {
         println!("eval configuration: valid");
         println!("  prompts: {}", eval_config.prompts_path.display());
+        println!("  cases: {}", case_count);
         if let Some(ref checks) = eval_config.checks_path {
             println!("  checks: {}", checks.display());
+            println!("  check count: {}", check_count);
         }
         println!("  timeout: {}s", eval_config.timeout_seconds);
         println!(
