@@ -126,9 +126,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # crates.io + pin avoids Cargo panicking on `cargo install --git` (LocalPool EnterError).
       - name: Install cross-rs
         if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --version 0.2.5 --locked
 
       - name: Build release binary (cross)
         if: matrix.use-cross
