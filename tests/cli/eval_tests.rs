@@ -170,6 +170,126 @@ fn test_eval_validate_with_eval_config() {
 }
 
 #[test]
+fn test_eval_validate_invalid_csv_missing_column() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    // CSV missing required 'should_trigger' column
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt\ntest-1,\"Test prompt\"\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(
+        !result.success,
+        "Expected eval validate to fail due to missing CSV column"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_INVALID_CSV") || combined.contains("should_trigger"),
+        "Expected EVAL_INVALID_CSV error, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_invalid_checks_toml() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    // Invalid TOML syntax
+    fs::write(
+        evals_dir.join("checks.toml"),
+        "[[check]\nname = broken toml {\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(
+        !result.success,
+        "Expected eval validate to fail due to invalid checks TOML"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_CHECKS_INVALID")
+            || combined.contains("TOML")
+            || combined.contains("toml"),
+        "Expected EVAL_CHECKS_INVALID error, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_with_counts_in_json_output() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\ntest-2,\"Another prompt\",false,\"\",\n",
+    )
+    .unwrap();
+    fs::write(
+        evals_dir.join("checks.toml"),
+        "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate", "--json"], Some(dir.path()));
+    assert!(
+        result.success,
+        "Expected eval validate to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let output: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(output["valid"], true);
+    assert_eq!(output["case_count"], 2);
+    assert_eq!(output["check_count"], 1);
+}
+
+#[test]
 fn test_eval_report_requires_run_dir() {
     let result = run_fastskill_command(&["eval", "report"], None);
     assert!(!result.success);
