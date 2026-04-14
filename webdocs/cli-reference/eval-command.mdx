@@ -1,0 +1,91 @@
+---
+title: "eval Command"
+description: "Validate, run, report, and score skill evaluation suites defined in skill-project.toml."
+---
+
+## Overview
+
+`fastskill eval` runs skill quality checks using prompts and rubrics under `[tool.fastskill.eval]` in `skill-project.toml`. Subcommands are `validate`, `run`, `report`, and `score`.
+
+<Info>
+`eval run` requires an agent on `PATH` for the chosen `--agent` key (for example `codex`, `claude`, `gemini`, `opencode`, or `agent`). Use `eval validate --agent <key>` to verify availability.
+</Info>
+
+## Usage
+
+```bash
+fastskill eval <SUBCOMMAND> [OPTIONS]
+```
+
+## eval validate
+
+Checks eval configuration and files (optional agent presence check).
+
+```bash
+fastskill eval validate
+fastskill eval validate --agent codex
+fastskill eval validate --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--agent <AGENT>` | Verify the given agent is available |
+| `--format <FORMAT>` | `table`, `json`, `grid`, or `xml` |
+| `--json` | Shorthand for `--format json` |
+
+## eval run
+
+Runs eval cases against an agent; writes artifacts under `--output-dir`.
+
+```bash
+fastskill eval run --agent codex --output-dir ./eval-runs
+fastskill eval run --agent claude --output-dir /tmp/evals --case smoke-1
+fastskill eval run --agent codex --output-dir ./evals --tag smoke --model gpt-4o
+fastskill eval run --agent codex --output-dir ./evals --json --no-fail
+```
+
+| Option | Description |
+|--------|-------------|
+| `--agent <AGENT>` | **Required.** Agent key to run |
+| `--output-dir <DIR>` | **Required.** Directory for run output |
+| `--model <MODEL>` | Optional model override passed to the agent |
+| `--case <ID>` | Run only this case id |
+| `--tag <TAG>` | Run only cases with this tag |
+| `--format <FORMAT>` | Output format |
+| `--json` | Shorthand for `--format json` |
+| `--no-fail` | Exit zero even when the suite fails |
+
+## eval report
+
+Summarizes a completed run directory.
+
+```bash
+fastskill eval report --run-dir ./eval-runs/2026-04-01T14-32-10Z
+fastskill eval report --run-dir /tmp/evals/latest --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--run-dir <DIR>` | **Required.** Run directory to summarize |
+| `--format <FORMAT>` | Output format |
+| `--json` | Shorthand for `--format json` |
+
+## eval score
+
+Re-scores saved artifacts without invoking the agent again.
+
+```bash
+fastskill eval score --run-dir ./eval-runs/2026-04-01T14-32-10Z
+fastskill eval score --run-dir /tmp/evals/run-1 --no-fail
+```
+
+| Option | Description |
+|--------|-------------|
+| `--run-dir <DIR>` | **Required.** Run directory |
+| `--format <FORMAT>` | Output format |
+| `--json` | Shorthand for `--format json` |
+| `--no-fail` | Exit zero on suite failure |
+
+## See also
+
+- [init Command](/cli-reference/init-command) and [package Command](/cli-reference/package-command) for skill layout and publishing

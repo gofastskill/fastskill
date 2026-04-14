@@ -5,37 +5,36 @@ description: "Search for skills using semantic embeddings or traditional keyword
 
 ## Overview
 
-The `search` command queries the FastSkill index to find relevant skills based on your query. It supports both semantic search (using embeddings) and traditional keyword search.
+`fastskill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
+
+With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill reindex` and embedding configuration when not using keyword-only mode.
 
 <Info>
-Semantic search requires prior indexing with `fastskill reindex`. Keyword search works immediately on available skills.
+Run `fastskill search --help` for the authoritative flag list.
 </Info>
 
 ## Basic Usage
 
-### Prerequisites
-
-**For Semantic Search (default with --embedding true or unspecified):**
-- OpenAI API key: `export OPENAI_API_KEY="your-openai-api-key"`
-- Skills indexed: `fastskill reindex`
-- Configuration: `.fastskill/config.yaml` with embedding settings
-
-**For Keyword Search:**
-- Skills installed or available in configured repositories
+### Remote catalog (default)
 
 ```bash
-# Semantic search (requires OpenAI API key and indexing)
+fastskill search "text processing"
+fastskill search "pptx" --repository my-registry --limit 5 --json
+```
+
+### Installed skills (local)
+
+```bash
+# Keyword-style local search (no embeddings)
+fastskill search "pdf" --local --embedding false
+
+# Embedding / hybrid behavior (needs index + API key when embedding is true/auto)
 export OPENAI_API_KEY="your-openai-api-key"
-fastskill search --embedding true "process documents and extract information"
+fastskill reindex
+fastskill search "process documents" --local --embedding auto
 
-# Keyword search (works immediately, no API key required)
-fastskill search --embedding false "pdf"
-
-# Auto-detect (default: try semantic, fall back to keyword on config error)
-fastskill search "powerpoint"
-
-# Search in specific skills directory
-fastskill --skills-dir .claude/skills/ search "powerpoint"
+# Optional skills directory override (applies to local flows that need the service)
+fastskill search "powerpoint" --local --skills-dir ./.claude/skills
 ```
 
 ## Command Options
@@ -48,11 +47,11 @@ Maximum number of results to return:
 # Return top 5 results
 fastskill search "powerpoint" --limit 5
 
-# Return all results (default: 10)
-fastskill search "powerpoint" --limit 0
+# Request a larger page (default: 10)
+fastskill search "powerpoint" --limit 50
 ```
 
-### --format [table|json|xml]
+### --format [table|json|grid|xml]
 
 Output format for results:
 
@@ -67,25 +66,28 @@ fastskill search "powerpoint" --format json
 fastskill search "powerpoint" --format xml
 ```
 
-### --embedding <true|false>
-
-Control search mode:
+### Scope flags
 
 ```bash
-# Use embedding search only (requires API key)
-fastskill search --embedding true "process documents"
+fastskill search "query" --local          # installed skills
+fastskill search "query" --remote         # explicit remote (default without --local)
+fastskill search "query" --repository r   # remote, single repo
+```
 
-# Use keyword search only (no API key required)
-fastskill search --embedding false "document processing"
+### --embedding <true|false|auto>
 
-# Auto-detect (default: try semantic, fall back to keyword on config error)
-fastskill search "document processing"
+**Only applies when `--local` is set**; ignored for remote search.
+
+```bash
+fastskill search --local --embedding false "documents"
+fastskill search --local --embedding true "documents"
+fastskill search --local "documents"
 ```
 
 **Modes:**
-- `--embedding true`: Use embedding search only. If embedding config or API key is missing, returns an error.
-- `--embedding false`: Use keyword search only. No embedding config or API key required.
-- Not specified (default): Try embedding search first, fall back to keyword search if embedding config is missing or API key is unavailable.
+- `--embedding true`: Embedding search only (requires API key and index where applicable).
+- `--embedding false`: Keyword-style search without embeddings.
+- `auto` or omitted: Let FastSkill pick a local strategy based on configuration.
 
 ## Search Methods
 
@@ -196,28 +198,13 @@ fastskill search "powerpoint" --format xml
 
 ## Configuration
 
-### Skills Directory
+### Skills directory
 
-Specify where indexed skills are located:
+Local search uses the same skills directory resolution as other commands (typically `[tool.fastskill].skills_directory` in `skill-project.toml`, or `--global` on the top-level CLI). You can override per invocation with:
 
 ```bash
-# Search in default location
-fastskill search "query"
-
-# Search in specific directory
-fastskill --skills-dir ./my-skills/ search "query"
-
-# Use environment variable
-export FASTSKILL_DIRECTORY="./my-skills"
-fastskill search "query"
+fastskill search "query" --local --skills-dir ./.claude/skills
 ```
-
-### Directory Resolution Priority
-
-1. `--skills-dir` command line argument
-2. `FASTSKILL_DIRECTORY` environment variable
-3. `.skills` folder in current directory
-4. Walking up directory tree for `.skills` folder
 
 ## Examples
 
@@ -400,26 +387,6 @@ curl -X GET "http://localhost:8080/api/search?q=powerpoint&format=json"
 fastskill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
 ```
 
-#### CI/CD Integration
-```yaml
-# .github/workflows/search-skills.yml
-name: Test Skill Search
-on: [push]
-jobs:
-  test-search:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install FastSkill
-        run: cargo install --path tools/fastskill/rust/
-      - name: Index skills
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: fastskill reindex --skills-dir .claude/skills/
-      - name: Test search
-        run: fastskill search "powerpoint" --format json
-```
-
 ## Related Commands
 
 ### Reindex Command
@@ -429,29 +396,4 @@ Build or update the search index:
 fastskill reindex --skills-dir .claude/skills/
 ```
 
-### List Skills (Rust Library)
-View all indexed skills programmatically:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig};
-use std::path::PathBuf;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ServiceConfig {
-        skill_storage_path: PathBuf::from("./skills"),
-        ..Default::default()
-    };
-
-    let mut service = FastSkillService::new(config).await?;
-    service.initialize().await?;
-
-    let skills = service.skill_manager().list_skills(None).await?;
-    println!("Total indexed skills: {}", skills.len());
-
-    service.shutdown().await?;
-    Ok(())
-}
-```
-
-The search command provides the primary interface for discovering skills, offering both traditional keyword matching and advanced semantic search capabilities powered by embeddings.
+The search command is the primary way to discover skills from catalogs or your installed set, depending on `--local` and embedding settings.

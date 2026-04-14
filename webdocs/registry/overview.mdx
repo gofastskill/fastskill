@@ -17,10 +17,10 @@ The FastSkill Registry provides a web-based interface for browsing, searching, a
 
 ## Enabling the Registry
 
-Start the server with the `--enable-registry` flag:
+Start the server (UI and registry HTTP routes are available whenever `serve` is running):
 
 ```bash
-fastskill serve --enable-registry
+fastskill serve
 ```
 
 Then open `http://localhost:8080/registry` in your browser.
@@ -47,7 +47,7 @@ Only sources that provide `marketplace.json` files are displayed in the registry
 
 1. **Configure repositories**: Add repositories to `[tool.fastskill.repositories]` section in `skill-project.toml`
 2. **Generate marketplace.json**: Use `fastskill registry create` to generate marketplace files
-3. **Start server**: Run `fastskill serve --enable-registry`
+3. **Start server**: Run `fastskill serve`
 4. **Browse skills**: Open `/registry` in your browser or use `fastskill registry list-skills` to list skills from HTTP registries
 5. **List installed skills**: Use `fastskill list` to see locally installed skills with reconciliation status
 6. **Install skills**: Click "Install" in the web UI or use `fastskill add` to add skills to your local installation

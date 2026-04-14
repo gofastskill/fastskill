@@ -47,31 +47,27 @@ Quick reference for common FastSkill operations.
 | Sync with override | `fastskill sync --agents-file custom.md --yes` | Syncs to a custom metadata file path, overriding auto-detection |
 | Interactive sync | `fastskill sync` | Interactively select which skills to expose in the detected metadata file |
 
-## Servers
+## Local server
 
-| Operation | Command | What It Does |
+| Operation | Command | What it does |
 |-----------|---------|--------------|
-| Web UI | `fastskill serve --enable-registry` | Starts HTTP server with REST API and web UI at `/registry` for browsing installed skills |
-| API server | `fastskill serve` | Starts HTTP server with REST API only (no web UI), exposes endpoints for programmatic access |
+| HTTP server | `fastskill serve` | Serves the web UI and HTTP API on `--host` / `--port` (see [serve Command](/cli-reference/serve-command)) |
 
-## Admin
+## Repositories and catalog
 
-| Operation | Command | What It Does |
+| Operation | Command | What it does |
 |-----------|---------|--------------|
-| List repositories | `fastskill sources list` | Lists all configured repositories from `skill-project.toml` |
-| Show repository | `fastskill sources show repo-name` | Displays repository configuration details (type, URL, auth, priority) |
-| Add repository | `fastskill sources add repo-name --repo-type git-marketplace <url>` | Adds new repository to `skill-project.toml`, supports git-marketplace, http-registry, zip-url, local |
-| Remove repository | `fastskill sources remove repo-name` | Removes repository from `skill-project.toml` |
-| Update repository | `fastskill sources update repo-name --branch main --priority 1` | Updates repository metadata (branch, priority) |
-| Test repository | `fastskill sources test repo-name` | Tests repository connectivity and accessibility |
-| Refresh repositories | `fastskill sources refresh` | Refreshes repository cache (re-fetches from source) |
-| List registry skills | `fastskill registry list-skills` | Lists all skills from HTTP registry (table format) |
-| List registry skills (JSON) | `fastskill registry list-skills --json` | Lists all skills from HTTP registry in JSON format |
-| List by scope | `fastskill registry list-skills --scope acme` | Lists skills filtered by scope from HTTP registry |
-| List all versions | `fastskill registry list-skills --all-versions` | Lists all versions of each skill from HTTP registry |
-| Show skill | `fastskill registry show-skill skill-id` | Shows details for a specific skill from registry |
-| Show skill versions | `fastskill registry versions skill-id` | Lists all available versions for a specific skill |
-| Search skills | `fastskill search query` | Searches for skills across repositories (default: remote) |
+| List repositories | `fastskill repos list` | Lists configured repositories from `skill-project.toml` |
+| Repository details | `fastskill repos info repo-name` | Shows type, URL or path, priority, and auth hints |
+| Add repository | `fastskill repos add repo-name --repo-type git-marketplace <url>` | Adds a repository entry (`git-marketplace`, `http-registry`, `zip-url`, `local`) |
+| Remove repository | `fastskill repos remove repo-name` | Removes the repository entry |
+| Update repository | `fastskill repos update repo-name --branch main --priority 1` | Updates branch or priority |
+| Test repository | `fastskill repos test repo-name` | Checks connectivity |
+| Refresh cache | `fastskill repos refresh` | Refreshes cached catalog metadata |
+| List catalog skills | `fastskill repos skills` | Lists skills advertised by registries |
+| Show catalog skill | `fastskill repos show skill-id` | Shows one skill from the catalog |
+| List skill versions | `fastskill repos versions skill-id` | Lists published versions for a skill id |
+| Search | `fastskill search "query"` | Remote catalog search by default; add `--local` for installed skills |
 
-For detailed documentation, see the [README](/) and [Registry Guide](/registry/overview).
+See [Registry overview](/registry/overview) and [repos command](/cli-reference/repository-command).
 

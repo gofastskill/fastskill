@@ -10,7 +10,7 @@ Discovery commands help you find, index, and manage skills in your FastSkill eco
 <Info>
 **Command Architecture**:
 - **Repository Management**: Use `fastskill repos` for all repository operations (add, remove, list, test, refresh) and catalog browsing (skills, show, versions)
-- **Skill Discovery**: Use the top-level `fastskill search` command for semantic search across installed skills
+- **Skill Discovery**: Use `fastskill search` (remote catalogs by default; add `--local` for installed skills and embeddings)
 </Info>
 
 <Note>
@@ -21,42 +21,44 @@ For detailed documentation on specific commands, see the dedicated command pages
 
 ### fastskill search
 
-Search for installed skills using semantic similarity with OpenAI embeddings. Returns ranked results based on semantic relevance.
+Query skills. **Default scope is remote** (catalog APIs). Use `--local` to search installed skills; local embedding search uses OpenAI when configured and respects `--embedding`.
 
 <Info>
 See [search Command](/cli-reference/search-command) for complete documentation with output formats.
 </Info>
 
 ```bash
-# Search for skills
+# Remote catalog search (default)
 fastskill search "text processing"
 
-# Search with XML format output
-fastskill search "analyze data" --format xml
+# Installed skills + embeddings / keyword (see --embedding)
+fastskill search "analyze data" --local
 
-# Search with JSON format
-fastskill search "convert files" --format json
+# Remote, limit and JSON
+fastskill search "convert files" --limit 5 --json
 
-# Search with limit
-fastskill search "process text" --limit 5
+# Remote, single repository
+fastskill search "process text" --repository my-repo
 ```
 
-**What it does**:
-- Embeds query text using OpenAI's `text-embedding-3-small` model
-- Searches vector index (SQLite database at `.claude/.fastskill/index.db`)
-- Returns ranked results using cosine similarity
-- File content is hashed (SHA256) to detect changes
+**What it does (local scope)**:
+- Optionally embeds the query and searches the local vector index when `--embedding` is not `false`
+- Uses the skills directory from `skill-project.toml` / discovery unless `--skills-dir` is set
 
 **Options**:
-- `<QUERY>`: Search query (natural language)
-- `--format <FORMAT>`: Output format: `json`, `xml`, or `text` (default: text)
-- `--limit <N>`: Maximum number of results to return (default: 10)
-- `--min-score <SCORE>`: Minimum relevance threshold (0.0-1.0)
+- `<QUERY>`: Search string
+- `--local`: Search installed skills only
+- `--remote`: Explicit remote search (same as default when `--repository` is not used alone)
+- `--repository <NAME>`: Limit remote search to one configured repository
+- `-l, --limit <N>`: Max results (default: 10)
+- `-f, --format <FORMAT>`: `table`, `json`, `grid`, or `xml` (default: table)
+- `--json`: Shorthand for `--format json`
+- `--embedding <true|false|auto>`: **Local only**; ignored for remote search
+- `--skills-dir <PATH>`: Override skills directory (local search / service bootstrap)
 
 **Output**:
-- **text**: Human-readable table with skill details
-- **json**: Machine-readable array with relevance scores
-- **xml**: Structured XML for API integration
+- **table** (default): Human-readable rows
+- **json** / **xml** / **grid**: Structured or machine-readable layouts
 
 ### fastskill reindex
 
@@ -67,30 +69,31 @@ See [reindex Command](/cli-reference/reindex-command) for complete documentation
 </Info>
 
 ```bash
-# Reindex all skills
+# Reindex all skills (uses configured skills directory)
 fastskill reindex
-
-# Reindex specific skill
-fastskill reindex web-scraper
 
 # Force reindex (ignore file hash cache)
 fastskill reindex --force
 
-# Control concurrent embedding requests
+# Control concurrent embedding requests (default 5)
 fastskill reindex --max-concurrent 5
+
+# Optional explicit skills directory
+fastskill reindex --skills-dir ./.claude/skills
 ```
 
 **What it does**:
-- Scans `.claude/skills/` for all installed skills
-- Generates embeddings for SKILL.md content using OpenAI API
-- Stores embeddings in SQLite database at `.claude/.fastskill/index.db`
+- Scans the configured skills directory for installed skills
+- Generates embeddings for SKILL.md content when embedding search is enabled
+- Stores vectors in the local index database used by `fastskill search --local`
 - Tracks file hashes (SHA256) for change detection
-- Skips unchanged files based on hash comparison
+- Skips unchanged files unless `--force` is set
 
 **Options**:
-- `<SKILL_ID>`: Reindex specific skill only (optional)
-- `--force`: Force reindex all files (ignore hash cache)
-- `--max-concurrent <N>`: Maximum concurrent embedding API requests (default: 10)
+- `--skills-dir <PATH>`: Override skills directory for this run
+- `--force`: Rebuild all embeddings (ignore hash cache)
+- `--max-concurrent <N>`: Concurrent embedding requests (default: 5)
+- `--progress` / `--no-progress`: Control progress UI
 
 **When to use**:
 - After installing new skills
@@ -194,7 +197,7 @@ When skills are available in multiple repositories, priority determines the orde
 - Higher priority values are checked later
 
 <Warning>
-**Deprecated Commands**: The legacy `sources` and `registry` commands are deprecated and will be removed. Use `fastskill repos` for all repository management operations.
+**Legacy commands**: `sources` (alias `source`) and `registry` are hidden from `fastskill --help` but still exist for compatibility. Prefer `fastskill repos` for repository and catalog operations.
 </Warning>
 
 ## Search and Reindex Workflow

@@ -21,10 +21,10 @@ fastskill reindex --skills-dir /path/to/skills/
 
 ### --skills-dir <DIRECTORY>
 
-**Required.** Specifies the root directory containing SKILL.md files.
+Optional override for the skills root (otherwise the CLI uses the same discovery as other commands, typically from `skill-project.toml`).
 
 ```bash
-# Index skills from Claude directory
+# Index skills from a explicit directory
 fastskill reindex --skills-dir .claude/skills/
 
 # Index from custom location
@@ -200,7 +200,7 @@ Disable progress bars and spinners:
 FASTSKILL_NO_PROGRESS=1 fastskill reindex
 ```
 
-This is useful when running in non-interactive environments like CI/CD pipelines.
+This is useful in scripts or scheduled jobs that refresh embeddings without a TTY.
 
 #### `NO_COLOR`
 
@@ -423,7 +423,7 @@ Check if indexing succeeded:
 ls -la .claude/skills/.fastskill/index.db
 
 # Test search
-fastskill --skills-dir .claude/skills/ search "test" --embedding false
+fastskill search "test" --local --embedding false --skills-dir .claude/skills
 ```
 
 ## Advanced Usage
@@ -450,29 +450,9 @@ fastskill reindex --skills-dir .claude/skills/
 fastskill reindex --skills-dir ./custom-skills/
 ```
 
-### Automated Reindex
+### Automated reindex
 
-Add to CI/CD pipeline:
-
-```yaml
-# .github/workflows/reindex-skills.yml
-name: Reindex Skills Index
-on:
-  push:
-    paths:
-      - '.claude/skills/**'
-jobs:
-  reindex:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up FastSkill
-        run: cargo install fastskill --path tools/fastskill/rust/
-      - name: Reindex skills
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: fastskill reindex --skills-dir .claude/skills/
-```
+After installs in automation, run `fastskill reindex` with the same environment variables you use locally (`OPENAI_API_KEY`, optional `--skills-dir`). See [CI/CD integration](/integration/cicd-pipelines) for runner patterns.
 
 ## Related Commands
 
@@ -480,15 +460,12 @@ jobs:
 Use indexed skills for semantic search:
 
 ```bash
-fastskill search "process documents" --skills-dir .claude/skills/
+fastskill search "process documents" --local --skills-dir .claude/skills/
 ```
 
-### List Skills
-View indexed skills without search:
+### List skills
 
 ```bash
-# Use Rust library
-# Or use CLI to list skills
 fastskill list --skills-dir .claude/skills/
 ```
 

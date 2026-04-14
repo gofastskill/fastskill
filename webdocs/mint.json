@@ -67,6 +67,7 @@
             "group": "Discovery & Routing",
             "pages": [
                 "discovery/skill-discovery",
+                "discovery/query-processing",
                 "discovery/intelligent-routing",
                 "search/embedding-search"
             ]
@@ -75,8 +76,7 @@
             "group": "Tool Calling",
             "pages": [
                 "tool-calling/available-tools",
-                "tool-calling/execution",
-                "tool-calling/development"
+                "tool-calling/execution"
             ]
         },
         {
@@ -101,7 +101,6 @@
                 "cli-reference/overview",
                 "cli-reference/skill-commands",
                 "cli-reference/discovery-commands",
-                "cli-reference/sources-command",
                 "cli-reference/auth-command",
                 "cli-reference/init-command",
                 "cli-reference/install-command",
@@ -111,7 +110,9 @@
                 "cli-reference/reindex-command",
                 "cli-reference/search-command",
                 "cli-reference/serve-command",
-                "cli-reference/repository-command"
+                "cli-reference/repository-command",
+                "cli-reference/eval-command",
+                "cli-reference/tooling-commands"
             ]
         },
         {
@@ -140,17 +141,16 @@
                 "security/model",
                 "security/best-practices",
                 "skill-management/reconciliation",
-                "advanced-topics/event-system",
-                "advanced-topics/build-systems",
-                "advanced-topics/feature-flags",
-                "testing/framework",
-                "testing/debugging"
+                "advanced-topics/build-systems"
             ]
         },
         {
             "group": "Integration",
             "pages": [
                 "integration/cursor-integration",
+                "integration/claude-code-integration",
+                "integration/cicd-pipelines",
+                "integration/blob-storage",
                 "integration/kubernetes-deployment"
             ]
         }

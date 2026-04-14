@@ -151,8 +151,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install FastSkill
-        run: cargo install --path tools/fastskill/rust/
+      - name: Install FastSkill CLI
+        run: |
+          # Add the steps your org uses to place `fastskill` on PATH (release tarball, package, etc.)
+          fastskill -V
 
       - name: Sync skills to metadata file
         run: fastskill sync --agent cursor-agent --yes

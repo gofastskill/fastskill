@@ -5,16 +5,17 @@ description: "Get up and running with FastSkill in under 10 minutes with this st
 
 ## Prerequisites
 
-- Rust 1.70+ and `cargo`
-- OpenAI API key (required for semantic search/reindex)
+- The `fastskill` binary on your `PATH` (see [Installation](/installation); release archives avoid installing Rust)
+- `OPENAI_API_KEY` when you use embedding search or `reindex`
 
 ## Five-minute setup (CLI)
 
 <Steps>
 <Step title="Install the CLI">
+Follow [Installation](/installation), then confirm:
+
 ```bash
-cargo install fastskill --features git-support
-fastskill --version
+fastskill -V
 ```
 </Step>
 
@@ -49,32 +50,31 @@ fastskill reindex
 
 <Step title="Search & verify">
 ```bash
-fastskill search "text processing" --format json
+fastskill search "text processing" --local --format json
 ```
 
 <Check>
-You should see a JSON list of matching skills. If empty, add a skill and rerun `fastskill reindex`.
+You should see JSON results for installed skills. If empty, run `fastskill install`, then `fastskill reindex`, and search again.
 </Check>
 </Step>
 
 <Step title="Optional: serve UI">
 ```bash
-fastskill serve --enable-registry --port 8080
+fastskill serve --port 8080
 ```
-Browse http://localhost:8080/registry to view installed/available skills.
+Browse `http://localhost:8080/` for the bundled UI.
 </Step>
 </Steps>
 
 ## Use-case quick recipes
 
-- **Install from sources**
+- **Install skills from different sources**
   - Public registry ID: `fastskill add pptx@1.0.0`
   - Local folder (editable): `fastskill add ./skills/my-skill -e --group dev`
   - Git repo with branch: `fastskill add https://github.com/org/skill.git --branch main`
-  - Private registry:
+  - Private Git marketplace:
     ```bash
-    fastskill sources add team --type git-marketplace --url https://github.com/org/skills.git \
-      --priority 1
+    fastskill repos add team --repo-type git-marketplace https://github.com/org/skills.git --priority 1
     fastskill install
     ```
 

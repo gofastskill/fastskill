@@ -1,6 +1,6 @@
 ---
 title: "Installation Guide"
-description: "Complete installation instructions for FastSkill Rust implementation including CLI and library installation."
+description: "Install the FastSkill CLI on your machine: releases, package managers, and optional source build."
 ---
 
 ## System Requirements
@@ -71,38 +71,16 @@ To add to PATH permanently on Windows:
 </Tab>
 
 <Tab title="From Source">
-Build from source if you need the latest development version or want to customize the build.
+Use this if you are building the CLI from a checkout of the [FastSkill repository](https://github.com/gofastskill/fastskill) (for example to try an unreleased fix). You need Rust on your PATH.
 
 ```bash
-# Clone the repository
 git clone https://github.com/gofastskill/fastskill.git
-cd fastskill/rust
-
-# Build and install
+cd fastskill
 cargo install --path . --bin fastskill --features git-support
-
-# Verify installation
 fastskill --help
 ```
 
-**Requirements:**
-- Rust 1.70+ (`rustup install stable`)
-- Git (for git URL support, optional - only needed with `--features git-support`)
-</Tab>
-
-<Tab title="Development Build">
-For contributors and developers working on FastSkill:
-
-```bash
-cd tools/fastskill/rust
-cargo build --bin fastskill --features git-support
-
-# Run directly
-./target/debug/fastskill --help
-
-# Or install locally
-cargo install --path . --bin fastskill --features git-support
-```
+**Requirements:** Rust stable toolchain; Git is optional unless you rely on `--features git-support` for Git-based skill sources.
 </Tab>
 </Tabs>
 
@@ -120,61 +98,6 @@ The CLI automatically discovers the skills directory in this priority order:
 - Install with `fastskill install` (use `--without`/`--only` for groups)
 - Lockfile is written to `skills.lock` at project root after installs
 - Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`
-
-## Rust Library Installation
-
-### Using Cargo
-
-Add FastSkill to your `Cargo.toml`:
-
-```toml
-[dependencies]
-fastskill = { version = "0.1.0", features = ["git-support"] }
-tokio = { version = "1.0", features = ["full"] }
-```
-
-Install dependencies:
-
-```bash
-cargo build
-```
-
-<Check>
-Verify installation:
-```bash
-cargo check --package fastskill
-```
-</Check>
-
-### From Source
-
-<Steps>
-<Step title="Clone and setup">
-```bash
-git clone https://github.com/gofastskill/fastskill.git
-cd fastskill/rust
-```
-</Step>
-
-<Step title="Build the project">
-```bash
-cargo build --release
-```
-
-<Check>
-Test the build:
-```bash
-cargo test
-```
-</Check>
-</Step>
-
-<Step title="Install system-wide (optional)">
-```bash
-cargo install --path . --bin fastskill
-```
-</Step>
-</Steps>
 
 ## Configuration
 
@@ -197,67 +120,9 @@ Set your OpenAI API key:
 export OPENAI_API_KEY="your-key-here"
 ```
 
-## Docker Installation
+## Docker (optional)
 
-### Building from Source
-
-<Steps>
-<Step title="Clone the repository">
-```bash
-git clone https://github.com/gofastskill/fastskill.git
-cd fastskill
-```
-</Step>
-
-<Step title="Build Docker image">
-```bash
-# Build Rust image
-docker build -f docker/rust/Dockerfile -t fastskill-rust .
-```
-</Step>
-
-<Step title="Run the container">
-```bash
-docker run -it fastskill-rust ./target/release/fastskill --help
-```
-</Step>
-</Steps>
-
-## Development Setup
-
-For contributors and advanced users:
-
-<Steps>
-<Step title="Install Rust toolchain">
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-```
-</Step>
-
-<Step title="Install development tools">
-```bash
-cargo install cargo-watch cargo-audit cargo-udeps
-rustup component add rustfmt clippy
-```
-</Step>
-
-<Step title="Setup development environment">
-```bash
-cd tools/fastskill/rust
-cargo build
-```
-</Step>
-
-<Step title="Run tests and checks">
-```bash
-cargo test
-cargo fmt --check
-cargo clippy -- -D warnings
-cargo audit
-```
-</Step>
-</Steps>
+If you run tools in containers, install the same release archive inside your image (see the Linux steps above) or copy the `fastskill` binary into a minimal base image. Mount your project directory and set `OPENAI_API_KEY` when you use embedding search.
 
 ## Platform-Specific Instructions
 
@@ -344,54 +209,14 @@ wsl --install Ubuntu
 </Tab>
 </Tabs>
 
-## Verification
+## Verify the CLI
 
-After installation, verify everything works correctly:
-
-<Steps>
-<Step title="Basic functionality test">
-Create a test file `verification.rs`:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig};
-use std::path::PathBuf;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 Running FastSkill verification...");
-
-    let config = ServiceConfig {
-        skill_storage_path: PathBuf::from("./skills"),
-        ..Default::default()
-    };
-
-    let service = FastSkillService::new(config).await?;
-    service.initialize().await?;
-
-    // Test skill listing
-    let skills = service.skill_manager().list_skills(None).await?;
-    println!("Found {} skills", skills.len());
-
-    // Test skill discovery
-    let relevant_skills = service.metadata_service()
-        .discover_skills("test")
-        .await?;
-    
-    println!("Found {} relevant skills", relevant_skills.len());
-    println!("✅ All verification tests passed!");
-
-    Ok(())
-}
-```
-</Step>
-
-<Step title="Run the verification">
 ```bash
-# Add to Cargo.toml temporarily or run as example
-cargo run --example verification
+fastskill -V
+fastskill --help
 ```
-</Step>
-</Steps>
+
+If you already have a project with `skill-project.toml`, try `fastskill list` or `fastskill install` from that directory.
 
 ## Troubleshooting
 
@@ -434,11 +259,11 @@ cargo run --example verification
   </Tip>
 
   <Tip>
-  **Windows antivirus**: Add an exception for the FastSkill installation directory if antivirus blocks compilation.
+  **Windows antivirus**: If Windows blocks the downloaded binary, add an exception for the folder where you keep `fastskill.exe`.
   </Tip>
 
   <Tip>
-  **Linux linker errors**: Install build essentials: `sudo apt-get install build-essential` (Ubuntu/Debian) or equivalent.
+  **Linux linker errors (source builds only)**: Install a C toolchain (for example `build-essential` on Ubuntu) before running `cargo install`.
   </Tip>
 </Accordion>
 </AccordionGroup>

@@ -50,7 +50,7 @@ export OPENAI_API_KEY="your-openai-api-key"
 ### 3. Index Skills
 
 ```bash
-fastskill --skills-dir /path/to/skills/ reindex
+fastskill reindex --skills-dir /path/to/skills/
 ```
 
 This command:
@@ -64,11 +64,11 @@ This command:
 ### Basic Semantic Search
 
 ```bash
-# Find skills related to document processing
-fastskill --skills-dir .claude/skills/ "process documents and extract information"
+# Local semantic search after reindex
+fastskill search "process documents and extract information" --local
 
-# Search for visualization tools
-fastskill --skills-dir .claude/skills/ "create charts and graphs"
+# Broader query
+fastskill search "create charts and graphs" --local
 ```
 
 ### Output Formats

@@ -5,7 +5,7 @@ description: "Complete reference for the FastSkill command-line interface includ
 
 ## Overview
 
-The FastSkill CLI provides a comprehensive command-line interface for managing skills, running the service, and performing administrative tasks. It's designed for both development workflows and production operations.
+The FastSkill CLI is how you install skills, search catalogs, run a local HTTP server, and keep projects in sync with `skill-project.toml` and `skills.lock`.
 
 <Info>
 The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
@@ -13,24 +13,13 @@ The CLI supports both interactive and scripting use cases, with comprehensive he
 
 ## Installation
 
-The FastSkill CLI is a Rust-based command-line tool. Install it using Cargo:
+Use the same install method as the [Installation](/installation) guide (release binary recommended). After install, confirm the CLI is on your PATH:
 
 ```bash
-# From crates.io (when published)
-cargo install fastskill --features git-support
-
-# Or from source
-git clone https://github.com/gofastskill/fastskill.git
-cd fastskill/rust
-cargo install --path . --bin fastskill --features git-support
-
-# Verify installation
-fastskill --version
+fastskill -V
 ```
 
-**Requirements:**
-- Rust 1.70+ (`rustup install stable`)
-- Git (optional, only needed with `--features git-support`)
+For Git-based skill sources, use a build that includes Git support if your distribution splits binaries that way. See [Installation](/installation) for details.
 
 ## Basic Usage
 
@@ -58,15 +47,16 @@ fastskill list --help         # Help for list command
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| `--version` | Show version information | `fastskill --version` |
-| `--verbose, -v` | Enable verbose output | `fastskill -v list` |
-| `--repositories_path` | Path to repositories configuration file | `fastskill --repositories_path .claude/repositories.toml list` |
-| `--global` | Use global configuration instead of project-level | `fastskill --global list` |
-| `--help, -h` | Show help information | `fastskill --help` |
+| `-V, --version` | Print the `fastskill` binary version and exit | `fastskill -V` |
+| `--verbose`, `-v` | Enable verbose logging | `fastskill -v list` |
+| `--repositories-path` | Override path to `repositories.toml` | `fastskill --repositories-path ./repositories.toml list` |
+| `--global` | Use the user-level global skills directory | `fastskill --global list` |
+| Positional `SKILL_ID` | Shorthand for `fastskill read <id>` when no subcommand is given | `fastskill pptx` |
+| `--help`, `-h` | Help | `fastskill --help` |
 
 ## Command Categories
 
-### Workspace & lifecycle
+### Project and lifecycle
 
 <CardGroup cols={2}>
   <Card title="fastskill init" icon="play">
@@ -82,7 +72,7 @@ fastskill list --help         # Help for list command
     Rebuild the search index for semantic discovery. See [reindex Command](/cli-reference/reindex-command).
   </Card>
   <Card title="fastskill serve" icon="server">
-    Start the HTTP server (use `--enable-registry` for the web UI). See [serve Command](/cli-reference/serve-command).
+    Start the HTTP server (`--host`, `--port`). Web UI and API routes are served with the process. See [serve Command](/cli-reference/serve-command).
   </Card>
 </CardGroup>
 
@@ -113,7 +103,7 @@ fastskill list --help         # Help for list command
 
 <CardGroup cols={2}>
   <Card title="fastskill search" icon="search">
-    Semantic search across installed skills (supports `--format xml`, `--format json`). See [search Command](/cli-reference/search-command).
+    Search remote catalogs by default; use `--local` for embedding search on installed skills. See [search Command](/cli-reference/search-command).
   </Card>
   <Card title="fastskill repos" icon="book">
     Manage repositories (list/add/remove/info/update/test/refresh) and browse remote skill catalog with authentication and priority. See [repos Command](/cli-reference/repository-command).
@@ -134,11 +124,20 @@ fastskill list --help         # Help for list command
   </Card>
 </CardGroup>
 
-### Diagnostics
+### Diagnostics and tooling
 
 <CardGroup cols={2}>
   <Card title="fastskill version" icon="info">
     Show CLI version.
+  </Card>
+  <Card title="fastskill eval" icon="check">
+    Validate and run skill evaluation suites. See [eval Command](/cli-reference/eval-command).
+  </Card>
+  <Card title="fastskill sync" icon="refresh-cw">
+    Sync installed skills to agent metadata. See [tooling commands](/cli-reference/tooling-commands#fastskill-sync).
+  </Card>
+  <Card title="fastskill analyze" icon="chart-network">
+    Similarity matrix, clusters, duplicates. See [tooling commands](/cli-reference/tooling-commands#fastskill-analyze).
   </Card>
 </CardGroup>
 
@@ -213,11 +212,11 @@ blob_base_url = "https://blob.example.com/skills"
 
 ### Environment Variables
 
-## Scripting and Automation
+## Scripting and automation
 
-The CLI is designed for scripting and CI/CD integration:
+Use the CLI in scripts the same way you would run `git` or `uv`: non-interactive flags (`--yes`, `--force`, `--json`) are preferred for automation.
 
-### Batch Operations
+### Batch operations
 
 ```bash
 # Add multiple local skills (editable) and install
@@ -268,91 +267,32 @@ fastskill search "smoke test"
 
 ## Examples
 
-### Development Workflow
+### Example: local project
 
 ```bash
-# 1. Add a dev skill (editable)
+# 1. Add a skill you are iterating on (optional group)
 fastskill add ./skills/my-skill -e --group dev
 
-# 2. Install and index
+# 2. Apply the manifest and refresh the local index
 fastskill install
 fastskill reindex
 
-# 3. Start the registry UI for browsing
-fastskill serve --enable-registry --port 8080
+# 3. Browse with the bundled web UI
+fastskill serve --port 8080
 
-# 4. Test search
+# 4. Try search (remote catalog by default; add --local for installed skills)
 fastskill search "text processing"
 ```
 
-### Production Deployment
+### Example: reproducible install
 
 ```bash
-# 1. Install reproducibly
 fastskill install --lock
-
-# 2. Reindex
 fastskill reindex
-
-# 3. Start service with registry UI
-fastskill serve --enable-registry --port 8080
-
-# 4. Smoke-test search
-fastskill search "health check"
+fastskill serve --port 8080
 ```
 
-### CI/CD Integration
-
-```yaml
-# .github/workflows/test.yml
-name: FastSkill CI
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-
-    - name: Install FastSkill
-      run: |
-        cd tools/fastskill/rust
-        cargo install --path . --bin fastskill --features git-support
-
-    - name: Validate skills
-      run: fastskill show
-
-    - name: Search test
-      run: fastskill search "test"
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-
-    - name: Deploy skills
-      run: |
-        cd tools/fastskill/rust
-        cargo install --path . --bin fastskill --features git-support
-        fastskill serve --enable-registry
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-```
+For running `fastskill` in automation (build machines, sandboxes), install the CLI in the job image, check out your repo, then run the same commands with secrets injected for registry tokens and `OPENAI_API_KEY` when needed. See [CI/CD integration](/integration/cicd-pipelines) for patterns without repository-specific paths.
 
 ## Troubleshooting
 
@@ -363,17 +303,8 @@ jobs:
   <Warning>
   **Path issue**: Ensure FastSkill is installed and in your PATH.
   ```bash
-  # Check installation
-  cargo list | grep fastskill
-  # Or check if binary exists
   which fastskill
-
-  # Verify Rust installation
-  rustc --version
-  cargo --version
-
-  # Reinstall if needed
-  cargo install fastskill --features git-support
+  fastskill -V
   ```
   </Warning>
 </Accordion>
@@ -407,17 +338,13 @@ jobs:
 </Accordion>
 </AccordionGroup>
 
-### Debug Mode
-
-Enable debug mode for detailed troubleshooting:
+### More verbose output
 
 ```bash
-# Run with verbose output
 fastskill -v install
-
-# Use environment variable for trace-level logging
-RUST_LOG=fastskill=trace fastskill serve
 ```
+
+Some distributions document extra logging variables; check your install notes if you need trace-level diagnostics.
 
 ## Best Practices
 
@@ -430,19 +357,19 @@ RUST_LOG=fastskill=trace fastskill serve
   Run `fastskill reindex` after adding or updating skills so search stays fresh.
 </Step>
 
-<Step title="Scope dev skills">
-  Use groups (e.g., `--group dev`) and install with `--without dev` for lean production deploys.
+<Step title="Use groups for optional skills">
+  Use groups (for example `--group dev`) and install with `--without dev` when you want a smaller production skill set.
 </Step>
 
-<Step title="Monitor service health">
-  Regularly check service status and logs to ensure optimal operation.
+<Step title="Check the server when you use serve">
+  Confirm `http://<host>:<port>/` responds after upgrades or config changes.
 </Step>
 
-<Step title="Backup before major changes">
-  Create backups of skill definitions before making bulk changes or updates.
+<Step title="Back up manifests before big changes">
+  Keep copies of `skill-project.toml`, `skills.lock`, and any custom `.fastskill` config before bulk edits.
 </Step>
 </Steps>
 
 <Warning>
-The CLI provides powerful operations that can modify your skill ecosystem. Always test in a development environment before applying changes to production.
+Commands can change installed skills and manifest files. Try changes on a copy of the project or a branch first if you are unsure.
 </Warning>

@@ -75,16 +75,17 @@ kubectl create secret generic fastskill-openai-key \
   --from-literal=OPENAI_API_KEY=sk-... \
   --namespace fastskill
 
-# Step 4: Install chart with registry enabled
-helm install fastskill ./tools/fastskill/helm/fastskill \
+# Step 4: Install the Helm chart (unpack the chart archive from GitHub Releases or clone the repo)
+export CHART_PATH=./fastskill-chart   # path where you extracted the chart
+helm install fastskill "$CHART_PATH" \
   --namespace fastskill \
   --set s3.bucket=my-fastskill-registry \
   --set s3.region=us-east-1 \
   --set s3.blobBaseUrl=https://my-fastskill-registry.s3.amazonaws.com/skills
 
-# Or use values file
-helm install fastskill ./tools/fastskill/helm/fastskill \
-  -f ./tools/fastskill/helm/fastskill/values-registry-s3.yaml \
+# Or use your own values file next to the chart
+helm install fastskill "$CHART_PATH" \
+  -f ./values-registry-s3.yaml \
   --namespace fastskill
 
 # Step 5: Verify deployment
@@ -96,7 +97,7 @@ kubectl port-forward -n fastskill svc/fastskill-registry 8080:8080
 curl http://localhost:8080/api/status
 
 # Access web UI
-open http://localhost:8080/registry
+open http://localhost:8080/
 ```
 
 ### S3-Compatible Storage Options
@@ -284,12 +285,12 @@ kubectl port-forward -n fastskill svc/fastskill-registry 8080:8080
 
 ```bash
 # Upgrade with new values
-helm upgrade fastskill ./tools/fastskill/helm/fastskill \
-  -f ./tools/fastskill/helm/fastskill/values-prod.yaml \
+helm upgrade fastskill "$CHART_PATH" \
+  -f ./values-prod.yaml \
   --namespace fastskill
 
 # Upgrade with new image tag
-helm upgrade fastskill ./tools/fastskill/helm/fastskill \
+helm upgrade fastskill "$CHART_PATH" \
   --set image.tag=v0.2.0 \
   --namespace fastskill
 ```
@@ -312,7 +313,7 @@ kubectl delete pvc -n fastskill -l app.kubernetes.io/name=fastskill
 
 ### Components
 
-1. **Registry Deployment**: Runs `fastskill serve --enable-registry`
+1. **Registry Deployment**: Runs `fastskill serve` (HTTP API and bundled UI)
    - Requires: S3 storage, GitHub token, registry index path
    - Provides: REST API, Web UI, skill publishing
 
@@ -411,11 +412,6 @@ registryIndex:
 
 5. **Image Security**: Use specific image tags (not `latest`) in production. Scan images for vulnerabilities.
 
-## Chart Location
+## Chart source
 
-The Helm chart is located at:
-```
-tools/fastskill/helm/fastskill/
-```
-
-For detailed chart documentation, see the [chart README](https://github.com/gofastskill/fastskill/blob/main/tools/fastskill/helm/fastskill/README.md).
+The Helm chart ships in the [FastSkill GitHub repository](https://github.com/gofastskill/fastskill) under `tools/fastskill/helm/fastskill`. Download a release bundle or sync that folder locally, set `CHART_PATH` to the directory you unpacked, then run the `helm` commands above.

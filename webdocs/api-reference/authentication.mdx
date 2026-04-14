@@ -11,7 +11,7 @@ Authentication behavior differs by deployment mode:
 - **Remote registry APIs**: may require authentication depending on the registry implementation
 
 <Info>
-For local development, FastSkill HTTP endpoints are accessible without `Authorization` or `x-api-key` headers.
+For a default `fastskill serve` on your own machine, HTTP endpoints are reachable without `Authorization` or `x-api-key` headers unless you add a reverse proxy that enforces them.
 </Info>
 
 ## Local Server (`fastskill serve`)

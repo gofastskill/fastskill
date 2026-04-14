@@ -1,15 +1,13 @@
 ---
 title: "CI/CD Pipeline Integration"
-description: "Complete guide to integrating FastSkill with CI/CD pipelines for automated skill packaging and publishing"
+description: "Use FastSkill in automated pipelines to package and publish skills with reproducible installs."
 ---
 
 # CI/CD Pipeline Integration
 
-FastSkill provides comprehensive CI/CD integration for automated skill packaging, versioning, and publishing. This guide covers setup, workflows, and best practices.
+This page describes how teams typically wire `fastskill` into automation: detect changes, package ZIPs, and publish to a registry or object storage. It stays product-focused; adapt steps to GitHub Actions, GitLab CI, Jenkins, or any runner you already use.
 
-## Overview
-
-FastSkill's CI/CD integration enables:
+## What you can automate
 
 - **Automatic Change Detection**: Detect which skills have changed using git diff or file hashing
 - **Version Bumping**: Automatically increment semantic versions (major, minor, patch)
@@ -21,7 +19,7 @@ FastSkill's CI/CD integration enables:
 
 ### Git-based Detection
 
-Use git diff to detect changed skill directories. Ideal for CI/CD pipelines:
+Use git diff to detect changed skill directories. Common in hosted git runners:
 
 ```bash
 fastskill package --git-diff HEAD~1 HEAD --auto-bump --output ./artifacts
@@ -39,7 +37,7 @@ fastskill package --git-diff HEAD~1 HEAD --auto-bump --output ./artifacts
 
 ### Hash-based Detection
 
-Use file hashing to detect changes. Better for local development:
+Use file hashing to detect changes when you prefer not to rely on git metadata:
 
 ```bash
 fastskill package --detect-changes --auto-bump --output ./artifacts
@@ -50,10 +48,9 @@ fastskill package --detect-changes --auto-bump --output ./artifacts
 - Detects any file changes
 - Maintains build cache for efficiency
 
-**Use Cases**:
-- Local development workflows
-- Non-git version control systems
-- Incremental builds
+**Typical uses**:
+- Sandboxes without full git history
+- Incremental packaging on a workstation
 
 ## Version Bumping Strategies
 
@@ -84,123 +81,47 @@ Future versions may analyze commit messages or change types to determine appropr
 
 ## Complete Workflow Examples
 
-### Local Development Workflow
+### Local packaging loop
 
 ```bash
-# 1. Make changes to skills
-# ... edit skill files ...
-
-# 2. Package changed skills with auto-version bump
 fastskill package --detect-changes --auto-bump --output ./artifacts
-
-# 3. Publish to registry (automatically updates index)
-fastskill publish --artifacts ./artifacts --registry official
+fastskill publish --registry official   # or --api-url / --local-dir; see publish docs
 ```
 
-### GitHub Actions Workflow
+### Example: hosted runner (outline)
 
-Create `.github/workflows/publish-skills.yml`:
+1. Check out your repository with enough history for `fastskill package --git-diff <from> <to>`.
+2. Install the `fastskill` binary using the same method you use on laptops (release archive, package feed, or internal installer). Avoid hard-coding monorepo paths from the FastSkill source tree.
+3. Restore secrets for registries (`FASTSKILL_API_URL`, tokens, cloud credentials) as environment variables.
+4. Run `fastskill package …` then `fastskill publish …` with the flags from [package](/cli-reference/package-command) and [publish](/cli-reference/publish-command).
 
 ```yaml
-name: Publish Skills
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'skills/**'
-
+# Illustrative fragment only — adjust names, triggers, and secrets to your org
 jobs:
-  publish:
+  skills:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # Need previous commit for diff
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      
-      - name: Install FastSkill
-        run: cargo install --path tools/fastskill/rust
-      
+          fetch-depth: 2
+      - name: Install FastSkill CLI
+        run: |
+          # Use your standard install path (release tarball, package, or internal mirror)
+          fastskill -V
       - name: Package changed skills
-        run: |
-          fastskill package \
-            --git-diff HEAD~1 HEAD \
-            --auto-bump \
-            --output ./artifacts
-      
-      - name: Update registry index
-        run: |
-          fastskill registry-index update \
-            --artifacts ./artifacts \
-            --blob-base-url ${{ secrets.BLOB_BASE_URL }}
-      
-      - name: Upload to blob storage
+        run: fastskill package --git-diff HEAD~1 HEAD --auto-bump --output ./artifacts
+      - name: Publish
+        run: fastskill publish --local-dir ./upload
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          fastskill publish \
-            --artifacts ./artifacts \
-            --blob-storage s3 \
-            --bucket ${{ secrets.S3_BUCKET }} \
-            --region us-east-1
-      
-      # Registry index is automatically updated during publishing
+          FASTSKILL_API_URL: ${{ secrets.FASTSKILL_API_URL }}
 ```
 
-### GitLab CI Workflow
+### Other runners
 
-Create `.gitlab-ci.yml`:
-
-```yaml
-stages:
-  - package
-  - publish
-
-package:
-  stage: package
-  image: rust:latest
-  script:
-    - cargo install --path tools/fastskill/rust
-    - fastskill package
-        --git-diff $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA
-        --auto-bump
-        --output ./artifacts
-  artifacts:
-    paths:
-      - artifacts/
-    expire_in: 1 hour
-
-publish:
-  stage: publish
-  image: rust:latest
-  dependencies:
-    - package
-  script:
-    - cargo install --path tools/fastskill/rust
-    - fastskill publish
-        --artifacts ./artifacts
-        --blob-storage s3
-        --bucket $S3_BUCKET
-        --region us-east-1
-    # Registry index is automatically updated during publishing
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-  only:
-    - main
-```
-
-### Jenkins Pipeline
-
-Create `Jenkinsfile`:
+GitLab CI, Jenkins, Buildkite, and others follow the same outline: put `fastskill` on `PATH`, check out sources, run `package` then `publish`. Copy the CLI arguments from `fastskill package --help` and `fastskill publish --help` rather than relying on historical workflow snippets.
 
 ```groovy
+// Jenkins-style pseudocode — replace install and credentials with yours
 pipeline {
     agent any
     
@@ -212,7 +133,6 @@ pipeline {
     stages {
         stage('Package') {
             steps {
-                sh 'cargo install --path tools/fastskill/rust'
                 sh '''
                     fastskill package \
                         --git-diff HEAD~1 HEAD \
@@ -227,10 +147,7 @@ pipeline {
                 sh '''
                     fastskill publish \
                         --artifacts ./artifacts \
-                        --blob-storage s3 \
-                        --bucket ${S3_BUCKET} \
-                        --region us-east-1
-                    # Registry index is automatically updated during publishing
+                        --api-url "${FASTSKILL_API_URL}"
                 '''
             }
         }
@@ -272,11 +189,7 @@ blob_base_url = "https://blob.example.com/skills"
 
 ### Build Cache
 
-The build cache (`.fastskill/build-cache.json`) should be:
-
-- **Included in CI/CD**: Persist cache between builds for efficiency
-- **Version Controlled**: Commit cache to track build history
-- **Regularly Cleaned**: Remove old entries to prevent cache bloat
+The build cache (`.fastskill/build-cache.json`) can be persisted between pipeline runs if you want faster packaging. Treat it as a machine-local artifact: refresh or delete it when packaging results look wrong.
 
 ## Troubleshooting
 

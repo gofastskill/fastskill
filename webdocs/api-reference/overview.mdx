@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-For complete Rust API documentation, see [Rust API Reference](/api-reference/rust-api).
+If you embed the Rust library, refer to the `fastskill` crate on [crates.io](https://crates.io/crates/fastskill) and the upstream repository for API details.
 
 ### 2. HTTP REST API
 
@@ -153,7 +153,7 @@ curl -X GET http://localhost:8080/v1/skills/:skill_id/versions/:version
 curl -X DELETE http://localhost:8080/v1/skills/:skill_id/versions/:version
 ```
 
-#### Registry Endpoints (when --enable-registry is used)
+#### Registry endpoints (`fastskill serve`)
 
 ```bash
 # List all sources
@@ -180,7 +180,7 @@ curl -X POST http://localhost:8080/api/registry/publish \
 curl -X GET http://localhost:8080/api/registry/publish/status/:job_id
 ```
 
-#### Manifest Endpoints (when --enable-registry is used)
+#### Manifest endpoints (`fastskill serve`)
 
 ```bash
 # List skills in manifest
@@ -298,14 +298,13 @@ fastskill serve
 fastskill serve --host 0.0.0.0 --port 9000
 ```
 
-### With Registry UI
+### Web UI
 
 ```bash
-# Enable registry web UI
-fastskill serve --enable-registry
+fastskill serve
 ```
 
-Then open `http://localhost:8080/` or `http://localhost:8080/dashboard` in your browser.
+Then open `http://localhost:8080/` in your browser (see [serve Command](/cli-reference/serve-command) for routes).
 
 ## Integration Examples
 
@@ -462,5 +461,5 @@ let results = join_all(tasks).await;
 </AccordionGroup>
 
 <Note>
-The FastSkill API is designed to be intuitive and consistent. Start with the Rust library for the best development experience, then use the HTTP API for production deployments and cross-language integration.
+The HTTP API matches what the local `fastskill serve` process exposes. Use it from any language or tool that can send HTTP requests.
 </Note>
