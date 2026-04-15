@@ -251,45 +251,6 @@ echo "Found skills for '$QUERY':"
 echo "$RESULTS" | jq -r '.[].name'
 ```
 
-#### Rust Integration
-```rust
-use std::process::Command;
-use serde_json::Value;
-
-fn search_skills(query: &str, limit: usize) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let output = Command::new("fastskill")
-        .arg("search")
-        .arg(query)
-        .arg("--format")
-        .arg("json")
-        .arg("--limit")
-        .arg(limit.to_string())
-        .output()?;
-
-    if !output.status.success() {
-        eprintln!("Search failed: {}", String::from_utf8_lossy(&output.stderr));
-        return Ok(vec![]);
-    }
-
-    let skills: Vec<Value> = serde_json::from_slice(&output.stdout)?;
-    Ok(skills)
-}
-
-// Usage
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let skills = search_skills("powerpoint presentation", 5)?;
-    for skill in skills {
-        if let (Some(name), Some(desc)) = (
-            skill.get("name").and_then(|v| v.as_str()),
-            skill.get("description").and_then(|v| v.as_str())
-        ) {
-            println!("- {}: {}", name, desc);
-        }
-    }
-    Ok(())
-}
-```
-
 ## Performance
 
 ### Search Speed

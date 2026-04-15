@@ -1,6 +1,6 @@
 ---
 title: "Installation Guide"
-description: "Install the FastSkill CLI on your machine: releases, package managers, and optional source build."
+description: "Install the FastSkill CLI: package manager and operational toolkit for Agent AI Skills (releases, installers, optional source build)."
 ---
 
 ## System Requirements
@@ -9,79 +9,110 @@ Before installing FastSkill, ensure your system meets these requirements:
 
 | Component | Minimum Version | Recommended |
 |-----------|----------------|-------------|
-| **Rust** | 1.70 | 1.75+ (only needed for source builds) |
+| **OS** | macOS, Linux, or Windows | Latest stable release |
 | **Memory** | 512MB | 2GB+ |
 | **Storage** | 100MB | 500MB+ |
-| **OpenAI API Key** | Required | For embedding features |
-
-<Info>
-For binary installation, you don't need Rust installed. Rust is only required if building from source.
-</Info>
+| **OpenAI API Key** | Optional | Required for embedding search / `reindex` with embeddings |
 
 ## CLI Installation
 
-The FastSkill CLI is a Rust-based command-line tool for managing skills.
+Pick one method. **Homebrew** (macOS and Linux) and **Scoop** (Windows) stay updated with releases; use **GitHub Releases** or the **install script** if you prefer a standalone binary.
 
 <Tabs>
-<Tab title="From GitHub Releases (Recommended)">
-Download the pre-built binary for your platform from [GitHub Releases](https://github.com/gofastskill/fastskill/releases).
+<Tab title="Homebrew (macOS & Linux)">
+
+[Homebrew](https://brew.sh/) installs a pre-built `fastskill` on both **Apple Silicon** and **Intel** Macs, and on Linux where the tap ships bottles.
+
+```bash
+brew install gofastskill/cli/fastskill
+fastskill -V
+```
+
+Details and formula updates live in the [gofastskill/homebrew-cli](https://github.com/gofastskill/homebrew-cli) tap repository.
+
+<Tip>
+If `brew install` fails with a tap error, run `brew update` and try again, or use the **GitHub Releases** or **install script** tab.
+</Tip>
+</Tab>
+
+<Tab title="Scoop (Windows)">
+
+[Scoop](https://scoop.sh/) installs `fastskill.exe` and keeps it on your PATH.
+
+```powershell
+scoop bucket add gofastskill https://github.com/gofastskill/scoop-bucket
+scoop install fastskill
+fastskill -V
+```
+
+See [gofastskill/scoop-bucket](https://github.com/gofastskill/scoop-bucket) for manifest details.
+
+</Tab>
+
+<Tab title="Install script (Linux & macOS)">
+
+One-liner from the repository (detects OS, downloads a release binary, installs to `/usr/local/bin` or `~/.local/bin` if `sudo` is not available):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+```
+
+Options (run `./install.sh --help` after downloading the script): `--user`, `--prefix DIR`, `--force`, and a version argument such as `./install.sh v0.9.16`.
+
+</Tab>
+
+<Tab title="GitHub Releases">
+
+Download a pre-built binary from [GitHub Releases](https://github.com/gofastskill/fastskill/releases). Replace `VERSION` with the tag you want (for example `0.9.16`; assets use `v${VERSION}` in the URL).
 
 <Steps>
-<Step title="Download for Linux">
+<Step title="macOS (Apple Silicon)">
 ```bash
-# Download and extract
-VERSION="0.9.16"  # Replace with latest version from GitHub Releases
-wget https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
-
-# Move to PATH
+VERSION="0.9.16"
+curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-aarch64-apple-darwin.tar.gz" -o fastskill.tgz
+tar -xzf fastskill.tgz
 sudo mv fastskill /usr/local/bin/
-
-# Verify installation
-fastskill --version
+fastskill -V
 ```
-
-<Tip>
-If you prefer a user-local installation, move to `~/.local/bin/` instead and ensure it's in your PATH.
-</Tip>
+Asset name: `fastskill-aarch64-apple-darwin.tar.gz`.
 </Step>
 
-<Step title="Download for Windows">
-```powershell
-# Download fastskill-x86_64-pc-windows-msvc.zip from GitHub Releases
-# Extract the ZIP file to a directory of your choice
-
-# Option 1: Add to PATH
-# Add the extracted directory to your system PATH environment variable
-
-# Option 2: Run from directory
-# Navigate to the extracted directory and run:
-.\fastskill.exe --version
+<Step title="macOS (Intel)">
+```bash
+VERSION="0.9.16"
+curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-apple-darwin.tar.gz" -o fastskill.tgz
+tar -xzf fastskill.tgz
+sudo mv fastskill /usr/local/bin/
+fastskill -V
 ```
+Asset name: `fastskill-x86_64-apple-darwin.tar.gz`.
+</Step>
 
-<Tip>
-To add to PATH permanently on Windows:
-1. Open System Properties → Environment Variables
-2. Edit the "Path" variable under User or System variables
-3. Add the directory containing fastskill.exe
-4. Restart your terminal
-</Tip>
+<Step title="Linux (x86_64, glibc, with git support)">
+```bash
+VERSION="0.9.16"
+curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz" -o fastskill.tgz
+tar -xzf fastskill.tgz
+sudo mv fastskill /usr/local/bin/
+fastskill -V
+```
+Requires a recent glibc (see release notes). For maximum portability (static binary, no bundled `git2`), use **`fastskill-x86_64-unknown-linux-musl.tar.gz`** instead and rely on system `git` for Git URLs.
+</Step>
+
+<Step title="Windows (zip)">
+Download `fastskill-x86_64-pc-windows-msvc.zip` from the release page, extract it, add the folder to **PATH**, then run:
+
+```powershell
+fastskill.exe -V
+```
 </Step>
 </Steps>
+
+<Tip>
+Prefer a user-local path on macOS or Linux? Move `fastskill` to `~/.local/bin/` and ensure that directory is on your `PATH` instead of using `sudo`.
+</Tip>
 </Tab>
 
-<Tab title="From Source">
-Use this if you are building the CLI from a checkout of the [FastSkill repository](https://github.com/gofastskill/fastskill) (for example to try an unreleased fix). You need Rust on your PATH.
-
-```bash
-git clone https://github.com/gofastskill/fastskill.git
-cd fastskill
-cargo install --path . --bin fastskill --features git-support
-fastskill --help
-```
-
-**Requirements:** Rust stable toolchain; Git is optional unless you rely on `--features git-support` for Git-based skill sources.
-</Tab>
 </Tabs>
 
 **Skills Directory Resolution:**
@@ -124,90 +155,22 @@ export OPENAI_API_KEY="your-key-here"
 
 If you run tools in containers, install the same release archive inside your image (see the Linux steps above) or copy the `fastskill` binary into a minimal base image. Mount your project directory and set `OPENAI_API_KEY` when you use embedding search.
 
-## Platform-Specific Instructions
+## Platform notes
 
 ### macOS
 
-<Tabs>
-<Tab title="Intel Macs">
-```bash
-# Using Homebrew (optional, Rust can be installed via rustup)
-brew install rust
-
-# Or use rustup (recommended)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-cargo install fastskill --features git-support
-```
-</Tab>
-
-<Tab title="Apple Silicon (M1/M2)">
-```bash
-# Rust (native)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-cargo install fastskill --features git-support
-```
-</Tab>
-</Tabs>
+- **Recommended:** Homebrew tab above (`brew install gofastskill/cli/fastskill`) for both Apple Silicon and Intel.
+- **Without Homebrew:** use the **GitHub Releases** tab for `aarch64` vs `x86_64` darwin archives, or the **install script** tab.
 
 ### Linux
 
-<Tabs>
-<Tab title="Ubuntu/Debian">
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-cargo install fastskill --features git-support
-```
-</Tab>
-
-<Tab title="CentOS/RHEL/Fedora">
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-cargo install fastskill --features git-support
-```
-</Tab>
-
-<Tab title="Arch Linux">
-```bash
-# Install Rust
-sudo pacman -S rustup
-rustup install stable
-cargo install fastskill --features git-support
-```
-</Tab>
-</Tabs>
+- **Recommended:** Homebrew on Linux if you already use it, otherwise the **GitHub Releases** tab (`gnu` vs `musl` per release notes) or the **install script**.
 
 ### Windows
 
-<Tabs>
-<Tab title="Rust Installation">
-```cmd
-# Install Rust using rustup-init.exe from https://rustup.rs/
-# Follow the installation prompts
-
-# Add Cargo to PATH (usually done automatically)
-cargo install fastskill --features git-support
-
-# Verify installation
-cargo --version
-fastskill --version
-```
-</Tab>
-
-<Tab title="WSL (Recommended)">
-```bash
-# Install WSL2 and Ubuntu
-wsl --install Ubuntu
-
-# Then follow Linux instructions above
-```
-</Tab>
-</Tabs>
+- **Recommended:** **Scoop** tab above.
+- **Without Scoop:** download the **zip** from **GitHub Releases**, extract, add to PATH.
+- **WSL:** install inside Ubuntu using the Linux or install-script options above.
 
 ## Verify the CLI
 
@@ -223,7 +186,15 @@ If you already have a project with `skill-project.toml`, try `fastskill list` or
 <AccordionGroup>
 <Accordion title="Installation Issues">
   <Warning>
-  **Binary not found in PATH**: After extracting the binary, ensure it's in your system PATH. On Linux, try `/usr/local/bin/` or `~/.local/bin/`. On Windows, add the directory to your PATH environment variable.
+  **Homebrew**: If the tap is missing, install with `brew install gofastskill/cli/fastskill`. See [homebrew-cli](https://github.com/gofastskill/homebrew-cli) for issues.
+  </Warning>
+
+  <Warning>
+  **Scoop**: Ensure the bucket was added (`scoop bucket list` should show `gofastskill`). See [scoop-bucket](https://github.com/gofastskill/scoop-bucket) if `scoop install fastskill` fails.
+  </Warning>
+
+  <Warning>
+  **Binary not found in PATH**: After extracting a release archive, move `fastskill` (or add the folder containing `fastskill.exe`) to a directory on your PATH (`/usr/local/bin`, `~/.local/bin`, or Windows user PATH).
   </Warning>
 
   <Warning>
@@ -234,18 +205,11 @@ If you already have a project with `skill-project.toml`, try `fastskill list` or
   **Windows security warning**: Windows may show a security warning for unsigned binaries. Click "More info" and then "Run anyway" if you trust the source.
   </Warning>
 
-  <Warning>
-  **Rust not found (source builds only)**: If building from source, ensure Rust is installed and in your PATH. Run `rustc --version` to verify.
-  </Warning>
-
-  <Warning>
-  **Cargo build errors (source builds only)**: Make sure you have a stable Rust toolchain: `rustup install stable`
-  </Warning>
 </Accordion>
 
 <Accordion title="Configuration Issues">
   <Info>
-  **Embedding configuration required**: Create `.fastskill/config.yaml` with OpenAI API configuration. See [Configuration Guide](/configuration/service-config).
+  **Embedding configuration required**: Create `.fastskill/config.yaml` with OpenAI API configuration.
   </Info>
 
   <Info>
@@ -262,9 +226,6 @@ If you already have a project with `skill-project.toml`, try `fastskill list` or
   **Windows antivirus**: If Windows blocks the downloaded binary, add an exception for the folder where you keep `fastskill.exe`.
   </Tip>
 
-  <Tip>
-  **Linux linker errors (source builds only)**: Install a C toolchain (for example `build-essential` on Ubuntu) before running `cargo install`.
-  </Tip>
 </Accordion>
 </AccordionGroup>
 

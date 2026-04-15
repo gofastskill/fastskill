@@ -1,0 +1,61 @@
+---
+title: "Cluster and Portfolio Analysis"
+description: "Analyze skill quality at portfolio level using cluster, matrix, and duplicate detection."
+---
+
+# Cluster and Portfolio Analysis
+
+`fastskill analyze` helps you evaluate quality at system level, not only case level.
+
+## 1) Cluster analysis
+
+Group skills by semantic similarity to detect taxonomy health:
+
+```bash
+fastskill analyze cluster
+fastskill analyze cluster -k 8 --min-size 2 --json
+```
+
+What to look for:
+
+- Very large clusters: broad or overlapping skill definitions
+- Too many tiny clusters: fragmented naming or inconsistent scope
+- Unexpected cluster members: missing or unclear skill descriptions
+
+## 2) Similarity matrix
+
+Inspect relationship density:
+
+```bash
+fastskill analyze matrix --threshold 0.8 --limit 5
+```
+
+Use this to understand whether a proposed new skill is truly distinct.
+
+## 3) Duplicate detection
+
+Detect likely redundancy:
+
+```bash
+fastskill analyze duplicates --threshold 0.92 --severity high
+```
+
+Use this regularly to keep catalog maintenance costs low.
+
+## Recommended cadence
+
+- On every PR affecting skill content: duplicates + smoke evals
+- Weekly: cluster + matrix review
+- Before release: full eval suite + duplicate cleanup pass
+
+## Cluster quality checklist
+
+- [ ] Cluster distribution looks balanced for current catalog size
+- [ ] High-severity duplicates are resolved or justified
+- [ ] New skills do not overlap existing core skills above threshold
+
+## See also
+
+- [Evals and quality overview](/evals-quality/overview)
+- [Run evals](/evals-quality/run-evals)
+- [Sync, marketplace, and analyze](/cli-reference/tooling-commands)

@@ -5,69 +5,83 @@ description: Quick reference for common FastSkill operations
 
 # FastSkill Cheatsheet
 
-Quick reference for common FastSkill operations.
+Quick reference for common FastSkill operations, ordered from everyday manifest workflow to advanced setup.
 
-## Installation
-
-| Operation | Command | What It Does |
-|-----------|---------|--------------|
-| Public registry | `fastskill add pptx` | Installs skill from configured registry, clones to `.claude/skills/`, updates `skill-project.toml` and `skills.lock` |
-| With version | `fastskill add pptx@1.2.3` | Installs specific version from registry, pins exact version in lock file |
-| Private registry | `fastskill add team-skill` | Installs from private registry (auth configured in `skill-project.toml`), uses env var for authentication |
-| Git repo | `fastskill add https://github.com/org/skill.git` | Git URL is the source (no package name needed), clones repository, validates skill structure, registers and installs to skills directory |
-| Network share | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Installs from corporate network file share, copies skill to local skills directory, enables team-wide skill distribution |
-| Editable install | `fastskill add ./dev-skill -e` | Creates symlink/reference to local path, changes reflect immediately without reinstall |
-| Folder of skills | `fastskill add ./skills -r` | Adds all skills under directory (each dir with SKILL.md); only for local directory |
-| Read skill | `fastskill read my-skill-id` | Retrieves skill documentation and base directory path in agent-optimized format |
-| List installed | `fastskill list` | Lists locally installed skills with reconciliation status (table format) |
-| List installed (JSON) | `fastskill list --json` | Lists locally installed skills in JSON format with reconciliation status |
-| Remove skill | `fastskill remove my-skill-id` | Removes skill from skills directory, updates `skill-project.toml` and `skills.lock`, prompts for confirmation |
-| Force remove | `fastskill remove my-skill-id --force` | Removes skill without confirmation prompt |
-| Show all skills | `fastskill show` | Lists all installed skills with versions from lock file |
-| Show skill details | `fastskill show my-skill-id` | Displays detailed information about specific skill (ID, version, description, source) |
-| Show dependency tree | `fastskill show --tree` | Displays dependency relationships between installed skills |
-
-## Skill Authoring
+## Manifest and workspace
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
-| Initialize metadata | `fastskill init` | Extracts metadata from `SKILL.md` frontmatter, prompts for missing fields, creates `skill-project.toml` |
-| With version | `fastskill init --version 1.2.3` | Creates `skill-project.toml` with specified version, skips version prompt |
-| Non-interactive | `fastskill init --yes` | Uses defaults from `SKILL.md`, creates `skill-project.toml` without prompts |
-| Package skill | `fastskill package --output ./artifacts` | Packages skill into ZIP artifact with version from `skill-project.toml`, creates checksums and metadata |
-| Auto-detect changes | `fastskill package --detect-changes --auto-bump` | Detects changed skills using file hashes, auto-bumps version, packages only changed skills |
-| Package specific | `fastskill package --skills web-scraper data-processor` | Packages only specified skills into ZIP artifacts |
+| Install from manifest | `fastskill install` | Resolves `[dependencies]` in `skill-project.toml`, installs skills, updates `skills.lock` |
+| Reproducible install | `fastskill install --lock` | Installs exact versions from `skills.lock` (CI and locked environments) |
+| Update skills | `fastskill update` | Refreshes installed skills and lock from manifest (see [update command](/cli-reference/update-command)) |
+| Check updates only | `fastskill update --check` | Reports newer versions without changing files |
+| List installed | `fastskill list` | Lists locally installed skills with reconciliation status (table) |
+| List installed (JSON) | `fastskill list --json` | Same as list, machine-readable |
+| Show all skills | `fastskill show` | Lists installed skills with versions from the lock file |
+| Show one skill | `fastskill show my-skill-id` | ID, version, description, source |
+| Show dependency tree | `fastskill show --tree` | Dependency relationships between installed skills |
+| Read skill content | `fastskill read my-skill-id` | Skill docs and base path in an agent-oriented format |
+| Remove skill | `fastskill remove my-skill-id` | Removes from skills dir, updates manifest and lock; prompts for confirmation |
+| Force remove | `fastskill remove my-skill-id --force` | Removes without confirmation |
 
-## Sync
+## Add skills
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
-| Sync all skills | `fastskill sync --yes` | Syncs all installed skills to the auto-detected metadata file (AGENTS.md, CLAUDE.md, or GEMINI.md) |
-| Sync with agent | `fastskill sync --agent claude --yes` | Syncs to the metadata file for the specified agent (e.g. CLAUDE.md for `claude`) |
-| Sync with override | `fastskill sync --agents-file custom.md --yes` | Syncs to a custom metadata file path, overriding auto-detection |
-| Interactive sync | `fastskill sync` | Interactively select which skills to expose in the detected metadata file |
+| From registry | `fastskill add pptx` | Installs from the configured registry into the skills directory; updates manifest and lock |
+| Pinned version | `fastskill add pptx@1.2.3` | Installs that version and pins it in the lock file |
+| From Git | `fastskill add https://github.com/org/skill.git` | Clones, validates layout, registers and installs |
+| Editable local path | `fastskill add ./dev-skill -e` | Symlink or reference; edits apply without reinstall |
+| Private registry | `fastskill add team-skill` | Uses auth from `skill-project.toml` / environment |
+| Folder of skills | `fastskill add ./skills -r` | Adds each subdirectory that contains `SKILL.md` (local trees only) |
+| Network share (Windows) | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory |
 
-## Local server
+## Sync to agent metadata
 
-| Operation | Command | What it does |
+| Operation | Command | What It Does |
 |-----------|---------|--------------|
-| HTTP server | `fastskill serve` | Serves the web UI and HTTP API on `--host` / `--port` (see [serve Command](/cli-reference/serve-command)) |
+| Sync all (non-interactive) | `fastskill sync --yes` | Writes the skill list to the auto-detected file (`AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`) |
+| Sync for one agent | `fastskill sync --agent claude --yes` | Targets that agent's file (for example `CLAUDE.md` for `claude`) |
+| Custom file | `fastskill sync --agents-file custom.md --yes` | Overrides auto-detection |
+| Interactive | `fastskill sync` | Choose which skills to expose in the metadata file |
+
+## Search
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Catalog search | `fastskill search "query"` | Searches remote catalogs by default |
+| Installed only | `fastskill search "query" --local` | Searches skills already on disk |
+
+## Skill authoring
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Initialize project | `fastskill init` | Reads `SKILL.md` frontmatter, prompts for gaps, writes `skill-project.toml` |
+| Init with version | `fastskill init --version 1.2.3` | Sets version without prompting |
+| Init non-interactive | `fastskill init --yes` | Defaults from `SKILL.md`, no prompts |
+| Package | `fastskill package --output ./artifacts` | Builds ZIP from `skill-project.toml` version with checksums and metadata |
+| Package changed only | `fastskill package --detect-changes --auto-bump` | Hash-based change detection, version bump, package only what changed |
+| Package subset | `fastskill package --skills web-scraper data-processor` | Packages only listed skills |
 
 ## Repositories and catalog
 
 | Operation | Command | What it does |
 |-----------|---------|--------------|
-| List repositories | `fastskill repos list` | Lists configured repositories from `skill-project.toml` |
-| Repository details | `fastskill repos info repo-name` | Shows type, URL or path, priority, and auth hints |
-| Add repository | `fastskill repos add repo-name --repo-type git-marketplace <url>` | Adds a repository entry (`git-marketplace`, `http-registry`, `zip-url`, `local`) |
-| Remove repository | `fastskill repos remove repo-name` | Removes the repository entry |
-| Update repository | `fastskill repos update repo-name --branch main --priority 1` | Updates branch or priority |
-| Test repository | `fastskill repos test repo-name` | Checks connectivity |
+| List repositories | `fastskill repos list` | Entries from `skill-project.toml` |
+| Repository details | `fastskill repos info repo-name` | Type, URL or path, priority, auth hints |
+| Add repository | `fastskill repos add repo-name --repo-type git-marketplace <url>` | Adds a source (`git-marketplace`, `http-registry`, `zip-url`, `local`) |
+| Remove repository | `fastskill repos remove repo-name` | Drops the entry |
+| Update repository | `fastskill repos update repo-name --branch main --priority 1` | Branch or priority changes |
+| Test repository | `fastskill repos test repo-name` | Connectivity check |
 | Refresh cache | `fastskill repos refresh` | Refreshes cached catalog metadata |
-| List catalog skills | `fastskill repos skills` | Lists skills advertised by registries |
-| Show catalog skill | `fastskill repos show skill-id` | Shows one skill from the catalog |
-| List skill versions | `fastskill repos versions skill-id` | Lists published versions for a skill id |
-| Search | `fastskill search "query"` | Remote catalog search by default; add `--local` for installed skills |
+| List catalog skills | `fastskill repos skills` | Skills advertised by registries |
+| Show catalog skill | `fastskill repos show skill-id` | One skill from the catalog |
+| List versions | `fastskill repos versions skill-id` | Published versions for an id |
 
 See [Registry overview](/registry/overview) and [repos command](/cli-reference/repository-command).
 
+## Local server
+
+| Operation | Command | What it does |
+|-----------|---------|--------------|
+| HTTP server | `fastskill serve` | Web UI and HTTP API (`--host`, `--port`; see [serve command](/cli-reference/serve-command)) |

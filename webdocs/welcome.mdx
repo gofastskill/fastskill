@@ -1,11 +1,11 @@
 ---
 title: "Welcome to FastSkill"
-description: "FastSkill - A comprehensive skills registry system that brings package management to AI agent skills"
+description: "Package manager and operational toolkit for Agent AI Skills. Discovery, installation, versioning, validation, evals, and deployment at scale."
 ---
 
 # Welcome to FastSkill
 
-FastSkill is a **skills registry and management system** for discovering, installing, and updating AI agent skills. It follows the Anthropic Claude Code skill layout (`SKILL.md`) and adds clear manifests, lockfiles, and search so teams can treat skills like other dependencies.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It follows the Claude Code skill layout (`SKILL.md`) and adds manifests, lockfiles, validation, optional eval suites, search, and agent sync so teams can **operate** skills—not only host a catalog.
 
 ## The Problem We're Solving
 
@@ -19,7 +19,7 @@ AI agent skills are scattered across repositories with no standard way to discov
 
 ## How FastSkill Solves These Problems
 
-FastSkill extends the Claude Code skill standard with a **registry-oriented workflow**: one manifest, reproducible installs, and search across sources.
+FastSkill extends the Claude Code skill standard with a **manifest-first workflow**: one `skill-project.toml`, reproducible installs via `skills.lock`, validation and `fastskill eval` for quality gates, then discovery and optional publish when you distribute outward.
 
 ### Semantic discovery
 
@@ -35,7 +35,7 @@ fastskill search "create data visualizations"
 
 ### Package management for skills
 
-**Declarative skill management, similar to Cargo for Rust or npm for Node.js.**
+**Declarative skill management, similar to npm for Node.js or Poetry for Python.**
 
 FastSkill uses a unified `skill-project.toml` file at the project root for all configuration, similar to `pyproject.toml` and `package.json`:
 
@@ -60,6 +60,8 @@ fastskill add ./my-skill -e       # Add or link a skill (editable when local)
 fastskill install --without dev   # Install manifest without dev-only groups
 fastskill update                  # Move pinned versions forward when you choose
 fastskill show --tree             # Inspect what is installed
+fastskill eval validate           # Check eval config and prompts (optional)
+fastskill sync --yes              # Write installed skills to agent metadata
 ```
 
 ### Dependency management
@@ -117,40 +119,32 @@ FastSkill includes performance optimizations that make skill management scalable
 
 ## Expanding the Claude Code Standard
 
-FastSkill builds on the solid foundation of the **Anthropic Claude Code skill standard** (SKILL.md format) and extends it with:
+FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) and adds operational depth around it:
 
-### 1. **Registry Infrastructure**
+### 1. **Package management & lifecycle**
 
-The Claude Code standard defines how individual skills are structured. FastSkill adds the infrastructure to manage multiple skills:
+- **Manifests & locks**: `skill-project.toml` and `skills.lock` like other package ecosystems
+- **Install / update / remove**: Same verbs you expect from a package manager
+- **Groups**: optional vs production skill sets
+- **Editable installs**: point at local folders while authoring
 
-- **Source Tracking**: Know where each skill came from
-- **Version Management**: Track versions across installations
-- **Repository Support**: Multiple skill sources (Git, ZIP, local)
+### 2. **Validation & evals**
 
-### 2. **Package Management**
+- **Install-time checks**: structure and metadata when skills are added or installed
+- **Reconciliation**: `fastskill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
+- **Eval suites**: `fastskill eval` for validate / run / report / score against defined cases ([eval command](/cli-reference/eval-command))
 
-Skills become manageable packages:
+### 3. **Discovery & agent sync**
 
-- **Manifest Files**: Declarative skill definitions
-- **Lock Files**: Reproducible installations
-- **Dependency Resolution**: Automatic dependency management
-- **Group Organization**: Environment-based skill grouping
+- **Search**: remote catalogs by default; `--local` for installed skills and embeddings
+- **Read & show**: inspect what agents will load
+- **Sync**: push the installed set into agent metadata files (`fastskill sync`)
 
-### 3. **Team workflows**
+### 4. **Publish & registries** (when you distribute)
 
-- **Editable installs**: point at a local folder while you iterate
-- **Version control**: commit `skill-project.toml` and `skills.lock`
-- **Reproducible installs**: `install --lock` in any environment
-- **Shared defaults**: one manifest for the team
-
-### 4. **Lifecycle Management**
-
-Complete lifecycle support:
-
-- **Discovery**: Semantic search across skills
-- **Installation**: From various sources (Git, ZIP, repositories)
-- **Updates**: Safe version updates
-- **Removal**: Clean skill removal with dependency checks
+- **Package**: ZIP artifacts with versioning
+- **Publish**: API or local folder targets when you ship skills to others
+- **Repositories**: `fastskill repos` for catalog sources—not the only story; many teams spend most time in install, list, validate, and eval
 
 ## Key Features
 
@@ -242,28 +236,29 @@ fastskill search "charts and graphs"
 
 ### Organizations
 
-**Enterprise skill management:**
-- Central skill repositories
-- Version control and auditing
-- Environment-specific skill sets
-- Dependency management at scale
+**Operate skills at scale:**
+- Standard manifests and locks across projects
+- Auditing via list/show and validation
+- Environment-specific groups
+- Optional private sources and publish flows when you distribute
 
 ### Skill Authors
 
-**Publish and distribute skills:**
-- Create versioned skill packages
-- Include pre-computed embeddings
-- Define dependencies
-- Distribute via Git, ZIP, or repositories
+**Author, check, then ship:**
+- `fastskill init` and packaging for versioned ZIPs
+- Validation and `fastskill eval` before release
+- Dependencies declared in the manifest
+- Distribute via Git, ZIP, or registries when needed
 
 ## Getting Started
 
 Ready to get started? Here's a quick path:
 
-1. **[Install FastSkill](/installation)** - Get FastSkill set up in your environment
-2. **[Quick Start Guide](/quickstart)** - 5-minute setup tutorial
-3. **[Core Concepts](/core-concepts)** - Understand skills, manifests, and sources
-4. **[CLI Reference](/cli-reference/overview)** - Complete command documentation
+1. **[Install FastSkill](/installation)** - CLI on your PATH
+2. **[Quick Start](/quickstart)** - First manifest, install, search
+3. **[Skill validation](/skill-management/validation)** - Reconciliation and checks
+4. **[Evals and quality](/evals-quality/overview)** - Setup, runs, reports, and cluster analysis
+5. **[CLI reference](/cli-reference/overview)** - All commands and flags
 
 ## Why FastSkill?
 
@@ -278,11 +273,12 @@ FastSkill focuses on **repeatable operations** for AI agent skills:
 
 ## What's Next?
 
-- Read [Core concepts](/core-concepts) for how manifests, locks, and registries fit together
-- Use the [CLI reference](/cli-reference/overview) for command flags and examples
-- Follow [Cursor integration](/integration/cursor-integration) if you use Cursor with project metadata files
+- [Manifest system](/skill-management/manifest-system) for `skill-project.toml`, locks, and how installs resolve
+- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands) (`sync`, `analyze`, …)
+- [Cursor integration](/integration/cursor-integration) for metadata files in the editor
+- [Registry overview](/registry/overview) when you are ready to publish or browse catalogs
 
 ---
 
-**FastSkill**: Making AI agent skills manageable, versioned, and reproducible—just like modern software packages.
+**FastSkill**: Package manager and operational toolkit for Agent AI Skills—manageable, versioned, and reproducible.
 

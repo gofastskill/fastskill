@@ -1,0 +1,48 @@
+---
+title: "Evals and Quality Overview"
+description: "How FastSkill quality workflows fit together: validate, run evals, score, and cluster analysis."
+---
+
+# Evals and Quality Overview
+
+FastSkill quality work has two complementary tracks:
+
+- **Case-based evals** with `fastskill eval` to test expected behavior against prompts and rubrics
+- **Portfolio analysis** with `fastskill analyze` to inspect coverage, overlap, clusters, and duplicates across installed skills
+
+Use both. Evals tell you if skills behave correctly. Analysis tells you if your skill set is healthy.
+
+## Recommended quality flow
+
+1. Validate config and skill structure
+2. Run eval suites and inspect failures
+3. Score and report results for release decisions
+4. Analyze cluster and duplicates to improve skill portfolio quality
+5. Gate CI on thresholds
+
+## Quality commands map
+
+| Goal | Command |
+|---|---|
+| Validate eval definitions | `fastskill eval validate` |
+| Execute suite | `fastskill eval run --agent <agent> --output-dir <dir>` |
+| Summarize results | `fastskill eval report --run-dir <dir>` |
+| Re-score prior run | `fastskill eval score --run-dir <dir>` |
+| Inspect clusters | `fastskill analyze cluster` |
+| Find near-duplicates | `fastskill analyze duplicates` |
+| Similarity matrix | `fastskill analyze matrix` |
+
+## What to track over time
+
+- Eval pass rate by suite and tag
+- Failure hotspots by case id
+- Duplicate pair count above your threshold
+- Cluster balance (very sparse or huge clusters usually signal taxonomy issues)
+
+## See also
+
+- [Eval setup](/evals-quality/setup)
+- [Run evals](/evals-quality/run-evals)
+- [Cluster analysis](/evals-quality/cluster-analysis)
+- [eval command](/cli-reference/eval-command)
+- [Sync, marketplace, and analyze](/cli-reference/tooling-commands)

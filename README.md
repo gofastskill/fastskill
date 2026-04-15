@@ -1,6 +1,6 @@
 # FastSkill
 
-Package manager and operational toolkit for Claude Code-compatible skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
+Package manager and operational toolkit for Agent AI Skills. FastSkill enables discovery, installation, versioning, and deployment of skills at scale.
 
 [![Python/Rust package build status](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml/badge.svg)](https://github.com/gofastskill/fastskill/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/gofastskill/fastskill/branch/main/graph/badge.svg)](https://codecov.io/gh/gofastskill/fastskill)
@@ -15,9 +15,9 @@ Quickly add skills from Git, local folders, or registries to extend your AI agen
 
 ## What is FastSkill?
 
-FastSkill is a skill package manager and operational toolkit for the AI agent ecosystem. It builds on Anthropic's standardized Skills format, adding registry services, semantic search, version management, and deployment tooling.
+FastSkill is a **skill package manager and operational toolkit** for the AI agent ecosystem. It builds on Anthropic's standardized Skills format so you can **install, validate, version, and ship** skills the same way you manage other dependencies: manifests and lockfiles, `fastskill eval` for quality checks, semantic and catalog search, optional registry publish, plus a local HTTP API and UI when you run `fastskill serve`.
 
-**What are skills?** Skills are reusable instruction sets in SKILL.md that extend an AI agent's capabilities with specialized procedures, tool integrations, and domain knowledge. Examples include creating pull requests, integrating cloud services, automating CI/CD workflows, and domain-specific data processing. FastSkill provides the infrastructure to develop, manage, consume, and deploy skills at scale.
+**What are skills?** Skills are reusable instruction sets in `SKILL.md` that extend an AI agent's capabilities with specialized procedures, tool integrations, and domain knowledge. FastSkill focuses on **managing that corpus**: what is installed, whether metadata is valid, how versions move, and how teams keep agents in sync—not on executing skill code inside FastSkill itself.
 
 ## AI Agentic Skills Standard
 
@@ -67,12 +67,14 @@ fastskill init
 
 ## Key Capabilities
 
-- **Package Management**: Install, update, and remove skills from multiple sources (Git, local, ZIP)
-- **Semantic Search**: Find skills using OpenAI embeddings and natural language queries with high accuracy
-- **Registry Services**: Publish, version, and distribute skills via registry
-- **Manifest System**: Declarative dependency management with lock files for reproducible installations
-- **HTTP API**: RESTful service layer for agent integration (local `fastskill serve` API is unauthenticated)
-- **Web UI**: Browse and manage skills through web interface
+- **Package management**: Install, update, and remove skills from multiple sources (Git, local, ZIP, registries)
+- **Manifests & locks**: Declarative `skill-project.toml` and `skills.lock` for reproducible installs and groups
+- **Validation & reconciliation**: Catch bad metadata and drift between manifest, lock, and installed skills
+- **Evaluations**: `fastskill eval` to validate and run structured checks against skills (see `fastskill eval --help`)
+- **Semantic search**: Find installed skills with embeddings and natural language; catalog search for remote discovery
+- **Agent sync**: `fastskill sync` writes installed skills into agent metadata files (Claude Code–compatible layouts)
+- **Publish & registries**: Package ZIPs and publish to an API or storage when you distribute skills to others
+- **HTTP API & Web UI**: Optional local `fastskill serve` for browsing and integration (unauthenticated by default)
 
 ## Compatible Agents
 
@@ -80,11 +82,11 @@ Optimized for Claude Code. Skills follow the same SKILL.md format used by Cursor
 
 ## Core Use Cases
 
-- **Skill Authors**: Package, version, and publish skills to registries
-- **Agent Developers**: Discover and install skills for agent capabilities
-- **Teams**: Share internal skills via private registries with version control
-- **CI/CD**: Automate skill packaging, publishing, and deployment pipelines
-- **Production Systems**: Manage skill lifecycles in agentic applications
+- **Skill authors**: `fastskill init`, package, validate, and run evals before you publish
+- **Agent developers**: Install, list, show, read, and search skills your agents actually load
+- **Teams**: One manifest and lockfile, optional groups, private sources when you share internally
+- **CI/CD**: Reproducible `install --lock`, packaging, and publish steps in pipelines
+- **Production systems**: Operate skill sets at scale—updates, rollbacks, and drift checks—not ad-hoc copies
 
 ## Benefits Over Baseline
 
@@ -94,7 +96,7 @@ Without FastSkill, teams manually manage skills through ad-hoc scripts, copy-pas
 - **Version Control**: Semantic versioning and dependency resolution
 - **Discovery**: Semantic search eliminates manual skill cataloging
 - **Reproducibility**: Lock files ensure consistent installations across environments
-- **Scalability**: Registry architecture supports hundreds of skills across teams
+- **Scalability**: Handles large skill trees, many projects, and multiple sources without manual bookkeeping
 - **Automation**: CLI and API enable CI/CD integration
 
 ## Installation

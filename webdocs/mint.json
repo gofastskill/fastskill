@@ -35,59 +35,30 @@
                 "index",
                 "quickstart",
                 "installation",
-                "core-concepts",
                 "cheatsheet"
             ]
         },
         {
             "group": "Configuration",
             "pages": [
-                "configuration/init-command",
-                "configuration/service-config",
-                "configuration/environment",
-                "configuration/best-practices"
+                "configuration/init-command"
             ]
         },
         {
             "group": "Skill Management",
             "pages": [
-                "skill-management/registration",
                 "skill-management/manifest-system",
-                "skill-management/lifecycle",
                 "skill-management/validation",
-                "skill-management/hot-reloading"
+                "skill-management/reconciliation"
             ]
         },
         {
-            "group": "Discovery & Routing",
+            "group": "Evals & Quality",
             "pages": [
-                "discovery/skill-discovery",
-                "discovery/query-processing",
-                "discovery/intelligent-routing",
-                "search/embedding-search"
-            ]
-        },
-        {
-            "group": "Tool Calling",
-            "pages": [
-                "tool-calling/available-tools",
-                "tool-calling/execution"
-            ]
-        },
-        {
-            "group": "Progressive Loading",
-            "pages": [
-                "progressive-loading/strategies",
-                "progressive-loading/cache-management",
-                "progressive-loading/performance"
-            ]
-        },
-        {
-            "group": "API Reference",
-            "pages": [
-                "api-reference/overview",
-                "api-reference/claude-code-v1-api",
-                "api-reference/authentication"
+                "evals-quality/overview",
+                "evals-quality/setup",
+                "evals-quality/run-evals",
+                "evals-quality/cluster-analysis"
             ]
         },
         {
@@ -122,21 +93,10 @@
             ]
         },
         {
-            "group": "Examples & Tutorials",
-            "pages": [
-                "examples/basic-examples",
-                "examples/integration-tutorials",
-                "examples/advanced-patterns",
-                "examples/notebooks"
-            ]
-        },
-        {
             "group": "Advanced Topics",
             "pages": [
                 "security/model",
-                "security/best-practices",
-                "skill-management/reconciliation",
-                "advanced-topics/build-systems"
+                "security/best-practices"
             ]
         },
         {
@@ -145,8 +105,7 @@
                 "integration/cursor-integration",
                 "integration/claude-code-integration",
                 "integration/cicd-pipelines",
-                "integration/blob-storage",
-                "integration/kubernetes-deployment"
+                "integration/blob-storage"
             ]
         }
     ],

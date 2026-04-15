@@ -426,7 +426,7 @@ jobs:
 
       - name: Install FastSkill
         run: |
-          cargo install fastskill --features git-support
+          curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 
       - name: Install dependencies
         run: |

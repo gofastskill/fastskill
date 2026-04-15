@@ -1,185 +1,95 @@
 ---
-title: "FastSkill - AI Agent Skill Framework"
-description: "A comprehensive service layer that enables AI agents to discover, load, and execute skills dynamically across multiple programming languages and frameworks."
+title: "FastSkill"
+description: "Package manager and operational toolkit for Agent AI Skills. Discovery, installation, versioning, validation, evals, and deployment at scale."
 ---
 
 <Note>
-**New to FastSkill?** Start with the [Welcome Page](/welcome) to learn about the problems FastSkill solves and how it expands the Claude Code skill standard.
+New here? Read the [Welcome](/welcome) page for the full story, then [Quick start](/quickstart) and [Installation](/installation).
 </Note>
 
 <Frame>
-<img src="/images/hero-diagram.svg" alt="FastSkill Architecture Overview" />
+<img src="/images/hero-diagram.svg" alt="FastSkill overview" />
 </Frame>
 
 ## What is FastSkill?
 
-FastSkill is a **high-performance Rust service layer** that enables AI agents and agent frameworks to discover, load, and execute skills directly. It provides comprehensive services that agents integrate with to access skill functionality without requiring a tool calling layer.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, **search**, **`fastskill sync`** into agent metadata, and **publish** flows when you ship skills to others.
 
-<Info>
-FastSkill is built with Rust for maximum performance, memory safety, and reliability. The service layer provides async/await support via tokio and can be used as a library or through the CLI.
-</Info>
+The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
 
-## Key Features
+## What you can do
 
 <CardGroup cols={2}>
-  <Card title="Semantic Search" icon="search">
-    Find skills using OpenAI embeddings for semantic understanding, not just keyword matching.
+  <Card title="Package & lifecycle" icon="package">
+    `add`, `install`, `update`, `remove`, `list`, `show` with `skill-project.toml` and `skills.lock`.
   </Card>
 
-  <Card title="Cursor Integration" icon="code">
-    Automatically generate skill registries for Cursor IDE integration and AI agent tool discovery.
+  <Card title="Validation" icon="check-circle">
+    Structure checks on install and reconciliation across manifest, lock, and disk. See [Skill validation](/skill-management/validation).
   </Card>
 
-  <Card title="Progressive Loading" icon="zap">
-    Load skill metadata first, then content on demand for optimal performance and memory usage.
+  <Card title="Evals" icon="flask">
+    `fastskill eval validate | run | report | score` for defined quality suites. See [eval command](/cli-reference/eval-command).
   </Card>
 
-  <Card title="Keyword Search" icon="file-text">
-    Traditional text-based search for reliable, predictable skill discovery.
+  <Card title="Discovery & search" icon="search">
+    Catalog search by default; `--local` for installed skills, embeddings, and keyword fallback.
   </Card>
 
-  <Card title="Multiple Output Formats" icon="table">
-    Export results as tables, JSON, or XML for different integration needs.
+  <Card title="Agent sync" icon="refresh-cw">
+    `fastskill sync` writes the installed skill set into agent metadata files. See [tooling commands](/cli-reference/tooling-commands).
   </Card>
 
-  <Card title="Local Vector Index" icon="database">
-    Store embeddings locally in SQLite for fast, offline semantic search.
+  <Card title="Publish & catalogs" icon="upload">
+    `package` and `publish` when you distribute; `repos` for remote sources. See [Registry overview](/registry/overview).
   </Card>
 </CardGroup>
 
-## Quick Start
+## Quick start (CLI)
 
-Get up and running with FastSkill in under 5 minutes:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig};
-use std::path::PathBuf;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create service with default configuration
-    let config = ServiceConfig {
-        skill_storage_path: PathBuf::from("./skills"),
-        ..Default::default()
-    };
-
-    let service = FastSkillService::new(config).await?;
-    service.initialize().await?;
-
-    // List available skills
-    let skills = service.skill_manager().list_skills(None).await?;
-    println!("Found {} skills", skills.len());
-
-    // Discover relevant skills using semantic search
-    let relevant_skills = service.metadata_service()
-        .discover_skills("extract text from PDF")
-        .await?;
-
-    println!("Found {} relevant skills", relevant_skills.len());
-
-    Ok(())
-}
+```bash
+fastskill -V
+fastskill init            # in a skill directory, when authoring
+fastskill add ./my-skill -e --group dev
+fastskill install
+fastskill list
 ```
 
-<Check>
-Your FastSkill service is now running! Check out the [Getting Started guide](/quickstart) to learn more.
-</Check>
+Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill eval validate`, `fastskill sync --yes`. Full walkthrough: [Quick start](/quickstart).
 
-## Architecture Overview
+## How it fits together
 
-FastSkill follows a modular Rust architecture designed for scalability and performance:
+- **You**: edit `SKILL.md` and manifests; agents **read** skill content. FastSkill does not execute skill logic as a runtime sandbox.
+- **CLI**: single entry point for installs, checks, search, evals, sync, and packaging.
+- **Optional `serve`**: HTTP API and UI on your machine for browsing and integrations.
 
-```mermaid
-graph TB
-    subgraph "AI Agent Layer"
-        AA[AI Agents]
-        AF[Agent Frameworks]
-        TC[Tool Calling]
-    end
+## Use cases (summary)
 
-    subgraph "Service Layer"
-        FS[FastSkill Service]
-        SM[Skill Management]
-        MD[Metadata Discovery]
-        PL[Progressive Loading]
-        TC2[Tool Calling]
-        RS[Routing Service]
-    end
+- **Authors**: init, validate, eval, package, publish when ready.
+- **Developers**: install, list, read, search, sync for what agents load.
+- **Teams**: shared manifest + lock; groups for optional stacks.
+- **Automation**: `install --lock`, package, publish in CI (patterns in [CI/CD](/integration/cicd-pipelines)).
 
-    subgraph "Storage Layer"
-        SS[Skill Storage]
-        FS2[Filesystem]
-        ZIP[ZIP Packages]
-        SE[Script Execution]
-        SB[Security Sandbox]
-    end
-
-    AA --> FS
-    AF --> FS
-    TC --> TC2
-
-    FS --> SM
-    FS --> MD
-    FS --> PL
-    FS --> RS
-
-    SM --> SS
-    MD --> SS
-    PL --> SS
-    RS --> SS
-
-    SS --> FS2
-    SS --> ZIP
-    SS --> SE
-    SS --> SB
-```
-
-### Core Components
-
-- **CLI Tool**: Rust-based command-line interface for indexing and searching skills
-- **Vector Index**: SQLite-based storage for skill embeddings and metadata
-- **Embedding Service**: OpenAI integration for semantic text vectorization
-- **Search Engine**: Hybrid search supporting both semantic and keyword matching
-- **Markdown Export**: Automatic generation of Cursor-compatible skill registries
-- **Rust Library**: High-performance API for programmatic skill management with async/await support
-
-## Use Cases
-
-FastSkill is perfect for:
-
-- **AI Agent Development**: Enable agents to discover and use skills through direct service integration
-- **Service Integration**: Provide comprehensive services that agents can use directly
-- **Skill Marketplaces**: Build platforms where users can share and consume skills
-- **Enterprise Integration**: Standardize skill access across different agent frameworks
-- **Development Workflows**: Hot reload skills during development without service restart
-
-## Next Steps
+## Next steps
 
 <Steps>
-<Step title="Install FastSkill">
-  Install the Rust CLI and library following the [installation guide](/installation).
+<Step title="Install">
+  [Installation](/installation) for the `fastskill` binary.
 </Step>
-
-<Step title="Create your first skill">
-  Learn how to define and register skills in the [skill management section](/skill-management/registration).
+<Step title="Learn the model">
+  [Welcome](/welcome) and [Manifest system](/skill-management/manifest-system).
 </Step>
-
-<Step title="Integrate with your agent">
-  Connect FastSkill to your AI agent or framework using our [integration tutorials](/examples/integration-tutorials).
+<Step title="Operate skills">
+  [Skill validation](/skill-management/validation), [Evals and quality](/evals-quality/overview), [CLI reference](/cli-reference/overview).
 </Step>
-
-<Step title="Explore advanced features">
-  Dive into [progressive loading](/progressive-loading/strategies) and [intelligent routing](/discovery/intelligent-routing) for optimal performance.
+<Step title="Integrate">
+  [Cursor integration](/integration/cursor-integration) or [CI/CD](/integration/cicd-pipelines).
 </Step>
 </Steps>
 
-<Warning>
-FastSkill focuses on skill discovery and search capabilities. For skill execution, read the generated SKILL.md files directly. FastSkill does not provide execution services.
-</Warning>
+## Getting help
 
-## Getting Help
+- [Documentation home](/welcome)
+- [GitHub Issues](https://github.com/gofastskill/fastskill/issues)
 
-- 📖 **[Documentation](/welcome)**: Complete guides and reference materials
-- 🐛 **[GitHub Issues](https://github.com/gofastskill/fastskill/issues)**: Report bugs and request features
-
-Ready to get started? Jump to the [Quick Start guide](/quickstart) or [installation instructions](/installation).
+Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/overview).

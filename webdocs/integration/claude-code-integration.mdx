@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install FastSkill
-        run: cargo install fastskill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
       - name: Sync skills
         run: fastskill sync --agent claude --yes
       - name: Commit CLAUDE.md

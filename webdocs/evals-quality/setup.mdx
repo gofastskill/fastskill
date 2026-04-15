@@ -1,0 +1,65 @@
+---
+title: "Eval Setup"
+description: "Set up skill eval suites, agents, and output structure for reliable quality runs."
+---
+
+# Eval Setup
+
+This page covers the minimum setup for repeatable eval execution.
+
+## 1) Ensure project prerequisites
+
+- `skill-project.toml` exists at project root
+- Skills are installed (`fastskill install`)
+- Chosen eval agent is available on `PATH`
+
+## 2) Validate eval configuration
+
+Run validation before any suite execution:
+
+```bash
+fastskill eval validate
+fastskill eval validate --agent codex
+```
+
+Use `--agent` to confirm the runtime is available in the current environment.
+
+## 3) Define a stable output layout
+
+Use a predictable output root (for local and CI):
+
+```bash
+mkdir -p .fastskill/eval-runs
+```
+
+Then always pass `--output-dir` in `eval run`.
+
+## 4) Normalize run filters
+
+Use tags and case ids consistently so teams can run:
+
+- fast feedback: smoke tags
+- release checks: full suite
+- focused debugging: single case id
+
+Example:
+
+```bash
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --tag smoke
+```
+
+## 5) Define fail policy
+
+Default behavior should fail on quality regression. Use `--no-fail` only for exploratory runs.
+
+## Setup checklist
+
+- [ ] `fastskill eval validate` passes
+- [ ] Agent binary is available
+- [ ] Output directory is versioned in CI artifacts policy
+- [ ] Team agreed on tag naming (`smoke`, `regression`, `release`)
+
+## See also
+
+- [Run evals](/evals-quality/run-evals)
+- [eval command](/cli-reference/eval-command)

@@ -394,7 +394,7 @@ jobs:
 
       - name: Install FastSkill
         run: |
-          cargo install fastskill --features git-support
+          curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 
       - name: Check reconciliation status
         run: |
@@ -500,4 +500,4 @@ exit 0
 - [Update Command](/cli-reference/update-command) - Update skills and lockfile
 - [List Command](/cli-reference/skill-commands#list) - List skills with reconciliation status
 - [Manifest System](/skill-management/manifest-system) - Understanding skill-project.toml and skills.lock
-- [Service Configuration](/configuration/service-config) - Configuration file reference
+- [init Command](/configuration/init-command) - Project initialization and setup
