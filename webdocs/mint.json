@@ -22,11 +22,6 @@
     },
     "anchors": [
         {
-            "name": "Community",
-            "icon": "slack",
-            "url": "https://join.slack.com/t/fastskill/shared_invite/zt-2example"
-        },
-        {
             "name": "GitHub",
             "icon": "github",
             "url": "https://github.com/gofastskill/fastskill"
