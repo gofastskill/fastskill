@@ -1477,6 +1477,7 @@ dependencies = [
  "insta",
  "multer",
  "notify",
+ "num_cpus",
  "once_cell",
  "predicates",
  "regex",

@@ -15,6 +15,9 @@ Options:
       --format <FORMAT>          Output format: table, json, grid, xml
       --json                     Shorthand for --format json
       --no-fail                  Do not fail with non-zero exit code on suite failure
+      --trials <TRIALS>          Override trials per case from config
+      --ci                       Enable CI mode: exit non-zero if suite pass rate below threshold
+      --threshold <THRESHOLD>    Override pass threshold (0.0-1.0)
   -h, --help                     Print help
 
 Examples:

@@ -289,6 +289,15 @@ pub struct EvalConfigToml {
     /// Timeout in seconds for each eval case execution
     #[serde(default = "default_eval_timeout_seconds")]
     pub timeout_seconds: u64,
+    /// Trials per case (default: 1)
+    #[serde(default = "default_trials_per_case")]
+    pub trials_per_case: u32,
+    /// Optional maximum parallelism for trials within one case (default: CPU cores)
+    #[serde(default)]
+    pub parallel: Option<u32>,
+    /// Pass threshold for trial aggregation (0.0-1.0, default: 1.0)
+    #[serde(default = "default_pass_threshold")]
+    pub pass_threshold: f64,
     /// When true, `eval run` / `eval validate --agent` fail fast if the agent CLI is not available
     #[serde(default = "default_fail_on_missing_agent")]
     pub fail_on_missing_agent: bool,
@@ -296,6 +305,14 @@ pub struct EvalConfigToml {
 
 fn default_eval_timeout_seconds() -> u64 {
     900
+}
+
+fn default_trials_per_case() -> u32 {
+    1
+}
+
+fn default_pass_threshold() -> f64 {
+    1.0
 }
 
 fn default_fail_on_missing_agent() -> bool {

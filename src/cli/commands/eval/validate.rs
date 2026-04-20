@@ -109,6 +109,9 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "prompts_path": eval_config.prompts_path,
             "checks_path": eval_config.checks_path,
             "timeout_seconds": eval_config.timeout_seconds,
+            "trials_per_case": eval_config.trials_per_case,
+            "parallel": eval_config.parallel,
+            "pass_threshold": eval_config.pass_threshold,
             "fail_on_missing_agent": eval_config.fail_on_missing_agent,
             "project_root": eval_config.project_root,
             "case_count": case_count,
@@ -127,6 +130,9 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             println!("  check count: {}", check_count);
         }
         println!("  timeout: {}s", eval_config.timeout_seconds);
+        println!("  trials_per_case: {}", eval_config.trials_per_case);
+        println!("  parallel: {}", eval_config.parallel.unwrap_or(0));
+        println!("  pass_threshold: {}", eval_config.pass_threshold);
         println!(
             "  fail_on_missing_agent: {}",
             eval_config.fail_on_missing_agent
