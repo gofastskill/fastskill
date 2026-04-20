@@ -403,6 +403,7 @@ fn test_eval_run_persists_event_trace_jsonl() {
     let run_dir = summary["run_dir"].as_str().unwrap();
     let trace_path = std::path::Path::new(run_dir)
         .join("trace-case")
+        .join("trial-1")
         .join("trace.jsonl");
     let trace_jsonl = fs::read_to_string(&trace_path).unwrap();
 
@@ -414,8 +415,201 @@ fn test_eval_run_persists_event_trace_jsonl() {
 
     let result_path = std::path::Path::new(run_dir)
         .join("trace-case")
+        .join("trial-1")
         .join("result.json");
     let case_result: Value =
         serde_json::from_str(&fs::read_to_string(result_path).unwrap()).unwrap();
     assert_eq!(case_result["command_count"], 1);
+}
+
+#[test]
+fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrial-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    // Fake agent that passes the first 3 invocations, then fails.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nstate_dir=\"${FASTSKILL_TEST_STATE_DIR:?}\"\nmkdir -p \"$state_dir\"\nlock=\"$state_dir/lock\"\ncount_file=\"$state_dir/count\"\nexec 9>\"$lock\"\nflock 9\ncount=0\nif [[ -f \"$count_file\" ]]; then count=$(cat \"$count_file\" || echo 0); fi\ncount=$((count+1))\necho \"$count\" > \"$count_file\"\nflock -u 9\n# Emit a raw_json line so trace persists and command_count=1.\necho '{\"event\":\"ok\"}'\nif [[ $count -le 3 ]]; then exit 0; else exit 1; fi\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let state_dir = dir.path().join("state");
+    let env_vars = vec![
+        ("PATH", merged_path.as_str()),
+        ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+    ];
+
+    // Threshold 0.6 should pass for 3/5.
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trial-case",
+            "--trials",
+            "5",
+            "--threshold",
+            "0.6",
+            "--ci",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run to succeed in CI mode at threshold=0.6, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(summary["cases"][0]["id"], "trial-case");
+    assert_eq!(summary["cases"][0]["status"], "passed");
+    assert_eq!(summary["cases"][0]["pass_count"], 3);
+    assert_eq!(summary["cases"][0]["total_trials"], 5);
+
+    // Reset state and require 100% suite pass rate should fail in --ci mode.
+    fs::remove_file(state_dir.join("count")).ok();
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trial-case",
+            "--trials",
+            "5",
+            "--threshold",
+            "1.0",
+            "--ci",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "Expected eval run to fail in CI mode at threshold=1.0"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("threshold") || combined.contains("Eval suite failed"),
+        "Expected threshold-related failure, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_parallelism_reduces_wall_time() {
+    use std::env;
+    use std::fs;
+    use std::time::Instant;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nsleep-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nparallel = 4\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nsleep 0.5\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let start = Instant::now();
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "sleep-case",
+            "--trials",
+            "4",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    let elapsed = start.elapsed();
+    assert!(
+        result.success,
+        "Expected eval run to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    // If trials executed sequentially with sleep(0.5), 4 trials would take ~2s.
+    // With parallel=4, it should be comfortably below that.
+    assert!(
+        elapsed.as_secs_f64() < 1.6,
+        "Expected parallel trials to complete faster; elapsed={:?}",
+        elapsed
+    );
 }
