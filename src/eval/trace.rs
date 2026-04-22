@@ -44,6 +44,18 @@ pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
                         b64: STANDARD.encode(bytes),
                     }
                 }
+                AgentEventPayload::TokenUsageLine {
+                    usage,
+                    source,
+                    raw_agent_line_seq,
+                } => TracePayload::RawJson {
+                    data: serde_json::json!({
+                        "type": "token_usage",
+                        "usage": usage,
+                        "source": source,
+                        "raw_agent_line_seq": raw_agent_line_seq
+                    }),
+                },
             };
             TraceEvent {
                 seq: ev.seq as usize,
