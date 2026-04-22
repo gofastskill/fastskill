@@ -1,0 +1,31 @@
+[package]
+name = "fastskill"
+version.workspace = true
+edition.workspace = true
+description = "FastSkill - AI Skills management toolkit (facade crate, re-exports fastskill-core)"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fastskill", "AI Skills", "ai tools", "anthropic", "claude"]
+categories = ["tools"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+# Re-export fastskill-core for backward compatibility
+fastskill-core = { path = "../fastskill-core", version = "0.9.110" }
+
+[features]
+default = ["filesystem-storage", "registry-publish"]
+
+# Storage backends
+filesystem-storage = ["fastskill-core/filesystem-storage"]
+hot-reload = ["fastskill-core/hot-reload"]
+
+# Registry publishing (requires AWS SDK)
+registry-publish = ["fastskill-core/registry-publish"]
+
+[lints]
+workspace = true

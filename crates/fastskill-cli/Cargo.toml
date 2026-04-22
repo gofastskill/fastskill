@@ -1,0 +1,95 @@
+[package]
+name = "fastskill-cli"
+version.workspace = true
+edition.workspace = true
+description = "FastSkill CLI - AI Skills management command-line tool"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fastskill", "AI Skills", "ai tools", "anthropic", "claude"]
+categories = ["tools", "command-line-utilities"]
+
+[[bin]]
+name = "fastskill"
+path = "src/main.rs"
+
+[dependencies]
+# Core library
+fastskill-core = { path = "../fastskill-core", features = ["filesystem-storage", "registry-publish", "hot-reload"] }
+
+# aikit-sdk for agent integration
+aikit-sdk.workspace = true
+
+# CLI-specific dependencies
+clap.workspace = true
+inquire.workspace = true
+
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Utilities
+uuid.workspace = true
+chrono.workspace = true
+once_cell.workspace = true
+regex.workspace = true
+num_cpus.workspace = true
+
+# File system and I/O
+tokio-util.workspace = true
+walkdir.workspace = true
+fs2.workspace = true
+
+# Archive handling
+zip.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Base64 encoding/decoding for JWT parsing (used in auth_config)
+base64.workspace = true
+
+# SHA256 hashing
+sha2.workspace = true
+
+# Configuration
+config.workspace = true
+
+# URL parsing
+url.workspace = true
+
+# File utilities
+tempfile.workspace = true
+
+# Directory utilities
+dirs.workspace = true
+
+# Semantic versioning
+semver.workspace = true
+
+# AWS S3 storage (for registry publishing)
+aws-sdk-s3.workspace = true
+aws-config.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+insta = "1.47"
+assert_cmd = "2.0"
+predicates = "3.0"
+
+[lints]
+workspace = true

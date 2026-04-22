@@ -1,0 +1,288 @@
+//! Skill management service implementation
+
+use crate::core::service::{ServiceError, SkillId};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+// Note: SkillInfoMetadata removed - use skill-project.toml via manifest system instead
+
+/// Source type for skill installation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SourceType {
+    GitUrl,
+    LocalPath,
+    ZipFile,
+    Source,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillDefinition {
+    pub id: SkillId,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub author: Option<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+
+    // File references
+    pub skill_file: std::path::PathBuf,
+    pub reference_files: Option<Vec<std::path::PathBuf>>,
+    pub script_files: Option<Vec<std::path::PathBuf>>,
+    pub asset_files: Option<Vec<std::path::PathBuf>>,
+
+    // Execution configuration
+    pub execution_environment: Option<String>,
+    pub dependencies: Option<Vec<String>>,
+    pub timeout: Option<u64>,
+
+    // Source tracking
+    pub source_url: Option<String>,
+    pub source_type: Option<SourceType>,
+    pub source_branch: Option<String>,
+    pub source_tag: Option<String>,
+    pub source_subdir: Option<PathBuf>,
+    pub installed_from: Option<String>,
+    pub commit_hash: Option<String>,
+    pub fetched_at: Option<DateTime<Utc>>,
+    pub editable: bool,
+}
+
+impl SkillDefinition {
+    pub fn new(id: SkillId, name: String, description: String, version: String) -> Self {
+        let now = Utc::now();
+        Self {
+            id: id.clone(),
+            name,
+            description,
+            version,
+            author: None,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+            skill_file: std::path::PathBuf::from(format!("./skills/{}/SKILL.md", id)),
+            reference_files: None,
+            script_files: None,
+            asset_files: None,
+            execution_environment: None,
+            dependencies: None,
+            timeout: None,
+            source_url: None,
+            source_type: None,
+            source_branch: None,
+            source_tag: None,
+            source_subdir: None,
+            installed_from: None,
+            commit_hash: None,
+            fetched_at: None,
+            editable: false,
+        }
+    }
+
+    // Note: load_skill_info removed - use skill-project.toml via manifest system instead
+}
+
+#[async_trait]
+pub trait SkillManagementService: Send + Sync {
+    async fn register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError>;
+    async fn force_register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError>;
+    async fn get_skill(&self, skill_id: &SkillId) -> Result<Option<SkillDefinition>, ServiceError>;
+    async fn update_skill(
+        &self,
+        skill_id: &SkillId,
+        updates: SkillUpdate,
+    ) -> Result<(), ServiceError>;
+    async fn unregister_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
+    async fn list_skills(
+        &self,
+        filters: Option<SkillFilters>,
+    ) -> Result<Vec<SkillDefinition>, ServiceError>;
+    async fn enable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
+    async fn disable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
+}
+
+#[derive(Debug)]
+pub struct SkillManager {
+    skills: Arc<RwLock<HashMap<SkillId, SkillDefinition>>>,
+}
+
+impl Default for SkillManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SkillManager {
+    pub fn new() -> Self {
+        Self {
+            skills: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SkillFilters {
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillUpdate {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub enabled: Option<bool>,
+    pub source_url: Option<String>,
+    pub source_type: Option<SourceType>,
+    pub source_branch: Option<String>,
+    pub source_tag: Option<String>,
+    pub source_subdir: Option<PathBuf>,
+    pub installed_from: Option<String>,
+    pub commit_hash: Option<String>,
+    pub fetched_at: Option<DateTime<Utc>>,
+    pub editable: Option<bool>,
+}
+
+#[async_trait]
+impl SkillManagementService for SkillManager {
+    async fn register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError> {
+        let mut skills = self.skills.write().await;
+
+        // Check if skill already exists
+        if skills.contains_key(&skill.id) {
+            return Err(ServiceError::Custom(format!(
+                "Skill {} already exists",
+                skill.id
+            )));
+        }
+
+        let skill_id = skill.id.clone();
+        skills.insert(skill_id.clone(), skill);
+        Ok(skill_id)
+    }
+
+    async fn force_register_skill(&self, skill: SkillDefinition) -> Result<SkillId, ServiceError> {
+        let mut skills = self.skills.write().await;
+
+        let skill_id = skill.id.clone();
+        skills.insert(skill_id.clone(), skill);
+        Ok(skill_id)
+    }
+
+    async fn get_skill(&self, skill_id: &SkillId) -> Result<Option<SkillDefinition>, ServiceError> {
+        let skills = self.skills.read().await;
+        Ok(skills.get(skill_id).cloned())
+    }
+
+    async fn update_skill(
+        &self,
+        skill_id: &SkillId,
+        updates: SkillUpdate,
+    ) -> Result<(), ServiceError> {
+        let mut skills = self.skills.write().await;
+
+        if let Some(skill) = skills.get_mut(skill_id) {
+            if let Some(name) = updates.name {
+                skill.name = name;
+            }
+            if let Some(description) = updates.description {
+                skill.description = description;
+            }
+            if let Some(version) = updates.version {
+                skill.version = version;
+            }
+            if let Some(author) = updates.author {
+                skill.author = Some(author);
+            }
+            if let Some(enabled) = updates.enabled {
+                skill.enabled = enabled;
+            }
+            if let Some(source_url) = updates.source_url {
+                skill.source_url = Some(source_url);
+            }
+            if let Some(source_type) = updates.source_type {
+                skill.source_type = Some(source_type);
+            }
+            if let Some(source_branch) = updates.source_branch {
+                skill.source_branch = Some(source_branch);
+            }
+            if let Some(source_tag) = updates.source_tag {
+                skill.source_tag = Some(source_tag);
+            }
+            if let Some(source_subdir) = updates.source_subdir {
+                skill.source_subdir = Some(source_subdir);
+            }
+            if let Some(installed_from) = updates.installed_from {
+                skill.installed_from = Some(installed_from);
+            }
+            if let Some(commit_hash) = updates.commit_hash {
+                skill.commit_hash = Some(commit_hash);
+            }
+            if let Some(fetched_at) = updates.fetched_at {
+                skill.fetched_at = Some(fetched_at);
+            }
+            if let Some(editable) = updates.editable {
+                skill.editable = editable;
+            }
+            skill.updated_at = Utc::now();
+            Ok(())
+        } else {
+            Err(ServiceError::SkillNotFound(skill_id.to_string()))
+        }
+    }
+
+    async fn unregister_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError> {
+        let mut skills = self.skills.write().await;
+
+        if skills.remove(skill_id).is_some() {
+            Ok(())
+        } else {
+            Err(ServiceError::SkillNotFound(skill_id.to_string()))
+        }
+    }
+
+    async fn list_skills(
+        &self,
+        filters: Option<SkillFilters>,
+    ) -> Result<Vec<SkillDefinition>, ServiceError> {
+        let skills = self.skills.read().await;
+        let mut filtered_skills: Vec<SkillDefinition> = skills.values().cloned().collect();
+
+        if let Some(filters) = filters {
+            // Filter by enabled status
+            if let Some(enabled) = filters.enabled {
+                filtered_skills.retain(|skill| skill.enabled == enabled);
+            }
+        }
+
+        Ok(filtered_skills)
+    }
+
+    async fn enable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError> {
+        self.update_skill(
+            skill_id,
+            SkillUpdate {
+                enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    async fn disable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError> {
+        self.update_skill(
+            skill_id,
+            SkillUpdate {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+}

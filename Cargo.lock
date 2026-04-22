@@ -1549,6 +1549,55 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 name = "fastskill"
 version = "0.9.110"
 dependencies = [
+ "fastskill-core",
+]
+
+[[package]]
+name = "fastskill-cli"
+version = "0.9.110"
+dependencies = [
+ "aikit-sdk",
+ "anyhow",
+ "assert_cmd",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-s3",
+ "base64 0.22.1",
+ "chrono",
+ "clap",
+ "config",
+ "dirs",
+ "fastskill-core",
+ "fs2",
+ "inquire",
+ "insta",
+ "num_cpus",
+ "once_cell",
+ "predicates",
+ "regex",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "walkdir",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "fastskill-core"
+version = "0.9.110"
+dependencies = [
  "aikit-sdk",
  "anyhow",
  "assert_cmd",
@@ -1558,13 +1607,11 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
- "clap",
  "config",
  "dirs",
  "fs2",
  "futures",
  "include_dir",
- "inquire",
  "insta",
  "multer",
  "notify",
