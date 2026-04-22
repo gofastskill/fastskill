@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.9.110"
+version = "0.9.111"
 edition = "2021"
 authors = ["aroff"]
 license = "Apache-2.0"
@@ -63,7 +63,7 @@ tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip",
 validator = { version = "0.20", features = ["derive"] }
 
 # SQLite for vector index
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # SHA256 hashing for file integrity
 sha2 = "0.10"
@@ -76,7 +76,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
-config = "0.14"
+config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
 inquire = "0.7"
 
