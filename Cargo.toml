@@ -1,23 +1,19 @@
-[package]
-name = "fastskill"
+[workspace]
+members = [
+    "crates/fastskill-core",
+    "crates/fastskill",
+    "crates/fastskill-cli",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.9.111"
 edition = "2021"
-description = "FastSkill is a AI Skills management tool"
 authors = ["aroff"]
 license = "Apache-2.0"
 repository = "https://github.com/aroff/fastskill"
-keywords = ["fastskill", "AI Skills", "ai tools", "anthropic", "claude"]
-categories = ["tools"]
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[[bin]]
-name = "fastskill"
-path = "src/bin/fastskill.rs"
-
-[dependencies]
+[workspace.dependencies]
 # aikit-sdk for agent metadata file resolution
 aikit-sdk = { git = "https://github.com/goaikit/aikit", branch = "main" }
 
@@ -45,9 +41,9 @@ num_cpus = "1.16"
 
 # File system and I/O
 tokio-util = { version = "0.7", features = ["io"] }
-notify = { version = "6.0", optional = true }
+notify = "6.0"
 walkdir = "2.5"
-fs2 = "0.4"  # Cross-platform file locking
+fs2 = "0.4"
 
 # Archive handling
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
@@ -62,7 +58,6 @@ multer = "3.1"
 axum = { version = "0.7", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "fs"] }
-
 
 # Request validation
 validator = { version = "0.20", features = ["derive"] }
@@ -85,9 +80,7 @@ config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
 inquire = "0.7"
 
-# Git support removed - now uses system git binary
-
-# URL parsing for CLI
+# URL parsing
 url = "2.5"
 
 # File utilities
@@ -96,36 +89,17 @@ tempfile = "3.27"
 # Directory utilities
 dirs = "6.0"
 
-# Embed static assets for installed binary (no filesystem static dir)
+# Embed static assets
 include_dir = "0.7"
 
 # Semantic versioning
 semver = "1.0"
 
-# AWS S3 storage (optional - only for registry publishing)
-aws-sdk-s3 = { version = "1", optional = true }
-aws-config = { version = "1", optional = true }
+# AWS S3 storage (for registry publishing)
+aws-sdk-s3 = "1"
+aws-config = "1"
 
-[dev-dependencies]
-tempfile = "3.27"
-wiremock = "0.5"
-insta = "1.47"
-assert_cmd = "2.0"
-predicates = "3.0"
-
-
-[features]
-default = ["filesystem-storage", "registry-publish"]
-
-# Storage backends
-filesystem-storage = []
-hot-reload = ["notify"]
-# git-support removed - git operations always available if system git is installed
-
-# Registry publishing (requires AWS SDK)
-registry-publish = ["aws-sdk-s3", "aws-config"]
-
-[lints.clippy]
+[workspace.lints.clippy]
 # Warn about critical lints that should be avoided in production code
 unwrap_used = "warn"
 expect_used = "warn"
