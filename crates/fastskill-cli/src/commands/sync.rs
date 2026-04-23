@@ -19,7 +19,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-/// Sync installed skills to the agent's metadata file
+/// Sync installed skills into the agent's metadata file (CLAUDE.md, AGENTS.md, etc.).
+///
+/// This command writes skill identifiers and descriptions into the agent's instruction
+/// file so the agent can discover available skills. It does NOT manage filesystem links
+/// or symlinks; editable skill links are established by `fastskill add -e` or
+/// `fastskill install`.
 #[derive(Debug, Args)]
 pub struct SyncArgs {
     /// Non-interactive mode: include all installed skills

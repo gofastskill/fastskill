@@ -1,6 +1,7 @@
 //! Add command implementation
 
 use crate::error::{manifest_required_for_add_message, CliError, CliResult, CliWarning};
+use crate::utils::install_utils;
 use crate::utils::manifest_utils;
 use crate::utils::{
     detect_skill_source, parse_git_url, parse_skill_id, validate_skill_structure, SkillSource,
@@ -118,6 +119,83 @@ async fn install_copied_skill(
             .map_err(CliError::Io)?;
     }
     copy_dir_recursive(skill_path, &target.storage_dir).await?;
+    skill_def.skill_file = target.storage_dir.join("SKILL.md");
+    skill_def.source_url = target.meta.source_url;
+    skill_def.source_type = target.meta.source_type;
+    skill_def.source_branch = target.meta.source_branch;
+    skill_def.source_tag = target.meta.source_tag;
+    skill_def.source_subdir = target.meta.source_subdir;
+    skill_def.installed_from = target.meta.installed_from;
+    skill_def.fetched_at = Some(Utc::now());
+    skill_def.editable = ctx.editable;
+
+    register_skill_once(ctx, &skill_def).await?;
+
+    let update = fastskill_core::core::skill_manager::SkillUpdate {
+        source_url: skill_def.source_url.clone(),
+        source_type: skill_def.source_type.clone(),
+        source_branch: skill_def.source_branch.clone(),
+        source_tag: skill_def.source_tag.clone(),
+        source_subdir: skill_def.source_subdir.clone(),
+        installed_from: skill_def.installed_from.clone(),
+        fetched_at: skill_def.fetched_at,
+        editable: Some(skill_def.editable),
+        ..Default::default()
+    };
+    ctx.service
+        .skill_manager()
+        .update_skill(&skill_def.id, update)
+        .await
+        .map_err(|e| {
+            crate::utils::service_error_to_cli(
+                e,
+                ctx.service.config().skill_storage_path.as_path(),
+                ctx.global,
+            )
+        })?;
+
+    update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
+    println!(
+        "Successfully added skill: {} (v{})",
+        skill_def.name, target.version_display
+    );
+    println!(
+        "{}",
+        crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+    );
+    Ok(())
+}
+
+/// Install a local skill using symlink (editable) or copy (non-editable).
+async fn install_local_skill(
+    ctx: &AddContext<'_>,
+    skill_path: &Path,
+    mut skill_def: SkillDefinition,
+    target: InstallTarget,
+) -> CliResult<()> {
+    // Check existence (including broken symlinks) before proceeding
+    let path_exists = target.storage_dir.exists() || target.storage_dir.is_symlink();
+    if path_exists {
+        if !ctx.force {
+            return Err(CliError::Config(format!(
+                "Skill directory '{}' already exists. Use --force to overwrite.",
+                target.storage_dir.display()
+            )));
+        }
+        // Remove the existing path (handle both dir and symlink)
+        if target.storage_dir.is_symlink() || target.storage_dir.is_file() {
+            tokio::fs::remove_file(&target.storage_dir)
+                .await
+                .map_err(CliError::Io)?;
+        } else {
+            tokio::fs::remove_dir_all(&target.storage_dir)
+                .await
+                .map_err(CliError::Io)?;
+        }
+    }
+
+    install_utils::setup_skill_in_storage(skill_path, &target.storage_dir, ctx.editable).await?;
+
     skill_def.skill_file = target.storage_dir.join("SKILL.md");
     skill_def.source_url = target.meta.source_url;
     skill_def.source_type = target.meta.source_type;
@@ -356,6 +434,19 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     };
     let source = resolve_source(&args);
 
+    if args.editable {
+        match &source {
+            SkillSource::Folder(_) => {}
+            SkillSource::ZipFile(_) | SkillSource::GitUrl(_) | SkillSource::SkillId(_) => {
+                return Err(CliError::Config(
+                    "--editable (-e) is only supported for local folder sources. \
+                     Remove -e or use a local path."
+                        .to_string(),
+                ));
+            }
+        }
+    }
+
     if args.recursive {
         let path = match &source {
             SkillSource::Folder(p) => p,
@@ -491,7 +582,7 @@ async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<
         },
         version_display: skill_def.version.clone(),
     };
-    install_copied_skill(ctx, folder_path, skill_def, target).await
+    install_local_skill(ctx, &canonical_path, skill_def, target).await
 }
 
 async fn clone_and_validate_skill(
@@ -1541,5 +1632,258 @@ skills_directory = ".claude/skills"
         let result = execute_add(&service, args, false).await;
 
         assert!(result.is_err(), "Should fail due to invalid name");
+    }
+
+    fn make_test_skill(dir: &std::path::Path) {
+        fs::create_dir_all(dir).unwrap();
+        let skill_content = r#"---
+name: editable-test-skill
+version: 1.0.0
+description: A test skill for editable mode testing
+---
+
+# Editable Test Skill
+"#;
+        fs::write(dir.join("SKILL.md"), skill_content).unwrap();
+        let skill_project_content = r#"[metadata]
+id = "editable-test-skill"
+version = "1.0.0"
+"#;
+        fs::write(dir.join("skill-project.toml"), skill_project_content).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_add_editable_local_rejects_git_url() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        let args = AddArgs {
+            source: "https://github.com/org/repo".to_string(),
+            source_type: Some("git".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: true,
+            group: None,
+            recursive: false,
+        };
+        let result = execute_add(&service, args, false).await;
+        assert!(
+            matches!(result, Err(CliError::Config(_))),
+            "Expected Config error, got: {:?}",
+            result
+        );
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("only supported for local folder sources"),
+                "Error should mention local folder sources: {}",
+                msg
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_editable_local_rejects_zip() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        let args = AddArgs {
+            source: "/some/path/skill.zip".to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: true,
+            group: None,
+            recursive: false,
+        };
+        let result = execute_add(&service, args, false).await;
+        assert!(
+            matches!(result, Err(CliError::Config(_))),
+            "Expected Config error for zip with editable, got: {:?}",
+            result
+        );
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("only supported for local folder sources"),
+                "Error should mention local folder sources: {}",
+                msg
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_editable_local_rejects_registry_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        let args = AddArgs {
+            source: "scope/some-skill".to_string(),
+            source_type: Some("registry".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: true,
+            group: None,
+            recursive: false,
+        };
+        let result = execute_add(&service, args, false).await;
+        assert!(
+            matches!(result, Err(CliError::Config(_))),
+            "Expected Config error for registry id with editable, got: {:?}",
+            result
+        );
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("only supported for local folder sources"),
+                "Error should mention local folder sources: {}",
+                msg
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_add_editable_local_creates_symlink() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("editable-skill-source");
+        make_test_skill(&source_dir);
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: true,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false).await;
+        assert!(result.is_ok(), "Editable add should succeed: {:?}", result);
+
+        let storage_path = skills_dir.join("editable-test-skill");
+        let metadata = fs::symlink_metadata(&storage_path).unwrap();
+        assert!(
+            metadata.file_type().is_symlink(),
+            "Storage path should be a symlink for editable install, but it is not"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_non_editable_local_creates_directory() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let skills_dir = temp_dir.path().join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let source_dir = temp_dir.path().join("non-editable-skill-source");
+        make_test_skill(&source_dir);
+
+        let manifest_content = r#"[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[dependencies]
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: source_dir.display().to_string(),
+            source_type: Some("local".to_string()),
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+        };
+
+        let result = execute_add(&service, args, false).await;
+        assert!(
+            result.is_ok(),
+            "Non-editable add should succeed: {:?}",
+            result
+        );
+
+        let storage_path = skills_dir.join("editable-test-skill");
+        let metadata = fs::symlink_metadata(&storage_path).unwrap();
+        assert!(
+            !metadata.file_type().is_symlink(),
+            "Storage path should be a real directory for non-editable install, not a symlink"
+        );
+        assert!(
+            storage_path.is_dir(),
+            "Storage path should be a real directory"
+        );
     }
 }
