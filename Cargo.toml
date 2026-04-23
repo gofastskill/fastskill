@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/fastskill-core",
-    "crates/fastskill",
     "crates/fastskill-cli",
 ]
 resolver = "2"

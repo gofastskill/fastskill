@@ -7,18 +7,16 @@ Decouple the CLI from the core library by creating a proper Cargo workspace with
 
 ### 1. Workspace Structure Created
 - Converted the monolithic crate into a Cargo workspace
-- Created three crates:
+- Created two crates:
   - `fastskill-core`: Core library (no CLI dependencies)
-  - `fastskill`: Facade crate for backward compatibility (re-exports `fastskill-core`)
   - `fastskill-cli`: CLI binary
+- Note: A temporary `fastskill` facade crate was created during the initial migration for backward compatibility and has since been removed (see Spec 052).
 
 ### 2. Code Migration
 - Moved core modules to `crates/fastskill-core/src/`:
   - `core/`, `eval/`, `events/`, `execution.rs`, `http/`, `output/`, `search/`, `security/`, `storage/`, `validation/`, `test_utils.rs`
 - Moved CLI modules to `crates/fastskill-cli/src/`:
   - `cli/`, `auth_config.rs`, `commands/`, `config.rs`, `config_file.rs`, `error.rs`, `utils/`
-- Created facade library at `crates/fastskill/src/lib.rs` for backward compatibility
-
 ### 3. Import Updates
 - Updated all CLI imports from `fastskill::` to `fastskill_core::`
 - Updated all module paths from `crate::cli::` to `crate::` within CLI crate
@@ -43,15 +41,7 @@ Decouple the CLI from the core library by creating a proper Cargo workspace with
 
 ### Backward Compatibility
 
-The `fastskill` facade crate provides complete backward compatibility:
-
-```rust
-// Old code (still works)
-use fastskill::{FastSkillService, ServiceConfig};
-
-// New code (recommended)
-use fastskill_core::{FastSkillService, ServiceConfig};
-```
+A `fastskill` facade crate was added during the initial migration to allow downstream consumers to continue using `use fastskill::` imports while the CLI codebase was updated. The facade has since been removed in Spec 052. All imports now use `fastskill_core::` directly. Downstream consumers must use `fastskill-core` directly.
 
 ### File Structure
 
@@ -67,10 +57,6 @@ fastskill/
 │   │       ├── eval/
 │   │       ├── http/
 │   │       └── ...
-│   ├── fastskill/          # Facade for backward compat
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       └── lib.rs      # Re-exports fastskill-core
 │   └── fastskill-cli/      # CLI binary
 │       ├── Cargo.toml
 │       └── src/
@@ -89,14 +75,12 @@ fastskill/
 2. **Reduced dependencies**: Library consumers no longer pull in CLI dependencies
 3. **Better maintainability**: Clear separation of concerns between CLI and core
 4. **Enforced boundaries**: Crate boundaries prevent accidental coupling
-5. **Backward compatible**: Existing code continues to work via facade crate
+5. **Direct dependency**: Downstream consumers use `fastskill-core` directly; the facade crate has been removed
 
 ## Migration Path for Downstream Consumers
 
 ### For Library Users
-No changes required immediately. The `fastskill` facade crate preserves the API.
-
-To migrate to `fastskill-core` (optional):
+The `fastskill` facade crate is no longer available. Downstream consumers must migrate to `fastskill-core`:
 1. Update `Cargo.toml`: `fastskill = "0.9"` → `fastskill-core = "0.9"`
 2. Update imports: `use fastskill::` → `use fastskill_core::`
 
