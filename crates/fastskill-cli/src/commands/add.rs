@@ -423,15 +423,7 @@ fn ensure_manifest() -> CliResult<()> {
 }
 
 pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
-    ensure_manifest()?;
-    let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
-    let ctx = AddContext {
-        service,
-        force: args.force,
-        editable: args.editable,
-        groups,
-        global,
-    };
+    // Validate arguments before checking for manifest to provide better error messages
     let source = resolve_source(&args);
 
     if args.editable {
@@ -446,6 +438,16 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
             }
         }
     }
+
+    ensure_manifest()?;
+    let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
+    let ctx = AddContext {
+        service,
+        force: args.force,
+        editable: args.editable,
+        groups,
+        global,
+    };
 
     if args.recursive {
         let path = match &source {
