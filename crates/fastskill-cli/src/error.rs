@@ -132,11 +132,11 @@ pub enum CliError {
     #[error("Invalid identifier: {0}")]
     InvalidIdentifier(String),
 
-    #[error("Windows symlink permission denied: {0}")]
+    #[error("Windows symlink permission denied: {0}. Enable Developer Mode (Settings → For developers) or run as Administrator.")]
     #[allow(dead_code)]
     WindowsSymlinkPermission(String),
 
-    #[error("Editable installations are not supported for this source type")]
+    #[error("Editable installations are not supported on this platform. Use a Unix-based system or Docker.")]
     #[allow(dead_code)]
     EditableNotSupported,
 }

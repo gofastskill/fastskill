@@ -223,7 +223,7 @@ fn validate_skill_path_exists(skill_path: &Path) -> CliResult<()> {
 }
 
 /// Setup skill in storage directory (editable or copy)
-async fn setup_skill_in_storage(
+pub(crate) async fn setup_skill_in_storage(
     skill_path: &Path,
     skill_storage_dir: &Path,
     editable: bool,
