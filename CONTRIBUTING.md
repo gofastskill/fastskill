@@ -77,6 +77,14 @@ cargo run --bin fastskill -- serve
 
 This quickstart reduces contributor drop-off by getting you productive in under 10 minutes.
 
+## General recommendations for all crates
+
+- Keep changes scoped to one crate responsibility at a time.
+- Reuse `fastskill-core` services instead of duplicating domain logic in CLI code.
+- Preserve stable public APIs for library crates (`fastskill-core`, `evals-core`).
+- Add tests with behavior changes and keep docs aligned with new usage.
+- Prefer small, reviewable pull requests with clear problem statements.
+
 ## Setup
 
 [Rust](https://rustup.rs/) nightly is required to build fastskill. The exact version and components are pinned in `rust-toolchain.toml` to ensure consistent builds across contributors, CI, and releases.
@@ -289,17 +297,19 @@ cargo xwin clippy --workspace --all-targets --all-features --locked -- -D warnin
 
 Note: fastskill's release process uses cross-compilation for the Windows target, but this is typically only needed for CI/release builds, not local development.
 
-## Crate structure
+## Workspace and crate structure
 
-fastskill is a single-crate project. The main binary is in `src/bin/fastskill.rs` and the library code is in `src/lib.rs`.
+fastskill is a multi-crate workspace:
 
-Key modules include:
+- `crates/fastskill-cli`: CLI entry point and command handlers.
+- `crates/fastskill-core`: shared services, domain logic, validation, storage, and HTTP components.
+- `crates/evals-core`: reusable evaluation suite/check/runner/artifact infrastructure.
 
-- `cli/`: Command-line interface and argument parsing
-- `core/`: Core business logic (skill management, registry, etc.)
-- `storage/`: Data persistence layer
-- `http/`: HTTP API server
-- `execution/`: Skill execution engine
+Use crate-local docs when contributing:
+
+- `crates/fastskill-cli/CONTRIBUTING.md`
+- `crates/fastskill-core/CONTRIBUTING.md`
+- `crates/evals-core/CONTRIBUTING.md`
 
 For dependency visualization, you can use cargo-tree:
 

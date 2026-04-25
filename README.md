@@ -96,6 +96,23 @@ fastskill install --lock
 - [CLI Reference](webdocs/cli-reference/overview.mdx)
 - [Registry Guide](docs/REGISTRY.md)
 
+## Crates
+
+This repository is a Rust workspace with three primary crates:
+
+- [`crates/fastskill-cli`](crates/fastskill-cli): CLI binary and command routing.
+- [`crates/fastskill-core`](crates/fastskill-core): reusable service/library layer.
+- [`crates/evals-core`](crates/evals-core): standalone evaluation engine primitives.
+
+Each crate has its own docs:
+
+- `crates/fastskill-cli/README.md`
+- `crates/fastskill-cli/CONTRIBUTING.md`
+- `crates/fastskill-core/README.md`
+- `crates/fastskill-core/CONTRIBUTING.md`
+- `crates/evals-core/README.md`
+- `crates/evals-core/CONTRIBUTING.md`
+
 ## License
 
 Apache-2.0
