@@ -1,9 +1,9 @@
 //! Eval runner implementation using aikit-sdk
 
-use crate::eval::artifacts::{CaseResult, CaseStatus, CaseTrialsResult, TrialResult};
-use crate::eval::checks::{count_raw_json_events, run_checks, CheckDefinition};
-use crate::eval::suite::EvalCase;
-use crate::eval::trace::{agent_events_to_trace, trace_to_jsonl, TraceEvent, TracePayload};
+use crate::artifacts::{CaseResult, CaseStatus, CaseTrialsResult, TrialResult};
+use crate::checks::{count_raw_json_events, run_checks, CheckDefinition};
+use crate::suite::EvalCase;
+use crate::trace::{agent_events_to_trace, trace_to_jsonl, TraceEvent, TracePayload};
 use aikit_sdk::{run_agent_events, AgentEvent, RunOptions};
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -338,7 +338,7 @@ pub async fn run_eval_case(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::artifacts::CaseStatus;
+    use crate::artifacts::CaseStatus;
 
     /// Stub runner for trait wiring tests (no aikit).
     struct StubEvalRunner;
