@@ -1,6 +1,6 @@
 //! Artifact layout and persistence for eval runs
 
-use crate::eval::checks::CheckResult;
+use crate::checks::CheckResult;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;

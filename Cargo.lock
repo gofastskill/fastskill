@@ -1513,6 +1513,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "evals-core"
+version = "0.9.112"
+dependencies = [
+ "aikit-sdk",
+ "async-trait",
+ "base64 0.22.1",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
 name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1602,6 +1619,7 @@ dependencies = [
  "chrono",
  "config",
  "dirs",
+ "evals-core",
  "fs2",
  "futures",
  "include_dir",

@@ -1,10 +1,30 @@
 //! Eval configuration resolution
 
-use crate::core::manifest::{EvalConfigToml, SkillProjectToml};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Resolved eval configuration (after path resolution)
+/// Input for eval configuration resolution.
+/// Callers populate this from their own config format (TOML, YAML, etc.)
+/// and pass it to [`resolve_from_input`].
+#[derive(Debug, Clone)]
+pub struct EvalConfigInput {
+    /// Path to prompts CSV file (may be relative; resolved against project_root)
+    pub prompts: PathBuf,
+    /// Optional path to checks TOML file
+    pub checks: Option<PathBuf>,
+    /// Timeout in seconds for each case
+    pub timeout_seconds: u64,
+    /// Trials per case (>= 1)
+    pub trials_per_case: u32,
+    /// Optional maximum parallelism for trials within one case
+    pub parallel: Option<u32>,
+    /// Pass threshold for trial aggregation (0.0-1.0)
+    pub pass_threshold: f64,
+    /// Whether to fail fast if agent is not available
+    pub fail_on_missing_agent: bool,
+}
+
+/// Resolved eval configuration (all paths absolute, values validated)
 #[derive(Debug, Clone)]
 pub struct EvalConfig {
     /// Absolute path to prompts CSV file
@@ -42,48 +62,31 @@ pub enum EvalConfigError {
     Parse(String),
 }
 
-/// Resolve eval configuration from a skill-project.toml file
-pub fn resolve_eval_config(
-    project_file: &Path,
+/// Validate and resolve an [`EvalConfigInput`] against a project root directory.
+///
+/// Returns [`EvalConfig`] with all paths made absolute and all values validated.
+pub fn resolve_from_input(
+    input: &EvalConfigInput,
     project_root: &Path,
 ) -> Result<EvalConfig, EvalConfigError> {
-    let content = std::fs::read_to_string(project_file)?;
-    let toml: SkillProjectToml =
-        toml::from_str(&content).map_err(|e| EvalConfigError::Parse(e.to_string()))?;
-
-    let eval_config = toml
-        .tool
-        .as_ref()
-        .and_then(|t| t.fastskill.as_ref())
-        .and_then(|f| f.eval.as_ref())
-        .ok_or(EvalConfigError::ConfigMissing)?;
-
-    resolve_from_toml(eval_config, project_root)
-}
-
-/// Resolve eval configuration from parsed TOML config
-pub fn resolve_from_toml(
-    config: &EvalConfigToml,
-    project_root: &Path,
-) -> Result<EvalConfig, EvalConfigError> {
-    if config.trials_per_case < 1 || config.trials_per_case > 1000 {
-        return Err(EvalConfigError::InvalidTrialsConfig(config.trials_per_case));
+    if input.trials_per_case < 1 || input.trials_per_case > 1000 {
+        return Err(EvalConfigError::InvalidTrialsConfig(input.trials_per_case));
     }
-    if !(0.0..=1.0).contains(&config.pass_threshold) {
-        return Err(EvalConfigError::InvalidPassThreshold(config.pass_threshold));
+    if !(0.0..=1.0).contains(&input.pass_threshold) {
+        return Err(EvalConfigError::InvalidPassThreshold(input.pass_threshold));
     }
 
-    let prompts_path = if config.prompts.is_absolute() {
-        config.prompts.clone()
+    let prompts_path = if input.prompts.is_absolute() {
+        input.prompts.clone()
     } else {
-        project_root.join(&config.prompts)
+        project_root.join(&input.prompts)
     };
 
     if !prompts_path.exists() {
         return Err(EvalConfigError::PromptsNotFound(prompts_path));
     }
 
-    let checks_path = config.checks.as_ref().map(|p| {
+    let checks_path = input.checks.as_ref().map(|p| {
         if p.is_absolute() {
             p.clone()
         } else {
@@ -94,11 +97,11 @@ pub fn resolve_from_toml(
     Ok(EvalConfig {
         prompts_path,
         checks_path,
-        timeout_seconds: config.timeout_seconds,
-        trials_per_case: config.trials_per_case,
-        parallel: config.parallel,
-        pass_threshold: config.pass_threshold,
-        fail_on_missing_agent: config.fail_on_missing_agent,
+        timeout_seconds: input.timeout_seconds,
+        trials_per_case: input.trials_per_case,
+        parallel: input.parallel,
+        pass_threshold: input.pass_threshold,
+        fail_on_missing_agent: input.fail_on_missing_agent,
         project_root: project_root.to_path_buf(),
     })
 }
@@ -108,27 +111,23 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[test]
-    fn test_resolve_eval_config_missing() {
-        let dir = TempDir::new().unwrap();
-        let project_file = dir.path().join("skill-project.toml");
-        std::fs::write(&project_file, "[metadata]\nid = \"test\"\n").unwrap();
-
-        let result = resolve_eval_config(&project_file, dir.path());
-        assert!(matches!(result, Err(EvalConfigError::ConfigMissing)));
+    fn make_input(prompts: PathBuf) -> EvalConfigInput {
+        EvalConfigInput {
+            prompts,
+            checks: None,
+            timeout_seconds: 600,
+            trials_per_case: 1,
+            parallel: None,
+            pass_threshold: 1.0,
+            fail_on_missing_agent: false,
+        }
     }
 
     #[test]
     fn test_resolve_eval_config_prompts_not_found() {
         let dir = TempDir::new().unwrap();
-        let project_file = dir.path().join("skill-project.toml");
-        std::fs::write(
-            &project_file,
-            "[metadata]\nid = \"test\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 900\nfail_on_missing_agent = true\n",
-        )
-        .unwrap();
-
-        let result = resolve_eval_config(&project_file, dir.path());
+        let input = make_input(PathBuf::from("evals/prompts.csv"));
+        let result = resolve_from_input(&input, dir.path());
         assert!(matches!(result, Err(EvalConfigError::PromptsNotFound(_))));
     }
 
@@ -143,14 +142,9 @@ mod tests {
         )
         .unwrap();
 
-        let project_file = dir.path().join("skill-project.toml");
-        std::fs::write(
-            &project_file,
-            "[metadata]\nid = \"test\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntrials_per_case = 0\ntimeout_seconds = 600\nfail_on_missing_agent = false\n",
-        )
-        .unwrap();
-
-        let result = resolve_eval_config(&project_file, dir.path());
+        let mut input = make_input(PathBuf::from("evals/prompts.csv"));
+        input.trials_per_case = 0;
+        let result = resolve_from_input(&input, dir.path());
         assert!(matches!(
             result,
             Err(EvalConfigError::InvalidTrialsConfig(0))
@@ -168,14 +162,9 @@ mod tests {
         )
         .unwrap();
 
-        let project_file = dir.path().join("skill-project.toml");
-        std::fs::write(
-            &project_file,
-            "[metadata]\nid = \"test\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\npass_threshold = 1.5\ntimeout_seconds = 600\nfail_on_missing_agent = false\n",
-        )
-        .unwrap();
-
-        let result = resolve_eval_config(&project_file, dir.path());
+        let mut input = make_input(PathBuf::from("evals/prompts.csv"));
+        input.pass_threshold = 1.5;
+        let result = resolve_from_input(&input, dir.path());
         assert!(matches!(
             result,
             Err(EvalConfigError::InvalidPassThreshold(_))
@@ -187,21 +176,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let evals_dir = dir.path().join("evals");
         std::fs::create_dir_all(&evals_dir).unwrap();
-        let prompts_file = evals_dir.join("prompts.csv");
         std::fs::write(
-            &prompts_file,
+            evals_dir.join("prompts.csv"),
             "id,prompt,should_trigger\ntest-1,hello,true\n",
         )
         .unwrap();
 
-        let project_file = dir.path().join("skill-project.toml");
-        std::fs::write(
-            &project_file,
-            "[metadata]\nid = \"test\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 600\nfail_on_missing_agent = false\n",
-        )
-        .unwrap();
-
-        let result = resolve_eval_config(&project_file, dir.path());
+        let input = make_input(PathBuf::from("evals/prompts.csv"));
+        let result = resolve_from_input(&input, dir.path());
         assert!(result.is_ok());
         let config = result.unwrap();
         assert_eq!(config.timeout_seconds, 600);

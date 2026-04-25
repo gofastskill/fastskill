@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
-use crate::eval::trace::{TraceEvent, TracePayload};
+use crate::trace::{TraceEvent, TracePayload};
 
 /// A deterministic check definition loaded from checks.toml
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -326,5 +326,21 @@ mod tests {
             },
         ];
         assert!(!suite_passes(&results));
+    }
+
+    #[test]
+    fn test_load_checks_file_not_found() {
+        let path = Path::new("/nonexistent/path/checks.toml");
+        let result = load_checks(path);
+        assert!(matches!(result, Err(ChecksError::Io(_))));
+    }
+
+    #[test]
+    fn test_load_checks_invalid_toml() {
+        let dir = TempDir::new().unwrap();
+        let checks_file = dir.path().join("checks.toml");
+        std::fs::write(&checks_file, "this is not valid toml [[[[").unwrap();
+        let result = load_checks(&checks_file);
+        assert!(matches!(result, Err(ChecksError::Parse(_))));
     }
 }

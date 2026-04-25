@@ -14,6 +14,9 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+# evals-core for evaluation infrastructure
+evals-core = { path = "../evals-core" }
+
 # aikit-sdk for agent metadata file resolution
 aikit-sdk.workspace = true
 

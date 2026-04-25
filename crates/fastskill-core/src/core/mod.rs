@@ -7,6 +7,7 @@ pub mod change_detection;
 pub mod dependencies;
 pub mod dependency_resolver;
 pub mod embedding;
+pub mod eval_config_adapter;
 pub mod loading;
 pub mod lock;
 pub mod manifest;
