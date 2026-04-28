@@ -17,6 +17,7 @@ pub mod registry;
 pub mod reindex;
 pub mod remove;
 pub mod repos;
+pub mod resolve;
 pub mod search;
 pub mod serve;
 pub mod show;
@@ -142,6 +143,13 @@ pub enum Commands {
         after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos versions pptx"
     )]
     Repos(repos::ReposArgs),
+
+    /// Resolve skills as machine-readable JSON with canonical paths and optional content
+    #[command(
+        about = "Resolve skills as machine-readable JSON with canonical paths and optional content",
+        after_help = "Examples:\n  fastskill resolve \"text processing\"\n  fastskill resolve \"pptx\" --limit 3 --include-content preview\n  fastskill resolve \"query\" --include-content full"
+    )]
+    Resolve(resolve::ResolveArgs),
 
     /// Search skills by query with explicit scope flags (remote default)
     #[command(

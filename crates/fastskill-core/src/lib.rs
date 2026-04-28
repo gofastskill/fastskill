@@ -85,6 +85,10 @@ pub mod security;
 pub mod storage;
 pub mod validation;
 
+pub use core::context_resolver::{
+    ContentMode, ContextResolver, ResolveContextRequest, ResolveContextResponse, ResolveScope,
+    ResolvedSkill,
+};
 pub use core::embedding::{EmbeddingService, OpenAIEmbeddingService};
 pub use core::loading::{LoadedSkill, ProgressiveLoadingService};
 pub use core::manifest::SkillProjectToml;

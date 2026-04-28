@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::commands::{
     add, analyze, auth, disable, eval, init, install, list, marketplace, package, publish, read,
-    registry, reindex, remove, repos, search, serve, show, sources, sync, update, version,
+    registry, reindex, remove, repos, resolve, search, serve, show, sources, sync, update, version,
     Commands,
 };
 use crate::config::create_service_config;
@@ -124,6 +124,7 @@ impl Cli {
             Some(Commands::Search(args)) => args.skills_dir.clone(),
             Some(Commands::Remove(args)) => args.skills_dir.clone(),
             Some(Commands::Reindex(args)) => args.skills_dir.clone(),
+            Some(Commands::Resolve(args)) => args.skills_dir.clone(),
             _ => None,
         };
 
@@ -146,6 +147,7 @@ impl Cli {
             Some(Commands::Sync(args)) => sync::execute_sync(&service, args).await,
             Some(Commands::Reindex(args)) => reindex::execute_reindex(&service, args).await,
             Some(Commands::Remove(args)) => remove::execute_remove(&service, args, global).await,
+            Some(Commands::Resolve(args)) => resolve::execute_resolve(&service, args).await,
             Some(Commands::Search(args)) => search::execute_search(&service, args).await,
             Some(Commands::Serve(args)) => serve::execute_serve(Arc::new(service), args).await,
             Some(Commands::Init(_))
