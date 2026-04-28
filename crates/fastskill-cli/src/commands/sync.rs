@@ -2,15 +2,17 @@
 //!
 //! Synchronizes installed skills into the agent's metadata file (AGENTS.md, CLAUDE.md, etc.)
 
+use crate::commands::common::runtime_selection_error_to_cli;
 use crate::error::{CliError, CliResult};
 use crate::utils::agents_md::{
     generate_skills_xml, parse_current_skills, remove_skills_section, replace_skills_section,
     SkillLocation, SkillSummary,
 };
 use crate::utils::messages;
-use aikit_sdk::{instruction_file_with_override, validate_agent_key, DeployError};
+use aikit_sdk::{instruction_file_with_override, DeployError};
 use clap::Args;
 use dirs;
+use fastskill_core::core::agent_runtime_selector::RuntimeSelectionInput;
 use fastskill_core::core::skill_manager::SkillDefinition;
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
@@ -31,13 +33,26 @@ pub struct SyncArgs {
     #[arg(short = 'y', long)]
     pub yes: bool,
 
-    /// AI agent to target (auto-detected if not specified)
-    #[arg(long, short = 'a')]
-    pub agent: Option<String>,
+    /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
+    pub agent: Vec<String>,
+
+    /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
+    #[arg(long)]
+    pub all: bool,
 
     /// Path to metadata file (overrides auto-detection)
     #[arg(long)]
     pub agents_file: Option<String>,
+}
+
+impl From<&SyncArgs> for RuntimeSelectionInput {
+    fn from(args: &SyncArgs) -> Self {
+        RuntimeSelectionInput {
+            agents: args.agent.clone(),
+            all: args.all,
+        }
+    }
 }
 
 /// Execute the sync command
@@ -45,8 +60,55 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    let agents_file = resolve_agents_file(&current_dir, args.agents_file, args.agent)?;
+    // `--agents-file` bypasses agent resolution entirely.
+    if let Some(ref override_path) = args.agents_file {
+        let agents_file = resolve_single_agents_file(&current_dir, None, Some(override_path))?;
+        return sync_to_file(service, &args, &agents_file).await;
+    }
 
+    // Resolve runtime selection.
+    let input = RuntimeSelectionInput::from(&args);
+    let selection = fastskill_core::core::agent_runtime_selector::resolve_runtime_selection(&input)
+        .map_err(runtime_selection_error_to_cli)?;
+
+    match selection {
+        Some(sel) => {
+            // Iterate over each resolved runtime and sync to its metadata file.
+            for agent_key in &sel.runtimes {
+                match resolve_single_agents_file(&current_dir, Some(agent_key.as_str()), None) {
+                    Ok(agents_file) => {
+                        sync_to_file(service, &args, &agents_file).await?;
+                    }
+                    Err(CliError::Config(ref msg))
+                        if msg.contains("not found")
+                            || msg.contains("does not support metadata files") =>
+                    {
+                        // Skip runtimes that don't support instruction files; warn only.
+                        eprintln!("warning: skipping agent '{}': {}", agent_key, msg);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        None => {
+            // No --agent or --all provided: fail with RUNTIME_NO_SELECTION.
+            return Err(CliError::Config(
+                "RUNTIME_NO_SELECTION: No runtime selected. Use --agent <id> or --all to \
+                 specify a target runtime."
+                    .to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Perform the skill sync operation for a single metadata file path.
+async fn sync_to_file(
+    service: &FastSkillService,
+    args: &SyncArgs,
+    agents_file: &Path,
+) -> CliResult<()> {
     let metadata_file_name = agents_file
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -87,7 +149,7 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
 
     // Read existing metadata file if it exists
     let existing_content = if agents_file.exists() {
-        fs::read_to_string(&agents_file).map_err(|e| {
+        fs::read_to_string(agents_file).map_err(|e| {
             CliError::Io(std::io::Error::other(format!(
                 "Failed to read {}: {}",
                 agents_file.display(),
@@ -124,7 +186,7 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
     if selected_skills.is_empty() {
         // Remove skills section
         let new_content = remove_skills_section(&existing_content);
-        fs::write(&agents_file, new_content).map_err(|e| {
+        fs::write(agents_file, new_content).map_err(|e| {
             CliError::Io(std::io::Error::other(format!(
                 "Failed to write {}: {}",
                 agents_file.display(),
@@ -139,7 +201,7 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
         // Generate and update skills section
         let skills_xml = generate_skills_xml(&selected_skills);
         let new_content = replace_skills_section(&existing_content, &skills_xml);
-        fs::write(&agents_file, new_content).map_err(|e| {
+        fs::write(agents_file, new_content).map_err(|e| {
             CliError::Io(std::io::Error::other(format!(
                 "Failed to write {}: {}",
                 agents_file.display(),
@@ -159,47 +221,25 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
     Ok(())
 }
 
-/// Resolve the agent metadata file path using aikit-sdk.
+/// Resolve the agent metadata file path for a single agent key or override path.
 ///
 /// Resolution priority:
-/// 1. Explicit `--agents-file` override (absolute path used as-is; relative resolved from `current_dir`)
-/// 2. Explicit `--agent` flag (uses the agent's primary instruction file; falls back to AGENTS.md
-///    if that file exists but the primary does not)
-/// 3. Auto-detect: scans `current_dir` for AGENTS.md, CLAUDE.md, GEMINI.md in that order and
-///    returns the first found; defaults to AGENTS.md if none exist
-fn resolve_agents_file(
+/// 1. Explicit override path (absolute used as-is; relative resolved from `current_dir`)
+/// 2. Explicit agent key (uses the agent's primary instruction file)
+/// 3. Auto-detect: scans `current_dir` for AGENTS.md, CLAUDE.md, GEMINI.md; defaults to AGENTS.md
+fn resolve_single_agents_file(
     current_dir: &Path,
-    override_path: Option<String>,
-    agent_key: Option<String>,
+    agent_key: Option<&str>,
+    override_path: Option<&str>,
 ) -> CliResult<PathBuf> {
-    let override_path = override_path.as_ref().map(PathBuf::from);
-
-    // `--agents-file` has unconditional precedence; ignore `--agent` validation/resolution in that case.
-    let resolved_agent_key = if override_path.is_some() {
-        None
-    } else {
-        agent_key.as_deref()
-    };
-
-    // Validate agent key before calling the SDK so the error message is actionable.
-    if let Some(key) = resolved_agent_key {
-        validate_agent_key(key).map_err(|_| {
-            CliError::Config(format!(
-                "Invalid agent key '{}'. Valid keys include: claude, cursor-agent, gemini, \
-                 codex, windsurf, roo, newton. See https://github.com/goaikit/aikit for the full list.",
-                key
-            ))
-        })?;
-    }
+    let override_pb = override_path.map(PathBuf::from);
 
     let path = instruction_file_with_override(
         current_dir,
-        resolved_agent_key,
-        override_path.as_deref(),
+        agent_key,
+        override_pb.as_deref(),
     )
     .map_err(|e| match e {
-        // AgentNotFound cannot fire here in practice because validate_agent_key above
-        // already rejects unknown keys — but kept as a defensive fallback.
         DeployError::AgentNotFound(ref key) => CliError::Config(format!(
             "Agent '{}' not found. Valid keys include: claude, cursor-agent, gemini, codex, windsurf.",
             key
@@ -212,9 +252,6 @@ fn resolve_agents_file(
     })?;
 
     debug!("Resolved metadata file: {}", path.display());
-    debug!("Agent key: {:?}", resolved_agent_key);
-    debug!("Override path: {:?}", override_path);
-
     Ok(path)
 }
 
@@ -356,45 +393,39 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_agents_file_default_no_files() {
-        // Empty directory: SDK defaults to AGENTS.md when no known file exists
+    fn test_resolve_single_agents_file_default_no_files() {
         let temp = tempfile::tempdir().unwrap();
         let current_dir = temp.path();
 
-        let result = resolve_agents_file(current_dir, None, None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, None).unwrap();
         assert_eq!(result, current_dir.join("AGENTS.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_default_claude_md_present() {
-        // aikit-sdk scans AGENTS.md first, then CLAUDE.md, then GEMINI.md
-        // When only CLAUDE.md exists, it is returned
+    fn test_resolve_single_agents_file_default_claude_md_present() {
         let temp = tempfile::tempdir().unwrap();
         let current_dir = temp.path();
         std::fs::write(current_dir.join("CLAUDE.md"), "# Claude").unwrap();
 
-        let result = resolve_agents_file(current_dir, None, None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, None).unwrap();
         assert_eq!(result, current_dir.join("CLAUDE.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_override() {
+    fn test_resolve_single_agents_file_override() {
         let temp = tempfile::tempdir().unwrap();
         let current_dir = temp.path();
-        let result = resolve_agents_file(current_dir, Some("custom.md".to_string()), None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, Some("custom.md")).unwrap();
         assert_eq!(result, current_dir.join("custom.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_absolute() {
+    fn test_resolve_single_agents_file_absolute() {
         let temp = tempfile::tempdir().unwrap();
         let current_dir = temp.path();
-        let result = resolve_agents_file(
-            current_dir,
-            Some("/absolute/path/AGENTS.md".to_string()),
-            None,
-        )
-        .unwrap();
+        let result =
+            resolve_single_agents_file(current_dir, None, Some("/absolute/path/AGENTS.md"))
+                .unwrap();
         assert_eq!(result, PathBuf::from("/absolute/path/AGENTS.md"));
     }
 }
@@ -407,112 +438,95 @@ mod aikit_integration_tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_resolve_agents_file_with_explicit_agent() {
+    fn test_resolve_single_agents_file_with_explicit_agent() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        let result = resolve_agents_file(current_dir, None, Some("claude".to_string())).unwrap();
+        let result = resolve_single_agents_file(current_dir, Some("claude"), None).unwrap();
         assert_eq!(result, current_dir.join("CLAUDE.md"));
 
-        let result =
-            resolve_agents_file(current_dir, None, Some("cursor-agent".to_string())).unwrap();
+        let result = resolve_single_agents_file(current_dir, Some("cursor-agent"), None).unwrap();
         assert_eq!(result, current_dir.join("AGENTS.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_with_override() {
+    fn test_resolve_single_agents_file_with_override() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        let result = resolve_agents_file(current_dir, Some("custom.md".to_string()), None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, Some("custom.md")).unwrap();
         assert_eq!(result, current_dir.join("custom.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_absolute_override() {
+    fn test_resolve_single_agents_file_absolute_override() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        let result = resolve_agents_file(
-            current_dir,
-            Some("/absolute/path/AGENTS.md".to_string()),
-            None,
-        )
-        .unwrap();
+        let result =
+            resolve_single_agents_file(current_dir, None, Some("/absolute/path/AGENTS.md"))
+                .unwrap();
         assert_eq!(result, PathBuf::from("/absolute/path/AGENTS.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_auto_detect_claude() {
+    fn test_resolve_single_agents_file_auto_detect_claude() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        // Create CLAUDE.md
         fs::write(current_dir.join("CLAUDE.md"), "# CLAUDE").unwrap();
 
-        let result = resolve_agents_file(current_dir, None, None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, None).unwrap();
         assert_eq!(result, current_dir.join("CLAUDE.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_auto_detect_cursor() {
+    fn test_resolve_single_agents_file_auto_detect_cursor() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        // Create AGENTS.md
         fs::write(current_dir.join("AGENTS.md"), "# AGENTS").unwrap();
 
-        let result = resolve_agents_file(current_dir, None, None).unwrap();
+        let result = resolve_single_agents_file(current_dir, None, None).unwrap();
         assert_eq!(result, current_dir.join("AGENTS.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_invalid_agent() {
+    fn test_resolve_single_agents_file_override_precedence() {
         let temp = TempDir::new().unwrap();
         let current_dir = temp.path();
 
-        let result = resolve_agents_file(current_dir, None, Some("invalid".to_string()));
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            CliError::Config(msg) => {
-                assert!(msg.contains("Invalid agent key"));
-                assert!(msg.contains("invalid"));
-            }
-            _ => panic!("Expected Config error"),
-        }
-    }
-
-    #[test]
-    fn test_resolve_agents_file_override_precedence() {
-        let temp = TempDir::new().unwrap();
-        let current_dir = temp.path();
-
-        // Create both CLAUDE.md and specify override
         fs::write(current_dir.join("CLAUDE.md"), "# CLAUDE").unwrap();
 
-        let result = resolve_agents_file(
-            current_dir,
-            Some("override.md".to_string()),
-            Some("claude".to_string()),
-        )
-        .unwrap();
+        let result =
+            resolve_single_agents_file(current_dir, Some("claude"), Some("override.md")).unwrap();
 
-        // Override should take precedence over agent flag and auto-detect
         assert_eq!(result, current_dir.join("override.md"));
     }
 
     #[test]
-    fn test_resolve_agents_file_override_ignores_invalid_agent() {
-        let temp = TempDir::new().unwrap();
-        let current_dir = temp.path();
+    fn test_runtime_selection_input_from_sync_args() {
+        let args = SyncArgs {
+            yes: false,
+            agent: vec!["claude".to_string(), "codex".to_string()],
+            all: false,
+            agents_file: None,
+        };
+        let input = RuntimeSelectionInput::from(&args);
+        assert_eq!(input.agents, vec!["claude", "codex"]);
+        assert!(!input.all);
+    }
 
-        let result = resolve_agents_file(
-            current_dir,
-            Some("override.md".to_string()),
-            Some("notarealkey".to_string()),
-        )
-        .unwrap();
-
-        assert_eq!(result, current_dir.join("override.md"));
+    #[test]
+    fn test_runtime_selection_input_all_flag() {
+        let args = SyncArgs {
+            yes: false,
+            agent: vec![],
+            all: true,
+            agents_file: None,
+        };
+        let input = RuntimeSelectionInput::from(&args);
+        assert!(input.agents.is_empty());
+        assert!(input.all);
     }
 }

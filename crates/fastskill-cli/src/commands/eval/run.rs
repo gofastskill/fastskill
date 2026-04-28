@@ -1,10 +1,11 @@
 //! Eval run subcommand - case execution orchestration
 
-use crate::commands::common::validate_format_args;
+use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
 use crate::error::{CliError, CliResult};
-use aikit_sdk::{is_agent_available, is_runnable, runnable_agents};
+use aikit_sdk::is_agent_available;
 use chrono::Utc;
 use clap::Args;
+use fastskill_core::core::agent_runtime_selector::RuntimeSelectionInput;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::eval::artifacts::{
     allocate_run_dir, write_case_trials_summary, write_summary, write_trial_artifacts, CaseStatus,
@@ -25,12 +26,16 @@ use tokio::task::JoinSet;
 #[derive(Debug, Args)]
 #[command(
     about = "Run eval cases against an agent",
-    after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
+    after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent codex --agent claude --output-dir /tmp/evals\n  fastskill eval run --all --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
 )]
 pub struct RunArgs {
-    /// Agent to use for execution (required)
-    #[arg(long, required = true, value_parser = validate_agent_key_for_run)]
-    pub agent: String,
+    /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
+    pub agent: Vec<String>,
+
+    /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
+    #[arg(long)]
+    pub all: bool,
 
     /// Output directory for artifacts (required)
     #[arg(long, required = true)]
@@ -73,15 +78,12 @@ pub struct RunArgs {
     pub threshold: Option<f64>,
 }
 
-fn validate_agent_key_for_run(s: &str) -> Result<String, String> {
-    if is_runnable(s) {
-        Ok(s.to_string())
-    } else {
-        Err(format!(
-            "'{}' is not a supported agent. Supported: {}",
-            s,
-            runnable_agents().join(", ")
-        ))
+impl From<&RunArgs> for RuntimeSelectionInput {
+    fn from(args: &RunArgs) -> Self {
+        RuntimeSelectionInput {
+            agents: args.agent.clone(),
+            all: args.all,
+        }
     }
 }
 
@@ -97,6 +99,22 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 ) -> CliResult<()> {
     let format = validate_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
+
+    // Resolve runtime selection first so missing --agent is caught before project-file checks.
+    let input = RuntimeSelectionInput::from(&args);
+    let selection = fastskill_core::core::agent_runtime_selector::resolve_runtime_selection(&input)
+        .map_err(runtime_selection_error_to_cli)?;
+
+    let runtimes = match selection {
+        Some(sel) => sel.runtimes,
+        None => {
+            return Err(CliError::Config(
+                "RUNTIME_NO_SELECTION: No runtime selected. Use --agent <id> or --all to \
+                 specify a target runtime."
+                    .to_string(),
+            ));
+        }
+    };
 
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -134,19 +152,10 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
         )));
     }
 
-    // Check agent availability
-    if eval_config.fail_on_missing_agent && !is_agent_available(&args.agent) {
-        return Err(CliError::Config(format!(
-            "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it first.",
-            args.agent
-        )));
-    }
-
-    // Load suite
+    // Load suite and apply filters (same for all runtimes).
     let mut suite =
         load_suite(&eval_config.prompts_path).map_err(|e| CliError::Config(e.to_string()))?;
 
-    // Apply filters
     if let Some(ref case_id) = args.case {
         suite = suite.filter_by_id(case_id);
         if suite.cases.is_empty() {
@@ -166,24 +175,26 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
         }
     }
 
-    // Load checks if configured
+    // Load checks if configured.
     let checks = if let Some(ref checks_path) = eval_config.checks_path {
         load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?
     } else {
         vec![]
     };
 
-    let total_trial_runs = (suite.cases.len() as u64) * (trials_per_case as u64);
+    let total_trial_runs =
+        (suite.cases.len() as u64) * (trials_per_case as u64) * (runtimes.len() as u64);
     if total_trial_runs >= 100 && !use_json {
         eprintln!(
-            "warning: EVAL_COST_WARNING: running {} case(s) × {} trial(s) = {} total trial runs",
+            "warning: EVAL_COST_WARNING: running {} case(s) × {} trial(s) × {} agent(s) = {} total trial runs",
             suite.cases.len(),
             trials_per_case,
+            runtimes.len(),
             total_trial_runs
         );
     }
 
-    // Allocate run directory
+    // Allocate run base directory.
     let run_id = Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
     std::fs::create_dir_all(&args.output_dir).map_err(|e| {
         CliError::Config(format!(
@@ -192,266 +203,303 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
             e
         ))
     })?;
-    let run_dir =
+    let run_dir_base =
         allocate_run_dir(&args.output_dir, &run_id).map_err(|e| CliError::Config(e.to_string()))?;
 
-    let run_opts = CaseRunOptions {
-        agent_key: args.agent.clone(),
-        model: args.model.clone(),
-        project_root: project_root.clone(),
-        timeout_seconds: eval_config.timeout_seconds,
-        pass_threshold,
-    };
+    let mut all_summaries: Vec<SummaryResult> = Vec::new();
+    let mut any_agent_failed = false;
 
-    if !use_json {
-        eprintln!(
-            "Running {} eval case(s) with agent '{}' ({} trial(s) per case)...",
-            suite.cases.len(),
-            args.agent,
-            trials_per_case
-        );
-    }
+    for agent_key in &runtimes {
+        // Per-agent subdirectory.
+        let run_dir = run_dir_base.join(agent_key);
+        std::fs::create_dir_all(&run_dir).map_err(|e| {
+            CliError::Config(format!(
+                "Failed to create run directory '{}': {}",
+                run_dir.display(),
+                e
+            ))
+        })?;
 
-    let mut case_summaries = Vec::new();
+        // Check agent availability.
+        if eval_config.fail_on_missing_agent && !is_agent_available(agent_key) {
+            return Err(CliError::Config(format!(
+                "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it first.",
+                agent_key
+            )));
+        }
 
-    for case in &suite.cases {
+        let run_opts = CaseRunOptions {
+            agent_key: agent_key.clone(),
+            model: args.model.clone(),
+            project_root: project_root.clone(),
+            timeout_seconds: eval_config.timeout_seconds,
+            pass_threshold,
+        };
+
         if !use_json {
-            eprintln!("  Running case '{}'...", case.id);
+            eprintln!(
+                "Running {} eval case(s) with agent '{}' ({} trial(s) per case)...",
+                suite.cases.len(),
+                agent_key,
+                trials_per_case
+            );
         }
 
-        let max_parallel = eval_config
-            .parallel
-            .unwrap_or_else(|| num_cpus::get().max(1) as u32)
-            .max(1) as usize;
-        let semaphore = Arc::new(Semaphore::new(max_parallel));
-        let mut join_set: JoinSet<
-            CliResult<(
-                u32,
-                fastskill_core::eval::runner::CaseRunOutput,
-                fastskill_core::eval::artifacts::CaseResult,
-                String,
-            )>,
-        > = JoinSet::new();
+        let mut case_summaries = Vec::new();
 
-        for trial_id in 1..=trials_per_case {
-            let permit = Arc::clone(&semaphore);
-            let runner = Arc::clone(&runner);
-            let case_clone = case.clone();
-            let opts_clone = run_opts.clone();
-            let checks_vec = checks.clone();
+        for case in &suite.cases {
+            if !use_json {
+                eprintln!("  Running case '{}'...", case.id);
+            }
 
-            join_set.spawn(async move {
-                let Ok(_permit) = permit.acquire().await else {
-                    return Err(CliError::Config(
-                        "EVAL_PARALLEL_EXHAUSTION: semaphore closed".to_string(),
-                    ));
+            let max_parallel = eval_config
+                .parallel
+                .unwrap_or_else(|| num_cpus::get().max(1) as u32)
+                .max(1) as usize;
+            let semaphore = Arc::new(Semaphore::new(max_parallel));
+            let mut join_set: JoinSet<
+                CliResult<(
+                    u32,
+                    fastskill_core::eval::runner::CaseRunOutput,
+                    fastskill_core::eval::artifacts::CaseResult,
+                    String,
+                )>,
+            > = JoinSet::new();
+
+            for trial_id in 1..=trials_per_case {
+                let permit = Arc::clone(&semaphore);
+                let runner = Arc::clone(&runner);
+                let case_clone = case.clone();
+                let opts_clone = run_opts.clone();
+                let checks_vec = checks.clone();
+
+                join_set.spawn(async move {
+                    let Ok(_permit) = permit.acquire().await else {
+                        return Err(CliError::Config(
+                            "EVAL_PARALLEL_EXHAUSTION: semaphore closed".to_string(),
+                        ));
+                    };
+                    let (out, res, trace) =
+                        runner.run_case(&case_clone, &opts_clone, &checks_vec).await;
+                    Ok((trial_id, out, res, trace))
+                });
+            }
+
+            let mut trials: Vec<TrialResult> = Vec::with_capacity(trials_per_case as usize);
+            let mut pass_count: u32 = 0;
+            let mut command_count_sum: usize = 0;
+            let mut input_tokens_sum: u64 = 0;
+            let mut output_tokens_sum: u64 = 0;
+            let mut saw_any_command_count = false;
+            let mut saw_any_input_tokens = false;
+            let mut saw_any_output_tokens = false;
+
+            while let Some(joined) = join_set.join_next().await {
+                let (trial_id, out, case_result, trace_jsonl) = joined.map_err(|e| {
+                    CliError::Config(format!(
+                        "EVAL_PARALLEL_EXHAUSTION: trial task failed: {}",
+                        e
+                    ))
+                })??;
+
+                let trial = TrialResult {
+                    trial_id,
+                    status: case_result.status.clone(),
+                    command_count: case_result.command_count,
+                    input_tokens: case_result.input_tokens,
+                    output_tokens: case_result.output_tokens,
+                    check_results: case_result.check_results.clone(),
+                    error_message: case_result.error_message.clone(),
                 };
-                let (out, res, trace) =
-                    runner.run_case(&case_clone, &opts_clone, &checks_vec).await;
-                Ok((trial_id, out, res, trace))
-            });
-        }
 
-        let mut trials: Vec<TrialResult> = Vec::with_capacity(trials_per_case as usize);
-        let mut pass_count: u32 = 0;
-        let mut command_count_sum: usize = 0;
-        let mut input_tokens_sum: u64 = 0;
-        let mut output_tokens_sum: u64 = 0;
-        let mut saw_any_command_count = false;
-        let mut saw_any_input_tokens = false;
-        let mut saw_any_output_tokens = false;
+                if trial.status == CaseStatus::Passed {
+                    pass_count += 1;
+                }
+                if let Some(cc) = trial.command_count {
+                    saw_any_command_count = true;
+                    command_count_sum = command_count_sum.saturating_add(cc);
+                }
+                if let Some(it) = trial.input_tokens {
+                    saw_any_input_tokens = true;
+                    input_tokens_sum = input_tokens_sum.saturating_add(it);
+                }
+                if let Some(ot) = trial.output_tokens {
+                    saw_any_output_tokens = true;
+                    output_tokens_sum = output_tokens_sum.saturating_add(ot);
+                }
 
-        while let Some(joined) = join_set.join_next().await {
-            let (trial_id, out, case_result, trace_jsonl) = joined.map_err(|e| {
-                CliError::Config(format!(
-                    "EVAL_PARALLEL_EXHAUSTION: trial task failed: {}",
-                    e
-                ))
-            })??;
+                if let Err(e) = write_trial_artifacts(
+                    &run_dir,
+                    &case.id,
+                    trial_id,
+                    &out.stdout,
+                    &out.stderr,
+                    &trace_jsonl,
+                    &trial,
+                ) {
+                    if !use_json {
+                        eprintln!(
+                            "  warning: failed to write artifacts for case '{}' trial {}: {}",
+                            case.id, trial_id, e
+                        );
+                    }
+                }
 
-            let trial = TrialResult {
-                trial_id,
-                status: case_result.status.clone(),
-                command_count: case_result.command_count,
-                input_tokens: case_result.input_tokens,
-                output_tokens: case_result.output_tokens,
-                check_results: case_result.check_results.clone(),
-                error_message: case_result.error_message.clone(),
+                trials.push(trial);
+            }
+
+            trials.sort_by_key(|t| t.trial_id);
+            let total_trials = trials_per_case;
+            let pass_rate = pass_count as f64 / total_trials as f64;
+            let aggregated_status = if pass_rate >= pass_threshold {
+                CaseStatus::Passed
+            } else {
+                CaseStatus::Failed
             };
 
-            if trial.status == CaseStatus::Passed {
-                pass_count += 1;
-            }
-            if let Some(cc) = trial.command_count {
-                saw_any_command_count = true;
-                command_count_sum = command_count_sum.saturating_add(cc);
-            }
-            if let Some(it) = trial.input_tokens {
-                saw_any_input_tokens = true;
-                input_tokens_sum = input_tokens_sum.saturating_add(it);
-            }
-            if let Some(ot) = trial.output_tokens {
-                saw_any_output_tokens = true;
-                output_tokens_sum = output_tokens_sum.saturating_add(ot);
-            }
+            let aggregated = CaseTrialsResult {
+                id: case.id.clone(),
+                trials: trials.clone(),
+                aggregated_status: aggregated_status.clone(),
+                pass_count,
+                total_trials,
+                pass_rate,
+            };
 
-            // Write trial artifacts immediately (keeps memory bounded).
-            if let Err(e) = write_trial_artifacts(
-                &run_dir,
-                &case.id,
-                trial_id,
-                &out.stdout,
-                &out.stderr,
-                &trace_jsonl,
-                &trial,
-            ) {
+            if let Err(e) = write_case_trials_summary(&run_dir, &case.id, &aggregated) {
                 if !use_json {
                     eprintln!(
-                        "  warning: failed to write artifacts for case '{}' trial {}: {}",
-                        case.id, trial_id, e
+                        "  warning: failed to write aggregated summary for case '{}': {}",
+                        case.id, e
                     );
                 }
             }
 
-            trials.push(trial);
+            case_summaries.push(CaseSummary {
+                id: case.id.clone(),
+                status: aggregated_status,
+                command_count: if saw_any_command_count {
+                    Some(command_count_sum)
+                } else {
+                    None
+                },
+                input_tokens: if saw_any_input_tokens {
+                    Some(input_tokens_sum)
+                } else {
+                    None
+                },
+                output_tokens: if saw_any_output_tokens {
+                    Some(output_tokens_sum)
+                } else {
+                    None
+                },
+                pass_count: Some(pass_count),
+                total_trials: Some(total_trials),
+                pass_rate: Some(pass_rate),
+                trials,
+            });
         }
 
-        trials.sort_by_key(|t| t.trial_id);
-        let total_trials = trials_per_case;
-        let pass_rate = pass_count as f64 / total_trials as f64;
-        let aggregated_status = if pass_rate >= pass_threshold {
-            CaseStatus::Passed
+        let passed = case_summaries
+            .iter()
+            .filter(|r| r.status == fastskill_core::eval::artifacts::CaseStatus::Passed)
+            .count();
+        let failed = case_summaries.len() - passed;
+        let suite_pass_rate = if case_summaries.is_empty() {
+            0.0
         } else {
-            CaseStatus::Failed
+            passed as f64 / case_summaries.len() as f64
+        };
+        let suite_pass = if args.ci {
+            suite_pass_rate >= pass_threshold
+        } else {
+            failed == 0
         };
 
-        let aggregated = CaseTrialsResult {
-            id: case.id.clone(),
-            trials: trials.clone(),
-            aggregated_status: aggregated_status.clone(),
-            pass_count,
-            total_trials,
-            pass_rate,
+        let summary = SummaryResult {
+            suite_pass,
+            suite_pass_rate: Some(suite_pass_rate),
+            agent: agent_key.clone(),
+            model: args.model.clone(),
+            total_cases: case_summaries.len(),
+            passed,
+            failed,
+            trials_per_case: Some(trials_per_case),
+            parallel: eval_config.parallel,
+            pass_threshold: Some(pass_threshold),
+            run_dir: run_dir.clone(),
+            checks_path: eval_config.checks_path.clone(),
+            skill_project_root: project_root.clone(),
+            cases: case_summaries,
         };
 
-        if let Err(e) = write_case_trials_summary(&run_dir, &case.id, &aggregated) {
+        if let Err(e) = write_summary(&run_dir, &summary) {
             if !use_json {
-                eprintln!(
-                    "  warning: failed to write aggregated summary for case '{}': {}",
-                    case.id, e
-                );
+                eprintln!("warning: failed to write summary.json: {}", e);
             }
         }
 
-        case_summaries.push(CaseSummary {
-            id: case.id.clone(),
-            status: aggregated_status,
-            command_count: if saw_any_command_count {
-                Some(command_count_sum)
-            } else {
-                None
-            },
-            input_tokens: if saw_any_input_tokens {
-                Some(input_tokens_sum)
-            } else {
-                None
-            },
-            output_tokens: if saw_any_output_tokens {
-                Some(output_tokens_sum)
-            } else {
-                None
-            },
-            pass_count: Some(pass_count),
-            total_trials: Some(total_trials),
-            pass_rate: Some(pass_rate),
-            trials,
-        });
-    }
-
-    let passed = case_summaries
-        .iter()
-        .filter(|r| r.status == fastskill_core::eval::artifacts::CaseStatus::Passed)
-        .count();
-    let failed = case_summaries.len() - passed;
-    let suite_pass_rate = if case_summaries.is_empty() {
-        0.0
-    } else {
-        passed as f64 / case_summaries.len() as f64
-    };
-    let suite_pass = if args.ci {
-        suite_pass_rate >= pass_threshold
-    } else {
-        failed == 0
-    };
-
-    let summary = SummaryResult {
-        suite_pass,
-        suite_pass_rate: Some(suite_pass_rate),
-        agent: args.agent.clone(),
-        model: args.model.clone(),
-        total_cases: case_summaries.len(),
-        passed,
-        failed,
-        trials_per_case: Some(trials_per_case),
-        parallel: eval_config.parallel,
-        pass_threshold: Some(pass_threshold),
-        run_dir: run_dir.clone(),
-        checks_path: eval_config.checks_path.clone(),
-        skill_project_root: project_root.clone(),
-        cases: case_summaries,
-    };
-
-    // Write summary
-    if let Err(e) = write_summary(&run_dir, &summary) {
-        if !use_json {
-            eprintln!("warning: failed to write summary.json: {}", e);
+        if !suite_pass {
+            any_agent_failed = true;
         }
+
+        all_summaries.push(summary);
     }
 
+    // Output results.
     if use_json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&summary).unwrap_or_default()
-        );
-    } else {
-        println!(
-            "\nEval run complete: {}/{} passed",
-            passed, summary.total_cases
-        );
-        println!("  run_dir: {}", run_dir.display());
-        if suite_pass {
-            if args.ci {
-                println!(
-                    "  result: PASSED (suite pass rate {:.0}% ≥ {:.0}% threshold)",
-                    suite_pass_rate * 100.0,
-                    pass_threshold * 100.0
-                );
-            } else {
-                println!("  result: PASSED");
-            }
+        if all_summaries.len() == 1 {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&all_summaries[0]).unwrap_or_default()
+            );
         } else {
-            if args.ci {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&all_summaries).unwrap_or_default()
+            );
+        }
+    } else {
+        for summary in &all_summaries {
+            let suite_pass_rate = summary.suite_pass_rate.unwrap_or(0.0);
+            println!(
+                "\nEval run complete for agent '{}': {}/{} passed",
+                summary.agent, summary.passed, summary.total_cases
+            );
+            println!("  run_dir: {}", summary.run_dir.display());
+            if summary.suite_pass {
+                if args.ci {
+                    println!(
+                        "  result: PASSED (suite pass rate {:.0}% ≥ {:.0}% threshold)",
+                        suite_pass_rate * 100.0,
+                        pass_threshold * 100.0
+                    );
+                } else {
+                    println!("  result: PASSED");
+                }
+            } else if args.ci {
                 println!(
                     "  result: FAILED (suite pass rate {:.0}% < {:.0}% threshold)",
                     suite_pass_rate * 100.0,
                     pass_threshold * 100.0
                 );
             } else {
-                println!("  result: FAILED ({} case(s) failed)", failed);
+                println!("  result: FAILED ({} case(s) failed)", summary.failed);
             }
         }
     }
 
-    let should_fail = if args.ci {
-        suite_pass_rate < pass_threshold
-    } else {
-        !suite_pass
-    };
+    let should_fail = any_agent_failed;
 
     if should_fail && !args.no_fail {
+        let total_passed: usize = all_summaries.iter().map(|s| s.passed).sum();
+        let total_cases: usize = all_summaries.iter().map(|s| s.total_cases).sum();
         return Err(CliError::Config(format!(
-            "Eval suite failed: {}/{} cases passed (threshold={})",
-            passed, summary.total_cases, pass_threshold
+            "Eval suite failed: {}/{} cases passed across {} agent(s) (threshold={})",
+            total_passed,
+            total_cases,
+            all_summaries.len(),
+            pass_threshold
         )));
     }
 

@@ -1,6 +1,7 @@
 //! Common utilities for CLI commands
 
 use crate::error::{CliError, CliResult};
+use fastskill_core::core::agent_runtime_selector::RuntimeSelectionError;
 use fastskill_core::OutputFormat;
 
 /// Emit a standardized deprecation warning with migration guidance.
@@ -22,6 +23,28 @@ pub fn emit_deprecation_warning(
         eprintln!("   - '{}' → '{}'", legacy_sub, new_path);
     }
     eprintln!();
+}
+
+/// Map a `RuntimeSelectionError` to a `CliError` with canonical `RUNTIME_*` prefix codes.
+pub fn runtime_selection_error_to_cli(e: RuntimeSelectionError) -> CliError {
+    match e {
+        RuntimeSelectionError::ConflictingFlags => CliError::Config(
+            "RUNTIME_CONFLICTING_FLAGS: --agent and --all are mutually exclusive; \
+             use one or the other"
+                .to_string(),
+        ),
+        RuntimeSelectionError::UnknownRuntimeIds { unknown, available } => {
+            CliError::Config(format!(
+                "RUNTIME_UNKNOWN_ID: Unknown runtime ID(s): {}. Available: {}",
+                unknown.join(", "),
+                available.join(", ")
+            ))
+        }
+        RuntimeSelectionError::EmptyRuntimeSet { hint } => CliError::Config(format!(
+            "RUNTIME_EMPTY_SET: --all resolved to no runtimes. {}",
+            hint
+        )),
+    }
 }
 
 /// Validate format arguments and return resolved format

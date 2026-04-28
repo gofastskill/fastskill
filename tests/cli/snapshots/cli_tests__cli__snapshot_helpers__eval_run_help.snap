@@ -4,10 +4,11 @@ expression: normalized
 ---
 Run eval cases against an agent
 
-Usage: fastskill eval run [OPTIONS] --agent <AGENT> --output-dir <OUTPUT_DIR>
+Usage: fastskill eval run [OPTIONS] --output-dir <OUTPUT_DIR>
 
 Options:
-      --agent <AGENT>            Agent to use for execution (required)
+  -a, --agent <AGENT>            Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+      --all                      Target all runtimes discovered by aikit (mutually exclusive with --agent)
       --output-dir <OUTPUT_DIR>  Output directory for artifacts (required)
       --model <MODEL>            Optional model override forwarded to the agent
       --case <CASE>              Filter: run only the case with this ID
@@ -22,5 +23,7 @@ Options:
 
 Examples:
   fastskill eval run --agent codex --output-dir [TEMP_DIR]
+  fastskill eval run --agent codex --agent claude --output-dir [TEMP_DIR]
+  fastskill eval run --all --output-dir [TEMP_DIR]
   fastskill eval run --agent agent --output-dir ./evals --case my-case
   fastskill eval run --agent codex --output-dir ./evals --tag basic
