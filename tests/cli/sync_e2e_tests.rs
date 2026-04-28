@@ -708,3 +708,42 @@ fn test_sync_duplicate_agents_deduplicated() {
     let claude_md = temp_dir.path().join("CLAUDE.md");
     assert!(claude_md.exists(), "CLAUDE.md must be created");
 }
+
+#[test]
+fn test_sync_single_valid_agent_succeeds() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["sync", "--agent", "claude", "--yes"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        result.success,
+        "sync --agent claude must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let claude_md = temp_dir.path().join("CLAUDE.md");
+    assert!(claude_md.exists(), "CLAUDE.md must be written by sync --agent claude");
+    let content = fs::read_to_string(&claude_md).unwrap();
+    assert!(
+        content.contains("<skills_system"),
+        "CLAUDE.md must contain skills section"
+    );
+}
