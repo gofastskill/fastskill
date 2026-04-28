@@ -1,9 +1,10 @@
 //! Eval validate subcommand - configuration and file validation
 
-use crate::commands::common::validate_format_args;
+use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
 use crate::error::{CliError, CliResult};
-use aikit_sdk::{is_agent_available, is_runnable, runnable_agents};
+use aikit_sdk::is_agent_available;
 use clap::Args;
+use fastskill_core::core::agent_runtime_selector::RuntimeSelectionInput;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::eval::checks::load_checks;
 use fastskill_core::eval::config::resolve_eval_config;
@@ -15,12 +16,16 @@ use std::env;
 #[derive(Debug, Args)]
 #[command(
     about = "Validate eval configuration and files",
-    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex\n  fastskill eval validate --agent agent"
+    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex\n  fastskill eval validate --agent codex --agent claude\n  fastskill eval validate --all"
 )]
 pub struct ValidateArgs {
-    /// Check agent availability for the specified agent key
-    #[arg(long, value_parser = validate_agent_key_parser)]
-    pub agent: Option<String>,
+    /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
+    pub agent: Vec<String>,
+
+    /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
+    #[arg(long)]
+    pub all: bool,
 
     /// Output format: table, json, grid, xml (default: table)
     #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
@@ -31,15 +36,12 @@ pub struct ValidateArgs {
     pub json: bool,
 }
 
-fn validate_agent_key_parser(s: &str) -> Result<String, String> {
-    if is_runnable(s) {
-        Ok(s.to_string())
-    } else {
-        Err(format!(
-            "'{}' is not a supported agent. Supported: {}",
-            s,
-            runnable_agents().join(", ")
-        ))
+impl From<&ValidateArgs> for RuntimeSelectionInput {
+    fn from(args: &ValidateArgs) -> Self {
+        RuntimeSelectionInput {
+            agents: args.agent.clone(),
+            all: args.all,
+        }
     }
 }
 
@@ -86,22 +88,10 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
         0
     };
 
-    // Check agent availability if --agent was specified
-    if let Some(ref agent_key) = args.agent {
-        let available = is_agent_available(agent_key);
-        if !available && eval_config.fail_on_missing_agent {
-            return Err(CliError::Config(format!(
-                "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it or use --agent with an available agent.",
-                agent_key
-            )));
-        }
-        if !available {
-            eprintln!(
-                "warning: agent '{}' is not available (fail_on_missing_agent=false, continuing)",
-                agent_key
-            );
-        }
-    }
+    // Resolve runtime selection (optional for validate).
+    let input = RuntimeSelectionInput::from(&args);
+    let selection = fastskill_core::core::agent_runtime_selector::resolve_runtime_selection(&input)
+        .map_err(runtime_selection_error_to_cli)?;
 
     if use_json {
         let output = serde_json::json!({
@@ -137,17 +127,35 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "  fail_on_missing_agent: {}",
             eval_config.fail_on_missing_agent
         );
-        if let Some(ref agent_key) = args.agent {
+    }
+
+    // Check agent availability for each resolved runtime.
+    if let Some(sel) = &selection {
+        for agent_key in &sel.runtimes {
             let available = is_agent_available(agent_key);
-            println!(
-                "  agent '{}': {}",
-                agent_key,
-                if available {
-                    "available"
-                } else {
-                    "unavailable"
-                }
-            );
+            if !available && eval_config.fail_on_missing_agent {
+                return Err(CliError::Config(format!(
+                    "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it or use --agent with an available agent.",
+                    agent_key
+                )));
+            }
+            if !available {
+                eprintln!(
+                    "warning: agent '{}' is not available (fail_on_missing_agent=false, continuing)",
+                    agent_key
+                );
+            }
+            if !use_json {
+                println!(
+                    "  agent '{}': {}",
+                    agent_key,
+                    if available {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                );
+            }
         }
     }
 
