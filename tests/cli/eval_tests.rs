@@ -828,6 +828,82 @@ fn test_eval_validate_all_flag() {
 }
 
 #[test]
+fn test_eval_run_json_output_contains_agent_field() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nagent-json-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run --json to succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert!(
+        summary.get("agent").is_some(),
+        "JSON summary must contain 'agent' field; got: {}",
+        summary
+    );
+    assert_eq!(
+        summary["agent"].as_str().unwrap(),
+        "agent",
+        "JSON 'agent' field must match the requested agent"
+    );
+}
+
+#[test]
 fn test_eval_validate_agent_flag() {
     use std::fs;
     use tempfile::TempDir;

@@ -28,6 +28,9 @@ use tracing::debug;
 /// or symlinks; editable skill links are established by `fastskill add -e` or
 /// `fastskill install`.
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  fastskill sync --yes\n  fastskill sync --agent claude --yes\n  fastskill sync --agent claude --agent codex --yes\n  fastskill sync --all --yes\n  fastskill sync --agents-file CUSTOM.md --yes"
+)]
 pub struct SyncArgs {
     /// Non-interactive mode: include all installed skills
     #[arg(short = 'y', long)]
@@ -91,12 +94,9 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
             }
         }
         None => {
-            // No --agent or --all provided: fail with RUNTIME_NO_SELECTION.
-            return Err(CliError::Config(
-                "RUNTIME_NO_SELECTION: No runtime selected. Use --agent <id> or --all to \
-                 specify a target runtime."
-                    .to_string(),
-            ));
+            // No --agent or --all provided: fall back to aikit auto-detection.
+            let agents_file = resolve_single_agents_file(&current_dir, None, None)?;
+            return sync_to_file(service, &args, &agents_file).await;
         }
     }
 

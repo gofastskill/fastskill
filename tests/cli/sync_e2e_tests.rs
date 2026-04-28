@@ -653,23 +653,24 @@ fn test_sync_runtime_unknown_id_error() {
 }
 
 #[test]
-fn test_sync_no_selection_error() {
+fn test_sync_no_flags_falls_back_to_auto_detect() {
     let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
     )
     .unwrap();
 
-    // No --agent, no --all, no --agents-file → RUNTIME_NO_SELECTION
+    // No --agent, no --all, no --agents-file → falls back to aikit auto-detection (§15 row 2).
     let result = run_fastskill_command(&["sync", "--yes"], Some(temp_dir.path()));
 
-    assert!(!result.success, "sync --yes without --agent or --all must fail");
-    let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        combined.contains("RUNTIME_NO_SELECTION"),
-        "error must contain RUNTIME_NO_SELECTION, got: {}",
-        combined
+        result.success,
+        "sync --yes without --agent or --all must succeed via auto-detection; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
     );
 }
 
