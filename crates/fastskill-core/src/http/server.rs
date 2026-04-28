@@ -3,7 +3,8 @@
 use crate::core::registry::{StagingManager, ValidationWorker, ValidationWorkerConfig};
 use crate::core::service::{FastSkillService, ServiceConfig};
 use crate::http::handlers::{
-    claude_api, manifest, registry, registry_publish, reindex, search, skills, status, AppState,
+    claude_api, manifest, registry, registry_publish, reindex, resolve, search, skills, status,
+    AppState,
 };
 use axum::{
     body::Body,
@@ -326,6 +327,7 @@ impl FastSkillServer {
     fn create_search_routes() -> Router<AppState> {
         Router::new()
             .route("/api/search", post(search::search_skills))
+            .route("/api/resolve", post(resolve::resolve_context))
             .route("/api/reindex", post(reindex::reindex_all))
             .route("/api/reindex/:id", post(reindex::reindex_skill))
     }

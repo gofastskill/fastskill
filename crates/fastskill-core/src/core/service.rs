@@ -491,6 +491,17 @@ impl FastSkillService {
         &self.config
     }
 
+    /// Get context resolver for machine-first skill resolution
+    pub fn context_resolver(&self) -> crate::core::context_resolver::ContextResolver {
+        crate::core::context_resolver::ContextResolver::new(
+            self.skill_manager.clone(),
+            self.metadata_service.clone(),
+            self.vector_index_service.clone(),
+            self.config.embedding.clone(),
+            self.config.skill_storage_path.clone(),
+        )
+    }
+
     /// Check if service is initialized
     pub fn is_initialized(&self) -> bool {
         self.initialized
@@ -522,18 +533,23 @@ impl FastSkillService {
                 ServiceError::Custom(format!("Failed to read directory entry: {}", e))
             })?;
 
-            // Look for SKILL.md files
-            if entry.file_type().is_file() && entry.file_name() == "SKILL.md" {
-                let skill_file = entry.path();
+            // Look for SKILL.md or skill.md files
+            if entry.file_type().is_file() {
+                let fname = entry.file_name();
+                if fname == "SKILL.md" || fname == "skill.md" {
+                    let skill_file = entry.path();
 
-                // Try to parse the SKILL.md file
-                match self.try_index_skill_from_file(skill_file).await {
-                    Ok(_) => {
-                        indexed_count += 1;
-                    }
-                    Err(e) => {
-                        // Log warning but continue - don't fail initialization for bad skills
-                        tracing::warn!("Failed to index skill at {}: {}", skill_file.display(), e);
+                    match self.try_index_skill_from_file(skill_file).await {
+                        Ok(_) => {
+                            indexed_count += 1;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to index skill at {}: {}",
+                                skill_file.display(),
+                                e
+                            );
+                        }
                     }
                 }
             }

@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod blob_storage;
 pub mod build_cache;
 pub mod change_detection;
+pub mod context_resolver;
 pub mod dependencies;
 pub mod dependency_resolver;
 pub mod embedding;
