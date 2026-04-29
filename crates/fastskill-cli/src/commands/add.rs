@@ -45,7 +45,7 @@ struct InstallTarget {
     version_display: String,
 }
 
-/// T028: Helper to update skill-project.toml and skills.lock
+/// T028: Helper to update skill-project.toml and skills.lock (project scope only)
 fn update_project_files(
     skill_def: &SkillDefinition,
     groups: Vec<String>,
@@ -67,6 +67,13 @@ fn update_project_files(
     manifest_utils::update_lock_file(&lock_path, skill_def, groups)
         .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
 
+    Ok(())
+}
+
+/// Helper to update global-skills.lock (global scope only)
+fn update_global_files(skill_def: &SkillDefinition) -> CliResult<()> {
+    manifest_utils::update_global_lock_file(skill_def, Utc::now())
+        .map_err(|e| CliError::Config(format!("Failed to update global lock file: {}", e)))?;
     Ok(())
 }
 
@@ -154,15 +161,27 @@ async fn install_copied_skill(
             )
         })?;
 
-    update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
-    println!(
-        "Successfully added skill: {} (v{})",
-        skill_def.name, target.version_display
-    );
-    println!(
-        "{}",
-        crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
+    if ctx.global {
+        update_global_files(&skill_def)?;
+        println!(
+            "Successfully added skill: {} (v{})",
+            skill_def.name, target.version_display
+        );
+        println!(
+            "{}",
+            crate::utils::messages::ok("Updated global-skills.lock")
+        );
+    } else {
+        update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
+        println!(
+            "Successfully added skill: {} (v{})",
+            skill_def.name, target.version_display
+        );
+        println!(
+            "{}",
+            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+        );
+    }
     Ok(())
 }
 
@@ -231,15 +250,27 @@ async fn install_local_skill(
             )
         })?;
 
-    update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
-    println!(
-        "Successfully added skill: {} (v{})",
-        skill_def.name, target.version_display
-    );
-    println!(
-        "{}",
-        crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
+    if ctx.global {
+        update_global_files(&skill_def)?;
+        println!(
+            "Successfully added skill: {} (v{})",
+            skill_def.name, target.version_display
+        );
+        println!(
+            "{}",
+            crate::utils::messages::ok("Updated global-skills.lock")
+        );
+    } else {
+        update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
+        println!(
+            "Successfully added skill: {} (v{})",
+            skill_def.name, target.version_display
+        );
+        println!(
+            "{}",
+            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+        );
+    }
     Ok(())
 }
 
@@ -439,7 +470,10 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
         }
     }
 
-    ensure_manifest()?;
+    // Global installs do not require a project manifest
+    if !global {
+        ensure_manifest()?;
+    }
     let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
     let ctx = AddContext {
         service,

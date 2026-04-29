@@ -90,14 +90,7 @@ pub async fn execute_list(
         SkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load skills.lock: {}", e)))?
     } else {
-        SkillsLock {
-            metadata: fastskill_core::core::lock::LockMetadata {
-                version: "1.0.0".to_string(),
-                generated_at: chrono::Utc::now(),
-                fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            },
-            skills: Vec::new(),
-        }
+        SkillsLock::new_empty()
     };
 
     // Build lock map with additional metadata

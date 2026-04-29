@@ -74,7 +74,7 @@ impl Cli {
         }
 
         if let Some(Commands::Update(args)) = self.command {
-            return update::execute_update(args).await;
+            return update::execute_update(args, self.global).await;
         }
 
         if let Some(Commands::Show(args)) = self.command {

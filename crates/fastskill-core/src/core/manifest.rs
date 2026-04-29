@@ -31,7 +31,7 @@ pub struct SkillEntry {
 }
 
 /// Source specification for skills
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum SkillSource {
     #[serde(rename = "git")]

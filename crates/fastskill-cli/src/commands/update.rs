@@ -5,7 +5,7 @@ use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill_core::core::{
-    lock::SkillsLock,
+    lock::{global_lock_path, GlobalSkillsLock, SkillsLock},
     manifest::SkillProjectToml,
     project::resolve_project_file,
     repository::{RepositoryConfig, RepositoryManager, RepositoryType},
@@ -55,7 +55,91 @@ pub struct UpdateArgs {
     strategy: String,
 }
 
-pub async fn execute_update(args: UpdateArgs) -> CliResult<()> {
+pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
+    if global {
+        return execute_update_global(args).await;
+    }
+    execute_update_project(args).await
+}
+
+async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
+    println!("Updating global skills...");
+    println!();
+
+    let lock_path = global_lock_path()
+        .map_err(|e| CliError::Config(format!("Failed to resolve global lock path: {}", e)))?;
+
+    if !lock_path.exists() {
+        println!(
+            "{}",
+            messages::info(
+                "No global-skills.lock found. Run 'fastskill add --global <skill>' first."
+            )
+        );
+        return Ok(());
+    }
+
+    let mut lock = GlobalSkillsLock::load_from_file(&lock_path)
+        .map_err(|e| CliError::Config(format!("Failed to load global lock file: {}", e)))?;
+
+    let skill_ids: Vec<String> = if let Some(id) = &args.skill_id {
+        vec![id.clone()]
+    } else {
+        lock.skills.iter().map(|s| s.id.clone()).collect()
+    };
+
+    if skill_ids.is_empty() {
+        println!("{}", messages::info("No global skills to update"));
+        return Ok(());
+    }
+
+    if args.check || args.dry_run {
+        println!("\nGlobal skills (check mode):\n");
+        for id in &skill_ids {
+            if let Some(entry) = lock.skills.iter().find(|s| s.id == *id) {
+                println!("  • {} @ {}", entry.id, entry.version);
+            }
+        }
+        if args.check {
+            let now = chrono::Utc::now();
+            for id in &skill_ids {
+                lock.mark_checked(id, now);
+            }
+            lock.save_to_file(&lock_path)
+                .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
+            println!(
+                "\n{}",
+                messages::info("Updated last_checked_at in global-skills.lock")
+            );
+        }
+        return Ok(());
+    }
+
+    // Actual update: mark updated_at for each skill
+    let now = chrono::Utc::now();
+    let mut updated_count = 0;
+    for id in &skill_ids {
+        if lock.skills.iter().any(|s| s.id == *id) {
+            lock.mark_updated(id, now);
+            updated_count += 1;
+            println!("  {}", messages::ok(&format!("Marked {} as updated", id)));
+        }
+    }
+
+    lock.save_to_file(&lock_path)
+        .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
+
+    println!();
+    println!(
+        "{}",
+        messages::ok(&format!("Updated {} global skill(s)", updated_count))
+    );
+    println!("   Updated global-skills.lock");
+
+    Ok(())
+}
+
+async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     println!("Updating skills...");
     println!();
 
@@ -392,7 +476,7 @@ mod tests {
             strategy: "latest".to_string(),
         };
 
-        let result = execute_update(args).await;
+        let result = execute_update(args, false).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
             assert!(
@@ -482,7 +566,7 @@ version = "1.0.0"
             strategy: "invalid-strategy".to_string(),
         };
 
-        let result = execute_update(args).await;
+        let result = execute_update(args, false).await;
         // Should fail for invalid strategy or missing skills_directory
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
@@ -541,7 +625,7 @@ version = "1.0.0"
         };
 
         // Should succeed in check mode even with no skills
-        let result = execute_update(args).await;
+        let result = execute_update(args, false).await;
         // May succeed or fail depending on lock file, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
     }
@@ -600,7 +684,7 @@ source = { path = ".claude/skills/test-skill" }
             strategy: "latest".to_string(),
         };
 
-        let result = execute_update(args).await;
+        let result = execute_update(args, false).await;
         // Should succeed in check mode or fail with appropriate error
         assert!(result.is_ok() || result.is_err());
     }
