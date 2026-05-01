@@ -56,6 +56,9 @@ pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
                         "raw_agent_line_seq": raw_agent_line_seq
                     }),
                 },
+                _ => TracePayload::RawLine {
+                    line: format!("<unhandled aikit event variant @ seq {}>", ev.seq),
+                },
             };
             TraceEvent {
                 seq: ev.seq as usize,
