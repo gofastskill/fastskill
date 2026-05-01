@@ -237,18 +237,27 @@ async fn remove_from_vector_index(service: &FastSkillService, skill_id: &str) {
 }
 
 /// Remove a single skill (all cleanup steps)
-async fn remove_single_skill(service: &FastSkillService, skill_id: &str) -> CliResult<()> {
+async fn remove_single_skill(
+    service: &FastSkillService,
+    skill_id: &str,
+    global: bool,
+) -> CliResult<()> {
     // Unregister from service
     unregister_skill_from_service(service, skill_id).await?;
 
     // Delete directory
     delete_skill_directory(service, skill_id).await?;
 
-    // Remove from manifest
-    remove_from_project_manifest(skill_id)?;
-
-    // Remove from lock file
-    remove_from_lock_file(skill_id)?;
+    if global {
+        // Remove from global lock only; do not touch project manifest or project lock
+        manifest_utils::remove_from_global_lock_file(skill_id)
+            .map_err(|e| CliError::Config(format!("Failed to update global lock file: {}", e)))?;
+    } else {
+        // Remove from manifest
+        remove_from_project_manifest(skill_id)?;
+        // Remove from lock file
+        remove_from_lock_file(skill_id)?;
+    }
 
     // Remove from vector index (non-critical, just log warnings)
     remove_from_vector_index(service, skill_id).await;
@@ -278,17 +287,24 @@ pub async fn execute_remove(
     // Remove each skill
     let mut removed_count = 0;
     for skill_id in &args.skill_ids {
-        remove_single_skill(service, skill_id).await?;
+        remove_single_skill(service, skill_id, global).await?;
         println!("Removed skill: {}", skill_id);
         removed_count += 1;
     }
 
     // Display success message
     if removed_count > 0 {
-        println!(
-            "{}",
-            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-        );
+        if global {
+            println!(
+                "{}",
+                crate::utils::messages::ok("Updated global-skills.lock")
+            );
+        } else {
+            println!(
+                "{}",
+                crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+            );
+        }
     }
 
     Ok(())

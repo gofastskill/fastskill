@@ -1,8 +1,7 @@
 //! Utilities for managing skill-project.toml and skills.lock
 
-use chrono::Utc;
 use fastskill_core::core::{
-    lock::SkillsLock,
+    lock::{global_lock_path, GlobalSkillsLock, LockError, ProjectSkillsLock},
     manifest::{
         DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
         SourceSpecificFields,
@@ -10,9 +9,41 @@ use fastskill_core::core::{
     project::resolve_project_file,
     skill_manager::SkillDefinition,
 };
+use fs2::FileExt;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
+use std::time::Duration;
+
+/// Acquire an exclusive advisory file lock on a sidecar file.
+/// Retries up to 3 times with 200 ms sleep. Returns error if still contended.
+fn acquire_advisory_lock(sidecar_path: &std::path::Path) -> Result<std::fs::File, LockError> {
+    if let Some(parent) = sidecar_path.parent() {
+        std::fs::create_dir_all(parent).map_err(LockError::Io)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(sidecar_path)
+        .map_err(LockError::Io)?;
+
+    for _ in 0..3 {
+        if file.try_lock_exclusive().is_ok() {
+            return Ok(file);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    Err(LockError::FileLocked(sidecar_path.to_path_buf()))
+}
+
+/// Build the sidecar path for advisory locking: `<lock_path>.lock`
+fn sidecar_path(lock_path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = lock_path.as_os_str().to_owned();
+    s.push(".lock");
+    std::path::PathBuf::from(s)
+}
 
 /// Update skills.lock with installed skill state
 pub fn update_lock_file(
@@ -31,37 +62,87 @@ pub fn update_lock_file_with_depth(
     depth: u32,
     parent_skill: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure parent directory of lock file exists
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
-    // Load existing lock or create new
+    let sidecar = sidecar_path(lock_path);
+    let _guard = acquire_advisory_lock(&sidecar)
+        .map_err(|e| format!("Failed to acquire lock on skills.lock: {}", e))?;
+
     let mut lock = if lock_path.exists() {
-        SkillsLock::load_from_file(lock_path)
+        ProjectSkillsLock::load_from_file(lock_path)
             .map_err(|e| format!("Failed to load lock file: {}", e))?
     } else {
-        SkillsLock {
-            metadata: fastskill_core::core::lock::LockMetadata {
-                version: "1.0.0".to_string(),
-                generated_at: Utc::now(),
-                fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            },
-            skills: Vec::new(),
-        }
+        ProjectSkillsLock::new_empty()
     };
 
-    // Update lock with skill including depth and parent info
     lock.update_skill_with_depth(skill, depth, parent_skill);
 
-    // Update groups (we need to modify the locked entry)
     if let Some(locked_entry) = lock.skills.iter_mut().find(|s| s.id == skill.id.as_str()) {
         locked_entry.groups = groups;
     }
 
-    // Save lock
     lock.save_to_file(lock_path)
         .map_err(|e| format!("Failed to save lock file: {}", e))?;
+
+    // Sidecar file lock is released when _guard (the File) is dropped
+    let _ = std::fs::remove_file(&sidecar);
+
+    Ok(())
+}
+
+/// Update the global `global-skills.lock` for a globally installed skill.
+pub fn update_global_lock_file(
+    skill: &SkillDefinition,
+    installed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let lock_path =
+        global_lock_path().map_err(|e| format!("Failed to resolve global lock path: {}", e))?;
+
+    let sidecar = sidecar_path(&lock_path);
+    let _guard = acquire_advisory_lock(&sidecar)
+        .map_err(|e| format!("Failed to acquire lock on global-skills.lock: {}", e))?;
+
+    let mut lock = if lock_path.exists() {
+        GlobalSkillsLock::load_from_file(&lock_path)
+            .map_err(|e| format!("Failed to load global lock file: {}", e))?
+    } else {
+        GlobalSkillsLock::new_empty()
+    };
+
+    lock.upsert_skill(skill, installed_at);
+
+    lock.save_to_file(&lock_path)
+        .map_err(|e| format!("Failed to save global lock file: {}", e))?;
+
+    let _ = std::fs::remove_file(&sidecar);
+
+    Ok(())
+}
+
+/// Remove a skill from the global `global-skills.lock`.
+pub fn remove_from_global_lock_file(skill_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let lock_path =
+        global_lock_path().map_err(|e| format!("Failed to resolve global lock path: {}", e))?;
+
+    if !lock_path.exists() {
+        return Ok(());
+    }
+
+    let sidecar = sidecar_path(&lock_path);
+    let _guard = acquire_advisory_lock(&sidecar)
+        .map_err(|e| format!("Failed to acquire lock on global-skills.lock: {}", e))?;
+
+    let mut lock = GlobalSkillsLock::load_from_file(&lock_path)
+        .map_err(|e| format!("Failed to load global lock file: {}", e))?;
+
+    lock.remove_skill(skill_id);
+
+    lock.save_to_file(&lock_path)
+        .map_err(|e| format!("Failed to save global lock file: {}", e))?;
+
+    let _ = std::fs::remove_file(&sidecar);
 
     Ok(())
 }

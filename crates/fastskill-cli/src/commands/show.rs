@@ -231,7 +231,7 @@ async fn run_show_all_from_service(
 }
 
 fn locked_skill_to_definition(
-    skill: &fastskill_core::core::lock::LockedSkillEntry,
+    skill: &fastskill_core::core::lock::ProjectLockedSkillEntry,
 ) -> Result<SkillDefinition, CliError> {
     let now = Utc::now();
     let id = fastskill_core::SkillId::new(skill.id.clone()).map_err(|_| {

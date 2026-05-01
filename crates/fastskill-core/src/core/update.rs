@@ -1,6 +1,6 @@
 //! Update service for managing skill updates
 
-use crate::core::lock::{LockedSkillEntry, SkillsLock};
+use crate::core::lock::{ProjectLockedSkillEntry as LockedSkillEntry, SkillsLock};
 use crate::core::resolver::{ConflictStrategy, PackageResolver, ResolutionResult};
 use crate::core::version::{compare_versions, is_newer, VersionError};
 use semver::Version;
