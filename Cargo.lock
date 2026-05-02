@@ -31,7 +31,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#b2224c35222ff0a83e85e3ca19f1f90bd6d36f57"
+source = "git+https://github.com/goaikit/aikit?branch=main#92acae4c91a68f3d005104af554f66d50e5ff438"
 dependencies = [
  "reqwest",
  "serde",
@@ -44,7 +44,7 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.2.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#b2224c35222ff0a83e85e3ca19f1f90bd6d36f57"
+source = "git+https://github.com/goaikit/aikit?branch=main#92acae4c91a68f3d005104af554f66d50e5ff438"
 dependencies = [
  "aikit-agent",
  "glob",
@@ -2301,7 +2301,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -3196,7 +3196,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.38",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3233,7 +3233,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -4832,7 +4832,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
