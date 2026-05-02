@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 # Core library
 fastskill-core = { path = "../fastskill-core", features = ["filesystem-storage", "registry-publish", "hot-reload"] }
+fastskill-evals = { path = "../fastskill-evals" }
+fastskill-agent-runtime = { path = "../fastskill-agent-runtime" }
 
 # aikit-sdk for agent integration
 aikit-sdk.workspace = true

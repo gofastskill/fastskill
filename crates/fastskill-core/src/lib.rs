@@ -49,33 +49,6 @@
 //! ```
 
 pub mod core;
-pub mod eval {
-    // Re-export evals_core sub-modules so that sub-path imports like
-    // `fastskill_core::eval::artifacts::CaseResult` continue to resolve.
-    pub use evals_core::artifacts;
-    pub use evals_core::checks;
-    pub use evals_core::runner;
-    pub use evals_core::suite;
-    pub use evals_core::trace;
-
-    // Re-export all top-level public items from evals_core
-    pub use evals_core::{
-        agent_events_to_trace, allocate_run_dir, count_raw_json_events, load_checks, load_suite,
-        read_case_results, read_summary, resolve_from_input, run_checks, run_eval_case,
-        stdout_to_trace, suite_passes, trace_to_jsonl, write_case_artifacts,
-        write_case_trials_summary, write_summary, write_trial_artifacts, AikitEvalRunner,
-        ArtifactsError, CaseResult, CaseRunOptions, CaseRunOutput, CaseStatus, CaseSummary,
-        CaseTrialsResult, CheckDefinition, CheckResult, ChecksError, ChecksToml, EvalCase,
-        EvalConfig, EvalConfigError, EvalConfigInput, EvalRunner, EvalSuite, RunArtifacts,
-        RunnerError, SuiteError, SummaryResult, TraceEvent, TracePayload, TrialResult,
-    };
-
-    // config sub-module that adds the fastskill-specific resolve_eval_config adapter
-    pub mod config {
-        pub use crate::core::eval_config_adapter::resolve_eval_config;
-        pub use evals_core::config::*;
-    }
-}
 pub mod events;
 pub mod execution;
 pub mod http;

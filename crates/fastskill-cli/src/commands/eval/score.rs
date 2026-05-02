@@ -3,9 +3,9 @@
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
 use clap::Args;
-use fastskill_core::eval::artifacts::{read_summary, write_summary, CaseStatus, TrialResult};
-use fastskill_core::eval::checks::load_checks;
 use fastskill_core::OutputFormat;
+use fastskill_evals::artifacts::{read_summary, write_summary, CaseStatus, TrialResult};
+use fastskill_evals::checks::load_checks;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill eval score`
@@ -112,7 +112,7 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
             let stdout_content = std::fs::read_to_string(&stdout_path).unwrap_or_default();
             let trace_jsonl = std::fs::read_to_string(&trace_path).unwrap_or_default();
 
-            let check_results = fastskill_core::eval::checks::run_checks(
+            let check_results = fastskill_evals::checks::run_checks(
                 &checks,
                 &stdout_content,
                 &trace_jsonl,

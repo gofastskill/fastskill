@@ -56,8 +56,11 @@ pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
                         "raw_agent_line_seq": raw_agent_line_seq
                     }),
                 },
-                _ => TracePayload::RawLine {
-                    line: format!("<unhandled aikit event variant @ seq {}>", ev.seq),
+                _ => TracePayload::RawJson {
+                    data: serde_json::json!({
+                        "type": "unknown_agent_event_payload",
+                        "raw": format!("{:?}", ev.payload)
+                    }),
                 },
             };
             TraceEvent {

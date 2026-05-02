@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "crates/evals-core",
+    "crates/fastskill-evals",
+    "crates/fastskill-agent-runtime",
     "crates/fastskill-core",
     "crates/fastskill-cli",
 ]

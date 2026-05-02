@@ -1,6 +1,5 @@
 //! Core service layer modules
 
-pub mod agent_runtime_selector;
 pub mod analysis;
 pub mod blob_storage;
 pub mod build_cache;
@@ -9,7 +8,6 @@ pub mod context_resolver;
 pub mod dependencies;
 pub mod dependency_resolver;
 pub mod embedding;
-pub mod eval_config_adapter;
 pub mod loading;
 pub mod lock;
 pub mod manifest;
@@ -35,10 +33,6 @@ pub mod version_bump;
 
 // Re-export main types for convenience
 // Note: Selective re-exports to avoid conflicts
-pub use agent_runtime_selector::{
-    resolve_runtime_selection, RuntimeSelection, RuntimeSelectionError, RuntimeSelectionInput,
-    SelectionSource,
-};
 pub use blob_storage::{create_blob_storage, BlobStorage, BlobStorageConfig, LocalBlobStorage};
 pub use build_cache::{BuildCache, SkillCacheEntry};
 pub use change_detection::{

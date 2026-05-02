@@ -1,7 +1,7 @@
 //! Common utilities for CLI commands
 
 use crate::error::{CliError, CliResult};
-use fastskill_core::core::agent_runtime_selector::RuntimeSelectionError;
+use fastskill_agent_runtime::RuntimeSelectionError;
 use fastskill_core::OutputFormat;
 
 /// Emit a standardized deprecation warning with migration guidance.
