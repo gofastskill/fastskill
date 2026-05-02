@@ -10,7 +10,6 @@ keywords = ["fastskill", "agent", "runtime", "aikit"]
 categories = ["tools"]
 
 [dependencies]
-aikit-sdk.workspace = true
 thiserror.workspace = true
 
 [lints]
