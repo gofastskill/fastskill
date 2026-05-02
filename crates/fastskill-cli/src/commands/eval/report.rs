@@ -3,8 +3,8 @@
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
 use clap::Args;
-use fastskill_core::eval::artifacts::read_summary;
 use fastskill_core::OutputFormat;
+use fastskill_evals::artifacts::read_summary;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill eval report`

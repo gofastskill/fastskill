@@ -1,0 +1,17 @@
+[package]
+name = "fastskill-agent-runtime"
+version.workspace = true
+edition.workspace = true
+description = "Agent runtime discovery and selection for FastSkill"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["fastskill", "agent", "runtime", "aikit"]
+categories = ["tools"]
+
+[dependencies]
+aikit-sdk.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

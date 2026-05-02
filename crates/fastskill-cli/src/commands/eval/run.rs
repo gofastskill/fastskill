@@ -5,17 +5,17 @@ use crate::error::{CliError, CliResult};
 use aikit_sdk::is_agent_available;
 use chrono::Utc;
 use clap::Args;
-use fastskill_core::core::agent_runtime_selector::RuntimeSelectionInput;
+use fastskill_agent_runtime::RuntimeSelectionInput;
 use fastskill_core::core::project::resolve_project_file;
-use fastskill_core::eval::artifacts::{
+use fastskill_core::OutputFormat;
+use fastskill_evals::artifacts::{
     allocate_run_dir, write_case_trials_summary, write_summary, write_trial_artifacts, CaseStatus,
     CaseSummary, CaseTrialsResult, SummaryResult, TrialResult,
 };
-use fastskill_core::eval::checks::load_checks;
-use fastskill_core::eval::config::resolve_eval_config;
-use fastskill_core::eval::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
-use fastskill_core::eval::suite::load_suite;
-use fastskill_core::OutputFormat;
+use fastskill_evals::checks::load_checks;
+use fastskill_evals::resolve_eval_config;
+use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
+use fastskill_evals::suite::load_suite;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -102,7 +102,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 
     // Resolve runtime selection first so missing --agent is caught before project-file checks.
     let input = RuntimeSelectionInput::from(&args);
-    let selection = fastskill_core::core::agent_runtime_selector::resolve_runtime_selection(&input)
+    let selection = fastskill_agent_runtime::resolve_runtime_selection(&input)
         .map_err(runtime_selection_error_to_cli)?;
 
     let runtimes = match selection {
@@ -260,8 +260,8 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
             let mut join_set: JoinSet<
                 CliResult<(
                     u32,
-                    fastskill_core::eval::runner::CaseRunOutput,
-                    fastskill_core::eval::artifacts::CaseResult,
+                    fastskill_evals::runner::CaseRunOutput,
+                    fastskill_evals::artifacts::CaseResult,
                     String,
                 )>,
             > = JoinSet::new();
@@ -402,7 +402,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 
         let passed = case_summaries
             .iter()
-            .filter(|r| r.status == fastskill_core::eval::artifacts::CaseStatus::Passed)
+            .filter(|r| r.status == CaseStatus::Passed)
             .count();
         let failed = case_summaries.len() - passed;
         let suite_pass_rate = if case_summaries.is_empty() {

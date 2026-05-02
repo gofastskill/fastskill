@@ -1,5 +1,5 @@
 [package]
-name = "evals-core"
+name = "fastskill-evals"
 version.workspace = true
 edition.workspace = true
 description = "Standalone eval infrastructure for agent task evaluation"
@@ -10,6 +10,7 @@ keywords = ["eval", "agent", "ai", "testing", "fastskill"]
 categories = ["development-tools::testing"]
 
 [dependencies]
+fastskill-core = { path = "../fastskill-core", default-features = false, features = ["filesystem-storage"] }
 aikit-sdk.workspace = true
 tokio.workspace = true
 async-trait.workspace = true

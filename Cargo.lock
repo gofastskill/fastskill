@@ -1527,23 +1527,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "evals-core"
-version = "0.9.112"
-dependencies = [
- "aikit-sdk",
- "async-trait",
- "base64 0.22.1",
- "num_cpus",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
 name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1577,6 +1560,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
+name = "fastskill-agent-runtime"
+version = "0.9.112"
+dependencies = [
+ "aikit-sdk",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "fastskill-cli"
 version = "0.9.112"
 dependencies = [
@@ -1591,7 +1582,9 @@ dependencies = [
  "clap",
  "config",
  "dirs",
+ "fastskill-agent-runtime",
  "fastskill-core",
+ "fastskill-evals",
  "fs2",
  "inquire",
  "insta",
@@ -1622,7 +1615,6 @@ dependencies = [
 name = "fastskill-core"
 version = "0.9.112"
 dependencies = [
- "aikit-sdk",
  "anyhow",
  "assert_cmd",
  "async-trait",
@@ -1633,7 +1625,6 @@ dependencies = [
  "chrono",
  "config",
  "dirs",
- "evals-core",
  "fs2",
  "futures",
  "include_dir",
@@ -1666,6 +1657,24 @@ dependencies = [
  "walkdir",
  "wiremock",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "fastskill-evals"
+version = "0.9.112"
+dependencies = [
+ "aikit-sdk",
+ "async-trait",
+ "base64 0.22.1",
+ "fastskill-core",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

@@ -1,13 +1,13 @@
-//! Adapter that reads fastskill project files and delegates to evals_core config resolution
+//! Adapter that reads fastskill project files and delegates to fastskill_evals config resolution
 
-use crate::core::manifest::SkillProjectToml;
-use evals_core::config::{resolve_from_input, EvalConfig, EvalConfigError, EvalConfigInput};
+use crate::config::{resolve_from_input, EvalConfig, EvalConfigError, EvalConfigInput};
+use fastskill_core::core::manifest::SkillProjectToml;
 use std::path::Path;
 
 /// Resolve eval configuration from a skill-project.toml file.
 ///
 /// Reads the `[tool.fastskill.eval]` section, converts it to an [`EvalConfigInput`],
-/// and delegates path resolution and validation to [`evals_core::config::resolve_from_input`].
+/// and delegates path resolution and validation to [`crate::config::resolve_from_input`].
 pub fn resolve_eval_config(
     project_file: &Path,
     project_root: &Path,
@@ -37,6 +37,7 @@ pub fn resolve_eval_config(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
