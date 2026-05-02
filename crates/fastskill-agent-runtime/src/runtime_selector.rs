@@ -48,6 +48,8 @@ pub enum RuntimeSelectionError {
     EmptyRuntimeSet { hint: String },
 }
 
+const RUNNABLE_AGENTS: &[&str] = &["codex", "claude", "gemini", "opencode", "agent", "aikit"];
+
 /// Resolve runtime targets from CLI flags.
 ///
 /// Returns `Ok(Some(_))` when flags are provided and valid.
@@ -57,10 +59,7 @@ pub fn resolve_runtime_selection(
     input: &RuntimeSelectionInput,
 ) -> Result<Option<RuntimeSelection>, RuntimeSelectionError> {
     resolve_with_discovery(input, &|| {
-        aikit_sdk::runnable_agents()
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        RUNNABLE_AGENTS.iter().map(|s| s.to_string()).collect()
     })
 }
 
