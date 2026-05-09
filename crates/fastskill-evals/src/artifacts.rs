@@ -257,12 +257,26 @@ pub fn read_case_results(run_dir: &Path) -> Result<Vec<CaseResult>, ArtifactsErr
             if aggregated_path.exists() {
                 let content = std::fs::read_to_string(&aggregated_path)?;
                 let aggregated: CaseTrialsResult = serde_json::from_str(&content)?;
+                let total_input = aggregated
+                    .trials
+                    .iter()
+                    .filter_map(|t| t.input_tokens)
+                    .fold(None::<u64>, |acc, v| {
+                        Some(acc.unwrap_or(0).saturating_add(v))
+                    });
+                let total_output = aggregated
+                    .trials
+                    .iter()
+                    .filter_map(|t| t.output_tokens)
+                    .fold(None::<u64>, |acc, v| {
+                        Some(acc.unwrap_or(0).saturating_add(v))
+                    });
                 results.push(CaseResult {
                     id: aggregated.id,
                     status: aggregated.aggregated_status,
                     command_count: None,
-                    input_tokens: None,
-                    output_tokens: None,
+                    input_tokens: total_input,
+                    output_tokens: total_output,
                     check_results: vec![],
                     error_message: None,
                 });
@@ -302,6 +316,93 @@ mod tests {
         let run_dir2 = allocate_run_dir(dir.path(), "2026-04-01T14-00-00Z").unwrap();
         assert_ne!(run_dir1, run_dir2);
         assert!(run_dir2.to_string_lossy().contains("-2"));
+    }
+
+    #[test]
+    fn test_read_case_results_sums_trial_tokens() {
+        let dir = TempDir::new().unwrap();
+        let case_dir = dir.path().join("case-1");
+        std::fs::create_dir_all(&case_dir).unwrap();
+
+        let trials_result = CaseTrialsResult {
+            id: "case-1".to_string(),
+            trials: vec![
+                TrialResult {
+                    trial_id: 1,
+                    status: CaseStatus::Passed,
+                    command_count: Some(1),
+                    input_tokens: Some(100),
+                    output_tokens: Some(50),
+                    check_results: vec![],
+                    error_message: None,
+                },
+                TrialResult {
+                    trial_id: 2,
+                    status: CaseStatus::Passed,
+                    command_count: Some(1),
+                    input_tokens: Some(200),
+                    output_tokens: Some(80),
+                    check_results: vec![],
+                    error_message: None,
+                },
+            ],
+            aggregated_status: CaseStatus::Passed,
+            pass_count: 2,
+            total_trials: 2,
+            pass_rate: 1.0,
+        };
+        let json = serde_json::to_string_pretty(&trials_result).unwrap();
+        std::fs::write(case_dir.join("aggregated.json"), json).unwrap();
+
+        let results = read_case_results(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].input_tokens,
+            Some(300),
+            "must sum input_tokens across trials"
+        );
+        assert_eq!(
+            results[0].output_tokens,
+            Some(130),
+            "must sum output_tokens across trials"
+        );
+    }
+
+    #[test]
+    fn test_read_case_results_none_tokens_when_all_trials_none() {
+        let dir = TempDir::new().unwrap();
+        let case_dir = dir.path().join("case-null");
+        std::fs::create_dir_all(&case_dir).unwrap();
+
+        let trials_result = CaseTrialsResult {
+            id: "case-null".to_string(),
+            trials: vec![TrialResult {
+                trial_id: 1,
+                status: CaseStatus::Error,
+                command_count: None,
+                input_tokens: None,
+                output_tokens: None,
+                check_results: vec![],
+                error_message: Some("timeout".to_string()),
+            }],
+            aggregated_status: CaseStatus::Error,
+            pass_count: 0,
+            total_trials: 1,
+            pass_rate: 0.0,
+        };
+        let json = serde_json::to_string_pretty(&trials_result).unwrap();
+        std::fs::write(case_dir.join("aggregated.json"), json).unwrap();
+
+        let results = read_case_results(dir.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].input_tokens, None,
+            "must remain None when all trial tokens are None"
+        );
+        assert_eq!(
+            results[0].output_tokens, None,
+            "must remain None when all trial tokens are None"
+        );
     }
 
     #[test]

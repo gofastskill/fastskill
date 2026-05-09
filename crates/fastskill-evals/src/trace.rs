@@ -16,7 +16,7 @@ pub struct TraceEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TracePayload {
-    /// A raw JSON line from the agent
+    /// A raw JSON line from the agent (tool commands, structured output)
     RawJson { data: serde_json::Value },
     /// A raw text line from stdout
     RawLine { line: String },
@@ -26,6 +26,12 @@ pub enum TracePayload {
     Error { message: String },
     /// Case timed out
     Timeout,
+    /// Token usage event emitted by the SDK during agent execution
+    TokenUsageLine {
+        usage: serde_json::Value,
+        source: String,
+        raw_agent_line_seq: u64,
+    },
 }
 
 /// Convert aikit-sdk AgentEvent to internal TraceEvent
@@ -48,13 +54,10 @@ pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
                     usage,
                     source,
                     raw_agent_line_seq,
-                } => TracePayload::RawJson {
-                    data: serde_json::json!({
-                        "type": "token_usage",
-                        "usage": usage,
-                        "source": source,
-                        "raw_agent_line_seq": raw_agent_line_seq
-                    }),
+                } => TracePayload::TokenUsageLine {
+                    usage: serde_json::to_value(usage).unwrap_or(serde_json::Value::Null),
+                    source: format!("{:?}", source).to_lowercase(),
+                    raw_agent_line_seq: *raw_agent_line_seq,
                 },
                 _ => TracePayload::RawJson {
                     data: serde_json::json!({
@@ -141,5 +144,63 @@ mod tests {
         let jsonl = trace_to_jsonl(&events);
         assert!(jsonl.contains("\"seq\":0"));
         assert!(jsonl.contains("raw_line"));
+    }
+
+    #[test]
+    fn test_token_usage_line_serializes_as_distinct_type() {
+        let event = TraceEvent {
+            seq: 7,
+            payload: TracePayload::TokenUsageLine {
+                usage: serde_json::json!({"input_tokens": 1234, "output_tokens": 567}),
+                source: "claude".to_string(),
+                raw_agent_line_seq: 6,
+            },
+        };
+        let jsonl = trace_to_jsonl(&[event.clone()]);
+        assert!(
+            jsonl.contains("\"type\":\"token_usage_line\""),
+            "expected token_usage_line type tag, got: {}",
+            jsonl
+        );
+        assert!(
+            !jsonl.contains("\"type\":\"raw_json\""),
+            "token_usage_line must not serialize as raw_json, got: {}",
+            jsonl
+        );
+        let deserialized: TraceEvent = serde_json::from_str(&jsonl).unwrap();
+        assert!(
+            matches!(deserialized.payload, TracePayload::TokenUsageLine { .. }),
+            "deserialized payload must be TokenUsageLine"
+        );
+    }
+
+    #[test]
+    fn test_count_raw_json_excludes_token_usage_line() {
+        use crate::checks::count_raw_json_events;
+        let events = vec![
+            TraceEvent {
+                seq: 0,
+                payload: TracePayload::TokenUsageLine {
+                    usage: serde_json::json!({"input_tokens": 100, "output_tokens": 50}),
+                    source: "claude".to_string(),
+                    raw_agent_line_seq: 0,
+                },
+            },
+            TraceEvent {
+                seq: 1,
+                payload: TracePayload::TokenUsageLine {
+                    usage: serde_json::json!({"input_tokens": 200, "output_tokens": 100}),
+                    source: "codex".to_string(),
+                    raw_agent_line_seq: 1,
+                },
+            },
+        ];
+        let jsonl = trace_to_jsonl(&events);
+        let count = count_raw_json_events(&jsonl);
+        assert_eq!(
+            count, 0,
+            "count_raw_json_events must return 0 for token_usage_line-only traces, got: {}",
+            count
+        );
     }
 }

@@ -206,7 +206,8 @@ impl AikitEvalRunner {
             .with_yolo(true)
             .with_stream(true)
             .with_timeout(Duration::from_secs(timeout_secs))
-            .with_current_dir(working_dir.clone());
+            .with_current_dir(working_dir.clone())
+            .with_emit_token_usage_events(true);
         if let Some(model_name) = model {
             if !model_name.trim().is_empty() {
                 run_opts = run_opts.with_model(model_name);
@@ -221,9 +222,10 @@ impl AikitEvalRunner {
             AgentExecutionResult { result, events }
         });
 
-        let (run_output, trace_events) = match spawn_result.await {
+        let (run_output, trace_events, token_usage) = match spawn_result.await {
             Ok(exec_result) => match exec_result.result {
                 Ok(run_result) => {
+                    let token_usage = run_result.token_usage.clone();
                     let exit_code = run_result.exit_code();
                     let output = CaseRunOutput {
                         stdout: run_result.stdout,
@@ -232,7 +234,7 @@ impl AikitEvalRunner {
                         timed_out: false,
                     };
                     let trace = agent_events_to_trace(&exec_result.events);
-                    (output, trace)
+                    (output, trace, token_usage)
                 }
                 Err(aikit_sdk::RunError::TimedOut {
                     timeout, stderr, ..
@@ -256,9 +258,9 @@ impl AikitEvalRunner {
                             exit_code: None,
                             timed_out: true,
                         };
-                        (output, trace)
+                        (output, trace, None)
                     } else {
-                        (output, trace)
+                        (output, trace, None)
                     }
                 }
                 Err(e) => {
@@ -269,7 +271,7 @@ impl AikitEvalRunner {
                         exit_code: None,
                         timed_out: false,
                     };
-                    (output, trace)
+                    (output, trace, None)
                 }
             },
             Err(e) => {
@@ -279,7 +281,7 @@ impl AikitEvalRunner {
                     exit_code: None,
                     timed_out: false,
                 };
-                (output, vec![])
+                (output, vec![], None)
             }
         };
 
@@ -307,8 +309,8 @@ impl AikitEvalRunner {
             id: case.id.clone(),
             status,
             command_count: Some(command_count),
-            input_tokens: None,
-            output_tokens: None,
+            input_tokens: token_usage.as_ref().map(|u| u.input_tokens),
+            output_tokens: token_usage.as_ref().map(|u| u.output_tokens),
             check_results,
             error_message: if run_output.timed_out {
                 Some(format!(
@@ -363,8 +365,8 @@ mod tests {
                 id: case.id.clone(),
                 status: CaseStatus::Passed,
                 command_count: Some(0),
-                input_tokens: None,
-                output_tokens: None,
+                input_tokens: Some(100),
+                output_tokens: Some(50),
                 check_results: vec![],
                 error_message: None,
             };
@@ -455,5 +457,59 @@ mod tests {
         let err = RunnerError::AgentUnavailable("codex".to_string());
         assert!(err.to_string().contains("codex"));
         assert!(err.to_string().contains("EVAL_AGENT_UNAVAILABLE"));
+    }
+
+    #[tokio::test]
+    async fn test_stub_runner_returns_non_null_token_fields() {
+        let case = EvalCase {
+            id: "tok-case".to_string(),
+            prompt: "p".to_string(),
+            should_trigger: true,
+            tags: vec![],
+            workspace_subdir: None,
+        };
+        let opts = CaseRunOptions {
+            agent_key: "agent".to_string(),
+            model: None,
+            project_root: PathBuf::from("/tmp"),
+            timeout_seconds: 1,
+            pass_threshold: 1.0,
+        };
+        let runner = StubEvalRunner;
+        let (_out, res, _trace) = runner.run_case(&case, &opts, &[]).await;
+        assert_eq!(
+            res.input_tokens,
+            Some(100),
+            "stub must return non-null input_tokens"
+        );
+        assert_eq!(
+            res.output_tokens,
+            Some(50),
+            "stub must return non-null output_tokens"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stub_runner_trials_propagate_token_fields() {
+        let case = EvalCase {
+            id: "tok-trial".to_string(),
+            prompt: "p".to_string(),
+            should_trigger: true,
+            tags: vec![],
+            workspace_subdir: None,
+        };
+        let opts = CaseRunOptions {
+            agent_key: "agent".to_string(),
+            model: None,
+            project_root: PathBuf::from("/tmp"),
+            timeout_seconds: 1,
+            pass_threshold: 1.0,
+        };
+        let runner = StubEvalRunner;
+        let trials_result = runner.run_case_trials(&case, &opts, &[], 2, None).await;
+        for trial in &trials_result.trials {
+            assert_eq!(trial.input_tokens, Some(100));
+            assert_eq!(trial.output_tokens, Some(50));
+        }
     }
 }
