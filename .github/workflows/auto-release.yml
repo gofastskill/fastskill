@@ -107,7 +107,7 @@ jobs:
           echo "Updated Cargo.toml to version $VERSION:"
           grep '^version = ' Cargo.toml
 
-          cargo update -p fastskill --precise "$VERSION"
+          cargo update --workspace
           echo "Updated Cargo.lock to version $VERSION"
 
       - name: Commit version bump
