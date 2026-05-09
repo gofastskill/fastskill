@@ -936,3 +936,59 @@ fn test_eval_validate_agent_flag() {
         result.stdout
     );
 }
+
+#[test]
+fn test_eval_report_displays_token_info_when_present() {
+    use std::fs;
+    use tempfile::TempDir;
+    use fastskill_evals::artifacts::{
+        CaseStatus, CaseSummary, SummaryResult, write_summary,
+    };
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("run");
+    fs::create_dir_all(&run_dir).unwrap();
+
+    let summary = SummaryResult {
+        suite_pass: true,
+        suite_pass_rate: Some(1.0),
+        agent: "agent".to_string(),
+        model: None,
+        total_cases: 1,
+        passed: 1,
+        failed: 0,
+        trials_per_case: Some(1),
+        parallel: None,
+        pass_threshold: Some(1.0),
+        run_dir: run_dir.clone(),
+        checks_path: None,
+        skill_project_root: dir.path().to_path_buf(),
+        cases: vec![CaseSummary {
+            id: "token-case".to_string(),
+            status: CaseStatus::Passed,
+            command_count: Some(1),
+            input_tokens: Some(1234),
+            output_tokens: Some(567),
+            pass_count: Some(1),
+            total_trials: Some(1),
+            pass_rate: Some(1.0),
+            trials: vec![],
+        }],
+    };
+    write_summary(&run_dir, &summary).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "report", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        result.success,
+        "eval report must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("in=1234") && result.stdout.contains("out=567"),
+        "eval report must display token totals when present; got: {}",
+        result.stdout
+    );
+}

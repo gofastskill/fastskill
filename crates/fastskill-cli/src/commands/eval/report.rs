@@ -71,7 +71,13 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
         if !summary.cases.is_empty() {
             println!("\nCase Results:");
             for case in &summary.cases {
-                println!("  [{}] {}", case.status, case.id);
+                let token_info = match (case.input_tokens, case.output_tokens) {
+                    (Some(i), Some(o)) => format!(" (in={} out={})", i, o),
+                    (Some(i), None) => format!(" (in={})", i),
+                    (None, Some(o)) => format!(" (out={})", o),
+                    (None, None) => String::new(),
+                };
+                println!("  [{}] {}{}", case.status, case.id, token_info);
             }
         }
     }
