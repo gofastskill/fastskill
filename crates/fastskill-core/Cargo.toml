@@ -6,8 +6,8 @@ description = "FastSkill core library - AI Skills management toolkit"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["fastskill", "AI Skills", "ai tools", "anthropic", "claude"]
-categories = ["tools"]
+keywords = ["fastskill", "ai-skills", "ai-tools", "anthropic", "claude"]
+categories = ["command-line-utilities"]
 
 [package.metadata.docs.rs]
 all-features = true
