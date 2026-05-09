@@ -532,7 +532,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/fastskill.rb
           git commit -m "chore: update fastskill to v${VERSION}"
-          git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" "$BRANCH"
+          git push --force "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" "$BRANCH"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
