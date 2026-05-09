@@ -56,7 +56,10 @@ pub fn agent_events_to_trace(events: &[AgentEvent]) -> Vec<TraceEvent> {
                     raw_agent_line_seq,
                 } => TracePayload::TokenUsageLine {
                     usage: serde_json::to_value(usage).unwrap_or(serde_json::Value::Null),
-                    source: format!("{:?}", source).to_lowercase(),
+                    source: serde_json::to_value(source)
+                        .ok()
+                        .and_then(|v| v.as_str().map(|s| s.to_lowercase()))
+                        .unwrap_or_else(|| format!("{:?}", source).to_lowercase()),
                     raw_agent_line_seq: *raw_agent_line_seq,
                 },
                 _ => TracePayload::RawJson {
