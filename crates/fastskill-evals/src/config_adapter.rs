@@ -1,6 +1,6 @@
 //! Adapter that reads fastskill project files and delegates to fastskill_evals config resolution
 
-use crate::config::{resolve_from_input, EvalConfig, EvalConfigError, EvalConfigInput};
+use aikit_evals::{resolve_from_input, EvalConfig, EvalConfigError, EvalConfigInput};
 use fastskill_core::core::manifest::SkillProjectToml;
 use std::path::Path;
 

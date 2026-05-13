@@ -480,7 +480,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_init_with_all_args() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         let args = InitArgs {
@@ -505,7 +518,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_init_with_invalid_version() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         let args = InitArgs {
@@ -532,7 +558,20 @@ mod tests {
         // Note: This test verifies that skill ID validation works
         // The ID is derived from directory name, so we can't easily test invalid IDs here
         // Invalid ID validation happens when the directory name is invalid
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         let args = InitArgs {

@@ -31,6 +31,18 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "aikit-agent"
+version = "0.1.0"
 source = "git+https://github.com/goaikit/aikit?branch=main#dff63ec966a6ad9f310f00e31a27d3e6f195a549"
 dependencies = [
  "reqwest",
@@ -42,11 +54,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "aikit-evals"
+version = "0.1.0"
+dependencies = [
+ "aikit-sdk 0.3.0",
+ "async-trait",
+ "base64 0.22.1",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "aikit-sdk"
 version = "0.2.1"
 source = "git+https://github.com/goaikit/aikit?branch=main#dff63ec966a6ad9f310f00e31a27d3e6f195a549"
 dependencies = [
- "aikit-agent",
+ "aikit-agent 0.1.0 (git+https://github.com/goaikit/aikit?branch=main)",
+ "dirs",
+ "glob",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "walkdir",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "aikit-sdk"
+version = "0.3.0"
+dependencies = [
+ "aikit-agent 0.1.0",
  "dirs",
  "glob",
  "reqwest",
@@ -1571,7 +1616,7 @@ dependencies = [
 name = "fastskill-cli"
 version = "0.9.114"
 dependencies = [
- "aikit-sdk",
+ "aikit-sdk 0.2.1",
  "anyhow",
  "assert_cmd",
  "async-trait",
@@ -1663,18 +1708,10 @@ dependencies = [
 name = "fastskill-evals"
 version = "0.9.114"
 dependencies = [
- "aikit-sdk",
- "async-trait",
- "base64 0.22.1",
+ "aikit-evals",
  "fastskill-core",
- "num_cpus",
- "serde",
- "serde_json",
  "tempfile",
- "thiserror 2.0.18",
- "tokio",
  "toml 0.8.23",
- "tracing",
 ]
 
 [[package]]
