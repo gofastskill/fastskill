@@ -17,6 +17,8 @@ repository = "https://github.com/aroff/fastskill"
 [workspace.dependencies]
 # aikit-sdk for agent metadata file resolution
 aikit-sdk = { git = "https://github.com/goaikit/aikit", branch = "main" }
+# aikit-evals provides the generic eval runner infrastructure
+aikit-evals = { git = "https://github.com/goaikit/aikit", branch = "main" }
 
 # Async runtime
 tokio = { version = "1.0", features = ["rt-multi-thread", "net", "fs", "io-util", "macros", "process"] }

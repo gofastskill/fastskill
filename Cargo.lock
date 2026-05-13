@@ -31,7 +31,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#dff63ec966a6ad9f310f00e31a27d3e6f195a549"
+source = "git+https://github.com/goaikit/aikit?branch=main#a22a619fa61d2fce7f7364c18199b75b72d74e4b"
 dependencies = [
  "reqwest",
  "serde",
@@ -42,9 +42,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "aikit-evals"
+version = "0.1.0"
+source = "git+https://github.com/goaikit/aikit?branch=main#a22a619fa61d2fce7f7364c18199b75b72d74e4b"
+dependencies = [
+ "aikit-sdk",
+ "async-trait",
+ "base64 0.22.1",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "aikit-sdk"
-version = "0.2.1"
-source = "git+https://github.com/goaikit/aikit?branch=main#dff63ec966a6ad9f310f00e31a27d3e6f195a549"
+version = "0.3.0"
+source = "git+https://github.com/goaikit/aikit?branch=main#a22a619fa61d2fce7f7364c18199b75b72d74e4b"
 dependencies = [
  "aikit-agent",
  "dirs",
@@ -1663,18 +1680,10 @@ dependencies = [
 name = "fastskill-evals"
 version = "0.9.114"
 dependencies = [
- "aikit-sdk",
- "async-trait",
- "base64 0.22.1",
+ "aikit-evals",
  "fastskill-core",
- "num_cpus",
- "serde",
- "serde_json",
  "tempfile",
- "thiserror 2.0.18",
- "tokio",
  "toml 0.8.23",
- "tracing",
 ]
 
 [[package]]
@@ -2302,7 +2311,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3197,7 +3206,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.38",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3234,7 +3243,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -4833,7 +4842,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
