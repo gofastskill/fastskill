@@ -98,7 +98,7 @@ aws-config = { workspace = true, optional = true }
 tempfile.workspace = true
 wiremock = "0.5"
 insta = "1.47"
-assert_cmd = "2.0"
+assert_cmd = "2.2"
 predicates = "3.0"
 
 [features]

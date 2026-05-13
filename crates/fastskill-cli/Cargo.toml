@@ -90,7 +90,7 @@ aws-config.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 insta = "1.47"
-assert_cmd = "2.0"
+assert_cmd = "2.2"
 predicates = "3.0"
 
 [lints]
