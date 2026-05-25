@@ -187,6 +187,92 @@ fn test_serve_starts_without_registry_config() {
 }
 
 #[test]
+fn test_serve_health_endpoints() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+        .args(&["serve", "--port", "18085"])
+        .current_dir(temp_dir.path())
+        .spawn()
+        .expect("Failed to start server");
+
+    assert!(
+        wait_for_port(18085, 5),
+        "Server failed to start on port 18085"
+    );
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let client = reqwest::Client::new();
+
+    // Test /healthz liveness probe returns HTTP 200
+    let health_status = rt.block_on(async {
+        client
+            .get("http://127.0.0.1:18085/healthz")
+            .send()
+            .await
+            .expect("GET /healthz")
+            .status()
+    });
+    assert_eq!(health_status, reqwest::StatusCode::OK, "/healthz should return 200");
+
+    // Test /readyz readiness probe returns HTTP 200
+    let ready_status = rt.block_on(async {
+        client
+            .get("http://127.0.0.1:18085/readyz")
+            .send()
+            .await
+            .expect("GET /readyz")
+            .status()
+    });
+    assert_eq!(ready_status, reqwest::StatusCode::OK, "/readyz should return 200");
+
+    // Test /api/v1/skills returns HTTP 200
+    let skills_status = rt.block_on(async {
+        client
+            .get("http://127.0.0.1:18085/api/v1/skills")
+            .send()
+            .await
+            .expect("GET /api/v1/skills")
+            .status()
+    });
+    assert_eq!(skills_status, reqwest::StatusCode::OK, "/api/v1/skills should return 200");
+
+    // Test 308 redirect for unversioned /api/skills
+    let no_redirect_client = reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("build no-redirect client");
+    let redirect_status = rt.block_on(async {
+        no_redirect_client
+            .get("http://127.0.0.1:18085/api/skills")
+            .send()
+            .await
+            .expect("GET /api/skills unversioned")
+            .status()
+    });
+    assert_eq!(
+        redirect_status.as_u16(),
+        308,
+        "Unversioned /api/skills should redirect 308 to /api/v1/skills"
+    );
+
+    child.kill().expect("Failed to kill server");
+
+    assert_snapshot_with_settings(
+        "serve_health_endpoints",
+        "Health endpoints verified",
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
 fn test_serve_port_already_in_use_error() {
     if !can_bind_localhost_or_skip() {
         return;
