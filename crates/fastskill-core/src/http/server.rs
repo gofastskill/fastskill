@@ -14,15 +14,16 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVersion, Stability};
 use include_dir::{include_dir, Dir};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use tower::ServiceBuilder;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 /// Static assets embedded at compile time
@@ -311,58 +312,100 @@ impl FastSkillServer {
         }
     }
 
-    /// Create skill CRUD routes
-    fn create_skill_routes() -> Router<AppState> {
+    /// Skill CRUD routes under /api/v1/ (prefix stripped for version host)
+    fn create_skill_routes_v1() -> Router<AppState> {
         Router::new()
-            .route("/api/skills", get(skills::list_skills))
-            .route("/api/skills", post(skills::create_skill))
-            .route("/api/skills/:id", get(skills::get_skill))
-            .route("/api/skills/:id", put(skills::update_skill))
-            .route("/api/skills/:id", delete(skills::delete_skill))
-            .route("/api/skills/upgrade", post(skills::upgrade_skills))
-            .route("/api/project", get(manifest::get_project))
+            .route("/skills", get(skills::list_skills))
+            .route("/skills", post(skills::create_skill))
+            .route("/skills/{id}", get(skills::get_skill))
+            .route("/skills/{id}", put(skills::update_skill))
+            .route("/skills/{id}", delete(skills::delete_skill))
+            .route("/skills/upgrade", post(skills::upgrade_skills))
+            .route("/project", get(manifest::get_project))
     }
 
-    /// Create search and reindex routes
-    fn create_search_routes() -> Router<AppState> {
+    /// Search and reindex routes under /api/v1/ (prefix stripped)
+    fn create_search_routes_v1() -> Router<AppState> {
         Router::new()
-            .route("/api/search", post(search::search_skills))
-            .route("/api/resolve", post(resolve::resolve_context))
-            .route("/api/reindex", post(reindex::reindex_all))
-            .route("/api/reindex/:id", post(reindex::reindex_skill))
+            .route("/search", post(search::search_skills))
+            .route("/resolve", post(resolve::resolve_context))
+            .route("/reindex", post(reindex::reindex_all))
+            .route("/reindex/{id}", post(reindex::reindex_skill))
     }
 
-    /// Create status routes
-    fn create_status_routes() -> Router<AppState> {
-        Router::new().route("/api/status", get(status::status))
+    /// Status route under /api/v1/ (prefix stripped)
+    fn create_status_routes_v1() -> Router<AppState> {
+        Router::new().route("/status", get(status::status))
     }
 
-    /// Create Claude Code v1 API routes
-    fn create_claude_api_routes() -> Router<AppState> {
+    /// Registry API routes under /api/v1/ (prefix stripped, axum 0.8 params)
+    fn create_registry_api_routes_v1() -> Router<AppState> {
         Router::new()
-            .route("/v1/skills", post(claude_api::create_skill))
-            .route("/v1/skills", get(claude_api::list_skills))
-            .route("/v1/skills/:skill_id", get(claude_api::get_skill))
-            .route("/v1/skills/:skill_id", delete(claude_api::delete_skill))
+            .route("/registry/index/skills", get(registry::list_index_skills))
+            .route("/registry/sources", get(registry::list_sources))
+            .route("/registry/skills", get(registry::list_all_skills))
             .route(
-                "/v1/skills/:skill_id/versions",
+                "/registry/sources/{name}/skills",
+                get(registry::list_source_skills),
+            )
+            .route(
+                "/registry/sources/{name}/marketplace",
+                get(registry::get_marketplace),
+            )
+            .route("/registry/refresh", post(registry::refresh_sources))
+            .route("/registry/publish", post(registry_publish::publish_package))
+            .route(
+                "/registry/publish/status/{job_id}",
+                get(registry_publish::get_publish_status),
+            )
+    }
+
+    /// Raw index routes for mount("/index") — paths relative to the mount point
+    fn create_registry_index_routes_v1() -> Router<AppState> {
+        Router::new().route("/{*skill_id}", get(registry::serve_index_file))
+    }
+
+    /// Manifest routes under /api/v1/ (prefix stripped, axum 0.8 params)
+    fn create_manifest_routes_v1() -> Router<AppState> {
+        Router::new()
+            .route("/manifest/skills", get(manifest::list_manifest_skills))
+            .route("/manifest/skills", post(manifest::add_skill_to_manifest))
+            .route(
+                "/manifest/skills/{id}",
+                put(manifest::update_skill_in_manifest),
+            )
+            .route(
+                "/manifest/skills/{id}",
+                delete(manifest::remove_skill_from_manifest),
+            )
+    }
+
+    /// Claude Code v1 API routes for mount("/v1") — paths relative to the mount point
+    fn create_claude_api_routes_v1() -> Router<AppState> {
+        Router::new()
+            .route("/skills", post(claude_api::create_skill))
+            .route("/skills", get(claude_api::list_skills))
+            .route("/skills/{skill_id}", get(claude_api::get_skill))
+            .route("/skills/{skill_id}", delete(claude_api::delete_skill))
+            .route(
+                "/skills/{skill_id}/versions",
                 post(claude_api::create_skill_version),
             )
             .route(
-                "/v1/skills/:skill_id/versions",
+                "/skills/{skill_id}/versions",
                 get(claude_api::list_skill_versions),
             )
             .route(
-                "/v1/skills/:skill_id/versions/:version",
+                "/skills/{skill_id}/versions/{version}",
                 get(claude_api::get_skill_version),
             )
             .route(
-                "/v1/skills/:skill_id/versions/:version",
+                "/skills/{skill_id}/versions/{version}",
                 delete(claude_api::delete_skill_version),
             )
     }
 
-    /// Create UI routes
+    /// UI static file routes (unchanged paths, used as root_fallback)
     fn create_ui_routes() -> Router<AppState> {
         info!("Serving UI at /");
         Router::new()
@@ -373,95 +416,61 @@ impl FastSkillServer {
             .route("/styles.css", get(serve_embedded_static))
     }
 
-    /// Create registry routes
-    fn create_registry_routes() -> Router<AppState> {
-        Router::new()
-            .route("/index/*skill_id", get(registry::serve_index_file))
-            .route(
-                "/api/registry/index/skills",
-                get(registry::list_index_skills),
-            )
-            .route("/api/registry/sources", get(registry::list_sources))
-            .route("/api/registry/skills", get(registry::list_all_skills))
-            .route(
-                "/api/registry/sources/:name/skills",
-                get(registry::list_source_skills),
-            )
-            .route(
-                "/api/registry/sources/:name/marketplace",
-                get(registry::get_marketplace),
-            )
-            .route("/api/registry/refresh", post(registry::refresh_sources))
-            .route(
-                "/api/registry/publish",
-                post(registry_publish::publish_package),
-            )
-            .route(
-                "/api/registry/publish/status/:job_id",
-                get(registry_publish::get_publish_status),
-            )
-    }
+    /// Start the server using cli-framework ApiServerBuilder
+    pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
+        display_startup_banner();
 
-    /// Create manifest routes
-    fn create_manifest_routes() -> Router<AppState> {
-        Router::new()
-            .route("/api/manifest/skills", get(manifest::list_manifest_skills))
-            .route(
-                "/api/manifest/skills",
-                post(manifest::add_skill_to_manifest),
-            )
-            .route(
-                "/api/manifest/skills/:id",
-                put(manifest::update_skill_in_manifest),
-            )
-            .route(
-                "/api/manifest/skills/:id",
-                delete(manifest::remove_skill_from_manifest),
-            )
-    }
-
-    /// Create the Axum router with all routes
-    fn create_router(&self) -> Result<Router, Box<dyn std::error::Error>> {
-        // Load project configuration
+        // Load project configuration (same as previous create_router logic)
         let current_dir = env::current_dir()?;
-        let config = crate::core::load_project_config(&current_dir)
+        let project_config = crate::core::load_project_config(&current_dir)
             .map_err(|e| format!("Failed to load project config: {}", e))?;
 
         let state = AppState::new(self.service.clone())?.with_project_config(
-            config.project_root,
-            config.project_file_path,
-            config.skills_directory,
+            project_config.project_root,
+            project_config.project_file_path,
+            project_config.skills_directory,
         );
 
-        // Merge all route modules
-        let router = Router::new()
-            .merge(Self::create_skill_routes())
-            .merge(Self::create_search_routes())
-            .merge(Self::create_status_routes())
-            .merge(Self::create_claude_api_routes())
-            .merge(Self::create_ui_routes())
-            .merge(Self::create_registry_routes())
-            .merge(Self::create_manifest_routes());
+        // Build versioned v1 router with compression (applied to fastskill routes only)
+        let v1_router = Router::new()
+            .merge(Self::create_skill_routes_v1())
+            .merge(Self::create_search_routes_v1())
+            .merge(Self::create_status_routes_v1())
+            .merge(Self::create_manifest_routes_v1())
+            .merge(Self::create_registry_api_routes_v1())
+            .layer(TraceLayer::new_for_http())
+            .layer(CompressionLayer::new())
+            .with_state(state.clone());
 
-        // Add middleware and state
-        Ok(router
-            .layer(
-                ServiceBuilder::new()
-                    .layer(TraceLayer::new_for_http())
-                    .layer(CompressionLayer::new())
-                    .layer(build_cors_layer(self.service.config())),
-            )
-            .with_state(state))
-    }
+        // Claude-API surface mounted at /v1 (unchanged URL contract)
+        let claude_router = Self::create_claude_api_routes_v1().with_state(state.clone());
 
-    /// Start the server
-    pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
-        // Display startup banner
-        display_startup_banner();
+        // Raw index surface mounted at /index (unchanged URL contract)
+        let index_router = Self::create_registry_index_routes_v1().with_state(state.clone());
 
-        let app = self.create_router()?;
+        // Console UI served as root fallback
+        let ui_router = Self::create_ui_routes().with_state(state.clone());
 
-        // Start validation worker only when registry config is valid
+        let cors_layer = build_cors_layer(self.service.config());
+
+        let server = ApiServerBuilder::new()
+            .version(ApiVersion {
+                name: ApiVersionName::parse("v1")?,
+                router: v1_router,
+                stability: Stability::Stable,
+                deprecation: None,
+            })
+            .default_version(DefaultVersion::Pinned(ApiVersionName::parse("v1")?))
+            .mount("/v1", claude_router)
+            .mount("/index", index_router)
+            .cors(cors_layer)
+            .root_fallback(ui_router)
+            .health_version(env!("CARGO_PKG_VERSION"))
+            .build();
+
+        let shutdown = server.shutdown_token();
+
+        // Start validation worker bound to the server shutdown token
         let config = self.service.config();
         if validate_registry_config(config).is_ok() {
             let staging_dir = config
@@ -478,18 +487,14 @@ impl FastSkillServer {
                     blob_base_url: config.registry_blob_base_url.clone(),
                 };
                 let worker = ValidationWorker::new(staging_manager, worker_config);
-                worker.start();
-                info!("Validation worker started");
+                worker.start_with_shutdown(shutdown.clone());
             }
         }
 
         info!("Starting FastSkill HTTP server on {}", self.addr);
 
-        let listener = tokio::net::TcpListener::bind(self.addr).await?;
-        let actual_addr = listener.local_addr()?;
-        info!("Server bound to {}", actual_addr);
-
-        axum::serve(listener, app).await?;
+        let addr_str = self.addr.to_string();
+        server.serve(&addr_str).await?;
 
         Ok(())
     }

@@ -84,4 +84,8 @@ See [Registry overview](/registry/overview) and [repos command](/cli-reference/r
 
 | Operation | Command | What it does |
 |-----------|---------|--------------|
-| HTTP server | `fastskill serve` | Web UI and HTTP API (`--host`, `--port`; see [serve command](/cli-reference/serve-command)) |
+| HTTP server | `fastskill serve` | Web UI and HTTP API under `/api/v1/…` (`--host`, `--port`; see [serve command](/cli-reference/serve-command)) |
+| Liveness probe | `curl http://localhost:8080/healthz` | Returns JSON with fastskill version; suitable for container health checks |
+| Readiness probe | `curl http://localhost:8080/readyz` | Returns 200 when ready, 503 during graceful shutdown |
+| List skills (API) | `curl http://localhost:8080/api/v1/skills` | JSON list of installed skills |
+| Search (API) | `curl -X POST http://localhost:8080/api/v1/search -d '{"query":"text"}' -H 'Content-Type: application/json'` | Search skills via HTTP |

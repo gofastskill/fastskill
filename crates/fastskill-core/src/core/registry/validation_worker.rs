@@ -99,6 +99,41 @@ impl ValidationWorker {
             .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
+    /// Start the validation worker with graceful shutdown via cancellation token
+    pub fn start_with_shutdown(&self, shutdown: tokio_util::sync::CancellationToken) {
+        let staging_manager = self.staging_manager.clone();
+        let config = self.config.clone();
+        let skill_validator = self.skill_validator.clone();
+        let zip_validator = self.zip_validator.clone();
+        let running = self.running.clone();
+
+        running.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        tokio::spawn(async move {
+            info!("Validation worker started");
+            loop {
+                if let Err(e) = Self::process_pending_packages(
+                    &staging_manager,
+                    &config,
+                    &skill_validator,
+                    &zip_validator,
+                )
+                .await
+                {
+                    error!("Error processing pending packages: {}", e);
+                }
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = tokio::time::sleep(
+                        tokio::time::Duration::from_secs(config.poll_interval_secs)
+                    ) => {},
+                }
+            }
+            running.store(false, std::sync::atomic::Ordering::SeqCst);
+            info!("Validation worker stopped");
+        });
+    }
+
     /// Process all pending packages
     async fn process_pending_packages(
         staging_manager: &StagingManager,
@@ -482,6 +517,37 @@ mod tests {
     use tempfile::TempDir;
     use zip::write::FileOptions;
     use zip::ZipWriter;
+
+    #[tokio::test]
+    async fn test_start_with_shutdown_stops_cleanly() {
+        let temp_dir = TempDir::new().unwrap();
+        let staging_manager = StagingManager::new(temp_dir.path().to_path_buf());
+        staging_manager.initialize().unwrap();
+
+        let config = ValidationWorkerConfig {
+            poll_interval_secs: 1,
+            ..Default::default()
+        };
+
+        let worker = ValidationWorker::new(staging_manager, config);
+        let running = worker.running.clone();
+
+        let token = tokio_util::sync::CancellationToken::new();
+        worker.start_with_shutdown(token.clone());
+
+        // running is set synchronously before spawn, so it should be true immediately
+        assert!(running.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Cancel and wait for the spawned task to finish
+        token.cancel();
+        for _ in 0..20 {
+            if !running.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(!running.load(std::sync::atomic::Ordering::SeqCst));
+    }
 
     /// Helper to create a test ZIP with malicious entries
     fn create_malicious_zip(path: &std::path::Path) {

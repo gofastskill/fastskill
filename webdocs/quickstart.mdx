@@ -63,6 +63,11 @@ You should see JSON results for installed skills. If empty, run `fastskill insta
 fastskill serve --port 8080
 ```
 Browse `http://localhost:8080/` for the bundled UI.
+
+The HTTP API is available under `/api/v1/…`, e.g.:
+- `GET http://localhost:8080/api/v1/skills` — list installed skills
+- `GET http://localhost:8080/healthz` — liveness probe
+- `GET http://localhost:8080/readyz` — readiness probe
 </Step>
 </Steps>
 

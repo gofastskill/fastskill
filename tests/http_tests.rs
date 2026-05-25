@@ -105,17 +105,17 @@ async fn test_http_endpoints_are_accessible_without_authentication() {
     let base = format!("http://127.0.0.1:{port}");
 
     let project_resp = client
-        .get(format!("{base}/api/project"))
+        .get(format!("{base}/api/v1/project"))
         .send()
         .await
-        .expect("GET /api/project");
+        .expect("GET /api/v1/project");
     assert_eq!(project_resp.status(), reqwest::StatusCode::OK);
 
     let skills_resp = client
-        .get(format!("{base}/api/skills"))
+        .get(format!("{base}/api/v1/skills"))
         .send()
         .await
-        .expect("GET /api/skills");
+        .expect("GET /api/v1/skills");
     assert_eq!(skills_resp.status(), reqwest::StatusCode::OK);
 
     let package_bytes = create_test_publish_zip();
@@ -128,15 +128,93 @@ async fn test_http_endpoints_are_accessible_without_authentication() {
     );
 
     let publish_resp = client
-        .post(format!("{base}/api/registry/publish"))
+        .post(format!("{base}/api/v1/registry/publish"))
         .multipart(form)
         .send()
         .await
-        .expect("POST /api/registry/publish");
+        .expect("POST /api/v1/registry/publish");
     assert_ne!(
         publish_resp.status(),
         reqwest::StatusCode::UNAUTHORIZED,
         "publish should not require auth headers"
+    );
+
+    child.kill().expect("kill server");
+    let _ = child.wait();
+}
+
+#[tokio::test]
+async fn test_health_and_versioning_endpoints() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let Some(port) = get_free_port_or_skip() else {
+        return;
+    };
+    let mut child = start_test_server(&temp_dir, port);
+
+    assert!(
+        wait_for_port(port, 10),
+        "Server failed to start on port {}",
+        port
+    );
+
+    let client = reqwest::Client::new();
+    let base = format!("http://127.0.0.1:{port}");
+
+    // Test /healthz liveness probe
+    let health_resp = client
+        .get(format!("{base}/healthz"))
+        .send()
+        .await
+        .expect("GET /healthz");
+    assert_eq!(
+        health_resp.status(),
+        reqwest::StatusCode::OK,
+        "/healthz should return 200"
+    );
+
+    // Test /readyz readiness probe
+    let ready_resp = client
+        .get(format!("{base}/readyz"))
+        .send()
+        .await
+        .expect("GET /readyz");
+    assert_eq!(
+        ready_resp.status(),
+        reqwest::StatusCode::OK,
+        "/readyz should return 200"
+    );
+
+    // Test 308 redirect for unversioned /api/skills -> /api/v1/skills
+    let no_redirect_client = reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("build no-redirect client");
+    let redirect_resp = no_redirect_client
+        .get(format!("{base}/api/skills"))
+        .send()
+        .await
+        .expect("GET /api/skills unversioned");
+    assert_eq!(
+        redirect_resp.status().as_u16(),
+        308,
+        "Unversioned /api/skills should redirect 308"
+    );
+
+    // Test X-API-Version header on versioned endpoint
+    let versioned_resp = client
+        .get(format!("{base}/api/v1/skills"))
+        .send()
+        .await
+        .expect("GET /api/v1/skills");
+    assert_eq!(versioned_resp.status(), reqwest::StatusCode::OK);
+    let api_version_header = versioned_resp
+        .headers()
+        .get("x-api-version")
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(
+        api_version_header,
+        Some("v1"),
+        "X-API-Version header should be v1"
     );
 
     child.kill().expect("kill server");

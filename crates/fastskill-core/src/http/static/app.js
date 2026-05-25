@@ -1,7 +1,7 @@
 // FastSkill UI - skill-project.toml view; table lists all installed skills
 class ProjectApp {
     constructor() {
-        this.apiBase = '/api';
+        this.apiBase = '/api/v1';
         this.project = null;
         this.skills = [];
         this.init();
