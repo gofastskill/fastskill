@@ -1,4 +1,13 @@
 //! Integration tests for HTTP search endpoint
+//!
+//! All search HTTP API endpoints are served under `/api/v1/…` after
+//! the migration from the flat unversioned `/api/…` namespace.
+//!
+//! Versioned search API URL reference (post-migration):
+//!   POST /api/v1/search   — full-text and semantic skill search
+//!   POST /api/v1/resolve  — resolve skill identifiers
+//!   POST /api/v1/reindex  — trigger full re-index
+//!   POST /api/v1/reindex/{id} — re-index a single skill by ID
 
 #![allow(
     clippy::unwrap_used,

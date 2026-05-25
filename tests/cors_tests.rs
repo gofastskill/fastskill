@@ -1,4 +1,11 @@
 //! CORS configuration tests
+//!
+//! CORS is applied host-wide by the cli-framework ApiServerBuilder via `.cors(layer)`.
+//! All versioned API routes under `/api/v1/…` and mounted routes at `/v1/…` and
+//! `/index/…` receive the CORS policy. Health probe routes (`/healthz`, `/readyz`)
+//! are exempt from fastskill-authored CORS since the host controls them.
+//!
+//! URL paths used in CORS origin tests reference the new `/api/v1/…` namespace.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
