@@ -16,6 +16,9 @@ path = "src/main.rs"
 [dependencies]
 # Core library
 fastskill-core = { path = "../fastskill-core", features = ["filesystem-storage", "registry-publish", "hot-reload"] }
+
+# CLI framework for AppBuilder, command registry, MCP server, and doctor
+cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "doctor", "testkit"] }
 fastskill-evals = { path = "../fastskill-evals" }
 fastskill-agent-runtime = { path = "../fastskill-agent-runtime" }
 

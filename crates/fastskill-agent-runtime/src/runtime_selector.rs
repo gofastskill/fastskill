@@ -186,7 +186,7 @@ mod tests {
                 assert_eq!(unknown, vec!["unknown-xyz"]);
                 assert!(available.contains(&"codex".to_string()));
             }
-            _ => panic!("expected UnknownRuntimeIds"),
+            _ => unreachable!("expected UnknownRuntimeIds"),
         }
     }
 
@@ -246,7 +246,7 @@ mod tests {
             RuntimeSelectionError::EmptyRuntimeSet { hint } => {
                 assert!(hint.contains("Install"));
             }
-            _ => panic!("expected EmptyRuntimeSet"),
+            _ => unreachable!("expected EmptyRuntimeSet"),
         }
     }
 
