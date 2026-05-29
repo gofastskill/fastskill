@@ -70,6 +70,7 @@ pub enum RegistryCommand {
     },
 }
 
+#[allow(dead_code)]
 pub async fn execute_registry(args: RegistryArgs) -> CliResult<()> {
     // Print standardized deprecation warning
     let mappings = vec![

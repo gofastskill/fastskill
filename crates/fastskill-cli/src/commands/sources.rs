@@ -139,6 +139,7 @@ pub enum SourcesCommand {
     },
 }
 
+#[allow(dead_code)]
 pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
     // Print standardized deprecation warning
     let mappings = vec![

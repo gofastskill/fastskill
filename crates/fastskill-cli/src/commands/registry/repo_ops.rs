@@ -1,5 +1,6 @@
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
+use fastskill_core::core::repository::RepositoryDefinition;
 use fastskill_core::OutputFormat;
 use std::path::PathBuf;
 
@@ -8,6 +9,7 @@ pub async fn execute_list() -> CliResult<()> {
     execute_list_with_format(OutputFormat::Table).await
 }
 
+#[allow(dead_code)]
 pub async fn execute_list_with_json(json: bool) -> CliResult<()> {
     let format = if json {
         OutputFormat::Json
@@ -38,65 +40,7 @@ pub async fn execute_list_with_format(format: OutputFormat) -> CliResult<()> {
     Ok(())
 }
 
-pub async fn execute_add(
-    name: String,
-    repo_type: String,
-    url_or_path: String,
-    priority: Option<u32>,
-    branch: Option<String>,
-    tag: Option<String>,
-    auth_type: Option<String>,
-    auth_env: Option<String>,
-    auth_key_path: Option<PathBuf>,
-    auth_username: Option<String>,
-) -> CliResult<()> {
-    let mut repo_manager = super::helpers::load_repo_manager().await?;
-
-    let repo_type_enum = super::helpers::parse_repository_type(&repo_type)?;
-    let config =
-        super::helpers::create_repository_config(repo_type_enum.clone(), url_or_path, branch, tag);
-    let auth =
-        super::helpers::parse_authentication(auth_type, auth_env, auth_key_path, auth_username)?;
-
-    let repo_def = fastskill_core::core::repository::RepositoryDefinition {
-        name: name.clone(),
-        repo_type: repo_type_enum,
-        priority: priority.unwrap_or(0),
-        config,
-        auth,
-        storage: None,
-    };
-
-    repo_manager
-        .add_repository(name.clone(), repo_def.clone())
-        .map_err(|e| CliError::Config(format!("Failed to add repository: {}", e)))?;
-    repo_manager
-        .save()
-        .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
-
-    println!("{}", messages::ok(&format!("Added repository: {}", name)));
-    Ok(())
-}
-
-pub async fn execute_remove(name: String) -> CliResult<()> {
-    let mut repo_manager = super::helpers::load_repo_manager().await?;
-
-    repo_manager
-        .remove_repository(&name)
-        .map_err(|e| CliError::Config(format!("Failed to remove repository: {}", e)))?;
-    repo_manager
-        .save()
-        .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
-
-    println!("{}", messages::ok(&format!("Removed repository: {}", name)));
-    Ok(())
-}
-
-#[allow(dead_code)] // Used by legacy registry command paths if needed
-pub async fn execute_show(name: String) -> CliResult<()> {
-    execute_show_with_format(name, OutputFormat::Table).await
-}
-
+#[allow(dead_code)]
 pub async fn execute_show_with_json(name: String, json: bool) -> CliResult<()> {
     let format = if json {
         OutputFormat::Json
@@ -241,6 +185,65 @@ pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
         println!("{}", messages::ok("Refreshed cache for all repositories"));
     }
     Ok(())
+}
+
+pub async fn execute_add(
+    name: String,
+    repo_type: String,
+    url_or_path: String,
+    priority: Option<u32>,
+    branch: Option<String>,
+    tag: Option<String>,
+    auth_type: Option<String>,
+    auth_env: Option<String>,
+    auth_key_path: Option<PathBuf>,
+    auth_username: Option<String>,
+) -> CliResult<()> {
+    let mut repo_manager = super::helpers::load_repo_manager().await?;
+
+    let repo_type = super::helpers::parse_repository_type(&repo_type)?;
+    let config =
+        super::helpers::create_repository_config(repo_type.clone(), url_or_path, branch, tag);
+    let auth =
+        super::helpers::parse_authentication(auth_type, auth_env, auth_key_path, auth_username)?;
+
+    let repo = RepositoryDefinition {
+        name: name.clone(),
+        repo_type,
+        priority: priority.unwrap_or(0),
+        config,
+        auth,
+        storage: None,
+    };
+
+    repo_manager
+        .add_repository(name.clone(), repo)
+        .map_err(|e| CliError::Config(format!("Failed to add repository: {}", e)))?;
+    repo_manager
+        .save()
+        .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
+
+    println!("{}", messages::ok(&format!("Added repository: {}", name)));
+    Ok(())
+}
+
+pub async fn execute_remove(name: String) -> CliResult<()> {
+    let mut repo_manager = super::helpers::load_repo_manager().await?;
+
+    repo_manager
+        .remove_repository(&name)
+        .map_err(|e| CliError::Config(format!("Failed to remove repository: {}", e)))?;
+    repo_manager
+        .save()
+        .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
+
+    println!("{}", messages::ok(&format!("Removed repository: {}", name)));
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub async fn execute_show(name: String) -> CliResult<()> {
+    execute_show_with_format(name, OutputFormat::Table).await
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::await_holding_lock)]

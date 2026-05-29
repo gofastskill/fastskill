@@ -259,6 +259,7 @@ impl CliWarning {
 }
 
 impl CliError {
+    #[allow(dead_code)]
     /// Get the exit code for this error
     /// Returns: 0 = success, 1 = not found/invalid, 2 = system error
     pub fn exit_code(&self) -> i32 {

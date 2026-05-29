@@ -5,6 +5,7 @@ use fastskill_agent_runtime::RuntimeSelectionError;
 use fastskill_core::OutputFormat;
 
 /// Emit a standardized deprecation warning with migration guidance.
+#[allow(dead_code)]
 pub fn emit_deprecation_warning(
     legacy_command: &str,
     new_command: &str,
