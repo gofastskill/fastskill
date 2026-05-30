@@ -11,7 +11,7 @@ use crate::config::{create_service_config, get_skill_search_locations_for_displa
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
 use chrono::Utc;
 use clap::Args;
-use fastskill_core::core::lock::SkillsLock;
+use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::{ProjectConfig, SkillDefinition};
 use fastskill_core::{FastSkillService, OutputFormat};
 use std::path::PathBuf;
@@ -99,14 +99,14 @@ fn validate_show_args(args: &ShowArgs, global: bool) -> CliResult<()> {
     Ok(())
 }
 
-fn load_config_and_lock() -> CliResult<(ProjectConfig, Option<SkillsLock>)> {
+fn load_config_and_lock() -> CliResult<(ProjectConfig, Option<ProjectSkillsLock>)> {
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let config =
         fastskill_core::core::load_project_config(&current_dir).map_err(CliError::Config)?;
     let lock_path = config.project_root.join("skills.lock");
     let lock_opt = if lock_path.exists() {
-        let lock = SkillsLock::load_from_file(&lock_path)
+        let lock = ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
         Some(lock)
     } else {
@@ -116,7 +116,7 @@ fn load_config_and_lock() -> CliResult<(ProjectConfig, Option<SkillsLock>)> {
 }
 
 fn run_with_lock(
-    lock: SkillsLock,
+    lock: ProjectSkillsLock,
     args: &ShowArgs,
     config: &ProjectConfig,
     format: OutputFormat,
@@ -149,7 +149,7 @@ fn search_paths_from_config(config: &ProjectConfig) -> Vec<(PathBuf, String)> {
         .unwrap_or_else(|_| vec![(config.skills_directory.clone(), "project".to_string())])
 }
 
-fn print_lock_list(lock: &SkillsLock, tree: bool, format: OutputFormat) -> CliResult<()> {
+fn print_lock_list(lock: &ProjectSkillsLock, tree: bool, format: OutputFormat) -> CliResult<()> {
     let skills: Vec<SkillDefinition> = lock
         .skills
         .iter()

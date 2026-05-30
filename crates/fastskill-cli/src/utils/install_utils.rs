@@ -526,7 +526,7 @@ fn build_sources_manager(
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
 /// This is needed because PackageResolver requires SourcesManager
-fn create_sources_manager_from_repositories(
+pub fn create_sources_manager_from_repositories(
     repo_manager: &RepositoryManager,
 ) -> CliResult<Option<SourcesManager>> {
     let repos = repo_manager.list_repositories();

@@ -85,7 +85,7 @@ impl SkillsManifest {
         let content =
             toml::to_string_pretty(self).map_err(|e| ManifestError::Serialize(e.to_string()))?;
 
-        std::fs::write(path, content).map_err(ManifestError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
 
         Ok(())
     }
@@ -99,19 +99,22 @@ impl SkillsManifest {
         self.skills
             .iter()
             .filter(|skill| {
-                // If only_groups specified, skill must be in one of those groups
-                if let Some(only) = only_groups {
-                    if skill.groups.is_empty() && !only.is_empty() {
+                // Exclusion always takes precedence: if skill is in exclude_groups, exclude it.
+                if let Some(exclude) = exclude_groups {
+                    if skill.groups.iter().any(|g| exclude.contains(g)) {
                         return false;
-                    }
-                    if !skill.groups.is_empty() {
-                        return skill.groups.iter().any(|g| only.contains(g));
                     }
                 }
 
-                // If exclude_groups specified, skill must not be in any excluded group
-                if let Some(exclude) = exclude_groups {
-                    return !skill.groups.iter().any(|g| exclude.contains(g));
+                // If only_groups specified, skill must be in at least one of those groups.
+                if let Some(only) = only_groups {
+                    if only.is_empty() {
+                        return true;
+                    }
+                    if skill.groups.is_empty() {
+                        return false;
+                    }
+                    return skill.groups.iter().any(|g| only.contains(g));
                 }
 
                 true
@@ -479,7 +482,7 @@ impl SkillProjectToml {
         let content =
             toml::to_string_pretty(self).map_err(|e| ManifestError::Serialize(e.to_string()))?;
 
-        std::fs::write(path, content).map_err(ManifestError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
 
         Ok(())
     }
@@ -646,6 +649,57 @@ impl SkillProjectToml {
     }
 }
 
+/// Canonical conversion from manifest RepositoryDefinition to the runtime type.
+/// This is the single authoritative definition; all call-sites MUST use this impl.
+impl From<&RepositoryDefinition> for crate::core::repository::RepositoryDefinition {
+    fn from(r: &RepositoryDefinition) -> Self {
+        use crate::core::repository::{
+            RepositoryAuth, RepositoryConfig, RepositoryDefinition as RepoDef, RepositoryType,
+        };
+
+        let repo_type = match r.r#type {
+            crate::core::manifest::RepositoryType::HttpRegistry => RepositoryType::HttpRegistry,
+            crate::core::manifest::RepositoryType::GitMarketplace => RepositoryType::GitMarketplace,
+            crate::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
+            crate::core::manifest::RepositoryType::Local => RepositoryType::Local,
+        };
+
+        let config = match &r.connection {
+            RepositoryConnection::HttpRegistry { index_url } => RepositoryConfig::HttpRegistry {
+                index_url: index_url.clone(),
+            },
+            RepositoryConnection::GitMarketplace { url, branch } => {
+                RepositoryConfig::GitMarketplace {
+                    url: url.clone(),
+                    branch: branch.clone(),
+                    tag: None,
+                }
+            }
+            RepositoryConnection::ZipUrl { zip_url } => RepositoryConfig::ZipUrl {
+                base_url: zip_url.clone(),
+            },
+            RepositoryConnection::Local { path } => RepositoryConfig::Local {
+                path: std::path::PathBuf::from(path),
+            },
+        };
+
+        let auth = r.auth.as_ref().map(|a| match a.r#type {
+            AuthType::Pat => RepositoryAuth::Pat {
+                env_var: a.env_var.clone().unwrap_or_else(|| "PAT_TOKEN".to_string()),
+            },
+        });
+
+        RepoDef {
+            name: r.name.clone(),
+            repo_type,
+            priority: r.priority,
+            config,
+            auth,
+            storage: None,
+        }
+    }
+}
+
 /// Manifest-related errors
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
@@ -745,5 +799,64 @@ mod tests {
 
         let source_toml = toml::to_string(&source_ref).unwrap();
         assert!(source_toml.contains("type = \"source\""));
+    }
+
+    #[test]
+    fn test_get_skills_for_groups_exclude_wins_over_only() {
+        // S15: A skill present in both only_groups and exclude_groups MUST be excluded.
+        let toml_content = r#"
+            [metadata]
+            version = "1.0.0"
+
+            [[skills]]
+            id = "dual-group-skill"
+            source = { type = "git", url = "https://github.com/org/repo.git" }
+            groups = ["prod", "dev"]
+            version = "*"
+
+            [[skills]]
+            id = "only-prod-skill"
+            source = { type = "git", url = "https://github.com/org/repo2.git" }
+            groups = ["prod"]
+            version = "*"
+        "#;
+
+        let manifest: SkillsManifest = toml::from_str(toml_content).unwrap();
+
+        // dual-group-skill is in both "prod" (only) and "dev" (exclude) → must be excluded
+        let result =
+            manifest.get_skills_for_groups(Some(&["dev".to_string()]), Some(&["prod".to_string()]));
+
+        let ids: Vec<&str> = result.iter().map(|s| s.id.as_str()).collect();
+        assert!(
+            !ids.contains(&"dual-group-skill"),
+            "skill in both only_groups and exclude_groups must be excluded"
+        );
+        assert!(
+            ids.contains(&"only-prod-skill"),
+            "skill only in only_groups and not in exclude_groups must be included"
+        );
+    }
+
+    #[test]
+    fn test_from_manifest_repo_to_repository_definition() {
+        let manifest_repo = RepositoryDefinition {
+            name: "test-repo".to_string(),
+            r#type: RepositoryType::GitMarketplace,
+            priority: 1,
+            connection: RepositoryConnection::GitMarketplace {
+                url: "https://github.com/org/marketplace.git".to_string(),
+                branch: Some("main".to_string()),
+            },
+            auth: None,
+        };
+
+        let repo_def = crate::core::repository::RepositoryDefinition::from(&manifest_repo);
+        assert_eq!(repo_def.name, "test-repo");
+        assert_eq!(repo_def.priority, 1);
+        assert!(matches!(
+            repo_def.repo_type,
+            crate::core::repository::RepositoryType::GitMarketplace
+        ));
     }
 }

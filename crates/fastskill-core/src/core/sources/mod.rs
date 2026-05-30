@@ -1,5 +1,10 @@
 //! Sources system for managing skill repositories
 
+pub mod local;
+pub mod manager;
+pub mod marketplace;
+pub mod model;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -837,81 +842,41 @@ impl SourcesManager {
         })
     }
 
-    /// Parse YAML frontmatter from SKILL.md
+    /// Parse YAML frontmatter from SKILL.md using serde_yaml.
+    /// Handles values containing colons correctly (e.g. `description: Tool: does X`).
     fn parse_skill_frontmatter(
         &self,
         content: &str,
         skill_path: &Path,
     ) -> Result<(String, String, String, String), SourcesError> {
-        // Simple frontmatter parser - look for --- delimited YAML
-        if !content.starts_with("---\n") {
-            // No frontmatter, use directory name as fallback
-            let id = skill_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-            return Ok((
-                id.clone(),
-                id.clone(),
-                "No description".to_string(),
-                "1.0.0".to_string(),
-            ));
-        }
+        // Use the shared frontmatter parser that uses serde_yaml
+        let fallback_id = skill_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
 
-        // Find end of frontmatter
-        let end_marker = content[4..]
-            .find("---\n")
-            .ok_or_else(|| SourcesError::Parse("Invalid frontmatter format".to_string()))?;
-
-        let frontmatter = &content[4..end_marker + 4];
-
-        // Simple YAML parsing - just extract key fields
-        let mut id = None;
-        let mut name = None;
-        let mut description = None;
-        let mut version = None;
-
-        for line in frontmatter.lines() {
-            let line = line.trim();
-            if line.starts_with("id:") {
-                id = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
-            } else if line.starts_with("name:") {
-                name = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
-            } else if line.starts_with("description:") {
-                description = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
-            } else if line.starts_with("version:") {
-                version = line
-                    .split(':')
-                    .nth(1)
-                    .map(|s| s.trim().trim_matches('"').to_string());
+        match crate::core::frontmatter::parse_skill_frontmatter(content) {
+            Ok(meta) => {
+                let id = meta.id.unwrap_or(fallback_id.clone());
+                Ok((
+                    id.clone(),
+                    meta.name.unwrap_or(id),
+                    meta.description
+                        .unwrap_or_else(|| "No description".to_string()),
+                    meta.version.unwrap_or_else(|| "1.0.0".to_string()),
+                ))
+            }
+            Err(_) => {
+                // No frontmatter or parse error — use directory name as fallback
+                Ok((
+                    fallback_id.clone(),
+                    fallback_id,
+                    "No description".to_string(),
+                    "1.0.0".to_string(),
+                ))
             }
         }
-
-        // Use directory name as fallback for id
-        let skill_id = id.unwrap_or_else(|| {
-            skill_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string()
-        });
-
-        Ok((
-            skill_id.clone(),
-            name.unwrap_or(skill_id.clone()),
-            description.unwrap_or_else(|| "No description".to_string()),
-            version.unwrap_or_else(|| "1.0.0".to_string()),
-        ))
     }
 }
 
@@ -935,7 +900,7 @@ impl SourcesConfig {
         let content =
             toml::to_string_pretty(self).map_err(|e| SourcesError::Serialize(e.to_string()))?;
 
-        std::fs::write(path, content).map_err(SourcesError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(SourcesError::Io)?;
 
         Ok(())
     }

@@ -206,8 +206,8 @@ pub async fn delete_skill(
             HttpError::InternalServerError(format!("Failed to save project: {}", e))
         })?;
         if lock_path.exists() {
-            let mut lock =
-                crate::core::lock::SkillsLock::load_from_file(&lock_path).map_err(|e| {
+            let mut lock = crate::core::lock::ProjectSkillsLock::load_from_file(&lock_path)
+                .map_err(|e| {
                     HttpError::InternalServerError(format!("Failed to load lock: {}", e))
                 })?;
             lock.remove_skill(&skill_id);

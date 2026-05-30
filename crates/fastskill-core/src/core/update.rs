@@ -1,6 +1,6 @@
 //! Update service for managing skill updates
 
-use crate::core::lock::{ProjectLockedSkillEntry as LockedSkillEntry, SkillsLock};
+use crate::core::lock::{ProjectLockedSkillEntry as LockedSkillEntry, ProjectSkillsLock};
 use crate::core::resolver::{ConflictStrategy, PackageResolver, ResolutionResult};
 use crate::core::version::{compare_versions, is_newer, VersionError};
 use semver::Version;
@@ -50,12 +50,12 @@ pub enum UpdateError {
 /// Update service for checking and applying updates
 pub struct UpdateService {
     resolver: Arc<PackageResolver>,
-    lock: SkillsLock,
+    lock: ProjectSkillsLock,
 }
 
 impl UpdateService {
     /// Create a new update service
-    pub fn new(resolver: Arc<PackageResolver>, lock: SkillsLock) -> Self {
+    pub fn new(resolver: Arc<PackageResolver>, lock: ProjectSkillsLock) -> Self {
         Self { resolver, lock }
     }
 

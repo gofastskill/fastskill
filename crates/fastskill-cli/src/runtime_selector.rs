@@ -169,7 +169,6 @@ mod tests {
             all: false,
         };
         let result = resolve(input).unwrap().unwrap();
-        // Deduplicated, first-occurrence order
         assert_eq!(result.runtimes, vec!["claude", "codex"]);
         assert_eq!(result.source, SelectionSource::Explicit);
     }
@@ -199,7 +198,6 @@ mod tests {
         let result = resolve(input).unwrap().unwrap();
         assert_eq!(result.source, SelectionSource::All);
         assert_eq!(result.runtimes.len(), 4);
-        // All known mock runtimes should be present
         assert!(result.runtimes.contains(&"codex".to_string()));
         assert!(result.runtimes.contains(&"claude".to_string()));
     }
@@ -216,7 +214,6 @@ mod tests {
 
     #[test]
     fn test_deterministic_alphabetical_ordering_for_all() {
-        // Mock returns in non-alphabetical order.
         fn shuffled_runtimes() -> Vec<String> {
             vec![
                 "zebra".to_string(),

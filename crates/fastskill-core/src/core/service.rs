@@ -469,11 +469,6 @@ impl FastSkillService {
         self.vector_index_service.clone()
     }
 
-    /// Get loading service
-    pub fn loading_service(&self) -> Arc<dyn crate::core::loading::ProgressiveLoadingService> {
-        Arc::new(crate::core::loading::LoadingService::new())
-    }
-
     /// Get tool calling service
     pub fn tool_service(&self) -> Arc<dyn crate::core::tool_calling::ToolCallingService> {
         Arc::new(crate::core::tool_calling::ToolCallingServiceImpl::new())

@@ -116,6 +116,41 @@ impl From<BumpTypeArg> for BumpType {
     }
 }
 
+/// Immutable execution plan derived from parsed args and preset.
+/// Conflicting flag combinations are structurally impossible once constructed.
+#[derive(Debug)]
+pub(crate) struct PackagePlan {
+    pub skills: Option<Vec<String>>,
+    pub bump: Option<BumpTypeArg>,
+    pub detect_changes: bool,
+    pub force: bool,
+}
+
+impl PackagePlan {
+    fn from_args(args: &PackageArgs) -> Self {
+        match &args.preset {
+            Some(PackagePreset::Auto { force }) => PackagePlan {
+                skills: None,
+                bump: None,
+                detect_changes: true,
+                force: *force,
+            },
+            Some(PackagePreset::Skill { skills, bump }) => PackagePlan {
+                skills: Some(skills.clone()),
+                bump: bump.clone(),
+                detect_changes: false,
+                force: args.force,
+            },
+            None => PackagePlan {
+                skills: args.skills.clone(),
+                bump: args.bump.clone(),
+                detect_changes: args.detect_changes,
+                force: args.force,
+            },
+        }
+    }
+}
+
 /// Validate package arguments for conflicting preset and manual flags (PKG_001)
 fn validate_package_args(args: &PackageArgs) -> CliResult<()> {
     if args.preset.is_some() {
@@ -142,36 +177,19 @@ fn validate_package_args(args: &PackageArgs) -> CliResult<()> {
     Ok(())
 }
 
-/// Map preset to equivalent flag combinations
-fn map_preset_to_flags(preset: &PackagePreset, args: &mut PackageArgs) {
-    match preset {
-        PackagePreset::Auto { force } => {
-            args.detect_changes = true;
-            args.force = *force;
-        }
-        PackagePreset::Skill { skills, bump } => {
-            args.skills = Some(skills.clone());
-            args.bump = bump.clone();
-        }
-    }
-}
-
-pub async fn execute_package(mut args: PackageArgs) -> CliResult<()> {
+pub async fn execute_package(args: PackageArgs) -> CliResult<()> {
     info!("Starting package command");
 
     // Validate and apply preset if provided
     validate_package_args(&args)?;
 
-    // Extract and apply preset before mutation
-    let preset = args.preset.clone();
-    if let Some(ref p) = preset {
-        map_preset_to_flags(p, &mut args);
-    }
+    // Derive execution plan from args and preset
+    let plan = PackagePlan::from_args(&args);
 
     // Determine which skills to package
-    let skills_to_package = if let Some(skill_ids) = args.skills {
+    let skills_to_package = if let Some(skill_ids) = plan.skills {
         skill_ids
-    } else if args.force {
+    } else if plan.force {
         // Package all skills
         if args.recursive {
             get_all_skills_recursive(&args.skills_dir)?
@@ -186,7 +204,7 @@ pub async fn execute_package(mut args: PackageArgs) -> CliResult<()> {
         }
         detect_changed_skills_git(&git_diff[0], &git_diff[1], &args.skills_dir)
             .map_err(|e| CliError::Validation(format!("Git change detection failed: {}", e)))?
-    } else if args.detect_changes {
+    } else if plan.detect_changes {
         // Load build cache
         let cache_path = PathBuf::from(".fastskill/build-cache.json");
         let cache = BuildCache::load(&cache_path)
@@ -239,7 +257,7 @@ pub async fn execute_package(mut args: PackageArgs) -> CliResult<()> {
             .unwrap_or_else(|| "1.0.0".to_string());
 
         // Parse and bump version if needed
-        let new_version = if let Some(ref bump_type) = args.bump {
+        let new_version = if let Some(ref bump_type) = plan.bump {
             let current_version = parse_version(&current_version_str).map_err(|e| {
                 CliError::Validation(format!("Invalid version '{}': {}", current_version_str, e))
             })?;
@@ -681,10 +699,9 @@ mod tests {
     }
 
     #[test]
-    fn test_map_preset_to_flags_auto() {
-        let preset = PackagePreset::Auto { force: true };
-        let mut args = PackageArgs {
-            preset: None,
+    fn test_package_plan_auto_preset() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Auto { force: true }),
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -697,20 +714,20 @@ mod tests {
             recursive: false,
         };
 
-        map_preset_to_flags(&preset, &mut args);
+        let plan = PackagePlan::from_args(&args);
 
-        assert!(args.detect_changes);
-        assert!(args.force);
+        assert!(plan.detect_changes);
+        assert!(plan.force);
+        assert!(plan.skills.is_none());
     }
 
     #[test]
-    fn test_map_preset_to_flags_skill() {
-        let preset = PackagePreset::Skill {
-            skills: vec!["skill1".to_string(), "skill2".to_string()],
-            bump: Some(BumpTypeArg::Patch),
-        };
-        let mut args = PackageArgs {
-            preset: None,
+    fn test_package_plan_skill_preset() {
+        let args = PackageArgs {
+            preset: Some(PackagePreset::Skill {
+                skills: vec!["skill1".to_string(), "skill2".to_string()],
+                bump: Some(BumpTypeArg::Patch),
+            }),
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -723,12 +740,13 @@ mod tests {
             recursive: false,
         };
 
-        map_preset_to_flags(&preset, &mut args);
+        let plan = PackagePlan::from_args(&args);
 
         assert_eq!(
-            args.skills,
+            plan.skills,
             Some(vec!["skill1".to_string(), "skill2".to_string()])
         );
-        assert_eq!(args.bump, Some(BumpTypeArg::Patch));
+        assert_eq!(plan.bump, Some(BumpTypeArg::Patch));
+        assert!(!plan.detect_changes);
     }
 }

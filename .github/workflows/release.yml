@@ -133,7 +133,7 @@ jobs:
 
       - name: Build release binary (cross)
         if: matrix.use-cross
-        run: cross build --release --verbose --target ${{ matrix.target }} --no-default-features --features "filesystem-storage,hot-reload"
+        run: cross build --release --verbose --target ${{ matrix.target }} -p fastskill-cli -F vendored-openssl
         env:
           RUSTFLAGS: ""
 

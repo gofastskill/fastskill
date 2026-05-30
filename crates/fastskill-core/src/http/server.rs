@@ -132,12 +132,6 @@ fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
     Err(build_validation_error_message(&missing, &incomplete_fields))
 }
 
-/// Display startup banner with ASCII art
-fn display_startup_banner() {
-    // TODO: Implement startup banner display
-    let _version = crate::VERSION;
-}
-
 /// Get allowed methods for CORS
 fn get_allowed_methods() -> [Method; 5] {
     [
@@ -152,8 +146,6 @@ fn get_allowed_methods() -> [Method; 5] {
 /// Build default CORS layer (deny all origins)
 fn build_default_cors_layer() -> CorsLayer {
     CorsLayer::new()
-        .allow_methods(get_allowed_methods())
-        .allow_origin(AllowOrigin::exact(HeaderValue::from_static("")))
 }
 
 /// Parse origin strings to HeaderValues
@@ -418,8 +410,6 @@ impl FastSkillServer {
 
     /// Start the server using cli-framework ApiServerBuilder
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
-        display_startup_banner();
-
         // Load project configuration (same as previous create_router logic)
         let current_dir = env::current_dir()?;
         let project_config = crate::core::load_project_config(&current_dir)

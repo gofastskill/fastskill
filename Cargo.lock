@@ -1819,13 +1819,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
-name = "fastskill-agent-runtime"
-version = "0.9.124"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "fastskill-cli"
 version = "0.9.124"
 dependencies = [
@@ -1841,7 +1834,6 @@ dependencies = [
  "cli-framework",
  "config",
  "dirs 6.0.0",
- "fastskill-agent-runtime",
  "fastskill-core",
  "fastskill-evals",
  "fs2",
@@ -1849,6 +1841,7 @@ dependencies = [
  "insta",
  "num_cpus",
  "once_cell",
+ "openssl",
  "predicates",
  "regex",
  "reqwest 0.12.28",
@@ -3413,6 +3406,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "300.6.0+3.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8e8cbfd3a4a8c8f089147fd7aaa33cf8c7450c4d09f8f80698a0cf093abeff4"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3420,6 +3422,7 @@ checksum = "f28a22dc7140cda5f096e5e7724a6962ca81a7f8bfd2979f9b18c11af56318c4"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]

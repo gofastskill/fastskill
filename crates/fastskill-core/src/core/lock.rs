@@ -61,9 +61,6 @@ pub struct ProjectSkillsLock {
     pub skills: Vec<ProjectLockedSkillEntry>,
 }
 
-/// Backward-compatible type alias (deprecated; remove in next major version).
-pub type SkillsLock = ProjectSkillsLock;
-
 impl ProjectSkillsLock {
     pub fn new_empty() -> Self {
         Self {
@@ -92,7 +89,13 @@ impl ProjectSkillsLock {
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        std::fs::write(path, content).map_err(LockError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                LockError::FileLocked(path.to_path_buf())
+            } else {
+                LockError::Io(e)
+            }
+        })?;
         Ok(())
     }
 
@@ -271,12 +274,15 @@ impl GlobalSkillsLock {
         let mut lock = self.clone();
         lock.sort_entries();
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(LockError::Io)?;
-        }
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        std::fs::write(path, content).map_err(LockError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::WouldBlock {
+                LockError::FileLocked(path.to_path_buf())
+            } else {
+                LockError::Io(e)
+            }
+        })?;
         Ok(())
     }
 
@@ -560,13 +566,6 @@ depth = 0
     }
 
     #[test]
-    fn test_skils_lock_type_alias_compiles() {
-        // Ensure SkillsLock type alias still works
-        let lock: SkillsLock = SkillsLock::new_empty();
-        assert_eq!(lock.metadata.version, "2.0");
-    }
-
-    #[test]
     fn test_global_lock_upsert_and_remove() {
         let mut lock = GlobalSkillsLock::new_empty();
         let skill = make_skill("global-skill");
@@ -682,6 +681,42 @@ depth = 0
         assert!(
             result.is_err(),
             "try_lock_exclusive must fail when lock is held"
+        );
+
+        holder.unlock().unwrap();
+    }
+
+    #[test]
+    fn test_save_to_file_returns_file_locked_when_tmp_locked() {
+        use fs2::FileExt;
+
+        let tmp = TempDir::new().unwrap();
+        let lock_path = tmp.path().join("skills.lock");
+        let tmp_path = lock_path.with_extension("tmp");
+
+        // Acquire exclusive lock on the .tmp file before calling save_to_file
+        let holder = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&tmp_path)
+            .unwrap();
+        holder.lock_exclusive().unwrap();
+
+        let mut skills_lock = ProjectSkillsLock::new_empty();
+        skills_lock.update_skill(&make_skill("test-skill"));
+
+        let result = skills_lock.save_to_file(&lock_path);
+
+        // Should return FileLocked error since .tmp is already locked
+        assert!(
+            result.is_err(),
+            "save_to_file must fail when .tmp file is locked"
+        );
+        assert!(
+            matches!(result, Err(LockError::FileLocked(_))),
+            "error must be LockError::FileLocked, got: {:?}",
+            result
         );
 
         holder.unlock().unwrap();

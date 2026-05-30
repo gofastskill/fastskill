@@ -1,9 +1,13 @@
 //! Diagnostic and analysis commands for skill relationships and quality
 
+pub mod cluster;
+pub mod duplicates;
+pub mod matrix;
+
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
 use clap::{Args, Subcommand};
-use fastskill_core::core::analysis::SimilarityPair;
+use fastskill_core::core::analysis::{skill_similarity, SimilarityPair};
 use fastskill_core::core::vector_index::IndexedSkill;
 use fastskill_core::FastSkillService;
 use fastskill_core::OutputFormat;
@@ -332,7 +336,7 @@ fn build_similarity_matrix(all_skills: &[IndexedSkill], args: &MatrixArgs) -> Ve
                 .enumerate()
                 .filter(|(j, _)| skill_a.id != all_skills[*j].id)
                 .map(|(_, skill_b)| {
-                    let similarity = cosine_similarity(&skill_a.embedding, &skill_b.embedding);
+                    let similarity = skill_similarity(&skill_a.embedding, &skill_b.embedding);
                     (skill_b.id.clone(), similarity)
                 })
                 .filter(|(_, similarity)| *similarity >= args.threshold)
@@ -407,7 +411,8 @@ pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> C
     }
 
     // Run spherical k-means
-    let (assignments, centroids) = run_spherical_kmeans(&all_skills, k);
+    let embeddings: Vec<Vec<f32>> = all_skills.iter().map(|s| s.embedding.clone()).collect();
+    let (assignments, centroids) = fastskill_core::core::analysis::cluster_skills(&embeddings, k);
 
     // Build cluster outputs
     let mut clusters: Vec<ClusterOutput> = (0..k)
@@ -417,7 +422,7 @@ pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> C
                 .enumerate()
                 .filter(|(skill_idx, _)| assignments[*skill_idx] == c_idx)
                 .map(|(_, skill)| {
-                    let sim = cosine_similarity(&skill.embedding, &centroids[c_idx]);
+                    let sim = skill_similarity(&skill.embedding, &centroids[c_idx]);
                     let distance = (1.0 - sim).max(0.0);
                     ClusterMember {
                         skill_id: skill.id.clone(),
@@ -475,117 +480,6 @@ pub async fn execute_cluster(service: &FastSkillService, args: ClusterArgs) -> C
     }
 
     Ok(())
-}
-
-/// Spherical k-means: returns (assignments, final_centroids)
-///
-/// Uses deterministic initialization: sorts skills by id, picks k evenly-spaced indices.
-/// Runs up to 100 iterations until convergence (assignments unchanged).
-/// Handles empty clusters by redistributing the centroid to the farthest skill.
-fn run_spherical_kmeans(skills: &[IndexedSkill], k: usize) -> (Vec<usize>, Vec<Vec<f32>>) {
-    let n = skills.len();
-    let embedding_dim = skills[0].embedding.len();
-
-    // Initialize centroids: evenly spaced indices (skills already sorted by id)
-    let mut centroids: Vec<Vec<f32>> = (0..k)
-        .map(|i| {
-            let idx = (i * n) / k;
-            let mut c = skills[idx].embedding.clone();
-            l2_normalize(&mut c);
-            c
-        })
-        .collect();
-
-    let mut assignments: Vec<usize> = vec![0; n];
-
-    for _ in 0..100 {
-        // Assignment: each skill → centroid with highest cosine similarity
-        let new_assignments: Vec<usize> = skills
-            .iter()
-            .map(|skill| {
-                centroids
-                    .iter()
-                    .enumerate()
-                    .map(|(c_idx, centroid)| (c_idx, cosine_similarity(&skill.embedding, centroid)))
-                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                    .map(|(c_idx, _)| c_idx)
-                    .unwrap_or(0)
-            })
-            .collect();
-
-        // Convergence check
-        if new_assignments == assignments {
-            assignments = new_assignments;
-            break;
-        }
-        assignments = new_assignments;
-
-        // Recompute centroids as element-wise mean of members
-        let mut new_centroids: Vec<Vec<f32>> = vec![vec![0.0_f32; embedding_dim]; k];
-        let mut cluster_counts: Vec<usize> = vec![0; k];
-
-        for (skill_idx, &c_idx) in assignments.iter().enumerate() {
-            cluster_counts[c_idx] += 1;
-            for (dim, &val) in skills[skill_idx].embedding.iter().enumerate() {
-                new_centroids[c_idx][dim] += val;
-            }
-        }
-
-        // Handle empty clusters: move centroid to skill farthest from its assigned centroid
-        for c_idx in 0..k {
-            if cluster_counts[c_idx] == 0 {
-                let (farthest_idx, _) = assignments
-                    .iter()
-                    .enumerate()
-                    .map(|(skill_idx, &cluster_idx)| {
-                        let sim = cosine_similarity(
-                            &skills[skill_idx].embedding,
-                            &centroids[cluster_idx],
-                        );
-                        (skill_idx, sim)
-                    })
-                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                    .unwrap_or((0, 0.0));
-
-                let old_cluster = assignments[farthest_idx];
-                assignments[farthest_idx] = c_idx;
-                cluster_counts[old_cluster] -= 1;
-                for (centroid_val, skill_val) in new_centroids[old_cluster]
-                    .iter_mut()
-                    .zip(skills[farthest_idx].embedding.iter())
-                {
-                    *centroid_val -= *skill_val;
-                }
-                cluster_counts[c_idx] = 1;
-                new_centroids[c_idx] = skills[farthest_idx].embedding.clone();
-            }
-        }
-
-        // Average and L2-normalize each centroid (spherical step)
-        for (c_idx, centroid) in new_centroids.iter_mut().enumerate() {
-            let count = cluster_counts[c_idx] as f32;
-            if count > 1.0 {
-                for val in centroid.iter_mut() {
-                    *val /= count;
-                }
-            }
-            l2_normalize(centroid);
-        }
-
-        centroids = new_centroids;
-    }
-
-    (assignments, centroids)
-}
-
-/// L2-normalize a slice in-place
-fn l2_normalize(v: &mut [f32]) {
-    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 1e-10 {
-        for x in v.iter_mut() {
-            *x /= norm;
-        }
-    }
 }
 
 /// Print cluster output in human-readable format
@@ -683,7 +577,7 @@ pub async fn execute_duplicates(service: &FastSkillService, args: DuplicatesArgs
     let mut pairs: Vec<DuplicatePair> = Vec::new();
     for i in 0..n {
         for j in (i + 1)..n {
-            let sim = cosine_similarity(&all_skills[i].embedding, &all_skills[j].embedding);
+            let sim = skill_similarity(&all_skills[i].embedding, &all_skills[j].embedding);
             if sim < effective_floor {
                 continue;
             }
@@ -877,41 +771,6 @@ fn get_skill_name(metadata: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// Calculates cosine similarity between two embedding vectors
-///
-/// Formula: cos(θ) = (A · B) / (||A|| × ||B||)
-///
-/// Returns a value between -1.0 (opposite) and 1.0 (identical).
-/// For normalized embeddings (like OpenAI's), values are typically between 0.0 and 1.0.
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-
-    if a.is_empty() {
-        return 0.0;
-    }
-
-    let mut dot_product = 0.0_f32;
-    let mut norm_a = 0.0_f32;
-    let mut norm_b = 0.0_f32;
-
-    for i in 0..a.len() {
-        dot_product += a[i] * b[i];
-        norm_a += a[i] * a[i];
-        norm_b += b[i] * b[i];
-    }
-
-    let norm_a = norm_a.sqrt();
-    let norm_b = norm_b.sqrt();
-
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-
-    dot_product / (norm_a * norm_b)
-}
-
 // --------------------------------------------------------------------------
 // Matrix display helpers (unchanged)
 // --------------------------------------------------------------------------
@@ -923,12 +782,15 @@ fn print_similarity_table(matrix: &[SimilarityPair], threshold: f32) {
     print!("{}", build_grid_string(matrix, threshold));
 }
 
-/// Truncates a column header ID to at most 17 characters.
+/// Truncates a column header ID to at most 15 Unicode characters.
 ///
-/// If the ID exceeds 18 characters, it is shortened to 15 chars with a ".." suffix.
+/// Uses `chars().take(15)` to avoid panicking on multi-byte code points.
+/// If the original is longer than 15 chars, appends ".." as a visual indicator.
 fn truncate_header(s: &str) -> String {
-    if s.len() > 18 {
-        format!("{}..", &s[..15])
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() > 15 {
+        let truncated: String = chars.into_iter().take(15).collect();
+        format!("{}..", truncated)
     } else {
         s.to_string()
     }
@@ -1042,60 +904,6 @@ fn build_grid_string(matrix: &[SimilarityPair], threshold: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- cosine_similarity tests ---
-
-    #[test]
-    fn test_cosine_similarity_identical_vectors() {
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![1.0, 2.0, 3.0];
-        let similarity = cosine_similarity(&a, &b);
-        assert!(
-            (similarity - 1.0).abs() < 0.001,
-            "Identical vectors should have similarity ~1.0"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_orthogonal_vectors() {
-        let a = vec![1.0, 0.0];
-        let b = vec![0.0, 1.0];
-        let similarity = cosine_similarity(&a, &b);
-        assert!(
-            similarity.abs() < 0.001,
-            "Orthogonal vectors should have similarity ~0.0"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_opposite_vectors() {
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![-1.0, -2.0, -3.0];
-        let similarity = cosine_similarity(&a, &b);
-        assert!(
-            (similarity + 1.0).abs() < 0.001,
-            "Opposite vectors should have similarity ~-1.0"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_different_lengths() {
-        let a = vec![1.0, 2.0];
-        let b = vec![1.0, 2.0, 3.0];
-        let similarity = cosine_similarity(&a, &b);
-        assert_eq!(
-            similarity, 0.0,
-            "Different length vectors should return 0.0"
-        );
-    }
-
-    #[test]
-    fn test_cosine_similarity_empty_vectors() {
-        let a: Vec<f32> = vec![];
-        let b: Vec<f32> = vec![];
-        let similarity = cosine_similarity(&a, &b);
-        assert_eq!(similarity, 0.0, "Empty vectors should return 0.0");
-    }
 
     // --- validate_threshold tests ---
 
@@ -1241,34 +1049,6 @@ mod tests {
         );
     }
 
-    // --- l2_normalize tests ---
-
-    #[test]
-    fn test_l2_normalize_unit_vector() {
-        let mut v = vec![1.0_f32, 0.0, 0.0];
-        l2_normalize(&mut v);
-        assert!((v[0] - 1.0).abs() < 1e-6);
-        assert!((v[1] - 0.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_l2_normalize_general_vector() {
-        let mut v = vec![3.0_f32, 4.0];
-        l2_normalize(&mut v);
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!(
-            (norm - 1.0).abs() < 1e-5,
-            "Normalized vector should have unit norm"
-        );
-    }
-
-    #[test]
-    fn test_l2_normalize_zero_vector() {
-        let mut v = vec![0.0_f32, 0.0, 0.0];
-        l2_normalize(&mut v); // Should not panic
-        assert_eq!(v, vec![0.0, 0.0, 0.0]);
-    }
-
     // --- classify_severity tests ---
 
     #[test]
@@ -1350,77 +1130,6 @@ mod tests {
         assert!((effective - 0.93).abs() < 1e-6);
     }
 
-    // --- spherical k-means tests ---
-
-    fn make_indexed_skill(id: &str, embedding: Vec<f32>) -> IndexedSkill {
-        use std::path::PathBuf;
-        IndexedSkill {
-            id: id.to_string(),
-            skill_path: PathBuf::from(format!("/tmp/{}", id)),
-            frontmatter_json: serde_json::json!({"name": id}),
-            embedding,
-            file_hash: "test".to_string(),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    #[test]
-    fn test_spherical_kmeans_two_clear_clusters() {
-        // 4 skills: 2 near (1,0,0,0) and 2 near (0,1,0,0)
-        let skills = vec![
-            make_indexed_skill("aaa-git-amend", vec![0.9806, 0.1961, 0.0, 0.0]),
-            make_indexed_skill("aaa-git-commit", vec![0.9950, 0.0998, 0.0, 0.0]),
-            make_indexed_skill("bbb-code-review", vec![0.0, 0.9950, 0.0998, 0.0]),
-            make_indexed_skill("bbb-pr-review", vec![0.0, 0.9806, 0.1961, 0.0]),
-        ];
-
-        let (assignments, _centroids) = run_spherical_kmeans(&skills, 2);
-
-        // Skills 0 and 1 (aaa-*) should be in the same cluster
-        assert_eq!(
-            assignments[0], assignments[1],
-            "aaa-git-amend and aaa-git-commit should be in the same cluster"
-        );
-        // Skills 2 and 3 (bbb-*) should be in the same cluster
-        assert_eq!(
-            assignments[2], assignments[3],
-            "bbb-code-review and bbb-pr-review should be in the same cluster"
-        );
-        // The two clusters should be different
-        assert_ne!(
-            assignments[0], assignments[2],
-            "The two clusters should be distinct"
-        );
-    }
-
-    #[test]
-    fn test_spherical_kmeans_k_equals_n() {
-        // When k == n, each skill should be in its own cluster
-        let skills = vec![
-            make_indexed_skill("skill-a", vec![1.0, 0.0]),
-            make_indexed_skill("skill-b", vec![0.0, 1.0]),
-        ];
-        let (assignments, _) = run_spherical_kmeans(&skills, 2);
-        assert_ne!(
-            assignments[0], assignments[1],
-            "k=n: all skills in different clusters"
-        );
-    }
-
-    #[test]
-    fn test_spherical_kmeans_k_equals_one() {
-        let skills = vec![
-            make_indexed_skill("skill-a", vec![1.0, 0.0]),
-            make_indexed_skill("skill-b", vec![0.0, 1.0]),
-            make_indexed_skill("skill-c", vec![0.5, 0.5]),
-        ];
-        let (assignments, _) = run_spherical_kmeans(&skills, 1);
-        assert!(
-            assignments.iter().all(|&a| a == 0),
-            "k=1: all skills in cluster 0"
-        );
-    }
-
     // --- print_cluster_output tests (smoke tests) ---
 
     #[test]
@@ -1482,5 +1191,40 @@ mod tests {
         assert!(json.contains("skill-a"));
         // modified_at: None should be omitted (skip_serializing_if)
         assert!(!json.contains("\"modified_at\": null"));
+    }
+
+    #[test]
+    fn test_truncate_header_unicode_no_panic() {
+        // G7 acceptance criterion: truncate_header must not panic on multi-byte Unicode
+        let skill_id = "技能_abc_123456789"; // Contains multi-byte CJK chars
+        let result = truncate_header(skill_id);
+        let char_count = result.chars().count();
+        // truncated to <=15 chars + optional ".." suffix
+        assert!(
+            char_count <= 17,
+            "result must be at most 15 chars + 2 for '..' = 17, got {}",
+            char_count
+        );
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_short() {
+        let result = truncate_header("short-id");
+        assert_eq!(result, "short-id");
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_exactly_15() {
+        let s = "a".repeat(15);
+        let result = truncate_header(&s);
+        assert_eq!(result, s);
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_long() {
+        let s = "a".repeat(20);
+        let result = truncate_header(&s);
+        assert!(result.ends_with(".."));
+        assert_eq!(result.len(), 17); // 15 chars + ".."
     }
 }

@@ -56,6 +56,7 @@ pub mod output;
 pub mod search;
 pub mod security;
 pub mod storage;
+pub mod utils;
 pub mod validation;
 
 pub use core::context_resolver::{
@@ -63,7 +64,6 @@ pub use core::context_resolver::{
     ResolvedSkill,
 };
 pub use core::embedding::{EmbeddingService, OpenAIEmbeddingService};
-pub use core::loading::{LoadedSkill, ProgressiveLoadingService};
 pub use core::manifest::SkillProjectToml;
 pub use core::metadata::{
     parse_yaml_frontmatter, MetadataService, SkillFrontmatter, SkillMetadata,

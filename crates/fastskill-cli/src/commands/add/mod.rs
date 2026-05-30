@@ -1,5 +1,9 @@
 //! Add command implementation
 
+pub mod install;
+pub mod skill_def;
+pub mod sources;
+
 use crate::error::{manifest_required_for_add_message, CliError, CliResult, CliWarning};
 use crate::utils::install_utils;
 use crate::utils::manifest_utils;
@@ -108,7 +112,7 @@ async fn register_skill_once(ctx: &AddContext<'_>, skill_def: &SkillDefinition) 
 }
 
 /// Copy skill to storage, register, update source tracking, and update project files.
-async fn install_copied_skill(
+async fn install_via_download(
     ctx: &AddContext<'_>,
     skill_path: &Path,
     mut skill_def: SkillDefinition,
@@ -186,7 +190,7 @@ async fn install_copied_skill(
 }
 
 /// Install a local skill using symlink (editable) or copy (non-editable).
-async fn install_local_skill(
+async fn install_via_local_path(
     ctx: &AddContext<'_>,
     skill_path: &Path,
     mut skill_def: SkillDefinition,
@@ -585,7 +589,7 @@ async fn add_from_zip(ctx: &AddContext<'_>, zip_path: &Path) -> CliResult<()> {
         },
         version_display: version,
     };
-    install_copied_skill(ctx, &skill_path, skill_def, target).await
+    install_via_download(ctx, &skill_path, skill_def, target).await
 }
 
 async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<()> {
@@ -618,7 +622,7 @@ async fn add_from_folder(ctx: &AddContext<'_>, folder_path: &Path) -> CliResult<
         },
         version_display: skill_def.version.clone(),
     };
-    install_local_skill(ctx, &canonical_path, skill_def, target).await
+    install_via_local_path(ctx, &canonical_path, skill_def, target).await
 }
 
 async fn clone_and_validate_skill(
@@ -690,7 +694,7 @@ async fn add_from_git(
         },
         version_display: skill_def.version.clone(),
     };
-    install_copied_skill(ctx, &skill_path, skill_def, target).await
+    install_via_download(ctx, &skill_path, skill_def, target).await
 }
 
 fn parse_registry_scope_id(
@@ -841,7 +845,7 @@ async fn add_from_registry(ctx: &AddContext<'_>, skill_id_input: &str) -> CliRes
         },
         version_display: version,
     };
-    install_copied_skill(ctx, &skill_path, skill_def, target).await
+    install_via_download(ctx, &skill_path, skill_def, target).await
 }
 
 /// Read skill ID and version from skill-project.toml (optional)

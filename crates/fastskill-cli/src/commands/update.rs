@@ -5,12 +5,12 @@ use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill_core::core::{
-    lock::{global_lock_path, GlobalSkillsLock, SkillsLock},
+    lock::{global_lock_path, GlobalSkillsLock, ProjectSkillsLock},
     manifest::SkillProjectToml,
     project::resolve_project_file,
-    repository::{RepositoryConfig, RepositoryManager, RepositoryType},
+    repository::RepositoryManager,
     resolver::PackageResolver,
-    sources::{SourceAuth, SourceConfig, SourcesManager},
+    sources::SourcesManager,
     update::{UpdateService, UpdateStrategy},
 };
 use fastskill_core::FastSkillService;
@@ -212,7 +212,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         PathBuf::from("skills.lock")
     };
     let lock = if lock_path.exists() {
-        SkillsLock::load_from_file(&lock_path)
+        ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?
     } else {
         return Err(CliError::Config(
@@ -318,118 +318,11 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
 }
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
-/// This is needed because PackageResolver requires SourcesManager
 pub fn create_sources_manager_from_repositories(
     repo_manager: &RepositoryManager,
 ) -> CliResult<Option<Arc<SourcesManager>>> {
-    use fastskill_core::core::sources::SourceDefinition;
-
-    let repos = repo_manager.list_repositories();
-    let mut marketplace_sources = Vec::new();
-
-    for repo in repos {
-        // Only include marketplace-based repositories (git-marketplace, zip-url, local)
-        let source_config = match &repo.repo_type {
-            RepositoryType::GitMarketplace => {
-                if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
-                    // Convert auth
-                    let auth = repo.auth.as_ref().and_then(|a| match a {
-                        fastskill_core::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
-                        }
-                        fastskill_core::core::repository::RepositoryAuth::SshKey { path } => {
-                            Some(SourceAuth::SshKey { path: path.clone() })
-                        }
-                        fastskill_core::core::repository::RepositoryAuth::Basic {
-                            username,
-                            password_env,
-                        } => Some(SourceAuth::Basic {
-                            username: username.clone(),
-                            password_env: password_env.clone(),
-                        }),
-                        _ => None,
-                    });
-
-                    Some(SourceConfig::Git {
-                        url: url.clone(),
-                        branch: branch.clone(),
-                        tag: tag.clone(),
-                        auth,
-                    })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::ZipUrl => {
-                if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                    let auth = repo.auth.as_ref().and_then(|a| match a {
-                        fastskill_core::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
-                        }
-                        fastskill_core::core::repository::RepositoryAuth::Basic {
-                            username,
-                            password_env,
-                        } => Some(SourceAuth::Basic {
-                            username: username.clone(),
-                            password_env: password_env.clone(),
-                        }),
-                        _ => None,
-                    });
-
-                    Some(SourceConfig::ZipUrl {
-                        base_url: base_url.clone(),
-                        auth,
-                    })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::Local => {
-                if let RepositoryConfig::Local { path } = &repo.config {
-                    Some(SourceConfig::Local { path: path.clone() })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::HttpRegistry => {
-                // Http-registry repos don't work with SourcesManager, skip them
-                None
-            }
-        };
-
-        if let Some(source_config) = source_config {
-            marketplace_sources.push(SourceDefinition {
-                name: repo.name.clone(),
-                priority: repo.priority,
-                source: source_config,
-            });
-        }
-    }
-
-    if marketplace_sources.is_empty() {
-        return Ok(None);
-    }
-
-    // Create a temporary SourcesManager with these sources
-    let temp_path = std::env::temp_dir().join("fastskill-sources-temp.toml");
-    let mut sources_manager = SourcesManager::new(temp_path);
-
-    // Add all sources
-    for source_def in marketplace_sources {
-        sources_manager
-            .add_source_with_priority(
-                source_def.name.clone(),
-                source_def.source,
-                source_def.priority,
-            )
-            .map_err(|e| CliError::Config(format!("Failed to add source: {}", e)))?;
-    }
-
-    Ok(Some(Arc::new(sources_manager)))
+    install_utils::create_sources_manager_from_repositories(repo_manager)
+        .map(|opt| opt.map(Arc::new))
 }
 
 #[cfg(test)]

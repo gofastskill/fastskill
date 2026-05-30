@@ -213,7 +213,7 @@ fn remove_from_lock_file(skill_id: &str) -> CliResult<()> {
     };
 
     if lock_path.exists() {
-        let mut lock = fastskill_core::core::lock::SkillsLock::load_from_file(&lock_path)
+        let mut lock = fastskill_core::core::lock::ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
         lock.remove_skill(skill_id);
         lock.save_to_file(&lock_path)

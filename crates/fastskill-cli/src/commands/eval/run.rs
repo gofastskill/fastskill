@@ -2,10 +2,10 @@
 
 use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
 use crate::error::{CliError, CliResult};
+use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
 use chrono::Utc;
 use clap::Args;
-use fastskill_agent_runtime::RuntimeSelectionInput;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::artifacts::{
@@ -102,7 +102,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 
     // Resolve runtime selection first so missing --agent is caught before project-file checks.
     let input = RuntimeSelectionInput::from(&args);
-    let selection = fastskill_agent_runtime::resolve_runtime_selection(&input)
+    let selection = crate::runtime_selector::resolve_runtime_selection(&input)
         .map_err(runtime_selection_error_to_cli)?;
 
     let runtimes = match selection {

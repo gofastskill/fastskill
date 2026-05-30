@@ -118,60 +118,9 @@ fn load_repository_definitions() -> Result<Vec<RepositoryDefinition>, SearchErro
     // Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
     let converted_repos = repositories
         .into_iter()
-        .map(convert_repository_definition)
+        .map(|r| RepositoryDefinition::from(&r))
         .collect();
     Ok(converted_repos)
-}
-
-/// Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
-fn convert_repository_definition(
-    manifest_repo: crate::core::manifest::RepositoryDefinition,
-) -> RepositoryDefinition {
-    use crate::core::repository::{RepositoryAuth, RepositoryConfig, RepositoryType};
-
-    // Convert repository type
-    let repo_type = match manifest_repo.r#type {
-        crate::core::manifest::RepositoryType::HttpRegistry => RepositoryType::HttpRegistry,
-        crate::core::manifest::RepositoryType::GitMarketplace => RepositoryType::GitMarketplace,
-        crate::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
-        crate::core::manifest::RepositoryType::Local => RepositoryType::Local,
-    };
-
-    // Convert connection to config
-    let config = match manifest_repo.connection {
-        crate::core::manifest::RepositoryConnection::HttpRegistry { index_url } => {
-            RepositoryConfig::HttpRegistry { index_url }
-        }
-        crate::core::manifest::RepositoryConnection::GitMarketplace { url, branch } => {
-            RepositoryConfig::GitMarketplace {
-                url,
-                branch,
-                tag: None,
-            }
-        }
-        crate::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
-            RepositoryConfig::ZipUrl { base_url: zip_url }
-        }
-        crate::core::manifest::RepositoryConnection::Local { path } => RepositoryConfig::Local {
-            path: std::path::PathBuf::from(path),
-        },
-    };
-
-    // Convert auth
-    let auth = manifest_repo.auth.map(|a| match a.r#type {
-        crate::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
-            env_var: a.env_var.unwrap_or_else(|| "PAT_TOKEN".to_string()),
-        },
-    });
-
-    RepositoryDefinition {
-        name: manifest_repo.name,
-        repo_type,
-        priority: manifest_repo.priority,
-        config,
-        auth,
-        storage: None, // Not used in manifest format
-    }
 }
 
 #[cfg(test)]

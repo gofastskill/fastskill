@@ -11,9 +11,7 @@ use axum::{
 };
 use std::collections::HashSet;
 
-/// Get repository manager from service config
 fn get_repository_manager(_service: &crate::core::service::FastSkillService) -> RepositoryManager {
-    // Load repositories from skill-project.toml
     let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let project_file = crate::core::project::resolve_project_file(&current_dir);
     if project_file.found {
@@ -23,70 +21,9 @@ fn get_repository_manager(_service: &crate::core::service::FastSkillService) -> 
             if let Some(tool) = project.tool {
                 if let Some(fastskill_config) = tool.fastskill {
                     if let Some(repos) = fastskill_config.repositories {
-                        // Convert manifest repositories to repository definitions
                         let definitions: Vec<_> = repos
-                            .into_iter()
-                            .map(|r| {
-                                // Manual conversion since we can't use CLI config here
-                                use crate::core::repository::{
-                                    RepositoryAuth, RepositoryConfig, RepositoryDefinition,
-                                    RepositoryType,
-                                };
-
-                                let repo_type = match r.r#type {
-                                    crate::core::manifest::RepositoryType::HttpRegistry => {
-                                        RepositoryType::HttpRegistry
-                                    }
-                                    crate::core::manifest::RepositoryType::GitMarketplace => {
-                                        RepositoryType::GitMarketplace
-                                    }
-                                    crate::core::manifest::RepositoryType::ZipUrl => {
-                                        RepositoryType::ZipUrl
-                                    }
-                                    crate::core::manifest::RepositoryType::Local => {
-                                        RepositoryType::Local
-                                    }
-                                };
-
-                                let config_val = match r.connection {
-                                    crate::core::manifest::RepositoryConnection::HttpRegistry {
-                                        index_url,
-                                    } => RepositoryConfig::HttpRegistry { index_url },
-                                    crate::core::manifest::RepositoryConnection::GitMarketplace {
-                                        url,
-                                        branch,
-                                    } => RepositoryConfig::GitMarketplace {
-                                        url,
-                                        branch,
-                                        tag: None,
-                                    },
-                                    crate::core::manifest::RepositoryConnection::ZipUrl {
-                                        zip_url,
-                                    } => RepositoryConfig::ZipUrl { base_url: zip_url },
-                                    crate::core::manifest::RepositoryConnection::Local {
-                                        path,
-                                    } => RepositoryConfig::Local {
-                                        path: std::path::PathBuf::from(path),
-                                    },
-                                };
-
-                                let auth = r.auth.map(|a| match a.r#type {
-                                    crate::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
-                                        env_var: a
-                                            .env_var
-                                            .unwrap_or_else(|| "PAT_TOKEN".to_string()),
-                                    },
-                                });
-
-                                RepositoryDefinition {
-                                    name: r.name,
-                                    repo_type,
-                                    priority: r.priority,
-                                    config: config_val,
-                                    auth,
-                                    storage: None,
-                                }
-                            })
+                            .iter()
+                            .map(crate::core::repository::RepositoryDefinition::from)
                             .collect();
 
                         return RepositoryManager::from_definitions(definitions);
@@ -96,12 +33,9 @@ fn get_repository_manager(_service: &crate::core::service::FastSkillService) -> 
         }
     }
 
-    // Default: empty repository manager
     RepositoryManager::from_definitions(Vec::new())
 }
 
-/// Get sources manager from repository manager (for marketplace-based repositories)
-/// This creates a temporary SourcesManager from marketplace-based repositories
 async fn get_sources_manager_from_repos(
     repo_manager: &RepositoryManager,
 ) -> Result<SourcesManager, String> {
@@ -112,7 +46,6 @@ async fn get_sources_manager_from_repos(
     let mut marketplace_sources = Vec::new();
 
     for repo in repos {
-        // Only include marketplace-based repositories
         let source_config = match &repo.repo_type {
             RepositoryType::GitMarketplace => {
                 if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
@@ -178,7 +111,7 @@ async fn get_sources_manager_from_repos(
                     None
                 }
             }
-            RepositoryType::HttpRegistry => None, // Http-registry repos don't work with SourcesManager
+            RepositoryType::HttpRegistry => None,
         };
 
         if let Some(source_config) = source_config {
@@ -190,11 +123,9 @@ async fn get_sources_manager_from_repos(
         }
     }
 
-    // Create a temporary SourcesManager with these sources
     let temp_path = std::env::temp_dir().join("fastskill-sources-temp.toml");
     let mut sources_manager = SourcesManager::new(temp_path);
 
-    // Add all sources
     for source_def in marketplace_sources {
         sources_manager
             .add_source_with_priority(

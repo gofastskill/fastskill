@@ -2,9 +2,9 @@
 
 use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
 use crate::error::{CliError, CliResult};
+use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
 use clap::Args;
-use fastskill_agent_runtime::RuntimeSelectionInput;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::checks::load_checks;
@@ -90,7 +90,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
 
     // Resolve runtime selection (optional for validate).
     let input = RuntimeSelectionInput::from(&args);
-    let selection = fastskill_agent_runtime::resolve_runtime_selection(&input)
+    let selection = crate::runtime_selector::resolve_runtime_selection(&input)
         .map_err(runtime_selection_error_to_cli)?;
 
     if use_json {

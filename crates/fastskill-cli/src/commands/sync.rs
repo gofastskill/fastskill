@@ -4,6 +4,7 @@
 
 use crate::commands::common::runtime_selection_error_to_cli;
 use crate::error::{CliError, CliResult};
+use crate::runtime_selector::RuntimeSelectionInput;
 use crate::utils::agents_md::{
     generate_skills_xml, parse_current_skills, remove_skills_section, replace_skills_section,
     SkillLocation, SkillSummary,
@@ -12,7 +13,6 @@ use crate::utils::messages;
 use aikit_sdk::{instruction_file_with_override, DeployError};
 use clap::Args;
 use dirs;
-use fastskill_agent_runtime::RuntimeSelectionInput;
 use fastskill_core::core::skill_manager::SkillDefinition;
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
@@ -71,7 +71,7 @@ pub async fn execute_sync(service: &FastSkillService, args: SyncArgs) -> CliResu
 
     // Resolve runtime selection.
     let input = RuntimeSelectionInput::from(&args);
-    let selection = fastskill_agent_runtime::resolve_runtime_selection(&input)
+    let selection = crate::runtime_selector::resolve_runtime_selection(&input)
         .map_err(runtime_selection_error_to_cli)?;
 
     match selection {
