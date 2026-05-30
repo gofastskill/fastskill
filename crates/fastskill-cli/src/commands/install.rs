@@ -6,7 +6,7 @@ use crate::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill_core::core::{
     dependency_resolver::{DependencyResolver, SkillInstallItem},
-    lock::SkillsLock,
+    lock::ProjectSkillsLock,
     manifest::{SkillEntry, SkillProjectToml},
     project::resolve_project_file,
     repository::RepositoryManager,
@@ -168,7 +168,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     // T027: Load from skill-project.toml or lock file
     let skills_to_install: Vec<SkillInstallItem> = if args.lock {
         // Lock file already checked above, so it exists
-        let lock = SkillsLock::load_from_file(&lock_path)
+        let lock = ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
 
         println!("Using lock file ({} skills)", lock.skills.len());

@@ -360,47 +360,18 @@ fn extract_skill_metadata_from_zip(zip_data: &[u8]) -> HttpResult<(String, Strin
     })?;
 
     // Extract version: priority skill-project.toml > SKILL.md frontmatter > default
-    let version = if let Some(ref v) = metadata.version {
-        if !v.is_empty() {
-            v.clone()
-        } else if !skill_content.is_empty() {
-            // Try to get version from SKILL.md frontmatter as fallback
-            let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
-            if let Some(ref f) = frontmatter {
-                if let Some(ref v) = f.version {
-                    if !v.is_empty() {
-                        v.clone()
-                    } else {
-                        "1.0.0".to_string()
-                    }
-                } else {
-                    "1.0.0".to_string()
-                }
-            } else {
-                "1.0.0".to_string()
-            }
-        } else {
-            "1.0.0".to_string()
-        }
-    } else if !skill_content.is_empty() {
-        // Try to get version from SKILL.md frontmatter as fallback
-        let frontmatter = parse_yaml_frontmatter(&skill_content).ok();
-        if let Some(ref f) = frontmatter {
-            if let Some(ref v) = f.version {
-                if !v.is_empty() {
-                    v.clone()
-                } else {
-                    "1.0.0".to_string()
-                }
-            } else {
-                "1.0.0".to_string()
-            }
-        } else {
-            "1.0.0".to_string()
-        }
-    } else {
-        "1.0.0".to_string()
-    };
+    let version = metadata
+        .version
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+        .or_else(|| {
+            parse_yaml_frontmatter(&skill_content)
+                .ok()
+                .and_then(|f| f.version)
+                .filter(|v| !v.is_empty())
+        })
+        .unwrap_or_else(|| "1.0.0".to_string());
 
     Ok((skill_id, version))
 }

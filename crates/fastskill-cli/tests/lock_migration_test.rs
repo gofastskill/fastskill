@@ -5,10 +5,9 @@
 //! Covers acceptance criteria:
 //! - AC 11: loading a v1.0.0 lock with `generated_at` / `fetched_at` and immediately
 //!   re-saving it MUST strip those fields.
-//! - AC 12: the `SkillsLock` type alias continues to compile.
 //! - AC 18: v1.0.0 format files load without error (backward compat).
 
-use fastskill_core::core::lock::{ProjectSkillsLock, SkillsLock};
+use fastskill_core::core::lock::ProjectSkillsLock;
 use std::fs;
 use tempfile::TempDir;
 
@@ -76,18 +75,15 @@ fn v1_lock_loads_without_error() {
 }
 
 #[test]
-fn skills_lock_type_alias_round_trips() {
-    // AC 12: type alias compiles and behaves like ProjectSkillsLock.
-    fn accepts_alias(_lock: &SkillsLock) {}
-
+fn project_skills_lock_round_trips() {
+    // Verify ProjectSkillsLock can be written and reloaded cleanly.
     let tmp = TempDir::new().unwrap();
     let lock_path = tmp.path().join("skills.lock");
 
-    let lock = SkillsLock::new_empty();
+    let lock = ProjectSkillsLock::new_empty();
     lock.save_to_file(&lock_path).unwrap();
-    let loaded = SkillsLock::load_from_file(&lock_path).unwrap();
+    let loaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
 
-    accepts_alias(&loaded);
     assert!(loaded.skills.is_empty());
     assert_eq!(loaded.metadata.version, "2.0");
 }

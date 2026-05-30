@@ -89,6 +89,15 @@ semver.workspace = true
 aws-sdk-s3.workspace = true
 aws-config.workspace = true
 
+# Vendored OpenSSL — required for musl cross-compilation because cli-framework and
+# aikit-sdk depend on reqwest without default-features = false, which unifies
+# native-tls into the build. The vendored feature compiles OpenSSL from source
+# so the build is self-contained in environments without a system OpenSSL.
+openssl = { version = "0.10", optional = true, features = ["vendored"] }
+
+[features]
+vendored-openssl = ["dep:openssl"]
+
 [dev-dependencies]
 tempfile.workspace = true
 insta = "1.47"

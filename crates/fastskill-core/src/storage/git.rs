@@ -326,9 +326,9 @@ pub(crate) async fn execute_git_command_with_retry(
 /// # Examples
 ///
 /// ```no_run
-/// use fastskill::storage::git::clone_repository;
+/// use fastskill_core::storage::git::clone_repository;
 ///
-/// # async fn example() -> Result<(), fastskill::core::service::ServiceError> {
+/// # async fn example() -> Result<(), fastskill_core::core::service::ServiceError> {
 /// let temp_dir = clone_repository(
 ///     "https://github.com/example/repo.git",
 ///     Some("main"),
@@ -427,10 +427,10 @@ pub async fn clone_repository(
 /// # Examples
 ///
 /// ```no_run
-/// use fastskill::storage::git::checkout_branch_or_tag;
+/// use fastskill_core::storage::git::checkout_branch_or_tag;
 /// use std::path::Path;
 ///
-/// # async fn example() -> Result<(), fastskill::core::service::ServiceError> {
+/// # async fn example() -> Result<(), fastskill_core::core::service::ServiceError> {
 /// checkout_branch_or_tag(Path::new("/path/to/repo"), "main", true).await?;
 /// # Ok(())
 /// # }
@@ -481,10 +481,10 @@ pub async fn checkout_branch_or_tag(
 /// # Examples
 ///
 /// ```no_run
-/// use fastskill::storage::git::validate_cloned_skill;
+/// use fastskill_core::storage::git::validate_cloned_skill;
 /// use std::path::Path;
 ///
-/// # fn example() -> Result<(), fastskill::core::service::ServiceError> {
+/// # fn example() -> Result<(), fastskill_core::core::service::ServiceError> {
 /// let skill_path = validate_cloned_skill(Path::new("/path/to/cloned/repo"))?;
 /// // skill_path points to directory containing SKILL.md
 /// # Ok(())

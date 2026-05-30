@@ -326,8 +326,8 @@ pub async fn remove_skill_from_manifest(
 
     // Remove from lock file if it exists
     if lock_path.exists() {
-        use crate::core::lock::SkillsLock;
-        let mut lock = SkillsLock::load_from_file(&lock_path).map_err(|e| {
+        use crate::core::lock::ProjectSkillsLock;
+        let mut lock = ProjectSkillsLock::load_from_file(&lock_path).map_err(|e| {
             HttpError::InternalServerError(format!("Failed to load lock file: {}", e))
         })?;
         lock.remove_skill(&skill_id);

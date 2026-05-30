@@ -5,7 +5,7 @@ use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill_core::core::{
-    lock::{global_lock_path, GlobalSkillsLock, SkillsLock},
+    lock::{global_lock_path, GlobalSkillsLock, ProjectSkillsLock},
     manifest::SkillProjectToml,
     project::resolve_project_file,
     repository::RepositoryManager,
@@ -212,7 +212,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         PathBuf::from("skills.lock")
     };
     let lock = if lock_path.exists() {
-        SkillsLock::load_from_file(&lock_path)
+        ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?
     } else {
         return Err(CliError::Config(

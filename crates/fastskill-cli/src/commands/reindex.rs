@@ -34,6 +34,31 @@ fn should_use_colors() -> bool {
     std::io::stdout().is_terminal()
 }
 
+/// Controls how reindex progress is displayed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProgressMode {
+    /// Show a live progress bar (when TTY detected and not suppressed)
+    Live,
+    /// Print each skill's result verbosely
+    Verbose,
+    /// Show only the final summary
+    Quiet,
+}
+
+impl ProgressMode {
+    fn from_flags(progress: bool, no_progress: bool) -> Self {
+        if no_progress {
+            ProgressMode::Quiet
+        } else if progress {
+            ProgressMode::Verbose
+        } else if should_show_progress() {
+            ProgressMode::Live
+        } else {
+            ProgressMode::Quiet
+        }
+    }
+}
+
 /// Reindex the vector index by scanning skills directory
 #[derive(Debug, Args, Clone)]
 pub struct ReindexArgs {
@@ -90,14 +115,12 @@ struct ProgressTracker {
     skipped: usize,
     failed: usize,
     start_time: std::time::Instant,
-    progress: bool,
-    no_progress: bool,
-    show_progress: bool,
+    mode: ProgressMode,
 }
 
 impl ProgressTracker {
     fn new(total: usize, progress: bool, no_progress: bool) -> Self {
-        let show_progress = should_show_progress() && !no_progress;
+        let mode = ProgressMode::from_flags(progress, no_progress);
 
         Self {
             total,
@@ -105,15 +128,13 @@ impl ProgressTracker {
             skipped: 0,
             failed: 0,
             start_time: std::time::Instant::now(),
-            progress,
-            no_progress,
-            show_progress,
+            mode,
         }
     }
 
     fn record_success(&mut self, skill_id: &str) {
         self.completed += 1;
-        if self.progress {
+        if self.mode == ProgressMode::Verbose {
             println!("  ✓ Indexed: {}", skill_id);
         }
         self.print_progress();
@@ -121,7 +142,7 @@ impl ProgressTracker {
 
     fn record_skip(&mut self, skill_id: &str, reason: &str) {
         self.skipped += 1;
-        if self.progress {
+        if self.mode == ProgressMode::Verbose {
             println!("  ⊘ Skipped: {} ({})", skill_id, reason);
         }
         self.print_progress();
@@ -129,14 +150,14 @@ impl ProgressTracker {
 
     fn record_failure(&mut self, skill_id: &str, error: &str) {
         self.failed += 1;
-        if self.progress {
+        if self.mode == ProgressMode::Verbose {
             eprintln!("  ✗ Failed: {} - {}", skill_id, error);
         }
         self.print_progress();
     }
 
     fn print_progress(&self) {
-        if !self.show_progress || self.progress {
+        if self.mode != ProgressMode::Live {
             return;
         }
 
@@ -158,11 +179,11 @@ impl ProgressTracker {
     }
 
     fn finish(&self) {
-        if self.no_progress {
+        if self.mode == ProgressMode::Quiet {
             return;
         }
 
-        if self.show_progress && !self.progress {
+        if self.mode == ProgressMode::Live {
             println!();
         }
 
@@ -543,8 +564,7 @@ Test skill content"#,
 
         assert_eq!(tracker.total, 5);
         assert_eq!(tracker.completed, 0);
-        assert!(tracker.progress);
-        assert!(!tracker.no_progress);
+        assert_eq!(tracker.mode, ProgressMode::Verbose);
     }
 
     #[tokio::test]
@@ -552,8 +572,7 @@ Test skill content"#,
         let tracker = ProgressTracker::new(5, false, true);
 
         assert_eq!(tracker.total, 5);
-        assert!(!tracker.show_progress);
-        assert!(tracker.no_progress);
+        assert_eq!(tracker.mode, ProgressMode::Quiet);
     }
 
     #[tokio::test]

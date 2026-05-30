@@ -146,6 +146,111 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / (norm_a * norm_b)
 }
 
+/// Computes pairwise embedding similarity — equivalent to `cosine_similarity`.
+/// Use this name in CLI-facing code to avoid coupling the CLI to internal math naming.
+pub fn skill_similarity(a: &[f32], b: &[f32]) -> f32 {
+    cosine_similarity(a, b)
+}
+
+/// Spherical k-means with centroid output.
+/// Returns `(assignments, centroids)` where `assignments[i]` is the cluster index
+/// for `embeddings[i]` and `centroids[c]` is the L2-normalised mean of cluster `c`.
+///
+/// Uses deterministic initialisation (evenly-spaced indices, sorted by input order).
+/// Handles empty clusters by assigning the centroid to the skill farthest from its
+/// current centroid.
+pub fn cluster_skills(embeddings: &[Vec<f32>], k: usize) -> (Vec<usize>, Vec<Vec<f32>>) {
+    if embeddings.is_empty() || k == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let n = embeddings.len();
+    let k = k.min(n);
+    let embedding_dim = embeddings[0].len();
+
+    let mut centroids: Vec<Vec<f32>> = (0..k)
+        .map(|i| {
+            let idx = (i * n) / k;
+            let mut c = embeddings[idx].clone();
+            l2_normalize(&mut c);
+            c
+        })
+        .collect();
+
+    let mut assignments = vec![0usize; n];
+
+    for _ in 0..100 {
+        let new_assignments: Vec<usize> = embeddings
+            .iter()
+            .map(|emb| {
+                centroids
+                    .iter()
+                    .enumerate()
+                    .map(|(c_idx, centroid)| (c_idx, cosine_similarity(emb, centroid)))
+                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|(c_idx, _)| c_idx)
+                    .unwrap_or(0)
+            })
+            .collect();
+
+        if new_assignments == assignments {
+            assignments = new_assignments;
+            break;
+        }
+        assignments = new_assignments;
+
+        let mut new_centroids = vec![vec![0.0f32; embedding_dim]; k];
+        let mut cluster_counts = vec![0usize; k];
+
+        for (skill_idx, &c_idx) in assignments.iter().enumerate() {
+            cluster_counts[c_idx] += 1;
+            for (dim, &val) in embeddings[skill_idx].iter().enumerate() {
+                new_centroids[c_idx][dim] += val;
+            }
+        }
+
+        for c_idx in 0..k {
+            if cluster_counts[c_idx] == 0 {
+                let (farthest_idx, _) = assignments
+                    .iter()
+                    .enumerate()
+                    .map(|(skill_idx, &cluster_idx)| {
+                        let sim =
+                            cosine_similarity(&embeddings[skill_idx], &centroids[cluster_idx]);
+                        (skill_idx, sim)
+                    })
+                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                    .unwrap_or((0, 0.0));
+
+                let old_cluster = assignments[farthest_idx];
+                assignments[farthest_idx] = c_idx;
+                cluster_counts[old_cluster] = cluster_counts[old_cluster].saturating_sub(1);
+                for (centroid_val, skill_val) in new_centroids[old_cluster]
+                    .iter_mut()
+                    .zip(embeddings[farthest_idx].iter())
+                {
+                    *centroid_val -= *skill_val;
+                }
+                cluster_counts[c_idx] = 1;
+                new_centroids[c_idx] = embeddings[farthest_idx].clone();
+            }
+        }
+
+        for (c_idx, centroid) in new_centroids.iter_mut().enumerate() {
+            let count = cluster_counts[c_idx] as f32;
+            if count > 1.0 {
+                for val in centroid.iter_mut() {
+                    *val /= count;
+                }
+            }
+            l2_normalize(centroid);
+        }
+
+        centroids = new_centroids;
+    }
+
+    (assignments, centroids)
+}
+
 /// L2-normalizes a vector in place.
 pub fn l2_normalize(v: &mut [f32]) {
     let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -296,5 +401,65 @@ mod kmeans_tests {
         assert!((SeverityLevel::High.min_similarity() - 0.93).abs() < 1e-6);
         assert!((SeverityLevel::Medium.min_similarity() - 0.98).abs() < 1e-6);
         assert!((SeverityLevel::Low.min_similarity() - 0.88).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_similarity_identical_vectors() {
+        let a = vec![1.0f32, 2.0, 3.0];
+        let b = vec![1.0f32, 2.0, 3.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_cosine_similarity_orthogonal_vectors() {
+        let a = vec![1.0f32, 0.0];
+        let b = vec![0.0f32, 1.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!(sim.abs() < 0.001);
+    }
+
+    #[test]
+    fn test_cosine_similarity_empty_vectors() {
+        let a: Vec<f32> = vec![];
+        let b: Vec<f32> = vec![];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn test_skill_similarity_equals_cosine_similarity() {
+        let a = vec![1.0f32, 2.0, 3.0];
+        let b = vec![4.0f32, 5.0, 6.0];
+        assert_eq!(skill_similarity(&a, &b), cosine_similarity(&a, &b));
+    }
+
+    #[test]
+    fn test_cluster_skills_two_clear_clusters() {
+        let e1 = vec![0.9806f32, 0.1961, 0.0, 0.0];
+        let e2 = vec![0.9950f32, 0.0998, 0.0, 0.0];
+        let e3 = vec![0.0f32, 0.9950, 0.0998, 0.0];
+        let e4 = vec![0.0f32, 0.9806, 0.1961, 0.0];
+        let embeddings = vec![e1, e2, e3, e4];
+        let (assignments, centroids) = cluster_skills(&embeddings, 2);
+        assert_eq!(assignments.len(), 4);
+        assert_eq!(centroids.len(), 2);
+        assert_eq!(assignments[0], assignments[1], "first cluster");
+        assert_eq!(assignments[2], assignments[3], "second cluster");
+        assert_ne!(assignments[0], assignments[2], "distinct clusters");
+    }
+
+    #[test]
+    fn test_cluster_skills_k_equals_one() {
+        let embeddings = vec![vec![1.0f32, 0.0], vec![0.0f32, 1.0], vec![0.5f32, 0.5]];
+        let (assignments, centroids) = cluster_skills(&embeddings, 1);
+        assert!(assignments.iter().all(|&a| a == 0));
+        assert_eq!(centroids.len(), 1);
+    }
+
+    #[test]
+    fn test_cluster_skills_empty() {
+        let (assignments, centroids) = cluster_skills(&[], 3);
+        assert!(assignments.is_empty());
+        assert!(centroids.is_empty());
     }
 }

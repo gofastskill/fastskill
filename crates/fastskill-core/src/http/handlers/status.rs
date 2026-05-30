@@ -210,10 +210,10 @@ pub async fn root(State(state): State<AppState>) -> Html<String> {
             <div class="api-links">
                 <h3>API Endpoints</h3>
                 <ul>
-                    <li><a href="/api/skills">GET /api/skills</a> - List all skills</li>
-                    <li><a href="/api/status">GET /api/status</a> - Service status</li>
-                    <li><a href="/api/search">POST /api/search</a> - Search skills</li>
-                    <li><a href="/api/reindex">POST /api/reindex</a> - Reindex skills</li>
+                    <li><a href="/api/v1/skills">GET /api/v1/skills</a> - List all skills</li>
+                    <li><a href="/api/v1/status">GET /api/v1/status</a> - Service status</li>
+                    <li><a href="/api/v1/search">POST /api/v1/search</a> - Search skills</li>
+                    <li><a href="/api/v1/reindex">POST /api/v1/reindex</a> - Reindex skills</li>
                 </ul>
             </div>
         </div>

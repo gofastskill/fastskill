@@ -61,9 +61,6 @@ pub struct ProjectSkillsLock {
     pub skills: Vec<ProjectLockedSkillEntry>,
 }
 
-/// Backward-compatible type alias (deprecated; remove in next major version).
-pub type SkillsLock = ProjectSkillsLock;
-
 impl ProjectSkillsLock {
     pub fn new_empty() -> Self {
         Self {
@@ -566,13 +563,6 @@ depth = 0
             !new_content.contains("fetched_at"),
             "fetched_at must be stripped on save"
         );
-    }
-
-    #[test]
-    fn test_skils_lock_type_alias_compiles() {
-        // Ensure SkillsLock type alias still works
-        let lock: SkillsLock = SkillsLock::new_empty();
-        assert_eq!(lock.metadata.version, "2.0");
     }
 
     #[test]

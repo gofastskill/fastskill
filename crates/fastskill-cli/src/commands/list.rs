@@ -10,7 +10,7 @@
 use crate::commands::common::validate_format_args;
 use crate::error::{manifest_required_message, CliError, CliResult};
 use clap::Args;
-use fastskill_core::core::lock::SkillsLock;
+use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::manifest::{SkillProjectToml, SkillSource};
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::core::service::FastSkillService;
@@ -87,10 +87,10 @@ pub async fn execute_list(
         .unwrap_or_default();
 
     let lock = if lock_path.exists() {
-        SkillsLock::load_from_file(&lock_path)
+        ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load skills.lock: {}", e)))?
     } else {
-        SkillsLock::new_empty()
+        ProjectSkillsLock::new_empty()
     };
 
     // Build lock map with additional metadata
