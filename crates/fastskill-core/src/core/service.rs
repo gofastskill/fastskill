@@ -281,6 +281,9 @@ pub enum ServiceError {
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 
+    #[error("Skill already indexed: {0}")]
+    AlreadyIndexed(String),
+
     #[error("Custom error: {0}")]
     Custom(String),
 }
@@ -332,56 +335,67 @@ pub struct FastSkillService {
     initialized: bool,
 }
 
+/// Directories always skipped when scanning the skill storage tree for SKILL.md files.
+const SKIPPED_DIRS: &[&str] = &["node_modules", "target", "__pycache__"];
+
+/// Returns `true` for directory names that should not be descended into during auto-indexing.
+fn should_skip_directory(name: &str) -> bool {
+    name.starts_with('.') || SKIPPED_DIRS.contains(&name)
+}
+
 impl FastSkillService {
-    /// Create a new service instance
-    pub async fn new(config: ServiceConfig) -> Result<Self, ServiceError> {
-        // Initialize logging only if not already initialized
-        crate::init_logging();
-
-        info!("Initializing FastSkill service v{}", crate::VERSION);
-
-        // Create storage backend
-        let storage = Arc::new(
+    async fn build_storage_backend(
+        config: &ServiceConfig,
+    ) -> Result<Arc<dyn crate::storage::StorageBackend>, ServiceError> {
+        Ok(Arc::new(
             crate::storage::FilesystemStorage::new(config.skill_storage_path.clone()).await?,
-        );
+        ))
+    }
 
-        // Create ZIP handler
-        let zip_handler = Arc::new(crate::storage::ZipHandler::new()?);
+    fn build_sandbox(execution: &ExecutionConfig) -> Result<Arc<ExecutionSandbox>, ServiceError> {
+        Ok(Arc::new(crate::execution::ExecutionSandbox::new(
+            execution.clone(),
+        )?))
+    }
 
-        // Create execution sandbox
-        let sandbox = Arc::new(crate::execution::ExecutionSandbox::new(
-            config.execution.clone(),
-        )?);
+    fn build_validators() -> (
+        Arc<crate::validation::SkillValidator>,
+        Arc<crate::validation::ZipValidator>,
+    ) {
+        (
+            Arc::new(crate::validation::SkillValidator::new()),
+            Arc::new(crate::validation::ZipValidator::new()),
+        )
+    }
 
-        // Create validators
-        let skill_validator = Arc::new(crate::validation::SkillValidator::new());
-        let zip_validator = Arc::new(crate::validation::ZipValidator::new());
-
-        // Create event bus
-        let event_bus = Arc::new(crate::events::EventBus::new());
-
-        // Create skill manager
-        let skill_manager = Arc::new(crate::core::skill_manager::SkillManager::new());
-
-        // Create metadata service (depends on skill manager)
-        let metadata_service = Arc::new(crate::core::metadata::MetadataServiceImpl::new(
-            skill_manager.clone(),
-        ));
-
-        // Create vector index service if embedding is configured
-        let vector_index_service = if let Some(embedding_config) = &config.embedding {
-            Some(Arc::new(
+    fn build_vector_index_service(
+        config: &ServiceConfig,
+    ) -> Option<Arc<dyn crate::core::vector_index::VectorIndexService>> {
+        config.embedding.as_ref().map(|embedding_config| {
+            Arc::new(
                 crate::core::vector_index::VectorIndexServiceImpl::with_config(
                     embedding_config,
                     &config.skill_storage_path,
                 ),
-            )
-                as Arc<dyn crate::core::vector_index::VectorIndexService>)
-        } else {
-            None
-        };
+            ) as Arc<dyn crate::core::vector_index::VectorIndexService>
+        })
+    }
 
-        // Create hot reload manager if enabled
+    /// Create a new service instance
+    pub async fn new(config: ServiceConfig) -> Result<Self, ServiceError> {
+        crate::init_logging();
+        info!("Initializing FastSkill service v{}", crate::VERSION);
+
+        let storage = Self::build_storage_backend(&config).await?;
+        let zip_handler = Arc::new(crate::storage::ZipHandler::new()?);
+        let sandbox = Self::build_sandbox(&config.execution)?;
+        let (skill_validator, zip_validator) = Self::build_validators();
+        let event_bus = Arc::new(crate::events::EventBus::new());
+        let skill_manager = Arc::new(crate::core::skill_manager::SkillManager::new());
+        let metadata_service = Arc::new(crate::core::metadata::MetadataServiceImpl::new(
+            skill_manager.clone(),
+        ));
+        let vector_index_service = Self::build_vector_index_service(&config);
         let hot_reload_manager = if config.hot_reload.enabled {
             Some(Arc::new(crate::storage::hot_reload::HotReloadManager::new(
                 storage.clone(),
@@ -512,15 +526,9 @@ impl FastSkillService {
         for entry in WalkDir::new(&self.config.skill_storage_path)
             .into_iter()
             .filter_entry(|e| {
-                // Skip hidden directories and common system directories
                 !e.file_name()
                     .to_str()
-                    .map(|s| {
-                        s.starts_with('.')
-                            || s == "node_modules"
-                            || s == "target"
-                            || s == "__pycache__"
-                    })
+                    .map(should_skip_directory)
                     .unwrap_or(false)
             })
         {
@@ -599,15 +607,10 @@ impl FastSkillService {
         skill.created_at = chrono::Utc::now();
         skill.updated_at = chrono::Utc::now();
 
-        // Try to register the skill (ignore if it already exists)
+        // Try to register the skill (ignore if it is already indexed)
         match self.skill_manager.register_skill(skill).await {
             Ok(_) => Ok(()),
-            Err(crate::core::service::ServiceError::Custom(msg))
-                if msg.contains("already exists") =>
-            {
-                // Skill already registered, that's fine
-                Ok(())
-            }
+            Err(ServiceError::AlreadyIndexed(_)) => Ok(()),
             Err(e) => Err(e),
         }
     }

@@ -38,38 +38,105 @@ pub use build_cache::{BuildCache, SkillCacheEntry};
 pub use change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
 };
-pub use dependencies::*;
+// dependencies
+pub use dependencies::{Dependency, DependencyError, DependencyGraph};
 pub use dependency_resolver::{DependencyResolutionError, DependencyResolver, SkillInstallItem};
-pub use embedding::*;
-pub use lock::*;
-pub use manifest::*;
-pub use metadata::*;
+
+// embedding
+pub use embedding::{EmbeddingService, OpenAIEmbeddingService};
+
+// lock
+pub use lock::{
+    global_lock_path, project_lock_path, GlobalLockMetadata, GlobalLockedSkillEntry,
+    GlobalSkillsLock, LockError, LockMismatch, ProjectLockMetadata, ProjectLockedSkillEntry,
+    ProjectSkillsLock,
+};
+
+// manifest
+pub use manifest::{
+    AuthConfig, AuthType, DependenciesSection, DependencySource, DependencySpec,
+    EmbeddingConfigToml, EvalConfigToml, FastSkillToolConfig, FileResolutionResult,
+    HttpServerConfigToml, ManifestError, ManifestMetadata, MetadataSection, ProjectContext,
+    RepositoryConnection, RepositoryDefinition, RepositoryType, SkillEntry, SkillProjectToml,
+    SkillSource, SkillsManifest, SourceSpecificFields, ToolSection,
+};
+
+// metadata
+pub use metadata::{
+    parse_yaml_frontmatter, MetadataService, MetadataServiceImpl, SkillFrontmatter, SkillMetadata,
+};
+
+// packaging
 pub use packaging::{
     calculate_checksum, create_build_metadata, package_skill, package_skill_with_id,
     BuildEnvironment, BuildMetadata,
 };
+
+// project_config
 pub use project_config::{load_project_config, ProjectConfig};
+
+// registry
 pub use registry::{
-    AuthConfig, IndexEntry, RegistryClient, RegistryConfig, RegistryConfigManager, StorageConfig,
+    AuthConfig as RegistryAuthConfig, IndexEntry, RegistryClient, RegistryConfig,
+    RegistryConfigManager, StorageConfig,
 };
+
+// registry_index
 pub use registry_index::{
     create_registry_structure, get_skill_index_path, get_version_metadata, migrate_index_format,
     read_skill_versions, IndexMetadata, VersionEntry, VersionMetadata,
 };
+
+// repository
 pub use repository::{
-    RepositoriesConfig, RepositoryAuth, RepositoryConfig as RepoConfig, RepositoryDefinition,
-    RepositoryManager, RepositoryType,
+    RepositoriesConfig, RepositoryAuth, RepositoryConfig as RepoConfig,
+    RepositoryDefinition as RepositoryDef, RepositoryManager, RepositoryType as RepoType,
 };
-pub use resolver::*;
-pub use routing::*;
-pub use service::*;
-pub use skill_manager::*;
-pub use sources::*;
-pub use tool_calling::*;
-pub use update::*;
-pub use validation::*;
-pub use vector_index::*;
-pub use version::*;
+
+// resolver
+pub use resolver::{
+    ConflictStrategy, PackageResolver, ResolutionResult, ResolverError, SkillCandidate,
+};
+
+// routing
+pub use routing::{QueryContext, RoutedSkill, RoutingService, RoutingServiceImpl};
+
+// service
+pub use service::{
+    CacheConfig, EmbeddingConfig, FastSkillService, HotReloadConfig, HttpServerConfig,
+    SecurityConfig, ServiceConfig, ServiceError, SkillId,
+};
+
+// skill_manager
+pub use skill_manager::{
+    SkillDefinition, SkillFilters, SkillManagementService, SkillManager, SkillUpdate, SourceType,
+};
+
+// sources
+pub use sources::{
+    MarketplaceJson, MarketplaceSkill, SkillInfo, SourceAuth, SourceConfig, SourceDefinition,
+    SourcesConfig, SourcesError, SourcesManager,
+};
+
+// tool_calling
+pub use tool_calling::{AvailableTool, ToolCallingService, ToolCallingServiceImpl, ToolResult};
+
+// update
+pub use update::{UpdateError, UpdateInfo, UpdateService, UpdateStrategy};
+
+// validation
+pub use validation::{
+    validate_identifier, validate_project_structure, validate_semver, validate_uniqueness,
+    ValidationError,
+};
+
+// vector_index
+pub use vector_index::{IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl};
+
+// version
+pub use version::{compare_versions, is_newer, VersionConstraint, VersionError};
+
+// version_bump
 pub use version_bump::{
     bump_version, get_current_version, parse_version, update_skill_version, BumpType,
 };
