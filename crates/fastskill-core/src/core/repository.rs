@@ -344,7 +344,8 @@ impl RepositoryManager {
             ServiceError::Custom(format!("Failed to serialize repositories config: {}", e))
         })?;
 
-        std::fs::write(&self.config_path, content).map_err(ServiceError::Io)?;
+        crate::utils::atomic_write(&self.config_path, content.as_bytes())
+            .map_err(ServiceError::Io)?;
 
         Ok(())
     }

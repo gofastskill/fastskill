@@ -15,80 +15,22 @@ use axum::{
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Get repositories from skill-project.toml
+/// Get repositories from skill-project.toml using the canonical From impl.
 pub(crate) fn get_repositories(
     project: &SkillProjectToml,
 ) -> Vec<crate::core::repository::RepositoryDefinition> {
-    use crate::core::repository::{
-        RepositoryAuth, RepositoryConfig, RepositoryDefinition, RepositoryType,
-    };
-
-    if let Some(tool) = &project.tool {
-        if let Some(fastskill_config) = &tool.fastskill {
-            if let Some(repos) = &fastskill_config.repositories {
-                return repos
-                    .iter()
-                    .map(|r| {
-                        let repo_type = match r.r#type {
-                            crate::core::manifest::RepositoryType::HttpRegistry => {
-                                RepositoryType::HttpRegistry
-                            }
-                            crate::core::manifest::RepositoryType::GitMarketplace => {
-                                RepositoryType::GitMarketplace
-                            }
-                            crate::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
-                            crate::core::manifest::RepositoryType::Local => RepositoryType::Local,
-                        };
-
-                        let config = match &r.connection {
-                            crate::core::manifest::RepositoryConnection::HttpRegistry {
-                                index_url,
-                            } => RepositoryConfig::HttpRegistry {
-                                index_url: index_url.clone(),
-                            },
-                            crate::core::manifest::RepositoryConnection::GitMarketplace {
-                                url,
-                                branch,
-                            } => RepositoryConfig::GitMarketplace {
-                                url: url.clone(),
-                                branch: branch.clone(),
-                                tag: None,
-                            },
-                            crate::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
-                                RepositoryConfig::ZipUrl {
-                                    base_url: zip_url.clone(),
-                                }
-                            }
-                            crate::core::manifest::RepositoryConnection::Local { path } => {
-                                RepositoryConfig::Local {
-                                    path: std::path::PathBuf::from(path),
-                                }
-                            }
-                        };
-
-                        let auth = r.auth.as_ref().map(|a| match a.r#type {
-                            crate::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
-                                env_var: a
-                                    .env_var
-                                    .clone()
-                                    .unwrap_or_else(|| "PAT_TOKEN".to_string()),
-                            },
-                        });
-
-                        RepositoryDefinition {
-                            name: r.name.clone(),
-                            repo_type,
-                            priority: r.priority,
-                            config,
-                            auth,
-                            storage: None,
-                        }
-                    })
-                    .collect();
-            }
-        }
-    }
-    Vec::new()
+    project
+        .tool
+        .as_ref()
+        .and_then(|t| t.fastskill.as_ref())
+        .and_then(|f| f.repositories.as_ref())
+        .map(|repos| {
+            repos
+                .iter()
+                .map(crate::core::repository::RepositoryDefinition::from)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Get lock file path from project path
@@ -455,13 +397,83 @@ pub async fn update_skill_in_manifest(
     Ok(Json(ApiResponse::success(response)))
 }
 
-/// Helper function to create sources manager from repository manager
+/// Helper function to create sources manager from repository manager.
+/// Converts marketplace-based repositories (git-marketplace, zip-url, local) to SourceDefinitions.
 fn create_sources_manager_from_repositories(
-    _repo_manager: &RepositoryManager,
+    repo_manager: &RepositoryManager,
 ) -> Result<Option<SourcesManager>, HttpError> {
-    // For now, create an empty sources manager - in future can be enhanced to convert repositories
-    // This is a simplified implementation
-    Ok(None)
+    use crate::core::repository::{RepositoryConfig, RepositoryType};
+    use crate::core::sources::{SourceAuth, SourceConfig, SourceDefinition, SourcesManager};
+
+    let repos = repo_manager.list_repositories();
+    let mut sources: Vec<SourceDefinition> = Vec::new();
+
+    for repo in repos {
+        let source_config = match &repo.repo_type {
+            RepositoryType::GitMarketplace => {
+                if let RepositoryConfig::GitMarketplace {
+                    url,
+                    branch,
+                    tag: _,
+                } = &repo.config
+                {
+                    let auth = repo.auth.as_ref().and_then(|a| match a {
+                        crate::core::repository::RepositoryAuth::Pat { env_var } => {
+                            Some(SourceAuth::Pat {
+                                env_var: env_var.clone(),
+                            })
+                        }
+                        _ => None,
+                    });
+                    Some(SourceConfig::Git {
+                        url: url.clone(),
+                        branch: branch.clone(),
+                        tag: None,
+                        auth,
+                    })
+                } else {
+                    None
+                }
+            }
+            RepositoryType::ZipUrl => {
+                if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
+                    Some(SourceConfig::ZipUrl {
+                        base_url: base_url.clone(),
+                        auth: None,
+                    })
+                } else {
+                    None
+                }
+            }
+            RepositoryType::Local => {
+                if let RepositoryConfig::Local { path } = &repo.config {
+                    Some(SourceConfig::Local { path: path.clone() })
+                } else {
+                    None
+                }
+            }
+            RepositoryType::HttpRegistry => None,
+        };
+
+        if let Some(config) = source_config {
+            sources.push(SourceDefinition {
+                name: repo.name.clone(),
+                priority: repo.priority,
+                source: config,
+            });
+        }
+    }
+
+    if sources.is_empty() {
+        return Ok(None);
+    }
+
+    let mut manager = SourcesManager::new(std::path::PathBuf::from(""));
+    for source in sources {
+        let _ = manager.add_source_with_priority(source.name, source.source, source.priority);
+    }
+
+    Ok(Some(manager))
 }
 
 /// Helper function to find skill in sources

@@ -1,9 +1,13 @@
 //! Diagnostic and analysis commands for skill relationships and quality
 
+pub mod cluster;
+pub mod duplicates;
+pub mod matrix;
+
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
 use clap::{Args, Subcommand};
-use fastskill_core::core::analysis::SimilarityPair;
+use fastskill_core::core::analysis::{cosine_similarity, l2_normalize, SimilarityPair};
 use fastskill_core::core::vector_index::IndexedSkill;
 use fastskill_core::FastSkillService;
 use fastskill_core::OutputFormat;
@@ -578,16 +582,6 @@ fn run_spherical_kmeans(skills: &[IndexedSkill], k: usize) -> (Vec<usize>, Vec<V
     (assignments, centroids)
 }
 
-/// L2-normalize a slice in-place
-fn l2_normalize(v: &mut [f32]) {
-    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 1e-10 {
-        for x in v.iter_mut() {
-            *x /= norm;
-        }
-    }
-}
-
 /// Print cluster output in human-readable format
 fn print_cluster_output(clusters: &[ClusterOutput], total_skills: usize, actual_k: usize) {
     if clusters.is_empty() {
@@ -877,41 +871,6 @@ fn get_skill_name(metadata: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// Calculates cosine similarity between two embedding vectors
-///
-/// Formula: cos(θ) = (A · B) / (||A|| × ||B||)
-///
-/// Returns a value between -1.0 (opposite) and 1.0 (identical).
-/// For normalized embeddings (like OpenAI's), values are typically between 0.0 and 1.0.
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-
-    if a.is_empty() {
-        return 0.0;
-    }
-
-    let mut dot_product = 0.0_f32;
-    let mut norm_a = 0.0_f32;
-    let mut norm_b = 0.0_f32;
-
-    for i in 0..a.len() {
-        dot_product += a[i] * b[i];
-        norm_a += a[i] * a[i];
-        norm_b += b[i] * b[i];
-    }
-
-    let norm_a = norm_a.sqrt();
-    let norm_b = norm_b.sqrt();
-
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-
-    dot_product / (norm_a * norm_b)
-}
-
 // --------------------------------------------------------------------------
 // Matrix display helpers (unchanged)
 // --------------------------------------------------------------------------
@@ -923,12 +882,15 @@ fn print_similarity_table(matrix: &[SimilarityPair], threshold: f32) {
     print!("{}", build_grid_string(matrix, threshold));
 }
 
-/// Truncates a column header ID to at most 17 characters.
+/// Truncates a column header ID to at most 15 Unicode characters.
 ///
-/// If the ID exceeds 18 characters, it is shortened to 15 chars with a ".." suffix.
+/// Uses `chars().take(15)` to avoid panicking on multi-byte code points.
+/// If the original is longer than 15 chars, appends ".." as a visual indicator.
 fn truncate_header(s: &str) -> String {
-    if s.len() > 18 {
-        format!("{}..", &s[..15])
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() > 15 {
+        let truncated: String = chars.into_iter().take(15).collect();
+        format!("{}..", truncated)
     } else {
         s.to_string()
     }
@@ -1482,5 +1444,40 @@ mod tests {
         assert!(json.contains("skill-a"));
         // modified_at: None should be omitted (skip_serializing_if)
         assert!(!json.contains("\"modified_at\": null"));
+    }
+
+    #[test]
+    fn test_truncate_header_unicode_no_panic() {
+        // G7 acceptance criterion: truncate_header must not panic on multi-byte Unicode
+        let skill_id = "技能_abc_123456789"; // Contains multi-byte CJK chars
+        let result = truncate_header(skill_id);
+        let char_count = result.chars().count();
+        // truncated to <=15 chars + optional ".." suffix
+        assert!(
+            char_count <= 17,
+            "result must be at most 15 chars + 2 for '..' = 17, got {}",
+            char_count
+        );
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_short() {
+        let result = truncate_header("short-id");
+        assert_eq!(result, "short-id");
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_exactly_15() {
+        let s = "a".repeat(15);
+        let result = truncate_header(&s);
+        assert_eq!(result, s);
+    }
+
+    #[test]
+    fn test_truncate_header_ascii_long() {
+        let s = "a".repeat(20);
+        let result = truncate_header(&s);
+        assert!(result.ends_with(".."));
+        assert_eq!(result.len(), 17); // 15 chars + ".."
     }
 }

@@ -1819,13 +1819,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
-name = "fastskill-agent-runtime"
-version = "0.9.124"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "fastskill-cli"
 version = "0.9.124"
 dependencies = [
@@ -1841,7 +1834,6 @@ dependencies = [
  "cli-framework",
  "config",
  "dirs 6.0.0",
- "fastskill-agent-runtime",
  "fastskill-core",
  "fastskill-evals",
  "fs2",

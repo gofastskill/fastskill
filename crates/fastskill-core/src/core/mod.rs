@@ -8,7 +8,7 @@ pub mod context_resolver;
 pub mod dependencies;
 pub mod dependency_resolver;
 pub mod embedding;
-pub mod loading;
+pub mod frontmatter;
 pub mod lock;
 pub mod manifest;
 pub mod metadata;
@@ -41,7 +41,6 @@ pub use change_detection::{
 pub use dependencies::*;
 pub use dependency_resolver::{DependencyResolutionError, DependencyResolver, SkillInstallItem};
 pub use embedding::*;
-pub use loading::*;
 pub use lock::*;
 pub use manifest::*;
 pub use metadata::*;
