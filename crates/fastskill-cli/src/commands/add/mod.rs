@@ -5,7 +5,7 @@ pub mod skill_def;
 pub mod sources;
 
 // Re-export public API consumed by install_utils.rs
-use crate::error::{manifest_required_for_add_message, CliError, CliResult};
+use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{detect_skill_source, SkillSource};
 use chrono::Utc;
 use clap::Args;
@@ -166,9 +166,7 @@ fn ensure_manifest() -> CliResult<()> {
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let project_file_result = resolve_project_file(&current_dir);
     if !project_file_result.found {
-        return Err(CliError::Config(
-            manifest_required_for_add_message().to_string(),
-        ));
+        return Err(CliError::Config(manifest_required_message().to_string()));
     }
     Ok(())
 }

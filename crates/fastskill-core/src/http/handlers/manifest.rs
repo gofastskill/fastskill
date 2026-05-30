@@ -15,6 +15,18 @@ use axum::{
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+fn load_project(path: &std::path::Path) -> Result<SkillProjectToml, HttpError> {
+    SkillProjectToml::load_from_file(path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    })
+}
+
+fn save_project(project: &SkillProjectToml, path: &std::path::Path) -> Result<(), HttpError> {
+    project.save_to_file(path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
+    })
+}
+
 /// Get repositories from skill-project.toml using the canonical From impl.
 pub(crate) fn get_repositories(
     project: &SkillProjectToml,
@@ -31,6 +43,18 @@ pub(crate) fn get_repositories(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn dep_source_type(spec: &DependencySpec) -> &'static str {
+    match spec {
+        DependencySpec::Version(_) => "source",
+        DependencySpec::Inline { source, .. } => match source {
+            DependencySource::Git => "git",
+            DependencySource::Local => "local",
+            DependencySource::ZipUrl => "zip-url",
+            DependencySource::Source => "source",
+        },
+    }
 }
 
 /// Get lock file path from project path
@@ -66,9 +90,7 @@ pub async fn get_project(
         }))));
     }
 
-    let project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
-    })?;
+    let project = load_project(project_path)?;
 
     let metadata = project.metadata.as_ref().map(|m| {
         serde_json::json!({
@@ -92,20 +114,14 @@ pub async fn get_project(
                 .map(|(id, spec)| {
                     let (typ, location) = match spec {
                         DependencySpec::Version(v) => {
-                            ("source".to_string(), format!("version {}", v))
+                            (dep_source_type(spec).to_string(), format!("version {}", v))
                         }
                         DependencySpec::Inline {
                             source,
                             source_specific,
                             ..
                         } => {
-                            let typ = match source {
-                                DependencySource::Git => "git",
-                                DependencySource::Local => "local",
-                                DependencySource::ZipUrl => "zip-url",
-                                DependencySource::Source => "source",
-                            }
-                            .to_string();
+                            let typ = dep_source_type(spec).to_string();
                             let location = match source {
                                 DependencySource::Git => source_specific
                                     .url
@@ -159,9 +175,7 @@ pub async fn list_manifest_skills(
 
     // Load project
     let project = if project_path.exists() {
-        SkillProjectToml::load_from_file(project_path).map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
-        })?
+        load_project(project_path)?
     } else {
         // Return empty list if project doesn't exist
         return Ok(Json(ApiResponse::success(Vec::new())));
@@ -174,20 +188,15 @@ pub async fn list_manifest_skills(
                 .iter()
                 .map(|(id, spec)| {
                     let (version, source_type) = match spec {
-                        DependencySpec::Version(v) => (Some(v.clone()), "source"),
-                        DependencySpec::Inline {
-                            source,
-                            source_specific,
-                            ..
-                        } => {
-                            let stype = match source {
-                                DependencySource::Git => "git",
-                                DependencySource::Local => "local",
-                                DependencySource::ZipUrl => "zip-url",
-                                DependencySource::Source => "source",
-                            };
-                            (source_specific.version.clone(), stype)
+                        DependencySpec::Version(v) => {
+                            (Some(v.clone()), dep_source_type(spec).to_string())
                         }
+                        DependencySpec::Inline {
+                            source_specific, ..
+                        } => (
+                            source_specific.version.clone(),
+                            dep_source_type(spec).to_string(),
+                        ),
                     };
 
                     ManifestSkillResponse {
@@ -195,7 +204,7 @@ pub async fn list_manifest_skills(
                         version,
                         groups: Vec::new(), // TODO: extract from inline spec
                         editable: false,    // TODO: extract from inline spec
-                        source_type: source_type.to_string(),
+                        source_type,
                     }
                 })
                 .collect()
@@ -211,13 +220,10 @@ pub async fn add_skill_to_manifest(
     Json(request): Json<AddSkillRequest>,
 ) -> HttpResult<axum::Json<ApiResponse<ManifestSkillResponse>>> {
     let project_path = &state.project_file_path;
-    let _lock_path = get_lock_path(project_path)?;
 
     // Load project or create new
     let mut project = if project_path.exists() {
-        SkillProjectToml::load_from_file(project_path).map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
-        })?
+        load_project(project_path)?
     } else {
         // Ensure parent directory exists
         if let Some(parent) = project_path.parent() {
@@ -236,26 +242,25 @@ pub async fn add_skill_to_manifest(
 
         SkillProjectToml {
             metadata: None,
-            dependencies: Some(DependenciesSection {
-                dependencies: HashMap::new(),
-            }),
+            dependencies: None,
             tool: None,
         }
     };
 
-    // Ensure dependencies section exists
-    if project.dependencies.is_none() {
-        project.dependencies = Some(DependenciesSection {
+    // Ensure dependencies section exists (covers both new and loaded projects)
+    project
+        .dependencies
+        .get_or_insert_with(|| DependenciesSection {
             dependencies: HashMap::new(),
         });
-    }
 
     // Get repositories and create manager
     let repositories = get_repositories(&project);
     let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Get sources manager for marketplace-based repositories
-    let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;
+    let sources_manager = SourcesManager::from_repositories(&repo_manager)
+        .map_err(|e| HttpError::InternalServerError(e.to_string()))?;
 
     // Find the skill in sources
     let marketplace_skill = if let Some(sources_mgr) = &sources_manager {
@@ -282,9 +287,7 @@ pub async fn add_skill_to_manifest(
     }
 
     // Save project
-    project.save_to_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
-    })?;
+    save_project(&project, project_path)?;
 
     let response = ManifestSkillResponse {
         id: request.skill_id.clone(),
@@ -312,17 +315,13 @@ pub async fn remove_skill_from_manifest(
     }
 
     // Remove from project
-    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
-    })?;
+    let mut project = load_project(project_path)?;
 
     if let Some(ref mut deps) = project.dependencies {
         deps.dependencies.remove(&skill_id);
     }
 
-    project.save_to_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
-    })?;
+    save_project(&project, project_path)?;
 
     // Remove from lock file if it exists
     if lock_path.exists() {
@@ -353,9 +352,7 @@ pub async fn update_skill_in_manifest(
         ));
     }
 
-    let mut project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
-    })?;
+    let mut project = load_project(project_path)?;
 
     // Find and update dependency
     let updated_version = if let Some(ref mut deps) = project.dependencies {
@@ -382,9 +379,7 @@ pub async fn update_skill_in_manifest(
     };
 
     // Save project
-    project.save_to_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to save skill-project.toml: {}", e))
-    })?;
+    save_project(&project, project_path)?;
 
     let response = ManifestSkillResponse {
         id: skill_id,
@@ -395,85 +390,6 @@ pub async fn update_skill_in_manifest(
     };
 
     Ok(Json(ApiResponse::success(response)))
-}
-
-/// Helper function to create sources manager from repository manager.
-/// Converts marketplace-based repositories (git-marketplace, zip-url, local) to SourceDefinitions.
-fn create_sources_manager_from_repositories(
-    repo_manager: &RepositoryManager,
-) -> Result<Option<SourcesManager>, HttpError> {
-    use crate::core::repository::{RepositoryConfig, RepositoryType};
-    use crate::core::sources::{SourceAuth, SourceConfig, SourceDefinition, SourcesManager};
-
-    let repos = repo_manager.list_repositories();
-    let mut sources: Vec<SourceDefinition> = Vec::new();
-
-    for repo in repos {
-        let source_config = match &repo.repo_type {
-            RepositoryType::GitMarketplace => {
-                if let RepositoryConfig::GitMarketplace {
-                    url,
-                    branch,
-                    tag: _,
-                } = &repo.config
-                {
-                    let auth = repo.auth.as_ref().and_then(|a| match a {
-                        crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
-                        }
-                        _ => None,
-                    });
-                    Some(SourceConfig::Git {
-                        url: url.clone(),
-                        branch: branch.clone(),
-                        tag: None,
-                        auth,
-                    })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::ZipUrl => {
-                if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                    Some(SourceConfig::ZipUrl {
-                        base_url: base_url.clone(),
-                        auth: None,
-                    })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::Local => {
-                if let RepositoryConfig::Local { path } = &repo.config {
-                    Some(SourceConfig::Local { path: path.clone() })
-                } else {
-                    None
-                }
-            }
-            RepositoryType::HttpRegistry => None,
-        };
-
-        if let Some(config) = source_config {
-            sources.push(SourceDefinition {
-                name: repo.name.clone(),
-                priority: repo.priority,
-                source: config,
-            });
-        }
-    }
-
-    if sources.is_empty() {
-        return Ok(None);
-    }
-
-    let mut manager = SourcesManager::new(std::path::PathBuf::from(""));
-    for source in sources {
-        let _ = manager.add_source_with_priority(source.name, source.source, source.priority);
-    }
-
-    Ok(Some(manager))
 }
 
 /// Helper function to find skill in sources
