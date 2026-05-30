@@ -462,6 +462,75 @@ impl SourcesManager {
             .collect())
     }
 
+    /// Build a SourcesManager from a RepositoryManager, converting marketplace-compatible
+    /// repository definitions to source entries. Returns `None` if no eligible repos exist.
+    pub fn from_repositories(
+        repo_manager: &crate::core::repository::RepositoryManager,
+    ) -> Result<Option<Self>, SourcesError> {
+        use crate::core::repository::{RepositoryConfig, RepositoryType};
+
+        let repos = repo_manager.list_repositories();
+
+        let source_defs: Vec<SourceDefinition> = repos
+            .into_iter()
+            .filter_map(|repo| {
+                let source_config = match &repo.repo_type {
+                    RepositoryType::GitMarketplace => {
+                        if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config
+                        {
+                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
+                            Some(SourceConfig::Git {
+                                url: url.clone(),
+                                branch: branch.clone(),
+                                tag: tag.clone(),
+                                auth,
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    RepositoryType::ZipUrl => {
+                        if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
+                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
+                            Some(SourceConfig::ZipUrl {
+                                base_url: base_url.clone(),
+                                auth,
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    RepositoryType::Local => {
+                        if let RepositoryConfig::Local { path } = &repo.config {
+                            Some(SourceConfig::Local { path: path.clone() })
+                        } else {
+                            None
+                        }
+                    }
+                    RepositoryType::HttpRegistry => None,
+                };
+                source_config.map(|source| SourceDefinition {
+                    name: repo.name.clone(),
+                    priority: repo.priority,
+                    source,
+                })
+            })
+            .collect();
+
+        if source_defs.is_empty() {
+            return Ok(None);
+        }
+
+        let temp_path = std::env::temp_dir().join("fastskill-sources-temp.toml");
+        let mut manager = Self::new(temp_path);
+        manager.sources = source_defs
+            .into_iter()
+            .map(|def| (def.name.clone(), def))
+            .collect();
+
+        Ok(Some(manager))
+    }
+
     /// Get marketplace.json for a specific source.
     /// Tries Claude Code standard location (.claude-plugin/marketplace.json) first, then root.
     pub async fn get_marketplace_json(
@@ -491,5 +560,29 @@ impl SourcesManager {
 
         self.fetch_and_cache_marketplace(&claude_plugin_url, &root_url, base_url)
             .await
+    }
+}
+
+fn repo_auth_to_source_auth(
+    auth: &crate::core::repository::RepositoryAuth,
+) -> Option<super::model::SourceAuth> {
+    use super::model::SourceAuth;
+    use crate::core::repository::RepositoryAuth;
+    match auth {
+        RepositoryAuth::Pat { env_var } => Some(SourceAuth::Pat {
+            env_var: env_var.clone(),
+        }),
+        RepositoryAuth::SshKey { path } => Some(SourceAuth::SshKey { path: path.clone() }),
+        RepositoryAuth::Ssh { key_path } => Some(SourceAuth::SshKey {
+            path: key_path.clone(),
+        }),
+        RepositoryAuth::Basic {
+            username,
+            password_env,
+        } => Some(SourceAuth::Basic {
+            username: username.clone(),
+            password_env: password_env.clone(),
+        }),
+        RepositoryAuth::ApiKey { .. } => None,
     }
 }

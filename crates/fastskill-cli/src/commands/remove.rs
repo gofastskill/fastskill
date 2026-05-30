@@ -4,6 +4,7 @@ use crate::config::get_skill_search_locations_for_display;
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
 use crate::utils::manifest_utils;
 use clap::Args;
+use fastskill_core::core::lock::project_lock_path;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::FastSkillService;
 use std::env;
@@ -35,61 +36,31 @@ pub struct RemoveArgs {
     pub skills_dir: Option<std::path::PathBuf>,
 }
 
-/// Check if a skill exists in the registry
-async fn check_skill_in_registry(
-    service: &FastSkillService,
-    skill_id: &fastskill_core::SkillId,
-) -> bool {
-    service
-        .skill_manager()
-        .get_skill(skill_id)
-        .await
-        .map(|opt| opt.is_some())
-        .unwrap_or(false)
-}
-
-/// Check if a skill exists in the filesystem
-fn check_skill_in_filesystem(service: &FastSkillService, skill_id: &str) -> bool {
-    let skill_dir = service.config().skill_storage_path.join(skill_id);
-    if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {
-        return true;
-    }
-
-    // Search in subdirectories (handles nested directory structures)
-    if let Ok(entries) = std::fs::read_dir(&service.config().skill_storage_path) {
-        for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let candidate_dir = entry.path().join(skill_id);
-                    if candidate_dir.exists() && candidate_dir.join("SKILL.md").exists() {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-
-    false
-}
-
-/// Validate that all skills exist before removal
+/// Validate that all skills exist before removal; returns parsed SkillIds
 async fn validate_skills_exist(
     service: &FastSkillService,
     skill_ids: &[String],
     global: bool,
-) -> CliResult<()> {
+) -> CliResult<Vec<fastskill_core::SkillId>> {
     let mut nonexistent_skills = Vec::new();
+    let mut parsed_ids = Vec::new();
 
     for skill_id in skill_ids {
         let skill_id_parsed = fastskill_core::SkillId::new(skill_id.clone())
             .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
 
-        let exists_in_registry = check_skill_in_registry(service, &skill_id_parsed).await;
-        let exists_in_filesystem = check_skill_in_filesystem(service, skill_id);
+        let exists_in_registry = service
+            .skill_manager()
+            .get_skill(&skill_id_parsed)
+            .await
+            .map(|opt| opt.is_some())
+            .unwrap_or(false);
+        let exists_in_filesystem = find_skill_directory(service, skill_id, true).is_some();
 
         if !exists_in_registry && !exists_in_filesystem {
             nonexistent_skills.push(skill_id.clone());
         }
+        parsed_ids.push(skill_id_parsed);
     }
 
     if !nonexistent_skills.is_empty() {
@@ -106,7 +77,7 @@ async fn validate_skills_exist(
         )));
     }
 
-    Ok(())
+    Ok(parsed_ids)
 }
 
 /// Prompt user for confirmation unless force flag is set
@@ -131,11 +102,21 @@ fn confirm_removal(skill_ids: &[String], force: bool) -> CliResult<bool> {
     Ok(trimmed == "yes" || trimmed == "y")
 }
 
-/// Find the skill directory, checking both direct and nested locations
-fn find_skill_directory(service: &FastSkillService, skill_id: &str) -> Option<PathBuf> {
-    let mut skill_dir = service.config().skill_storage_path.join(skill_id);
+/// Find the skill directory, checking both direct and nested locations.
+///
+/// When `require_marker` is true a directory only matches if it also contains a
+/// `SKILL.md` file — used for existence validation. When false, an existing
+/// directory at the direct path matches even without `SKILL.md`, so that removal
+/// can still clean up partial or corrupt installations. Nested matches always
+/// require `SKILL.md` to avoid deleting unrelated directories.
+fn find_skill_directory(
+    service: &FastSkillService,
+    skill_id: &str,
+    require_marker: bool,
+) -> Option<PathBuf> {
+    let skill_dir = service.config().skill_storage_path.join(skill_id);
 
-    if skill_dir.exists() {
+    if skill_dir.exists() && (!require_marker || skill_dir.join("SKILL.md").exists()) {
         return Some(skill_dir);
     }
 
@@ -146,8 +127,7 @@ fn find_skill_directory(service: &FastSkillService, skill_id: &str) -> Option<Pa
                 if file_type.is_dir() {
                     let candidate_dir = entry.path().join(skill_id);
                     if candidate_dir.exists() && candidate_dir.join("SKILL.md").exists() {
-                        skill_dir = candidate_dir;
-                        return Some(skill_dir);
+                        return Some(candidate_dir);
                     }
                 }
             }
@@ -160,16 +140,9 @@ fn find_skill_directory(service: &FastSkillService, skill_id: &str) -> Option<Pa
 /// Unregister skill from the service
 async fn unregister_skill_from_service(
     service: &FastSkillService,
-    skill_id: &str,
+    skill_id: fastskill_core::SkillId,
 ) -> CliResult<()> {
-    let skill_id_parsed = fastskill_core::SkillId::new(skill_id.to_string())
-        .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
-
-    match service
-        .skill_manager()
-        .unregister_skill(&skill_id_parsed)
-        .await
-    {
+    match service.skill_manager().unregister_skill(&skill_id).await {
         Ok(_) => Ok(()),
         Err(fastskill_core::ServiceError::SkillNotFound(_)) => {
             // Skill not in registry, but that's okay - we still want to clean up files
@@ -183,7 +156,7 @@ async fn unregister_skill_from_service(
 
 /// Delete skill directory from filesystem
 async fn delete_skill_directory(service: &FastSkillService, skill_id: &str) -> CliResult<()> {
-    if let Some(skill_dir) = find_skill_directory(service, skill_id) {
+    if let Some(skill_dir) = find_skill_directory(service, skill_id, false) {
         fs::remove_dir_all(&skill_dir).await.map_err(|e| {
             CliError::Io(std::io::Error::other(format!(
                 "Failed to delete skill directory {}: {}",
@@ -195,22 +168,12 @@ async fn delete_skill_directory(service: &FastSkillService, skill_id: &str) -> C
     Ok(())
 }
 
-/// Remove skill from project manifest (skill-project.toml)
-fn remove_from_project_manifest(skill_id: &str) -> CliResult<()> {
-    manifest_utils::remove_skill_from_project_toml(skill_id)
-        .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))
-}
-
 /// Remove skill from lock file
 fn remove_from_lock_file(skill_id: &str) -> CliResult<()> {
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let project_file_result = resolve_project_file(&current_dir);
-    let lock_path = if let Some(parent) = project_file_result.path.parent() {
-        parent.join("skills.lock")
-    } else {
-        PathBuf::from("skills.lock")
-    };
+    let lock_path = project_lock_path(&project_file_result.path);
 
     if lock_path.exists() {
         let mut lock = fastskill_core::core::lock::ProjectSkillsLock::load_from_file(&lock_path)
@@ -239,28 +202,30 @@ async fn remove_from_vector_index(service: &FastSkillService, skill_id: &str) {
 /// Remove a single skill (all cleanup steps)
 async fn remove_single_skill(
     service: &FastSkillService,
-    skill_id: &str,
+    skill_id: fastskill_core::SkillId,
+    raw_id: &str,
     global: bool,
 ) -> CliResult<()> {
     // Unregister from service
     unregister_skill_from_service(service, skill_id).await?;
 
     // Delete directory
-    delete_skill_directory(service, skill_id).await?;
+    delete_skill_directory(service, raw_id).await?;
 
     if global {
         // Remove from global lock only; do not touch project manifest or project lock
-        manifest_utils::remove_from_global_lock_file(skill_id)
+        manifest_utils::remove_from_global_lock_file(raw_id)
             .map_err(|e| CliError::Config(format!("Failed to update global lock file: {}", e)))?;
     } else {
         // Remove from manifest
-        remove_from_project_manifest(skill_id)?;
+        manifest_utils::remove_skill_from_project_toml(raw_id)
+            .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
         // Remove from lock file
-        remove_from_lock_file(skill_id)?;
+        remove_from_lock_file(raw_id)?;
     }
 
     // Remove from vector index (non-critical, just log warnings)
-    remove_from_vector_index(service, skill_id).await;
+    remove_from_vector_index(service, raw_id).await;
 
     Ok(())
 }
@@ -275,8 +240,8 @@ pub async fn execute_remove(
         return Err(CliError::Config("No skill IDs provided".to_string()));
     }
 
-    // Validate all skills exist
-    validate_skills_exist(service, &args.skill_ids, global).await?;
+    // Validate all skills exist; get back parsed SkillIds
+    let parsed_ids = validate_skills_exist(service, &args.skill_ids, global).await?;
 
     // Get user confirmation
     if !confirm_removal(&args.skill_ids, args.force)? {
@@ -286,9 +251,9 @@ pub async fn execute_remove(
 
     // Remove each skill
     let mut removed_count = 0;
-    for skill_id in &args.skill_ids {
-        remove_single_skill(service, skill_id, global).await?;
-        println!("Removed skill: {}", skill_id);
+    for (skill_id, raw_id) in parsed_ids.into_iter().zip(args.skill_ids.iter()) {
+        remove_single_skill(service, skill_id, raw_id, global).await?;
+        println!("Removed skill: {}", raw_id);
         removed_count += 1;
     }
 
@@ -319,6 +284,7 @@ pub async fn execute_remove(
 )]
 mod tests {
     use super::*;
+    use fastskill_core::test_utils::DirGuard;
     use fastskill_core::ServiceConfig;
     use tempfile::TempDir;
 
@@ -405,14 +371,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
@@ -478,14 +436,6 @@ source = { path = ".claude/skills/test-skill" }
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();

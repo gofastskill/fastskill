@@ -2,8 +2,8 @@
 
 use crate::error::{CliError, CliResult};
 use chrono::Utc;
-use fastskill_core::core::repository::{RepositoryConfig, RepositoryManager, RepositoryType};
-use fastskill_core::core::sources::{SourceAuth, SourceConfig, SourcesManager};
+use fastskill_core::core::repository::RepositoryManager;
+use fastskill_core::core::sources::SourcesManager;
 use fastskill_core::core::{
     manifest::SkillEntry, manifest::SkillSource, skill_manager::SourceType,
 };
@@ -22,12 +22,23 @@ async fn create_editable_symlink(src: &Path, dst: &Path) -> CliResult<()> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::symlink_dir;
-        symlink_dir(src, dst).map_err(|e| CliError::WindowsSymlinkPermission(e.to_string()))
+        symlink_dir(src, dst).map_err(|e| {
+            CliError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Windows symlink permission denied: {}. Enable Developer Mode \
+                     (Settings → For developers) or run as Administrator.",
+                    e
+                ),
+            ))
+        })
     }
 
     #[cfg(all(not(unix), not(windows)))]
     {
-        Err(CliError::EditableNotSupported)
+        Err(CliError::Io(std::io::Error::other(
+            "Editable installations are not supported on this platform. Use a Unix-based system or Docker.",
+        )))
     }
 }
 
@@ -135,10 +146,10 @@ async fn copy_skill_to_storage(
     Ok(())
 }
 
-/// Register skill and update with source tracking
-async fn register_skill_with_source(
+async fn register_skill(
     service: &FastSkillService,
     skill_def: &SkillDefinition,
+    update: fastskill_core::core::skill_manager::SkillUpdate,
 ) -> CliResult<()> {
     service
         .skill_manager()
@@ -148,24 +159,22 @@ async fn register_skill_with_source(
 
     service
         .skill_manager()
-        .update_skill(
-            &skill_def.id,
-            fastskill_core::core::skill_manager::SkillUpdate {
-                source_url: skill_def.source_url.clone(),
-                source_type: skill_def.source_type.clone(),
-                source_branch: skill_def.source_branch.clone(),
-                source_tag: skill_def.source_tag.clone(),
-                source_subdir: skill_def.source_subdir.clone(),
-                fetched_at: skill_def.fetched_at,
-                ..Default::default()
-            },
-        )
+        .update_skill(&skill_def.id, update)
         .await
         .map_err(|e| {
             super::service_error_to_cli(e, service.config().skill_storage_path.as_path(), false)
         })?;
 
     Ok(())
+}
+
+fn base_skill_update(def: &SkillDefinition) -> fastskill_core::core::skill_manager::SkillUpdate {
+    fastskill_core::core::skill_manager::SkillUpdate {
+        source_url: def.source_url.clone(),
+        source_type: def.source_type.clone(),
+        fetched_at: def.fetched_at,
+        ..Default::default()
+    }
 }
 
 async fn install_from_git(
@@ -197,29 +206,19 @@ async fn install_from_git(
     skill_def.fetched_at = Some(Utc::now());
     skill_def.editable = false;
 
-    register_skill_with_source(service, &skill_def).await?;
+    register_skill(
+        service,
+        &skill_def,
+        fastskill_core::core::skill_manager::SkillUpdate {
+            source_branch: skill_def.source_branch.clone(),
+            source_tag: skill_def.source_tag.clone(),
+            source_subdir: skill_def.source_subdir.clone(),
+            ..base_skill_update(&skill_def)
+        },
+    )
+    .await?;
 
     Ok(skill_def)
-}
-
-/// Resolve absolute path from potentially relative path
-fn resolve_absolute_path(path: &PathBuf) -> CliResult<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.clone())
-    } else {
-        Ok(std::env::current_dir().map_err(CliError::Io)?.join(path))
-    }
-}
-
-/// Validate that skill path exists
-fn validate_skill_path_exists(skill_path: &Path) -> CliResult<()> {
-    if !skill_path.exists() {
-        return Err(CliError::InvalidSource(format!(
-            "Local path does not exist: {}",
-            skill_path.display()
-        )));
-    }
-    Ok(())
 }
 
 /// Setup skill in storage directory (editable or copy)
@@ -245,37 +244,6 @@ pub(crate) async fn setup_skill_in_storage(
     Ok(())
 }
 
-/// Register local skill with source tracking
-async fn register_local_skill(
-    service: &FastSkillService,
-    skill_def: &SkillDefinition,
-) -> CliResult<()> {
-    service
-        .skill_manager()
-        .force_register_skill(skill_def.clone())
-        .await
-        .map_err(CliError::Service)?;
-
-    service
-        .skill_manager()
-        .update_skill(
-            &skill_def.id,
-            fastskill_core::core::skill_manager::SkillUpdate {
-                source_url: skill_def.source_url.clone(),
-                source_type: skill_def.source_type.clone(),
-                fetched_at: skill_def.fetched_at,
-                editable: Some(skill_def.editable),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| {
-            super::service_error_to_cli(e, service.config().skill_storage_path.as_path(), false)
-        })?;
-
-    Ok(())
-}
-
 async fn install_from_local(
     service: &FastSkillService,
     path: &PathBuf,
@@ -283,8 +251,17 @@ async fn install_from_local(
 ) -> CliResult<SkillDefinition> {
     use crate::commands::add::create_skill_from_path;
 
-    let skill_path = resolve_absolute_path(path)?;
-    validate_skill_path_exists(&skill_path)?;
+    let skill_path = if path.is_absolute() {
+        path.clone()
+    } else {
+        std::env::current_dir().map_err(CliError::Io)?.join(path)
+    };
+    if !skill_path.exists() {
+        return Err(CliError::InvalidSource(format!(
+            "Local path does not exist: {}",
+            skill_path.display()
+        )));
+    }
 
     let mut skill_def = create_skill_from_path(&skill_path, "local", editable)?;
     let skill_storage_dir = service
@@ -300,7 +277,15 @@ async fn install_from_local(
     skill_def.fetched_at = Some(Utc::now());
     skill_def.editable = editable;
 
-    register_local_skill(service, &skill_def).await?;
+    register_skill(
+        service,
+        &skill_def,
+        fastskill_core::core::skill_manager::SkillUpdate {
+            editable: Some(skill_def.editable),
+            ..base_skill_update(&skill_def)
+        },
+    )
+    .await?;
 
     Ok(skill_def)
 }
@@ -346,41 +331,6 @@ async fn create_package_resolver() -> CliResult<fastskill_core::core::resolver::
     Ok(resolver)
 }
 
-/// Parse version constraint from string
-fn parse_version_constraint(
-    version: Option<&str>,
-) -> CliResult<Option<fastskill_core::core::version::VersionConstraint>> {
-    use fastskill_core::core::version::VersionConstraint;
-
-    if let Some(ver) = version {
-        let constraint = VersionConstraint::parse(ver).map_err(|e| {
-            CliError::Config(format!("Invalid version constraint '{}': {}", ver, e))
-        })?;
-        Ok(Some(constraint))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Resolve skill from source
-fn resolve_skill_from_source(
-    resolver: &fastskill_core::core::resolver::PackageResolver,
-    source_name: &str,
-    skill_name: &str,
-    version_constraint: Option<&fastskill_core::core::version::VersionConstraint>,
-) -> CliResult<fastskill_core::core::resolver::ResolutionResult> {
-    use fastskill_core::core::resolver::ConflictStrategy;
-
-    resolver
-        .resolve_skill(
-            skill_name,
-            version_constraint,
-            Some(source_name),
-            ConflictStrategy::Priority,
-        )
-        .map_err(|e| CliError::Config(format!("Failed to resolve skill '{}': {}", skill_name, e)))
-}
-
 /// Install skill based on resolved source configuration
 async fn install_from_resolved_source(
     service: &FastSkillService,
@@ -410,118 +360,27 @@ async fn install_from_source(
     skill_name: &str,
     version: Option<&str>,
 ) -> CliResult<SkillDefinition> {
+    use fastskill_core::core::resolver::ConflictStrategy;
+
     let resolver = create_package_resolver().await?;
-    let version_constraint = parse_version_constraint(version)?;
-    let resolution = resolve_skill_from_source(
-        &resolver,
-        source_name,
-        skill_name,
-        version_constraint.as_ref(),
-    )?;
+    let version_constraint = version
+        .map(|v| {
+            fastskill_core::core::version::VersionConstraint::parse(v)
+                .map_err(|e| CliError::Config(format!("Invalid version constraint '{}': {}", v, e)))
+        })
+        .transpose()?;
+    let resolution = resolver
+        .resolve_skill(
+            skill_name,
+            version_constraint.as_ref(),
+            Some(source_name),
+            ConflictStrategy::Priority,
+        )
+        .map_err(|e| {
+            CliError::Config(format!("Failed to resolve skill '{}': {}", skill_name, e))
+        })?;
 
     install_from_resolved_source(service, &resolution.candidate.source_config, version).await
-}
-
-/// Convert repository authentication to source authentication
-fn convert_repo_auth(
-    auth: &fastskill_core::core::repository::RepositoryAuth,
-) -> Option<SourceAuth> {
-    match auth {
-        fastskill_core::core::repository::RepositoryAuth::Pat { env_var } => {
-            Some(SourceAuth::Pat {
-                env_var: env_var.clone(),
-            })
-        }
-        fastskill_core::core::repository::RepositoryAuth::SshKey { path } => {
-            Some(SourceAuth::SshKey { path: path.clone() })
-        }
-        fastskill_core::core::repository::RepositoryAuth::Basic {
-            username,
-            password_env,
-        } => Some(SourceAuth::Basic {
-            username: username.clone(),
-            password_env: password_env.clone(),
-        }),
-        _ => None,
-    }
-}
-
-/// Convert a single repository to a source config
-fn repository_to_source_config(
-    repo: &fastskill_core::core::repository::RepositoryDefinition,
-) -> Option<SourceConfig> {
-    match &repo.repo_type {
-        RepositoryType::GitMarketplace => {
-            if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
-                let auth = repo.auth.as_ref().and_then(convert_repo_auth);
-                Some(SourceConfig::Git {
-                    url: url.clone(),
-                    branch: branch.clone(),
-                    tag: tag.clone(),
-                    auth,
-                })
-            } else {
-                None
-            }
-        }
-        RepositoryType::ZipUrl => {
-            if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                let auth = repo.auth.as_ref().and_then(convert_repo_auth);
-                Some(SourceConfig::ZipUrl {
-                    base_url: base_url.clone(),
-                    auth,
-                })
-            } else {
-                None
-            }
-        }
-        RepositoryType::Local => {
-            if let RepositoryConfig::Local { path } = &repo.config {
-                Some(SourceConfig::Local { path: path.clone() })
-            } else {
-                None
-            }
-        }
-        RepositoryType::HttpRegistry => None, // Http-registry repos don't work with SourcesManager
-    }
-}
-
-/// Create source definitions from repositories
-fn create_source_definitions(
-    repos: Vec<&fastskill_core::core::repository::RepositoryDefinition>,
-) -> Vec<fastskill_core::core::sources::SourceDefinition> {
-    use fastskill_core::core::sources::SourceDefinition;
-
-    repos
-        .into_iter()
-        .filter_map(|repo| {
-            repository_to_source_config(repo).map(|source_config| SourceDefinition {
-                name: repo.name.clone(),
-                priority: repo.priority,
-                source: source_config,
-            })
-        })
-        .collect()
-}
-
-/// Build SourcesManager from source definitions
-fn build_sources_manager(
-    marketplace_sources: Vec<fastskill_core::core::sources::SourceDefinition>,
-) -> CliResult<SourcesManager> {
-    let temp_path = std::env::temp_dir().join("fastskill-sources-temp.toml");
-    let mut sources_manager = SourcesManager::new(temp_path);
-
-    for source_def in marketplace_sources {
-        sources_manager
-            .add_source_with_priority(
-                source_def.name.clone(),
-                source_def.source,
-                source_def.priority,
-            )
-            .map_err(|e| CliError::Config(format!("Failed to add source: {}", e)))?;
-    }
-
-    Ok(sources_manager)
 }
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
@@ -529,12 +388,6 @@ fn build_sources_manager(
 pub fn create_sources_manager_from_repositories(
     repo_manager: &RepositoryManager,
 ) -> CliResult<Option<SourcesManager>> {
-    let repos = repo_manager.list_repositories();
-    let marketplace_sources = create_source_definitions(repos);
-
-    if marketplace_sources.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(build_sources_manager(marketplace_sources)?))
+    SourcesManager::from_repositories(repo_manager)
+        .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))
 }

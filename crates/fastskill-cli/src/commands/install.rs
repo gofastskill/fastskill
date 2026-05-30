@@ -6,16 +6,14 @@ use crate::utils::{install_utils, manifest_utils, messages};
 use clap::Args;
 use fastskill_core::core::{
     dependency_resolver::{DependencyResolver, SkillInstallItem},
-    lock::ProjectSkillsLock,
+    lock::{project_lock_path, ProjectSkillsLock},
     manifest::{SkillEntry, SkillProjectToml},
     project::resolve_project_file,
     repository::RepositoryManager,
-    sources::SourcesManager,
 };
 use fastskill_core::FastSkillService;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 
 /// Apply manifest: install skills from skill-project.toml [dependencies]
 ///
@@ -69,6 +67,31 @@ impl RecursiveInstallConfig {
     }
 }
 
+fn group_passes_filter(
+    groups: &[String],
+    exclude: Option<&[String]>,
+    only: Option<&[String]>,
+) -> bool {
+    if let Some(exclude) = exclude {
+        if groups
+            .iter()
+            .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
+        {
+            return false;
+        }
+    }
+    if let Some(only) = only {
+        if !groups.is_empty()
+            && !groups
+                .iter()
+                .any(|g| only.iter().any(|on| on == g.as_str()))
+        {
+            return false;
+        }
+    }
+    true
+}
+
 pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     println!("Installing skills...");
     println!();
@@ -95,11 +118,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     }
 
     // T033: Lock file at project root (skills.lock)
-    let lock_path = if let Some(parent) = project_file_path.parent() {
-        parent.join("skills.lock")
-    } else {
-        PathBuf::from("skills.lock")
-    };
+    let lock_path = project_lock_path(&project_file_path);
 
     // Check for lock file early if lock mode is requested (before service initialization)
     if args.lock && !lock_path.exists() {
@@ -119,34 +138,11 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         .map_err(CliError::Service)?;
     service.initialize().await.map_err(CliError::Service)?;
 
-    // Load repositories from skill-project.toml [tool.fastskill.repositories] if available
-    // Otherwise fall back to .claude/repositories.toml for backward compatibility
-    let repo_manager = if project_file_result.found {
-        // Try to load repositories from skill-project.toml
-        let project = SkillProjectToml::load_from_file(&project_file_path)
-            .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
-
-        if let Some(ref tool) = project.tool {
-            if let Some(ref fastskill_config) = tool.fastskill {
-                if let Some(ref _repos) = fastskill_config.repositories {
-                    // Create RepositoryManager from skill-project.toml repositories
-                    // For now, we'll still use the old path for RepositoryManager
-                    // TODO: Update RepositoryManager to work with skill-project.toml directly
-                }
-            }
-        }
-
-        // Load from skill-project.toml [tool.fastskill.repositories]
-        let repositories = crate::config::load_repositories_from_project()?;
-        RepositoryManager::from_definitions(repositories)
-    } else {
-        // No skill-project.toml, load from skill-project.toml if available
-        let repositories = crate::config::load_repositories_from_project()?;
-        RepositoryManager::from_definitions(repositories)
-    };
+    let repositories = crate::config::load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver
-    let sources_manager = create_sources_manager_from_repositories(&repo_manager)
+    let sources_manager = install_utils::create_sources_manager_from_repositories(&repo_manager)
         .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
 
     // Determine effective depth limit and skip_transitive flag from config then CLI override
@@ -207,25 +203,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         // Filter skills by groups
         let exclude_groups = args.without.as_deref();
         let only_groups = args.only.as_deref();
-
-        if let Some(exclude) = exclude_groups {
-            entries.retain(|entry| {
-                !entry
-                    .groups
-                    .iter()
-                    .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
-            });
-        }
-
-        if let Some(only) = only_groups {
-            entries.retain(|entry| {
-                entry
-                    .groups
-                    .iter()
-                    .any(|g| only.iter().any(|on| on == g.as_str()))
-                    || entry.groups.is_empty()
-            });
-        }
+        entries.retain(|e| group_passes_filter(&e.groups, exclude_groups, only_groups));
 
         // Sort entries by ID for deterministic output
         entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
@@ -252,32 +230,12 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         let filtered_items: Vec<SkillInstallItem> = if recursive_config.skip_transitive {
             resolved_items
         } else {
-            let exclude_groups = recursive_config.exclude_groups.as_deref();
-            let only_groups = recursive_config.only_groups.as_deref();
-
-            let mut filtered = resolved_items;
-
-            if let Some(exclude) = exclude_groups {
-                filtered.retain(|item| {
-                    !item
-                        .entry
-                        .groups
-                        .iter()
-                        .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
-                });
-            }
-
-            if let Some(only) = only_groups {
-                filtered.retain(|item| {
-                    item.entry
-                        .groups
-                        .iter()
-                        .any(|g| only.iter().any(|on| on == g.as_str()))
-                        || item.entry.groups.is_empty()
-                });
-            }
-
-            filtered
+            let ex = recursive_config.exclude_groups.as_deref();
+            let on = recursive_config.only_groups.as_deref();
+            resolved_items
+                .into_iter()
+                .filter(|item| group_passes_filter(&item.entry.groups, ex, on))
+                .collect()
         };
 
         filtered_items
@@ -367,12 +325,6 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     Ok(())
 }
 
-fn create_sources_manager_from_repositories(
-    repo_manager: &RepositoryManager,
-) -> CliResult<Option<SourcesManager>> {
-    install_utils::create_sources_manager_from_repositories(repo_manager)
-}
-
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -383,6 +335,7 @@ fn create_sources_manager_from_repositories(
 )]
 mod tests {
     use super::*;
+    use fastskill_core::test_utils::DirGuard;
     use std::fs;
     use tempfile::TempDir;
 
@@ -396,15 +349,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
@@ -441,15 +385,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
@@ -492,15 +427,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
@@ -530,14 +456,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().ok();
 
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
         let _guard = DirGuard(original_dir);
 
         std::env::set_current_dir(temp_dir.path()).unwrap();

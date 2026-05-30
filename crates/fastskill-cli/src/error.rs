@@ -5,18 +5,6 @@
 //!
 //! ## Error Message Guidelines
 //!
-//! ### TOML Parsing Errors (T066)
-//! - Include line numbers when available from TOML parser
-//! - Format: "TOML syntax error at line {line}: {message}"
-//! - Example: "TOML syntax error at line 5: expected `]` but found `}`"
-//!
-//! ### Validation Errors (T067)
-//! - Include context information (project-level vs skill-level)
-//! - Specify which section is missing or invalid
-//! - Provide guidance on what's required
-//! - Format: "Missing required section: {section} (context: {context:?})"
-//! - Example: "Missing required section: dependencies (context: Project)"
-//!
 //! ### Missing File Errors
 //! - Suggest how to create the file or what command to run
 //! - Format: "{file} not found. {suggestion}"
@@ -30,15 +18,11 @@
 //! ## Error Types
 //!
 //! - `CliError`: Main error type for CLI operations
-//! - `ValidationError`: TOML validation and context-specific errors
 //! - All errors implement `std::error::Error` via `thiserror`
 
 use std::path::PathBuf;
 
 use thiserror::Error;
-
-// Import ProjectContext from manifest module
-use fastskill_core::core::manifest::ProjectContext;
 
 /// Rich "skill not found" message with searched locations and Try suggestions.
 /// Rendered as a multi-line block by Display.
@@ -113,10 +97,6 @@ pub enum CliError {
     #[error("Validation error: {0}")]
     Validation(String),
 
-    #[error("Sources error: {0}")]
-    #[allow(dead_code)] // May be used in future
-    Sources(String),
-
     #[error("skill-project.toml validation error: {0}")]
     ProjectTomlValidation(String),
 
@@ -131,84 +111,6 @@ pub enum CliError {
 
     #[error("Invalid identifier: {0}")]
     InvalidIdentifier(String),
-
-    #[error("Windows symlink permission denied: {0}. Enable Developer Mode (Settings → For developers) or run as Administrator.")]
-    #[allow(dead_code)]
-    WindowsSymlinkPermission(String),
-
-    #[error("Editable installations are not supported on this platform. Use a Unix-based system or Docker.")]
-    #[allow(dead_code)]
-    EditableNotSupported,
-}
-
-/// Validation error for TOML validation failures
-#[derive(Debug, Error)]
-#[allow(dead_code)] // Will be used in Phase 3+ implementation
-pub enum ValidationError {
-    #[error("TOML syntax error at line {line}: {message}")]
-    SyntaxError { line: usize, message: String },
-
-    #[error("Missing required section: {section} (context: {context:?})")]
-    MissingSection {
-        section: String,
-        context: ProjectContext,
-    },
-
-    #[error("Invalid field {field} in section {section}: {message}")]
-    InvalidField {
-        section: String,
-        field: String,
-        message: String,
-    },
-
-    #[error("Context detection failed: {message}")]
-    ContextDetectionFailed { message: String },
-}
-
-impl ValidationError {
-    /// Format TOML parse error with line number extraction
-    /// T020: Implement validation error formatting with line numbers
-    #[allow(dead_code)] // Will be used in Phase 3+ implementation
-    pub fn from_toml_error(error: &toml::de::Error) -> Self {
-        // Extract line number from TOML error message
-        // TOML errors typically include line information in the format: "line X, column Y"
-        let error_msg = error.to_string();
-        let line = extract_line_number(&error_msg).unwrap_or(0);
-
-        ValidationError::SyntaxError {
-            line,
-            message: error_msg,
-        }
-    }
-}
-
-/// Extract line number from TOML error message
-/// TOML errors typically include "line X" or "at line X" in the message
-#[allow(dead_code)] // Will be used in Phase 3+ implementation
-fn extract_line_number(error_msg: &str) -> Option<usize> {
-    // Try to find "line X" pattern
-    if let Some(line_start) = error_msg.find("line ") {
-        let after_line = &error_msg[line_start + 5..];
-        let line_end = after_line
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(after_line.len());
-        if let Ok(line) = after_line[..line_end].parse::<usize>() {
-            return Some(line);
-        }
-    }
-
-    // Try to find "at line X" pattern
-    if let Some(line_start) = error_msg.find("at line ") {
-        let after_line = &error_msg[line_start + 8..];
-        let line_end = after_line
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(after_line.len());
-        if let Ok(line) = after_line[..line_end].parse::<usize>() {
-            return Some(line);
-        }
-    }
-
-    None
 }
 
 pub type CliResult<T> = Result<T, CliError>;
@@ -219,13 +121,6 @@ pub fn manifest_required_message() -> &'static str {
     "skill-project.toml not found in this directory or any parent. \
      Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
      then run this command again."
-}
-
-/// Message for add command when manifest is missing (includes add-specific hint).
-pub fn manifest_required_for_add_message() -> &'static str {
-    "skill-project.toml not found in this directory or any parent. \
-     Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
-     then run 'fastskill add <skill>' from your project."
 }
 
 #[derive(Debug, Clone)]
@@ -273,10 +168,6 @@ impl CliError {
             // Search errors: map underlying service failures to system error code
             CliError::Search(fastskill_core::SearchError::Service(_)) => 2,
             CliError::Search(_) => 1,
-            // Windows symlink permission error -> exit code 2
-            CliError::WindowsSymlinkPermission(_) => 2,
-            // Editable not supported -> exit code 2
-            CliError::EditableNotSupported => 2,
             // Other errors default to 1
             _ => 1,
         }

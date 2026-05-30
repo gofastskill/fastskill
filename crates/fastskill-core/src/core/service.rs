@@ -1,10 +1,7 @@
 //! Main FastSkill service implementation
 
 use crate::core::blob_storage::BlobStorageConfig;
-use crate::events::EventBus;
-use crate::execution::{ExecutionConfig, ExecutionSandbox};
-use crate::storage::ZipHandler;
-use crate::validation::{SkillValidator, ZipValidator};
+use crate::execution::ExecutionConfig;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::info;
@@ -308,26 +305,6 @@ pub struct FastSkillService {
     /// Skill storage backend
     storage: Arc<dyn crate::storage::StorageBackend>,
 
-    /// ZIP package handler
-    #[allow(dead_code)]
-    zip_handler: Arc<ZipHandler>,
-
-    /// Execution sandbox
-    #[allow(dead_code)]
-    sandbox: Arc<ExecutionSandbox>,
-
-    /// Skill validator
-    #[allow(dead_code)]
-    skill_validator: Arc<SkillValidator>,
-
-    /// ZIP validator
-    #[allow(dead_code)]
-    zip_validator: Arc<ZipValidator>,
-
-    /// Event bus for notifications
-    #[allow(dead_code)]
-    event_bus: Arc<EventBus>,
-
     /// Hot reload manager
     hot_reload_manager: Option<Arc<crate::storage::hot_reload::HotReloadManager>>,
 
@@ -352,22 +329,6 @@ impl FastSkillService {
         ))
     }
 
-    fn build_sandbox(execution: &ExecutionConfig) -> Result<Arc<ExecutionSandbox>, ServiceError> {
-        Ok(Arc::new(crate::execution::ExecutionSandbox::new(
-            execution.clone(),
-        )?))
-    }
-
-    fn build_validators() -> (
-        Arc<crate::validation::SkillValidator>,
-        Arc<crate::validation::ZipValidator>,
-    ) {
-        (
-            Arc::new(crate::validation::SkillValidator::new()),
-            Arc::new(crate::validation::ZipValidator::new()),
-        )
-    }
-
     fn build_vector_index_service(
         config: &ServiceConfig,
     ) -> Option<Arc<dyn crate::core::vector_index::VectorIndexService>> {
@@ -387,9 +348,6 @@ impl FastSkillService {
         info!("Initializing FastSkill service v{}", crate::VERSION);
 
         let storage = Self::build_storage_backend(&config).await?;
-        let zip_handler = Arc::new(crate::storage::ZipHandler::new()?);
-        let sandbox = Self::build_sandbox(&config.execution)?;
-        let (skill_validator, zip_validator) = Self::build_validators();
         let event_bus = Arc::new(crate::events::EventBus::new());
         let skill_manager = Arc::new(crate::core::skill_manager::SkillManager::new());
         let metadata_service = Arc::new(crate::core::metadata::MetadataServiceImpl::new(
@@ -411,11 +369,6 @@ impl FastSkillService {
             metadata_service,
             vector_index_service,
             storage,
-            zip_handler,
-            sandbox,
-            skill_validator,
-            zip_validator,
-            event_bus,
             hot_reload_manager,
             initialized: false,
         })
