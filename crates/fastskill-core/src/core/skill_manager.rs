@@ -156,10 +156,7 @@ impl SkillManagementService for SkillManager {
 
         // Check if skill already exists
         if skills.contains_key(&skill.id) {
-            return Err(ServiceError::Custom(format!(
-                "Skill {} already exists",
-                skill.id
-            )));
+            return Err(ServiceError::AlreadyIndexed(skill.id.to_string()));
         }
 
         let skill_id = skill.id.clone();

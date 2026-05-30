@@ -136,6 +136,7 @@ impl From<crate::core::service::ServiceError> for HttpError {
             }
             crate::core::service::ServiceError::Event(msg) => HttpError::InternalServerError(msg),
             crate::core::service::ServiceError::InvalidOperation(msg) => HttpError::BadRequest(msg),
+            crate::core::service::ServiceError::AlreadyIndexed(msg) => HttpError::BadRequest(msg),
         }
     }
 }

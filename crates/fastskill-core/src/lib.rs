@@ -81,14 +81,6 @@ pub use core::vector_index::{
 pub use output::OutputFormat;
 pub use search::{execute, SearchError, SearchQuery, SearchResultItem, SearchScope};
 
-// Re-export commonly used types
-pub use async_trait::async_trait;
-pub use serde::{Deserialize, Serialize};
-pub use std::collections::HashMap;
-pub use std::path::{Path, PathBuf};
-pub use std::sync::Arc;
-pub use tokio::sync::{Mutex, RwLock};
-
 /// Version of the service layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
