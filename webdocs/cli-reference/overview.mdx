@@ -127,8 +127,8 @@ fastskill list --help         # Help for list command
 ### Diagnostics and tooling
 
 <CardGroup cols={2}>
-  <Card title="fastskill version" icon="info">
-    Show CLI version.
+  <Card title="fastskill --version" icon="info">
+    Show CLI version (`-V` for short).
   </Card>
   <Card title="fastskill eval" icon="check">
     Validate and run skill evaluation suites. See [eval Command](/cli-reference/eval-command).
@@ -141,18 +141,16 @@ fastskill list --help         # Help for list command
   </Card>
 </CardGroup>
 
-## Version Command
+## Version
 
-### fastskill version
-
-Display the FastSkill CLI version information.
+Display the FastSkill CLI version with the global `--version` flag (or `-V`):
 
 ```bash
-fastskill version
+fastskill --version
 ```
 
 **What it shows:**
-- CLI version number (e.g., `fastskill 0.9.3`)
+- CLI version number (e.g., `fastskill 0.9.127`)
 - Based on the version defined in Cargo.toml
 
 **Use cases:**
@@ -162,8 +160,8 @@ fastskill version
 
 **Example output:**
 ```bash
-$ fastskill version
-fastskill 0.9.3
+$ fastskill --version
+fastskill 0.9.127
 ```
 
 ## Configuration

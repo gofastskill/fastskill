@@ -188,17 +188,13 @@ priority = 0
 - `ssh-key`: SSH key path
 - `ssh`: SSH connection
 - `basic`: Basic authentication (username/password)
-- `api-key`: API key (for HTTP registries)
+- `api_key`: API key (for HTTP registries)
 
 **Priority Resolution**:
 When skills are available in multiple repositories, priority determines the order:
 - Lower priority numbers are checked first
 - Default priority: 0
 - Higher priority values are checked later
-
-<Warning>
-**Legacy commands**: `sources` (alias `source`) and `registry` are hidden from `fastskill --help` but still exist for compatibility. Prefer `fastskill repos` for repository and catalog operations.
-</Warning>
 
 ## Search and Reindex Workflow
 

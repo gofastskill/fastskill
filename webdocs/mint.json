@@ -120,5 +120,11 @@
     },
     "search": {
         "indexName": "fastskill"
-    }
+    },
+    "redirects": [
+        {
+            "source": "/",
+            "destination": "/welcome"
+        }
+    ]
 }

@@ -370,52 +370,49 @@ priority = 0
 
 ## CLI Commands for Repository Management
 
-### fastskill sources
+### fastskill repos
 
 Primary command for repository management:
 
 ```bash
 # List all repositories
-fastskill sources list
+fastskill repos list
 
 # Add new repository
-fastskill sources add team-tools --type git-marketplace \
-  --url https://github.com/team/skills.git \
+fastskill repos add team-tools --repo-type git-marketplace \
+  https://github.com/team/skills.git \
   --priority 1
 
 # Remove repository
-fastskill sources remove team-tools
+fastskill repos remove team-tools
 
 # Show repository details
-fastskill sources show team-tools
+fastskill repos info team-tools
 
 # Update repository
-fastskill sources update team-tools --priority 0
+fastskill repos update team-tools --priority 0
 
 # Test repository connectivity
-fastskill sources test team-tools
+fastskill repos test team-tools
 
 # Refresh repository cache
-fastskill sources refresh
+fastskill repos refresh
 
 # Create marketplace.json from directory
-fastskill sources create ./skills --output marketplace.json
+fastskill marketplace create --path ./skills --output marketplace.json --name team-tools
 ```
 
-### fastskill registry
-
-Legacy alias for repository management (same functionality):
+Listing and inspecting skills from configured repositories:
 
 ```bash
-# Add repository (legacy)
-fastskill sources add team-tools --repo-type git-marketplace \
-  https://github.com/team/skills.git
-
-# List skills from repository
-fastskill registry list-skills
+# List skills from repositories
+fastskill repos skills
 
 # Show skill from repository
-fastskill registry show-skill pptx
+fastskill repos show pptx
+
+# Show available versions of a skill
+fastskill repos versions pptx
 ```
 
 ## Repository Authentication Examples
@@ -424,33 +421,33 @@ fastskill registry show-skill pptx
 
 ```bash
 # Set up GitHub PAT repository
-fastskill sources add github-skills \
-  --type git-marketplace \
-  --url https://github.com/user/skills.git \
+fastskill repos add github-skills \
+  --repo-type git-marketplace \
+  https://github.com/user/skills.git \
   --auth-type pat \
-  --auth-value ghp_xxxxxxxxxxxxxxxxxxxx
+  --auth-env GITHUB_TOKEN
 ```
 
 ### Private Registry with API Key
 
 ```bash
 # Configure private registry
-fastskill sources add private-registry \
-  --type http-registry \
-  --url https://private.example.com/index \
-  --auth-type api-key \
-  --auth-value sk_live_xxxxxxxxxxxxxxxxxxxx
+fastskill repos add private-registry \
+  --repo-type http-registry \
+  https://private.example.com/index \
+  --auth-type api_key \
+  --auth-env REGISTRY_API_KEY
 ```
 
 ### Git with SSH
 
 ```bash
 # Set up SSH key repository
-fastskill sources add gitlab-skills \
-  --type git-marketplace \
-  --url git@gitlab.com:team/skills.git \
+fastskill repos add gitlab-skills \
+  --repo-type git-marketplace \
+  git@gitlab.com:team/skills.git \
   --auth-type ssh-key \
-  --auth-value /home/user/.ssh/id_ed25519
+  --auth-key-path /home/user/.ssh/id_ed25519
 ```
 
 ## Skill Discovery and Installation
@@ -553,7 +550,7 @@ Use environment-specific repositories or branch parameters to control which skil
   </Warning>
 
   <Tip>
-  **Resolution**: Use `fastskill sources list` to see all repositories and `fastskill sources test <name>` to verify connectivity.
+  **Resolution**: Use `fastskill repos list` to see all repositories and `fastskill repos test <name>` to verify connectivity.
   </Tip>
 
   <Tip>
@@ -571,7 +568,7 @@ Use environment-specific repositories or branch parameters to control which skil
   </Warning>
 
   <Tip>
-  **Resolution**: Test authentication with `fastskill sources test <name>`.
+  **Resolution**: Test authentication with `fastskill repos test <name>`.
   </Tip>
 </Accordion>
 
@@ -581,7 +578,7 @@ Use environment-specific repositories or branch parameters to control which skil
   </Warning>
 
   <Tip>
-  **Resolution**: Use `fastskill sources show <name>` to verify repository priority.
+  **Resolution**: Use `fastskill repos info <name>` to verify repository priority.
   </Tip>
 </Accordion>
 </AccordionGroup>
@@ -602,7 +599,7 @@ Use environment-specific repositories or branch parameters to control which skil
 </Step>
 
 <Step title="Test repositories before use">
-  Use `fastskill sources test <name>` to verify repository connectivity and authentication before relying on it.
+  Use `fastskill repos test <name>` to verify repository connectivity and authentication before relying on it.
 </Step>
 
 <Step title="Keep repositories minimal">
@@ -618,7 +615,7 @@ Use environment-specific repositories or branch parameters to control which skil
 </Step>
 
 <Step title="Refresh repositories after changes">
-  Use `fastskill sources refresh` to update repository caches after remote changes.
+  Use `fastskill repos refresh` to update repository caches after remote changes.
 </Step>
 </Steps>
 

@@ -101,7 +101,7 @@ EOF
 **3. Generate Marketplace.json**
 ```bash
 # Use fastskill to generate marketplace.json
-fastskill registry create --path ./skills --name my-skills-repo
+fastskill marketplace create --path ./skills --name my-skills-repo
 
 # This creates .claude-plugin/marketplace.json
 ```
@@ -121,13 +121,13 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add the repository to your project
-fastskill sources add my-skills-repo \
+fastskill repos add my-skills-repo \
   --repo-type git-marketplace \
-  --url https://github.com/your-org/my-skills-repo.git \
-  --priority 0
+  --priority 0 \
+  https://github.com/your-org/my-skills-repo.git
 
 # List skills from the repository
-fastskill registry list-skills --repository my-skills-repo
+fastskill repos skills --repository my-skills-repo
 
 # Install a skill
 fastskill add my-skills-repo/web-scraper
@@ -240,19 +240,19 @@ auth = { type = "pat", env_var = "FASTSKILL_API_TOKEN" }
 **4. Browse and Install Skills**
 ```bash
 # List all skills in registry
-fastskill registry list-skills --repository company-registry
+fastskill repos skills --repository company-registry
 
 # List skills by scope
-fastskill registry list-skills --repository company-registry --scope engineering
+fastskill repos skills --repository company-registry --scope engineering
 
 # Search for skills
 fastskill search "data analysis" --repo company-registry
 
 # Get skill details
-fastskill registry show-skill engineering/data-analyzer --repository company-registry
+fastskill repos show engineering/data-analyzer --repository company-registry
 
 # List skill versions
-fastskill registry versions engineering/data-analyzer --repository company-registry
+fastskill repos versions engineering/data-analyzer --repository company-registry
 
 # Install skill
 fastskill add engineering/data-analyzer
@@ -363,7 +363,7 @@ priority = 0
 auth = { type = "pat", env_var = "COMPANY_TOKEN" }
 ```
 
-Use `fastskill registry list-skills` to list skills from HTTP registries. The command calls `GET /api/registry/index/skills` on the configured registry's `index_url`.
+Use `fastskill repos skills` to list skills from HTTP registries. The command calls `GET /api/registry/index/skills` on the configured registry's `index_url`.
 
 The registry server serves index files at `/index/{skill_id}` where `skill_id` follows the format `{scope}/{skill-name}` (e.g., `dev-user/web-scraper`).
 
@@ -446,13 +446,13 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add repository
-fastskill sources add company-tools \
+fastskill repos add company-tools \
   --repo-type zip-url \
-  --url https://skills.company.com/ \
-  --priority 0
+  --priority 0 \
+  https://skills.company.com/
 
 # List available skills
-fastskill registry list-skills --repository company-tools
+fastskill repos skills --repository company-tools
 
 # Install skills
 fastskill add company-tools/web-scraper
@@ -536,7 +536,7 @@ jobs:
         run: fastskill package --detect-changes --output ./packages
 
       - name: Generate marketplace.json
-        run: fastskill registry create --path ./skills --output ./marketplace.json
+        run: fastskill marketplace create --path ./skills --output ./marketplace.json --name company-tools
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -662,7 +662,7 @@ EOF
 **3. Generate Marketplace.json (Optional)**
 ```bash
 # Generate marketplace.json for the local repository
-fastskill registry create --path ~/local-skills --name local-dev
+fastskill marketplace create --path ~/local-skills --name local-dev
 ```
 
 **4. Configure Repository**
@@ -679,13 +679,13 @@ priority = 0
 **5. Test Local Repository**
 ```bash
 # Add local repository
-fastskill sources add local-dev \
+fastskill repos add local-dev \
   --repo-type local \
-  --url ~/local-skills \
-  --priority 0
+  --priority 0 \
+  ~/local-skills
 
 # List local skills
-fastskill registry list-skills --repository local-dev
+fastskill repos skills --repository local-dev
 
 # Install local skills
 fastskill add local-dev/test-skill
@@ -753,10 +753,10 @@ git add .
 git commit -m "Add experimental skills"
 
 # Or reference external git repos
-fastskill sources add external-dev \
+fastskill repos add external-dev \
   --repo-type git-marketplace \
-  --url ~/projects/external-skills \
-  --priority 1
+  --priority 1 \
+  ~/projects/external-skills
 ```
 
 #### Hot Reloading
@@ -774,12 +774,15 @@ export FASTSKILL_HOT_RELOAD=true
 #### Testing and Validation
 
 **Skill Validation:**
-```bash
-# Validate local skills
-fastskill validate ~/local-skills
 
-# Check for common issues
-fastskill validate ~/local-skills --strict
+FastSkill validates skills automatically when you add or install them, so there is no separate validate step:
+
+```bash
+# Adding from a local source surfaces validation errors before agents load the skill
+fastskill add ~/local-skills
+
+# Installing the manifest validates every resolved skill
+fastskill install
 ```
 
 **Integration Testing:**
@@ -820,11 +823,11 @@ priority = 1
 # GitHub Actions example
 - name: Test local skills
   run: |
-    fastskill sources add test-repo \
+    fastskill repos add test-repo \
       --repo-type local \
-      --url ./test-skills
+      ./test-skills
 
-    fastskill validate ./test-skills
+    # fastskill add validates the skill before installing it
     fastskill add test-repo/test-skill
     fastskill read test-repo/test-skill
 ```
@@ -848,7 +851,7 @@ Sources without `marketplace.json` will not appear in the registry.
 Add a new repository using the CLI:
 
 ```bash
-fastskill sources add new-source --type git-marketplace --url https://github.com/user/repo.git --priority 0
+fastskill repos add new-source --repo-type git-marketplace --priority 0 https://github.com/user/repo.git
 ```
 
 Or edit `skill-project.toml` directly:
@@ -864,7 +867,7 @@ priority = 0
 
 ### Removing a Repository
 
-Remove the repository using `fastskill registry remove <name>` or edit `skill-project.toml` directly.
+Remove the repository using `fastskill repos remove <name>` or edit `skill-project.toml` directly.
 
 ## Best Practices
 

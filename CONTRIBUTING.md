@@ -81,7 +81,7 @@ This quickstart reduces contributor drop-off by getting you productive in under 
 
 - Keep changes scoped to one crate responsibility at a time.
 - Reuse `fastskill-core` services instead of duplicating domain logic in CLI code.
-- Preserve stable public APIs for library crates (`fastskill-core`, `evals-core`).
+- Preserve stable public APIs for library crates (`fastskill-core`, `fastskill-evals`).
 - Add tests with behavior changes and keep docs aligned with new usage.
 - Prefer small, reviewable pull requests with clear problem statements.
 
@@ -303,13 +303,13 @@ fastskill is a multi-crate workspace:
 
 - `crates/fastskill-cli`: CLI entry point and command handlers.
 - `crates/fastskill-core`: shared services, domain logic, validation, storage, and HTTP components.
-- `crates/evals-core`: reusable evaluation suite/check/runner/artifact infrastructure.
+- `crates/fastskill-evals`: reusable evaluation suite/check/runner/artifact infrastructure.
 
 Use crate-local docs when contributing:
 
 - `crates/fastskill-cli/CONTRIBUTING.md`
 - `crates/fastskill-core/CONTRIBUTING.md`
-- `crates/evals-core/CONTRIBUTING.md`
+- `crates/fastskill-evals/CONTRIBUTING.md`
 
 For dependency visualization, you can use cargo-tree:
 

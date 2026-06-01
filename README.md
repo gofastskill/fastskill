@@ -102,7 +102,7 @@ This repository is a Rust workspace with three primary crates:
 
 - [`crates/fastskill-cli`](crates/fastskill-cli): CLI binary and command routing.
 - [`crates/fastskill-core`](crates/fastskill-core): reusable service/library layer.
-- [`crates/evals-core`](crates/evals-core): standalone evaluation engine primitives.
+- [`crates/fastskill-evals`](crates/fastskill-evals): standalone evaluation engine primitives.
 
 Each crate has its own docs:
 
@@ -110,8 +110,8 @@ Each crate has its own docs:
 - `crates/fastskill-cli/CONTRIBUTING.md`
 - `crates/fastskill-core/README.md`
 - `crates/fastskill-core/CONTRIBUTING.md`
-- `crates/evals-core/README.md`
-- `crates/evals-core/CONTRIBUTING.md`
+- `crates/fastskill-evals/README.md`
+- `crates/fastskill-evals/CONTRIBUTING.md`
 
 ## License
 
