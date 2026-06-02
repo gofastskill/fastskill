@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#f58cabfe5d4fe17c6e5195caa2c0ac3d0150c5c4"
+source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#f58cabfe5d4fe17c6e5195caa2c0ac3d0150c5c4"
+source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
 dependencies = [
  "aikit-sdk",
  "async-trait",
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit?branch=main#f58cabfe5d4fe17c6e5195caa2c0ac3d0150c5c4"
+source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
 dependencies = [
  "aikit-agent",
  "dirs 6.0.0",
@@ -90,6 +90,36 @@ dependencies = [
  "uuid",
  "walkdir",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "aikit-skillopt"
+version = "0.1.0"
+source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+dependencies = [
+ "aikit-evals",
+ "aikit-sdk",
+ "aikit-textgrad",
+ "anyhow",
+ "async-trait",
+ "tokio",
+]
+
+[[package]]
+name = "aikit-textgrad"
+version = "0.1.0"
+source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+dependencies = [
+ "aikit-evals",
+ "aikit-sdk",
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -1823,6 +1853,7 @@ name = "fastskill-cli"
 version = "0.9.127"
 dependencies = [
  "aikit-sdk",
+ "aikit-skillopt",
  "anyhow",
  "assert_cmd",
  "async-trait",

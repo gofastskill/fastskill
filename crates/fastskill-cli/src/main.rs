@@ -182,7 +182,7 @@ fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
 
 use commands::{
     add, analyze, auth, disable, eval, init, install, list, marketplace, package, publish, read,
-    reindex, remove, repos, resolve, search, serve, show, sync, update,
+    reindex, remove, repos, resolve, search, serve, show, skillopt, sync, update,
 };
 
 pub fn strip_global_flags(args: Vec<String>) -> (Option<PathBuf>, bool, bool, Vec<String>) {
@@ -408,6 +408,18 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         state,
         eval,
         execute_eval
+    );
+    register_cmd!(
+        builder,
+        "skillopt",
+        "Iterative skill-document optimization via text-gradient",
+        Some("skillopt <run|resume|status|inspect|export>"),
+        Some("quality"),
+        false,
+        skillopt::SkillOptCommand,
+        state,
+        skillopt,
+        execute_skillopt
     );
     // ── Service commands ─────────────────────────────────────────────────────
     register_cmd!(

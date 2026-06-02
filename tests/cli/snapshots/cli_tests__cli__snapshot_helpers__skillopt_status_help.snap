@@ -1,0 +1,13 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Command help (legacy)
+
+Usage: [HOME_DIR]/ws001/gofastskill/fastskill/target/debug/fastskill skillopt [-- <args>]
+
+Summary: Iterative skill-document optimization via text-gradient
+
+Syntax: skillopt <run|resume|status|inspect|export>
+
+For the full command list, run: [HOME_DIR]/ws001/gofastskill/fastskill/target/debug/fastskill --help

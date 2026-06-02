@@ -24,6 +24,9 @@ fastskill-evals = { path = "../fastskill-evals" }
 # aikit-sdk for agent integration
 aikit-sdk.workspace = true
 
+# aikit-skillopt for text-gradient skill optimization
+aikit-skillopt.workspace = true
+
 # CLI-specific dependencies
 clap.workspace = true
 inquire.workspace = true
