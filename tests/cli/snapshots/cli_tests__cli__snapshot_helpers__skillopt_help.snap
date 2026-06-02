@@ -1,0 +1,16 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Iterative skill-document optimization via text-gradient
+
+Usage: fastskill skillopt [trailing]...
+
+Arguments:
+  [trailing]...
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+Syntax: skillopt <run|resume|status|inspect|export>

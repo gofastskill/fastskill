@@ -21,6 +21,7 @@ pub mod resolve;
 pub mod search;
 pub mod serve;
 pub mod show;
+pub mod skillopt;
 pub mod sources;
 pub mod sync;
 pub mod update;
