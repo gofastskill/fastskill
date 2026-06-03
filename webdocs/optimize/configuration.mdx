@@ -1,0 +1,159 @@
+---
+title: "Configuration Reference"
+description: "All fields in optimize.toml, with valid ranges, defaults, and guidance on choosing values."
+---
+
+# Configuration Reference
+
+Optimization runs are driven by a TOML config file. By convention this file is named `optimize.toml` (you can name it anything — pass the path with `--config`).
+
+## Minimal example
+
+```toml
+skill         = "SKILL.md"
+skill_name    = "my-skill"
+suite         = "evals/suite.csv"
+out_dir       = ".skillopt/runs"
+target_agent  = "claude"
+
+n_epochs      = 5
+batch_size    = 4
+pass_threshold = 0.7
+gate_metric   = "hard"
+gate_trials   = 3
+gate_epsilon  = 0.0
+slow_update_mode = "gated"
+```
+
+## Full reference
+
+### Artifacts and data
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `skill` | path | Yes | Path to the seed skill document (usually `SKILL.md`). This is the starting point — the optimizer modifies copies of this. |
+| `skill_name` | string | Yes | Name used when deploying or referencing the optimized skill. |
+| `suite` | path | Yes | Path to the suite CSV. Must have `id`, `prompt`, `should_trigger` columns. |
+| `checks` | path | No | Path to the checks TOML file. Omitting it falls back to trigger-match only scoring. |
+| `out_dir` | path | No | Parent directory for run output folders. Defaults to `.skillopt/runs`. Each run creates a timestamped subdirectory here. |
+
+---
+
+### Agents
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `target_agent` | string | Yes | The agent that runs the skill against eval cases. Usually `"claude"`. |
+| `target_model` | string | No | Override the model used by the target agent. |
+| `optimizer_agent` | string | No | The agent that proposes patches. Defaults to `target_agent` (a warning is printed). Set this explicitly in production runs. |
+| `optimizer_model` | string | No | Override the model used by the optimizer agent. |
+
+**Tip:** Use a faster/cheaper model for `target_agent` (it runs many times per epoch) and a more capable model for `optimizer_agent` (it needs to reason about patch quality).
+
+---
+
+### Training loop
+
+| Field | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `n_epochs` | int | — | ≥ 1 | Number of passes over the training split. |
+| `batch_size` | int | — | ≥ 1 | Cases evaluated per step (B). Larger batches give the optimizer more signal per patch proposal. |
+| `accumulation` | int | 1 | ≥ 1 | Steps to accumulate before applying a patch (A). Gradient accumulation analogue. |
+| `aggregate_group_size` | int | — | ≥ 1 | Cases grouped together when aggregating optimizer feedback (K). |
+| `lr_0` | int | — | ≥ 1 | Initial learning rate (controls initial patch aggressiveness). |
+| `pass_threshold` | float | — | [0.0, 1.0] | Fraction of cases that must pass for the gate to accept a step. |
+| `parallel` | int | No | ≥ 1 | Number of eval cases to run in parallel. Omit to use the default. |
+| `timeout_seconds` | int | 120 | ≥ 1 | Per-case timeout in seconds. |
+
+---
+
+### Gate
+
+The gate decides whether to accept a patch by comparing scores before and after.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `gate_metric` | string | — | How to measure pass rate: `hard`, `soft`, or `mixed`. |
+| `mixed_hard_weight` | float | — | Required when `gate_metric = "mixed"`. Weight of the hard score component (0.0–1.0). |
+| `gate_trials` | int | — | Number of times to re-run the gate before deciding. Higher values reduce noise at the cost of tokens. |
+| `gate_epsilon` | float | 0.0 | [0.0, 1.0] | Minimum improvement required to accept a patch. `0.0` means any non-regression is accepted. |
+
+**Gate metric options:**
+
+| Value | Behaviour |
+|---|---|
+| `hard` | Pass rate = fraction of cases exactly matching `should_trigger`. Most strict. |
+| `soft` | Pass rate uses weighted check scores, allowing partial credit. |
+| `mixed` | Weighted average of hard and soft scores. Set `mixed_hard_weight` to control the blend. |
+
+---
+
+### Epoch boundary
+
+| Field | Type | Description |
+|---|---|---|
+| `slow_update_mode` | string | What to do at the epoch boundary when the patch doesn't improve: `gated` (skip) or `force_accept` (apply anyway). Use `gated` for production runs. |
+| `protected_soft_cap_chars` | int | Maximum characters the optimizer can add to the skill in a soft-cap zone. Prevents unbounded growth. |
+
+---
+
+## Worked example: a focused deployment skill
+
+```toml
+# Seed skill and identity
+skill       = "skills/deploy/SKILL.md"
+skill_name  = "deploy-ops"
+out_dir     = ".skillopt/runs"
+
+# Eval data
+suite  = "skills/deploy/evals/suite.csv"
+checks = "skills/deploy/evals/checks.toml"
+
+# Agents — fast target, strong optimizer
+target_agent    = "claude"
+target_model    = "claude-haiku-4-5-20251001"
+optimizer_agent = "claude"
+optimizer_model = "claude-opus-4-8"
+
+# Training loop
+n_epochs             = 6
+batch_size           = 8
+accumulation         = 1
+aggregate_group_size = 4
+lr_0                 = 3
+pass_threshold       = 0.75
+parallel             = 4
+timeout_seconds      = 90
+
+# Gate — strict, no noise, require measurable improvement
+gate_metric   = "hard"
+gate_trials   = 3
+gate_epsilon  = 0.02
+
+# Epoch boundary
+slow_update_mode        = "gated"
+protected_soft_cap_chars = 3000
+```
+
+---
+
+## Validation errors
+
+If the config is invalid, `fastskill optimize run` exits with a structured error code. Common ones:
+
+| Code | Cause |
+|---|---|
+| `SKILLOPT_INVALID_TOML` | File couldn't be parsed as TOML. |
+| `SKILLOPT_MIXED_WEIGHT_MISSING` | `gate_metric = "mixed"` set but `mixed_hard_weight` not provided. |
+| `SKILLOPT_MIXED_WEIGHT_SPURIOUS` | `mixed_hard_weight` set but `gate_metric` is not `"mixed"`. |
+| `SKILLOPT_FIELD_OUT_OF_RANGE` | A float field is outside [0.0, 1.0] or an int field is below its minimum. |
+| `SKILLOPT_SKILL_NOT_FOUND` | The `skill` path doesn't exist. |
+| `SKILLOPT_SUITE_NOT_FOUND` | The `suite` path doesn't exist. |
+| `SKILLOPT_NO_SELECTION_CASES` | The suite CSV has zero `train` rows. |
+
+---
+
+## See also
+
+- [Setup: eval data and grading](/optimize/setup)
+- [Running and monitoring](/optimize/running)

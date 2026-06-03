@@ -1,0 +1,143 @@
+---
+title: "Running and Monitoring"
+description: "Start an optimization run, watch it progress, and resume after interruption."
+---
+
+# Running and Monitoring
+
+## Start a run
+
+```bash
+fastskill optimize run --config optimize.toml
+```
+
+FastSkill validates your config, creates a timestamped run directory under `out_dir`, and begins the training loop. When the run finishes, it prints the path to the best skill document:
+
+```
+Run complete. Best skill: .skillopt/runs/2026-06-03T14-22-01Z/best_skill.md
+```
+
+### Override the output directory
+
+```bash
+fastskill optimize run --config optimize.toml --out-dir /tmp/my-runs
+```
+
+This overrides the `out_dir` value in the config without modifying the file.
+
+### Resume an interrupted run in one step
+
+If you interrupted a run (Ctrl-C, timeout, machine restart), you can resume it directly from the `run` command:
+
+```bash
+fastskill optimize run --config optimize.toml --resume .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+This delegates to the `resume` subcommand — it re-reads the stored config from the run directory and picks up where it left off.
+
+---
+
+## Watch progress with `status`
+
+In a second terminal, run:
+
+```bash
+fastskill optimize status .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+This prints the current best score, epoch/step position, and a per-step table:
+
+```
+Run: .skillopt/runs/2026-06-03T14-22-01Z
+Best score: 0.82  |  Epoch 2/5  |  Global step 14
+
+Step  Gate      Score(S)  Score(S')  Delta    Tokens
+1     accepted   0.60       0.67     +0.07    4,210
+2     rejected   0.67       0.61     -0.06    3,890
+3     accepted   0.67       0.74     +0.07    4,102
+...
+```
+
+Column meanings:
+
+| Column | Description |
+|---|---|
+| `Step` | Global step index (1-based across all epochs). |
+| `Gate` | Whether the patch was accepted or rejected. |
+| `Score(S)` | Score before the patch. |
+| `Score(S')` | Score after the patch. |
+| `Delta` | `Score(S') - Score(S)`. Positive means improvement. |
+| `Tokens` | Tokens consumed in this step (target + optimizer calls). |
+
+### Live watch mode
+
+```bash
+fastskill optimize status .skillopt/runs/2026-06-03T14-22-01Z --watch
+```
+
+Re-reads and re-prints every ~2 seconds until the run completes.
+
+---
+
+## Resume an interrupted run
+
+```bash
+fastskill optimize resume .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+The `resume` subcommand reads the stored `skillopt.toml` copy from the run directory (saved at run-start for provenance), re-validates it against the current files, and calls the training loop at the last checkpoint.
+
+**Note:** Resume uses the config stored *inside* the run directory, not your original config file. This ensures the run is reproducible regardless of changes you may have made to the config since starting.
+
+---
+
+## Typical workflow
+
+```bash
+# 1. Start the run
+fastskill optimize run --config optimize.toml
+
+# 2. In a second terminal, watch progress
+fastskill optimize status .skillopt/runs/<timestamp> --watch
+
+# 3. If interrupted, resume
+fastskill optimize resume .skillopt/runs/<timestamp>
+
+# 4. When done, inspect a specific step (optional)
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7
+
+# 5. Export the best skill
+fastskill optimize export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
+```
+
+---
+
+## Run directory layout
+
+Every run creates a self-contained directory:
+
+```
+.skillopt/runs/2026-06-03T14-22-01Z/
+├── skillopt.toml          # stored config (provenance copy)
+├── runtime_state.json     # live state: best_score, epoch, global_step
+├── history.json           # array of step records
+├── best_skill.md          # best skill document seen so far
+├── step-1/
+│   ├── patch.json         # proposed patch
+│   ├── gate_scores.json   # before/after scores for gate decision
+│   ├── skips.json         # cases skipped this step
+│   ├── skill_before.md    # skill before this step's patch
+│   └── skill_after.md     # skill after this step's patch
+├── step-2/
+│   └── ...
+└── ...
+```
+
+The run directory is safe to copy, archive, or share. Resume and inspect commands only need this directory.
+
+---
+
+## See also
+
+- [Inspecting and exporting results](/optimize/results)
+- [Configuration reference](/optimize/configuration)

@@ -1,0 +1,63 @@
+---
+title: "Skill Optimization Overview"
+description: "Use text-gradient optimization to automatically improve skill documents by iterating on eval feedback."
+---
+
+# Skill Optimization
+
+`fastskill optimize` is an automated loop that improves a skill document by running evals, scoring results, and applying gradient-style patches until the skill reliably triggers on the cases you care about.
+
+You provide a skill, a set of eval cases, and a grading config. FastSkill handles the rest: proposing edits, scoring outcomes, accepting or rejecting each step, and writing the best version to disk.
+
+## When to use it
+
+- Your skill has good eval coverage but still misses cases it should trigger on.
+- You've written a skill manually and want a data-driven refinement pass.
+- You want to tune trigger precision without hand-editing text.
+
+## How it works
+
+```
+seed skill ──► optimizer agent proposes patch
+                       │
+              target agent runs on eval batch
+                       │
+              grader scores pass / fail
+                       │
+              gate: accept if score improves by ε
+                       │
+              repeat for N epochs ──► export best
+```
+
+Each training step:
+1. The **optimizer agent** reads the current skill and a summary of failing cases, then proposes a text patch.
+2. The **target agent** runs the patched skill against a batch of eval cases.
+3. The **gate** compares the new score to the current best. If the improvement clears `gate_epsilon`, the patch is accepted.
+4. The run directory records every step's artifacts for inspection.
+
+## Key concepts
+
+| Term | Meaning |
+|---|---|
+| **Suite** | A CSV file of eval cases with `id`, `prompt`, and `should_trigger` columns |
+| **Checks** | A TOML file of grading rules applied to each eval response |
+| **Gate metric** | How pass rate is measured: `hard` (exact), `soft` (weighted), or `mixed` |
+| **Epoch** | One full pass over the training split of the suite |
+| **Run directory** | Timestamped output folder containing all step artifacts and the best skill |
+
+## Quick summary of commands
+
+| Command | What it does |
+|---|---|
+| `fastskill optimize run` | Start a new optimization run from a config file |
+| `fastskill optimize status` | Check progress and scores for a run |
+| `fastskill optimize resume` | Continue an interrupted run |
+| `fastskill optimize inspect` | Examine a specific step's patch and gate decision |
+| `fastskill optimize export` | Copy the best skill document to a destination path |
+
+## See also
+
+- [Setup: eval data and grading](/optimize/setup)
+- [Configuration reference](/optimize/configuration)
+- [Running and monitoring](/optimize/running)
+- [Inspecting and exporting results](/optimize/results)

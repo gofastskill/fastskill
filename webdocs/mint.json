@@ -62,6 +62,16 @@
             ]
         },
         {
+            "group": "Skill Optimization",
+            "pages": [
+                "optimize/overview",
+                "optimize/setup",
+                "optimize/configuration",
+                "optimize/running",
+                "optimize/results"
+            ]
+        },
+        {
             "group": "CLI Reference",
             "pages": [
                 "cli-reference/overview",
