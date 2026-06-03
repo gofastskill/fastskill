@@ -1,15 +1,14 @@
 //! FastSkill CLI binary entry point — cli-framework AppBuilder edition.
 //!
-//! Stage 1: all 21 active (non-deprecated, non-framework) commands are
-//! registered as bridged commands (`spec: None`).  Each bridge closure
-//! reconstructs the original typed `Args` struct from `FsState.raw_remaining_args`
-//! and delegates to the existing `execute_*` functions, preserving all
-//! existing behaviour.
+//! All commands are registered as typed `builder.register` calls that use
+//! `IntoCommandSpec + FromArgValueMap`. Global flags (--skills-dir, --global,
+//! --verbose) are declared via `builder.global_flag` and read at dispatch time
+//! through `ctx.opt_global_args()`.
 //!
 //! `Arc<FsState>` is captured at registration time by each command closure —
 //! no `Any`-downcasting of `AppContext` is needed.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod arg_helpers;
 mod auth_config;
@@ -21,163 +20,11 @@ mod error;
 pub mod runtime_selector;
 mod utils;
 
+use cli_framework::app::context::AppContext;
 use cli_framework::prelude::AppBuilder;
+use cli_framework::spec::value::ArgValue;
 use context::{FsCtx, FsState};
-use std::path::PathBuf;
 use std::sync::Arc;
-
-/// Register a command into the AppBuilder, rebinding `$builder` on success.
-///
-/// Calling conventions (last token(s) select how the execute fn is invoked):
-///   (none)       — no service, `execute_fn(args)`
-///   `global`     — no service, `execute_fn(args, state.global)`
-///   `svc`        — service (&), `execute_fn(&svc, args)`
-///   `svc_global` — service (&), `execute_fn(&svc, args, state.global)`
-///   `svc_val`    — service (value), `execute_fn(svc, args)`
-macro_rules! register_cmd {
-    // No service, args only
-    ($builder:ident, $id:literal, $summary:literal, $syntax:expr, $category:expr,
-     $expose_mcp:literal, $args_type:ty, $state:expr,
-     $module:ident, $fn:ident) => {
-        let $builder = $builder.register_command({
-            let state = Arc::clone(&$state);
-            cli_framework::command::Command {
-                id: Arc::from($id),
-                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
-                    summary: $summary,
-                    syntax: $syntax,
-                    category: $category,
-                    ..Default::default()
-                }),
-                validator: None,
-                expose_mcp: $expose_mcp,
-                execute: Arc::new(move |_ctx, _args| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        let raw = state.raw_remaining_args.clone();
-                        let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(args).await.map_err(anyhow::Error::from)
-                    })
-                }),
-            }
-        })?;
-    };
-    // No service, args + state.global
-    ($builder:ident, $id:literal, $summary:literal, $syntax:expr, $category:expr,
-     $expose_mcp:literal, $args_type:ty, $state:expr,
-     $module:ident, $fn:ident, global) => {
-        let $builder = $builder.register_command({
-            let state = Arc::clone(&$state);
-            cli_framework::command::Command {
-                id: Arc::from($id),
-                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
-                    summary: $summary,
-                    syntax: $syntax,
-                    category: $category,
-                    ..Default::default()
-                }),
-                validator: None,
-                expose_mcp: $expose_mcp,
-                execute: Arc::new(move |_ctx, _args| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        let raw = state.raw_remaining_args.clone();
-                        let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(args, state.global)
-                            .await
-                            .map_err(anyhow::Error::from)
-                    })
-                }),
-            }
-        })?;
-    };
-    // Service (&), args only
-    ($builder:ident, $id:literal, $summary:literal, $syntax:expr, $category:expr,
-     $expose_mcp:literal, $args_type:ty, $state:expr,
-     $module:ident, $fn:ident, svc) => {
-        let $builder = $builder.register_command({
-            let state = Arc::clone(&$state);
-            cli_framework::command::Command {
-                id: Arc::from($id),
-                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
-                    summary: $summary,
-                    syntax: $syntax,
-                    category: $category,
-                    ..Default::default()
-                }),
-                validator: None,
-                expose_mcp: $expose_mcp,
-                execute: Arc::new(move |_ctx, _args| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        let svc = state.service().await?;
-                        let raw = state.raw_remaining_args.clone();
-                        let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(&svc, args).await.map_err(anyhow::Error::from)
-                    })
-                }),
-            }
-        })?;
-    };
-    // Service (&), args + state.global
-    ($builder:ident, $id:literal, $summary:literal, $syntax:expr, $category:expr,
-     $expose_mcp:literal, $args_type:ty, $state:expr,
-     $module:ident, $fn:ident, svc_global) => {
-        let $builder = $builder.register_command({
-            let state = Arc::clone(&$state);
-            cli_framework::command::Command {
-                id: Arc::from($id),
-                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
-                    summary: $summary,
-                    syntax: $syntax,
-                    category: $category,
-                    ..Default::default()
-                }),
-                validator: None,
-                expose_mcp: $expose_mcp,
-                execute: Arc::new(move |_ctx, _args| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        let svc = state.service().await?;
-                        let raw = state.raw_remaining_args.clone();
-                        let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(&svc, args, state.global)
-                            .await
-                            .map_err(anyhow::Error::from)
-                    })
-                }),
-            }
-        })?;
-    };
-    // Service (value), args only
-    ($builder:ident, $id:literal, $summary:literal, $syntax:expr, $category:expr,
-     $expose_mcp:literal, $args_type:ty, $state:expr,
-     $module:ident, $fn:ident, svc_val) => {
-        let $builder = $builder.register_command({
-            let state = Arc::clone(&$state);
-            cli_framework::command::Command {
-                id: Arc::from($id),
-                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
-                    summary: $summary,
-                    syntax: $syntax,
-                    category: $category,
-                    ..Default::default()
-                }),
-                validator: None,
-                expose_mcp: $expose_mcp,
-                execute: Arc::new(move |_ctx, _args| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        let svc = state.service().await?;
-                        let raw = state.raw_remaining_args.clone();
-                        let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(svc, args).await.map_err(anyhow::Error::from)
-                    })
-                }),
-            }
-        })?;
-    };
-}
 
 fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
     match result {
@@ -189,86 +36,43 @@ fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
     }
 }
 
+fn ctx_global(ctx: &dyn AppContext) -> bool {
+    ctx.opt_global_args()
+        .and_then(|m| m.get("global"))
+        .and_then(|v| {
+            if let ArgValue::Bool(b) = v {
+                Some(*b)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(false)
+}
+
+fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
+    ctx.opt_global_args()
+        .and_then(|m| m.get("skills-dir"))
+        .and_then(|v| {
+            if let ArgValue::Str(s) = v {
+                Some(std::path::PathBuf::from(s))
+            } else {
+                None
+            }
+        })
+}
+
 use commands::{
     add, analyze, auth, disable, eval, init, install, list, marketplace, package, publish, read,
     reindex, remove, repos, resolve, search, serve, show, skillopt, sync, update,
 };
 
-pub fn strip_global_flags(args: Vec<String>) -> (Option<PathBuf>, bool, bool, Vec<String>) {
-    let mut skills_dir: Option<PathBuf> = None;
-    let mut global = false;
-    let mut verbose = false;
-    let mut remaining: Vec<String> = Vec::with_capacity(args.len());
-    let mut i = 0;
-
-    while i < args.len() {
-        let arg = &args[i];
-
-        if arg == "--skills-dir" {
-            if i + 1 < args.len() && !args[i + 1].starts_with('-') {
-                skills_dir = Some(PathBuf::from(&args[i + 1]));
-                i += 2;
-            } else if i + 1 < args.len() {
-                eprintln!(
-                    "Error: --skills-dir requires a path value (got '{}' which looks like a flag)",
-                    args[i + 1]
-                );
-                std::process::exit(1);
-            } else {
-                eprintln!(
-                    "Error: --skills-dir requires a path value but appears at end of arguments"
-                );
-                std::process::exit(1);
-            }
-        } else if let Some(path) = arg.strip_prefix("--skills-dir=") {
-            skills_dir = Some(PathBuf::from(path));
-            i += 1;
-        } else if arg == "--global" {
-            global = true;
-            i += 1;
-        } else if arg == "--verbose" || arg == "-v" {
-            verbose = true;
-            i += 1;
-        } else if arg == "--repositories-path" {
-            // Accepted for backward compatibility with older callers; value is intentionally ignored.
-            if i + 1 < args.len() {
-                i += 2;
-            } else {
-                i += 1;
-            }
-        } else if arg.starts_with("--repositories-path=") {
-            // Accepted for backward compatibility; value is intentionally ignored.
-            i += 1;
-        } else {
-            remaining.push(arg.clone());
-            i += 1;
-        }
-    }
-
-    (skills_dir, global, verbose, remaining)
-}
-
-fn parse_from_args<T: clap::Args>(raw: &[String]) -> anyhow::Result<T> {
-    let cmd = T::augment_args(clap::Command::new("fastskill"));
-    let matches = cmd
-        .try_get_matches_from(raw.iter().map(|s| s.as_str()))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    T::from_arg_matches(&matches).map_err(|e| anyhow::anyhow!("{}", e))
-}
-
 #[tokio::main]
 async fn main() {
     let raw: Vec<String> = std::env::args().collect();
-    let (skills_dir, global, verbose, remaining_args) = strip_global_flags(raw);
-
+    let verbose = raw.iter().any(|a| a == "--verbose" || a == "-v");
     fastskill_core::init_logging_with_verbose(verbose);
 
-    let state = Arc::new(FsState::new(
-        skills_dir,
-        global,
-        verbose,
-        remaining_args.clone(),
-    ));
+    let state = Arc::new(FsState::new());
     let ctx = FsCtx;
 
     let builder = or_exit(
@@ -284,7 +88,7 @@ async fn main() {
         "Error initialising app",
     );
 
-    match app.run_with_args(remaining_args).await {
+    match app.run_with_args(raw).await {
         Ok(()) => std::process::exit(0),
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -294,133 +98,319 @@ async fn main() {
 }
 
 fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuilder> {
-    // ── No-service commands ──────────────────────────────────────────────────
-    register_cmd!(
-        builder,
-        "init",
-        "Initialize skill-project.toml in current skill directory",
-        Some("init [OPTIONS]"),
-        Some("project"),
-        false,
-        init::InitArgs,
-        state,
-        init,
-        execute_init
-    );
-    register_cmd!(
-        builder,
-        "install",
-        "Apply manifest: install skills from skill-project.toml [dependencies]",
-        Some("install [OPTIONS]"),
-        Some("packages"),
-        false,
-        install::InstallArgs,
-        state,
-        install,
-        execute_install
-    );
-    register_cmd!(
-        builder,
-        "update",
-        "Update skills to latest versions",
-        Some("update [SKILL_ID] [OPTIONS]"),
-        Some("packages"),
-        false,
-        update::UpdateArgs,
-        state,
-        update,
-        execute_update,
-        global
-    );
-    register_cmd!(
-        builder,
-        "show",
-        "Show metadata for one or all installed skills",
-        Some("show [SKILL_ID] [OPTIONS]"),
-        Some("discovery"),
-        true,
-        show::ShowArgs,
-        state,
-        show,
-        execute_show,
-        global
-    );
-    register_cmd!(
-        builder,
-        "package",
-        "Package skills into ZIP artifacts with versioning",
-        Some("package [OPTIONS]"),
-        Some("publishing"),
-        false,
-        package::PackageArgs,
-        state,
-        package,
-        execute_package
-    );
-    register_cmd!(
-        builder,
-        "publish",
-        "Publish artifacts to remote API or local folder",
-        Some("publish [OPTIONS]"),
-        Some("publishing"),
-        false,
-        publish::PublishArgs,
-        state,
-        publish,
-        execute_publish
-    );
-    // ── Subcommand-tree commands (no service) ────────────────────────────────
-    register_cmd!(
-        builder,
-        "repos",
-        "Manage repository list and browse remote skill catalog",
-        Some("repos <SUBCOMMAND>"),
-        Some("repositories"),
-        true,
-        repos::ReposArgs,
-        state,
-        repos,
-        execute_repos
-    );
-    register_cmd!(
-        builder,
-        "marketplace",
-        "Create and manage skill marketplace artifacts",
-        Some("marketplace <SUBCOMMAND>"),
-        Some("publishing"),
-        true,
-        marketplace::MarketplaceArgs,
-        state,
-        marketplace,
-        execute_marketplace
-    );
-    register_cmd!(
-        builder,
-        "auth",
-        "Manage authentication for registries",
-        Some("auth <login|logout|whoami>"),
-        Some("auth"),
-        false,
-        auth::AuthArgs,
-        state,
-        auth,
-        execute_auth
-    );
-    register_cmd!(
-        builder,
-        "eval",
-        "Evaluation commands for skill quality assurance",
-        Some("eval <run|validate>"),
-        Some("quality"),
-        true,
-        eval::EvalCommand,
-        state,
-        eval,
-        execute_eval
-    );
+    use cli_framework::path;
+    use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+
+    // ── Global flags ─────────────────────────────────────────────────────────
+    let builder = builder
+        .global_flag(ArgSpec {
+            name: "skills-dir",
+            kind: ArgKind::Option,
+            long: Some("skills-dir"),
+            value_type: ArgValueType::String,
+            cardinality: Cardinality::Optional,
+            help: "Override the skills directory path",
+            ..Default::default()
+        })
+        .global_flag(ArgSpec {
+            name: "global",
+            kind: ArgKind::Flag,
+            long: Some("global"),
+            value_type: ArgValueType::Bool,
+            cardinality: Cardinality::Optional,
+            help: "Use global skills directory (~/.config/fastskill/skills)",
+            ..Default::default()
+        })
+        .global_flag(ArgSpec {
+            name: "verbose",
+            kind: ArgKind::Flag,
+            long: Some("verbose"),
+            short: Some('v'),
+            value_type: ArgValueType::Bool,
+            cardinality: Cardinality::Optional,
+            help: "Enable verbose output",
+            ..Default::default()
+        });
+
+    // ── Typed commands (no service) ──────────────────────────────────────────
+    let builder = builder
+        .register(path!["init"], |_ctx, args: init::InitArgs| async move {
+            init::execute_init(args).await.map_err(anyhow::Error::from)
+        })?
+        .register(
+            path!["install"],
+            |_ctx, args: install::InstallArgs| async move {
+                install::execute_install(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register(path!["update"], |ctx, args: update::UpdateArgs| {
+            let global = ctx_global(ctx);
+            async move {
+                update::execute_update(args, global)
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        })?
+        .register(path!["show"], |ctx, args: show::ShowArgs| {
+            let global = ctx_global(ctx);
+            async move {
+                show::execute_show(args, global)
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        })?
+        .register(
+            path!["package"],
+            |_ctx, args: package::PackageArgs| async move {
+                package::execute_package(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register(
+            path!["publish"],
+            |_ctx, args: publish::PublishArgs| async move {
+                publish::execute_publish(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?;
+
+    // ── Typed commands that need FsState (service injection) ─────────────────
+    let builder = {
+        let state_disable = Arc::clone(&state);
+        let state_list = Arc::clone(&state);
+        let state_read = Arc::clone(&state);
+        builder
+            .register(path!["disable"], move |ctx, args: disable::DisableArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_disable);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    disable::execute_disable(&svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["list"], move |ctx, args: list::ListArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_list);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    list::execute_list(&svc, args, global)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["read"], move |ctx, args: read::ReadArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_read);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    read::execute_read(svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+    };
+
+    // ── repos: fully migrated to typed API ───────────────────────────────────
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["repos"],
+                GroupMetadata {
+                    summary: "Manage repository list and browse remote skill catalog",
+                    hidden: false,
+                },
+            )?
+            .register(
+                path!["repos", "list"],
+                |_ctx, args: repos::ReposListArgs| async move {
+                    repos::execute_repos_list(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "add"],
+                |_ctx, args: repos::ReposAddArgs| async move {
+                    repos::execute_repos_add(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "remove"],
+                |_ctx, args: repos::ReposRemoveArgs| async move {
+                    repos::execute_repos_remove(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "info"],
+                |_ctx, args: repos::ReposInfoArgs| async move {
+                    repos::execute_repos_info(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "update"],
+                |_ctx, args: repos::ReposUpdateArgs| async move {
+                    repos::execute_repos_update(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "test"],
+                |_ctx, args: repos::ReposTestArgs| async move {
+                    repos::execute_repos_test(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "refresh"],
+                |_ctx, args: repos::ReposRefreshArgs| async move {
+                    repos::execute_repos_refresh(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "skills"],
+                |_ctx, args: repos::ReposSkillsArgs| async move {
+                    repos::execute_repos_skills(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "show"],
+                |_ctx, args: repos::ReposShowArgs| async move {
+                    repos::execute_repos_show(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["repos", "versions"],
+                |_ctx, args: repos::ReposVersionsArgs| async move {
+                    repos::execute_repos_versions(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+    };
+
+    // ── marketplace: fully migrated to typed API ─────────────────────────────
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["marketplace"],
+                GroupMetadata {
+                    summary: "Create and manage skill marketplace artifacts",
+                    hidden: false,
+                },
+            )?
+            .register(
+                path!["marketplace", "create"],
+                |_ctx, args: marketplace::MarketplaceCreateArgs| async move {
+                    marketplace::execute_marketplace_create(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+    };
+
+    // ── auth: fully migrated to typed API ────────────────────────────────────
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["auth"],
+                GroupMetadata {
+                    summary: "Manage authentication for registries",
+                    hidden: false,
+                },
+            )?
+            .register(
+                path!["auth", "login"],
+                |_ctx, args: auth::LoginArgs| async move {
+                    auth::execute_login(args).await.map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["auth", "logout"],
+                |_ctx, args: auth::LogoutArgs| async move {
+                    auth::execute_logout(args).map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["auth", "whoami"],
+                |_ctx, args: auth::WhoamiArgs| async move {
+                    auth::execute_whoami(args).map_err(anyhow::Error::from)
+                },
+            )?
+    };
+
+    // ── eval: fully migrated to typed API ────────────────────────────────────
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["eval"],
+                GroupMetadata {
+                    summary: "Evaluation commands for skill quality assurance",
+                    hidden: false,
+                },
+            )?
+            .register(
+                path!["eval", "validate"],
+                |_ctx, args: eval::validate::ValidateArgs| async move {
+                    eval::validate::execute_validate(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["eval", "run"],
+                |_ctx, args: eval::run::RunArgs| async move {
+                    eval::run::execute_run(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["eval", "report"],
+                |_ctx, args: eval::report::ReportArgs| async move {
+                    eval::report::execute_report(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["eval", "score"],
+                |_ctx, args: eval::score::ScoreArgs| async move {
+                    eval::score::execute_score(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+    };
+
     // ── skillopt: fully migrated to typed API (spec #89 reference migration) ──
     let builder = {
-        use cli_framework::path;
         use cli_framework::spec::command_tree::GroupMetadata;
         builder
             .register_group(
@@ -471,150 +461,164 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
     };
-    // ── Service commands ─────────────────────────────────────────────────────
-    register_cmd!(
-        builder,
-        "add",
-        "Add a skill (from local path, zip, git URL, or registry ID)",
-        Some("add <SOURCE> [OPTIONS]"),
-        Some("packages"),
-        false,
-        add::AddArgs,
-        state,
-        add,
-        execute_add,
-        svc_global
-    );
-    register_cmd!(
-        builder,
-        "analyze",
-        "Diagnostic and analysis commands",
-        Some("analyze <matrix|duplicates|cluster>"),
-        Some("analysis"),
-        true,
-        analyze::AnalyzeCommand,
-        state,
-        analyze,
-        execute_analyze,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "disable",
-        "Disable skills by ID",
-        Some("disable <SKILL_ID>..."),
-        Some("packages"),
-        false,
-        disable::DisableArgs,
-        state,
-        disable,
-        execute_disable,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "list",
-        "List installed skills and reconcile with skill-project.toml",
-        Some("list [OPTIONS]"),
-        Some("discovery"),
-        true,
-        list::ListArgs,
-        state,
-        list,
-        execute_list,
-        svc_global
-    );
-    register_cmd!(
-        builder,
-        "read",
-        "Stream skill documentation (SKILL.md content) to stdout",
-        Some("read <SKILL_ID>"),
-        Some("discovery"),
-        true,
-        read::ReadArgs,
-        state,
-        read,
-        execute_read,
-        svc_val
-    );
-    register_cmd!(
-        builder,
-        "sync",
-        "Sync installed skills to the agent's metadata file",
-        Some("sync [OPTIONS]"),
-        Some("packages"),
-        false,
-        sync::SyncArgs,
-        state,
-        sync,
-        execute_sync,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "reindex",
-        "Reindex the vector index for semantic search",
-        Some("reindex [OPTIONS]"),
-        Some("packages"),
-        false,
-        reindex::ReindexArgs,
-        state,
-        reindex,
-        execute_reindex,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "remove",
-        "Uninstall skills (removes from manifest and local installation)",
-        Some("remove <SKILL_ID>... [OPTIONS]"),
-        Some("packages"),
-        false,
-        remove::RemoveArgs,
-        state,
-        remove,
-        execute_remove,
-        svc_global
-    );
-    register_cmd!(
-        builder,
-        "resolve",
-        "Resolve skills as machine-readable JSON with canonical paths",
-        Some("resolve <QUERY> [OPTIONS]"),
-        Some("discovery"),
-        true,
-        resolve::ResolveArgs,
-        state,
-        resolve,
-        execute_resolve,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "search",
-        "Search skills by query with explicit scope flags",
-        Some("search <QUERY> [--local|--remote] [OPTIONS]"),
-        Some("discovery"),
-        true,
-        search::SearchArgs,
-        state,
-        search,
-        execute_search,
-        svc
-    );
-    register_cmd!(
-        builder,
-        "serve",
-        "Start the FastSkill HTTP API server",
-        Some("serve [OPTIONS]"),
-        Some("server"),
-        false,
-        serve::ServeArgs,
-        state,
-        serve,
-        execute_serve,
-        svc_val
-    );
+
+    // ── add: fully migrated to typed API ─────────────────────────────────────
+    let builder = {
+        let state_add = Arc::clone(&state);
+        builder.register(path!["add"], move |ctx, args: add::AddArgs| {
+            let global = ctx_global(ctx);
+            let skills_dir = ctx_skills_dir(ctx);
+            let state = Arc::clone(&state_add);
+            async move {
+                let svc = state.service_with(global, skills_dir).await?;
+                add::execute_add(&svc, args, global)
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        })?
+    };
+
+    // ── analyze: fully migrated to typed API ─────────────────────────────────
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        let state_analyze = Arc::clone(&state);
+        builder
+            .register_group(
+                &path!["analyze"],
+                GroupMetadata {
+                    summary: "Diagnostic and analysis commands",
+                    hidden: false,
+                },
+            )?
+            .register(path!["analyze", "matrix"], {
+                let state = Arc::clone(&state_analyze);
+                move |ctx, args: analyze::matrix::MatrixArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        let Some(ctx) = analyze::load_analysis_context(&svc).await? else {
+                            return Ok(());
+                        };
+                        analyze::matrix::execute_matrix(ctx, args)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+            .register(path!["analyze", "cluster"], {
+                let state = Arc::clone(&state_analyze);
+                move |ctx, args: analyze::cluster::ClusterArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        let Some(ctx) = analyze::load_analysis_context(&svc).await? else {
+                            return Ok(());
+                        };
+                        analyze::cluster::execute_cluster(ctx, args)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+            .register(path!["analyze", "duplicates"], {
+                let state = Arc::clone(&state_analyze);
+                move |ctx, args: analyze::duplicates::DuplicatesArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        let Some(ctx) = analyze::load_analysis_context(&svc).await? else {
+                            return Ok(());
+                        };
+                        analyze::duplicates::execute_duplicates(ctx, args)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+    };
+
+    // ── Typed commands migrated from register_cmd! (spec #89) ───────────────
+    let builder = {
+        let state_sync = Arc::clone(&state);
+        let state_reindex = Arc::clone(&state);
+        let state_remove = Arc::clone(&state);
+        let state_resolve = Arc::clone(&state);
+        let state_search = Arc::clone(&state);
+        let state_serve = Arc::clone(&state);
+        builder
+            .register(path!["sync"], move |ctx, args: sync::SyncArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_sync);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    sync::execute_sync(&svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_reindex);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    reindex::execute_reindex(&svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["remove"], move |ctx, args: remove::RemoveArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_remove);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    remove::execute_remove(&svc, args, global)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["resolve"], move |ctx, args: resolve::ResolveArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_resolve);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    resolve::execute_resolve(&svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["search"], move |ctx, args: search::SearchArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_search);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    search::execute_search(&svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["serve"], move |ctx, args: serve::ServeArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_serve);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    serve::execute_serve(svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+    };
 
     Ok(builder)
 }
@@ -624,96 +628,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_strip_skills_dir_equals_form() {
-        let args = vec![
-            "fastskill".to_string(),
-            "--skills-dir=/tmp/skills".to_string(),
-            "search".to_string(),
-            "query".to_string(),
-        ];
-        let (skills_dir, global, verbose, remaining) = strip_global_flags(args);
-        assert_eq!(skills_dir, Some(PathBuf::from("/tmp/skills")));
-        assert!(!global);
-        assert!(!verbose);
-        assert_eq!(remaining, vec!["fastskill", "search", "query"]);
-    }
-
-    #[test]
-    fn test_strip_skills_dir_space_form() {
-        let args = vec![
-            "fastskill".to_string(),
-            "--skills-dir".to_string(),
-            "/tmp/skills".to_string(),
-            "search".to_string(),
-        ];
-        let (skills_dir, _global, _verbose, remaining) = strip_global_flags(args);
-        assert_eq!(skills_dir, Some(PathBuf::from("/tmp/skills")));
-        assert_eq!(remaining, vec!["fastskill", "search"]);
-    }
-
-    #[test]
-    fn test_strip_skills_dir_absent() {
-        let args = vec![
-            "fastskill".to_string(),
-            "search".to_string(),
-            "query".to_string(),
-        ];
-        let (skills_dir, _global, _verbose, remaining) = strip_global_flags(args.clone());
-        assert_eq!(skills_dir, None);
-        assert_eq!(remaining, args);
-    }
-
-    #[test]
-    fn test_strip_global_flag() {
-        let args = vec![
-            "fastskill".to_string(),
-            "--global".to_string(),
-            "list".to_string(),
-        ];
-        let (_skills_dir, global, _verbose, remaining) = strip_global_flags(args);
-        assert!(global);
-        assert_eq!(remaining, vec!["fastskill", "list"]);
-    }
-
-    #[test]
-    fn test_strip_verbose_flag() {
-        let args = vec![
-            "fastskill".to_string(),
-            "-v".to_string(),
-            "search".to_string(),
-        ];
-        let (_skills_dir, _global, verbose, remaining) = strip_global_flags(args);
-        assert!(verbose);
-        assert_eq!(remaining, vec!["fastskill", "search"]);
-    }
-
-    #[test]
-    fn test_strip_verbose_long_flag() {
-        let args = vec![
-            "fastskill".to_string(),
-            "--verbose".to_string(),
-            "list".to_string(),
-        ];
-        let (_skills_dir, _global, verbose, remaining) = strip_global_flags(args);
-        assert!(verbose);
-        assert_eq!(remaining, vec!["fastskill", "list"]);
-    }
-
-    #[test]
-    fn test_fsstate_new_stores_fields() {
-        let state = FsState::new(
-            Some(PathBuf::from("/tmp/skills")),
-            true,
-            true,
-            vec!["fastskill".to_string(), "list".to_string()],
-        );
-        assert_eq!(
-            state.skills_dir_override,
-            Some(PathBuf::from("/tmp/skills"))
-        );
-        assert!(state.global);
-        assert!(state.verbose);
-        assert_eq!(state.raw_remaining_args, vec!["fastskill", "list"]);
+    fn test_fsstate_new_constructs() {
+        // FsState::new() takes no args in the typed-API design;
+        // global/skills_dir are read from env at dispatch time.
+        let _state = FsState::new();
     }
 
     #[test]

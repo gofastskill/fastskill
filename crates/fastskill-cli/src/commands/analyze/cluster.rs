@@ -4,30 +4,109 @@ use super::helpers::get_skill_name;
 use super::AnalysisContext;
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::analysis::skill_similarity;
 use fastskill_core::OutputFormat;
 use serde::Serialize;
+use std::collections::HashMap;
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Clone)]
 pub struct ClusterArgs {
-    #[arg(
-        short = 'k',
-        long,
-        default_value = "5",
-        help = "Number of clusters to create"
-    )]
     pub num_clusters: usize,
-    #[arg(
-        long,
-        default_value = "1",
-        help = "Hide clusters with fewer than N skills"
-    )]
     pub min_size: usize,
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+impl IntoCommandSpec for ClusterArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Group skills by semantic similarity",
+            syntax: Some("analyze cluster [OPTIONS]"),
+            category: Some("analysis"),
+            args: vec![
+                ArgSpec {
+                    name: "num-clusters",
+                    kind: ArgKind::Option,
+                    short: Some('k'),
+                    long: Some("num-clusters"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(5)),
+                    help: "Number of clusters to create",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "min-size",
+                    kind: ArgKind::Option,
+                    long: Some("min-size"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(1)),
+                    help: "Hide clusters with fewer than N skills",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for ClusterArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        ClusterArgs {
+            num_clusters: match map.get("num-clusters") {
+                Some(ArgValue::Int(n)) => *n as usize,
+                _ => 5,
+            },
+            min_size: match map.get("min-size") {
+                Some(ArgValue::Int(n)) => *n as usize,
+                _ => 1,
+            },
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]

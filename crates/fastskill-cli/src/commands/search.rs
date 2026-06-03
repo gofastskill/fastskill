@@ -4,48 +4,217 @@
 //! skill catalogs with explicit scope control via flags.
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::output;
 use fastskill_core::{FastSkillService, OutputFormat, SearchQuery, SearchScope};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Search for skills by query string with scope control
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct SearchArgs {
     /// Search query string
     pub query: String,
 
     /// Search local/installed skills only
-    #[arg(long, conflicts_with = "remote")]
     pub local: bool,
 
     /// Search remote skill catalogs (default, can be explicit for scripts)
-    #[arg(long, conflicts_with = "local")]
+    #[allow(dead_code)]
     pub remote: bool,
 
     /// Limit remote search to specific repository (remote scope only)
-    #[arg(long, alias = "repo")]
     pub repository: Option<String>,
 
     /// Maximum number of results (default: 10)
-    #[arg(short, long, default_value = "10")]
     pub limit: usize,
 
     /// Output format: table, json, grid, xml (default: table)
-    #[arg(short, long)]
     pub format: Option<String>,
 
     /// Shorthand for --format json
-    #[arg(long)]
     pub json: bool,
 
     /// Use embedding search: true, false, or auto
     /// Only applies to local search; ignored for remote search
-    #[arg(long, value_parser = ["true", "false", "auto"])]
     pub embedding: Option<String>,
 
     /// Skills directory path (overrides default discovery)
-    #[arg(long, help = "Skills directory path")]
+    #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+}
+
+impl IntoCommandSpec for SearchArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Search skills by query with explicit scope flags",
+            syntax: Some("search <QUERY> [--local|--remote] [OPTIONS]"),
+            category: Some("discovery"),
+            args: vec![
+                ArgSpec {
+                    name: "query",
+                    long: None,
+                    short: None,
+                    help: "Search query string",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "local",
+                    long: Some("local"),
+                    short: None,
+                    help: "Search local/installed skills only",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "remote",
+                    long: Some("remote"),
+                    short: None,
+                    help: "Search remote skill catalogs",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "repository",
+                    long: Some("repository"),
+                    short: None,
+                    help: "Limit remote search to specific repository",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "limit",
+                    long: Some("limit"),
+                    short: Some('l'),
+                    help: "Maximum number of results",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(10)),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    long: Some("format"),
+                    short: Some('f'),
+                    help: "Output format: table, json, grid, xml",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    long: Some("json"),
+                    short: None,
+                    help: "Shorthand for --format json",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "embedding",
+                    long: Some("embedding"),
+                    short: None,
+                    help: "Use embedding search: true, false, or auto",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "skills-dir",
+                    long: Some("skills-dir"),
+                    short: None,
+                    help: "Skills directory path (overrides default discovery)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for SearchArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        SearchArgs {
+            query: map
+                .get("query")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| panic!("fw bug: missing query")),
+            local: matches!(map.get("local"), Some(ArgValue::Bool(true))),
+            remote: matches!(map.get("remote"), Some(ArgValue::Bool(true))),
+            repository: map.get("repository").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            limit: map
+                .get("limit")
+                .and_then(|v| {
+                    if let ArgValue::Int(n) = v {
+                        Some(*n as usize)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(10),
+            format: map.get("format").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+            embedding: map.get("embedding").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            skills_dir: map.get("skills-dir").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(PathBuf::from(s))
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> CliResult<()> {

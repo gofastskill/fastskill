@@ -1,9 +1,13 @@
 //! Reindex command implementation
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::{FastSkillService, VectorIndexService};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
@@ -60,35 +64,117 @@ impl ProgressMode {
 }
 
 /// Reindex the vector index by scanning skills directory
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Clone)]
 pub struct ReindexArgs {
     /// Skills directory path (overrides default discovery)
-    #[arg(long, help = "Skills directory path")]
     pub skills_dir: Option<std::path::PathBuf>,
 
     /// Force re-indexing of all skills (ignore existing hashes)
-    #[arg(long, help = "Force re-indexing of all skills")]
     force: bool,
 
     /// Maximum number of concurrent embedding requests
-    #[arg(
-        long,
-        default_value = "5",
-        help = "Maximum concurrent embedding requests"
-    )]
     max_concurrent: usize,
 
     /// Show progress bars and processing details
-    #[arg(
-        long,
-        conflicts_with = "no_progress",
-        help = "Show progress bars and processing details"
-    )]
     progress: bool,
 
     /// Suppress progress output, show only final summary
-    #[arg(long, conflicts_with = "progress", help = "Suppress progress output")]
     no_progress: bool,
+}
+
+impl IntoCommandSpec for ReindexArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Reindex the vector index for semantic search",
+            syntax: Some("reindex [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "skills-dir",
+                    long: Some("skills-dir"),
+                    short: None,
+                    help: "Skills directory path (overrides default discovery)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "force",
+                    long: Some("force"),
+                    short: None,
+                    help: "Force re-indexing of all skills (ignore existing hashes)",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "max-concurrent",
+                    long: Some("max-concurrent"),
+                    short: None,
+                    help: "Maximum concurrent embedding requests",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(5)),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "progress",
+                    long: Some("progress"),
+                    short: None,
+                    help: "Show progress bars and processing details",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-progress",
+                    long: Some("no-progress"),
+                    short: None,
+                    help: "Suppress progress output, show only final summary",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for ReindexArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        ReindexArgs {
+            skills_dir: map.get("skills-dir").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(std::path::PathBuf::from(s))
+                } else {
+                    None
+                }
+            }),
+            force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
+            max_concurrent: map
+                .get("max-concurrent")
+                .and_then(|v| {
+                    if let ArgValue::Int(n) = v {
+                        Some(*n as usize)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(5),
+            progress: matches!(map.get("progress"), Some(ArgValue::Bool(true))),
+            no_progress: matches!(map.get("no-progress"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 #[derive(Debug)]

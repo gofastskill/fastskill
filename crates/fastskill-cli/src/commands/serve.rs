@@ -1,19 +1,83 @@
 //! Serve command implementation
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 use tracing::info;
 
 /// Serve the FastSkill service via HTTP API
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct ServeArgs {
     /// Host to bind the server to
-    #[arg(long, default_value = "localhost", help = "Host to bind the server to")]
     host: String,
 
     /// Port to bind the server to
-    #[arg(long, default_value = "8080", help = "Port to bind the server to")]
     port: u16,
+}
+
+impl IntoCommandSpec for ServeArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Start the FastSkill HTTP API server",
+            syntax: Some("serve [OPTIONS]"),
+            category: Some("server"),
+            args: vec![
+                ArgSpec {
+                    name: "host",
+                    long: Some("host"),
+                    short: None,
+                    help: "Host to bind the server to",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Str("localhost".to_string())),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "port",
+                    long: Some("port"),
+                    short: None,
+                    help: "Port to bind the server to",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(8080)),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for ServeArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        ServeArgs {
+            host: map
+                .get("host")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "localhost".to_string()),
+            port: map
+                .get("port")
+                .and_then(|v| {
+                    if let ArgValue::Int(n) = v {
+                        Some(*n as u16)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(8080),
+        }
+    }
 }
 
 pub async fn execute_serve(

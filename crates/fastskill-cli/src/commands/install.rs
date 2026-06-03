@@ -3,7 +3,10 @@
 use crate::config::create_service_config;
 use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{install_utils, manifest_utils, messages};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
     dependency_resolver::{DependencyResolver, SkillInstallItem},
     lock::{project_lock_path, ProjectSkillsLock},
@@ -12,6 +15,7 @@ use fastskill_core::core::{
     repository::RepositoryManager,
 };
 use fastskill_core::FastSkillService;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 
@@ -24,23 +28,108 @@ use std::fs;
 /// Creates or updates skills.lock for reproducible installations.
 ///
 /// Use --lock to install exact versions from skills.lock instead of resolving from manifest.
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct InstallArgs {
     /// Exclude skills from these groups (like poetry --without dev)
-    #[arg(long)]
     without: Option<Vec<String>>,
 
     /// Only install skills from these groups
-    #[arg(long)]
     only: Option<Vec<String>>,
 
     /// Install from skills.lock (exact versions) instead of resolving from skill-project.toml
-    #[arg(long)]
     lock: bool,
 
     /// Maximum transitive dependency depth (overrides config file setting)
-    #[arg(long)]
     depth: Option<u32>,
+}
+
+impl IntoCommandSpec for InstallArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Apply manifest: install skills from skill-project.toml [dependencies]",
+            syntax: Some("install [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "without",
+                    kind: ArgKind::Option,
+                    long: Some("without"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Exclude skills from these groups (like poetry --without dev)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "only",
+                    kind: ArgKind::Option,
+                    long: Some("only"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Only install skills from these groups",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "lock",
+                    kind: ArgKind::Flag,
+                    long: Some("lock"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Install from skills.lock (exact versions) instead of resolving from skill-project.toml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "depth",
+                    kind: ArgKind::Option,
+                    long: Some("depth"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    help: "Maximum transitive dependency depth (overrides config file setting)",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+fn repeated_str_list(v: &ArgValue) -> Option<Vec<String>> {
+    if let ArgValue::List(items) = v {
+        let strings: Vec<String> = items
+            .iter()
+            .filter_map(|item| {
+                if let ArgValue::Str(s) = item {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if strings.is_empty() {
+            None
+        } else {
+            Some(strings)
+        }
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for InstallArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            without: map.get("without").and_then(repeated_str_list),
+            only: map.get("only").and_then(repeated_str_list),
+            lock: matches!(map.get("lock"), Some(ArgValue::Bool(true))),
+            depth: map.get("depth").and_then(|v| {
+                if let ArgValue::Int(n) = v {
+                    Some(*n as u32)
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 /// Configuration for recursive install

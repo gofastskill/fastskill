@@ -10,49 +10,144 @@ use crate::commands::common::validate_format_args;
 use crate::config::{create_service_config, get_skill_search_locations_for_display};
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
 use chrono::Utc;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::{ProjectConfig, SkillDefinition};
 use fastskill_core::{FastSkillService, OutputFormat};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Show skill details
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct ShowArgs {
     /// Skill ID to show (if not specified, shows all)
     skill_id: Option<String>,
 
     /// Show dependency tree
-    #[arg(long)]
     tree: bool,
 
     /// Output format: table, json, grid, xml (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Skills directory path (overrides default discovery)
-    #[arg(long, help = "Skills directory path")]
     pub skills_dir: Option<std::path::PathBuf>,
 
     /// Read from skills.lock only (do not initialize service)
-    #[arg(
-        long,
-        conflicts_with = "installed",
-        help = "Read from skills.lock only"
-    )]
     pub locked: bool,
 
     /// Read installed state from storage (default mode)
-    #[arg(
-        long,
-        conflicts_with = "locked",
-        help = "Read installed state from storage"
-    )]
+    #[allow(dead_code)]
     pub installed: bool,
+}
+
+impl IntoCommandSpec for ShowArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Show metadata for one or all installed skills",
+            syntax: Some("show [SKILL_ID] [OPTIONS]"),
+            category: Some("discovery"),
+            args: vec![
+                ArgSpec {
+                    name: "skill-id",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Skill ID to show (if not specified, shows all)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "tree",
+                    kind: ArgKind::Flag,
+                    long: Some("tree"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Show dependency tree",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml (default: table)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "locked",
+                    kind: ArgKind::Flag,
+                    long: Some("locked"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Read from skills.lock only (do not initialize service)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "installed",
+                    kind: ArgKind::Flag,
+                    long: Some("installed"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Read installed state from storage (default mode)",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+fn opt_str(v: &ArgValue) -> Option<String> {
+    if let ArgValue::Str(s) = v {
+        Some(s.clone())
+    } else {
+        None
+    }
+}
+
+fn parse_output_format(s: &str) -> Option<OutputFormat> {
+    match s {
+        "table" => Some(OutputFormat::Table),
+        "json" => Some(OutputFormat::Json),
+        "grid" => Some(OutputFormat::Grid),
+        "xml" => Some(OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for ShowArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            skill_id: map.get("skill-id").and_then(opt_str),
+            tree: matches!(map.get("tree"), Some(ArgValue::Bool(true))),
+            format: map
+                .get("format")
+                .and_then(opt_str)
+                .as_deref()
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+            // skills_dir is omitted from the spec; use the global --skills-dir flag instead
+            skills_dir: None,
+            locked: matches!(map.get("locked"), Some(ArgValue::Bool(true))),
+            installed: matches!(map.get("installed"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 pub async fn execute_show(args: ShowArgs, global: bool) -> CliResult<()> {

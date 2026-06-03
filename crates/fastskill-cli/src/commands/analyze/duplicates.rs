@@ -4,12 +4,16 @@ use super::helpers::{compute_suggestion, get_file_mtime, get_skill_name};
 use super::AnalysisContext;
 use crate::commands::common::validate_format_args;
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::analysis::skill_similarity;
 use fastskill_core::OutputFormat;
 use serde::Serialize;
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Default, clap::ValueEnum)]
+#[derive(Debug, Clone, Default)]
 pub enum SeverityFilter {
     #[default]
     All,
@@ -18,24 +22,130 @@ pub enum SeverityFilter {
     Critical,
 }
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Clone)]
 pub struct DuplicatesArgs {
-    #[arg(long, default_value = "0.88", value_parser = super::validate_threshold,
-          help = "Minimum similarity to report")]
     pub threshold: f32,
-    #[arg(long, default_value = "20", help = "Maximum number of pairs to show")]
     pub limit: usize,
-    #[arg(
-        long,
-        default_value = "all",
-        value_enum,
-        help = "Filter by minimum severity: critical, high, medium, all"
-    )]
     pub severity: SeverityFilter,
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+fn parse_severity(s: &str) -> SeverityFilter {
+    match s {
+        "medium" => SeverityFilter::Medium,
+        "high" => SeverityFilter::High,
+        "critical" => SeverityFilter::Critical,
+        _ => SeverityFilter::All,
+    }
+}
+
+impl IntoCommandSpec for DuplicatesArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Find semantically duplicate or very similar skills",
+            syntax: Some("analyze duplicates [OPTIONS]"),
+            category: Some("analysis"),
+            args: vec![
+                ArgSpec {
+                    name: "threshold",
+                    kind: ArgKind::Option,
+                    long: Some("threshold"),
+                    value_type: ArgValueType::Float,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Float(0.88)),
+                    help: "Minimum similarity to report",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "limit",
+                    kind: ArgKind::Option,
+                    long: Some("limit"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(20)),
+                    help: "Maximum number of pairs to show",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "severity",
+                    kind: ArgKind::Option,
+                    long: Some("severity"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Str("all".to_string())),
+                    help: "Filter by minimum severity: critical, high, medium, all",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for DuplicatesArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        DuplicatesArgs {
+            threshold: match map.get("threshold") {
+                Some(ArgValue::Float(f)) => *f as f32,
+                _ => 0.88,
+            },
+            limit: match map.get("limit") {
+                Some(ArgValue::Int(n)) => *n as usize,
+                _ => 20,
+            },
+            severity: map
+                .get("severity")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .map(parse_severity)
+                .unwrap_or_default(),
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

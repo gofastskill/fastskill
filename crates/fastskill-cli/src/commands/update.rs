@@ -3,7 +3,10 @@
 use crate::config::create_service_config;
 use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{install_utils, manifest_utils, messages};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
     lock::{global_lock_path, GlobalSkillsLock, ProjectSkillsLock},
     manifest::SkillProjectToml,
@@ -14,6 +17,7 @@ use fastskill_core::core::{
     update::{UpdateService, UpdateStrategy},
 };
 use fastskill_core::FastSkillService;
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,30 +33,118 @@ use std::sync::Arc;
 /// Reads dependencies from skill-project.toml and updates installed skills.
 /// Always updates skills.lock with new versions (except in check/dry-run modes).
 /// Use 'fastskill install --lock' to apply lock file changes without version resolution.
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct UpdateArgs {
     /// Skill ID to update (if not specified, updates all)
     skill_id: Option<String>,
 
     /// Check for updates without installing
-    #[arg(long)]
     check: bool,
 
     /// Show what would be updated without actually updating
-    #[arg(long)]
     dry_run: bool,
 
     /// Update to specific version
-    #[arg(long)]
     version: Option<String>,
 
     /// Update from specific source
-    #[arg(long)]
+    #[allow(dead_code)]
     source: Option<String>,
 
     /// Update strategy: latest, patch, minor, major
-    #[arg(long, default_value = "latest")]
     strategy: String,
+}
+
+impl IntoCommandSpec for UpdateArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Update skills to latest versions",
+            syntax: Some("update [SKILL_ID] [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "skill-id",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Skill ID to update (if not specified, updates all)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "check",
+                    kind: ArgKind::Flag,
+                    long: Some("check"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Check for updates without installing",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "dry-run",
+                    kind: ArgKind::Flag,
+                    long: Some("dry-run"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Show what would be updated without actually updating",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "version",
+                    kind: ArgKind::Option,
+                    long: Some("version"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Update to specific version",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "source",
+                    kind: ArgKind::Option,
+                    long: Some("source"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Update from specific source",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "strategy",
+                    kind: ArgKind::Option,
+                    long: Some("strategy"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Str("latest".to_string())),
+                    help: "Update strategy: latest, patch, minor, major",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+fn opt_str(v: &ArgValue) -> Option<String> {
+    if let ArgValue::Str(s) = v {
+        Some(s.clone())
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for UpdateArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            skill_id: map.get("skill-id").and_then(opt_str),
+            check: matches!(map.get("check"), Some(ArgValue::Bool(true))),
+            dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
+            version: map.get("version").and_then(opt_str),
+            source: map.get("source").and_then(opt_str),
+            strategy: map
+                .get("strategy")
+                .and_then(opt_str)
+                .unwrap_or_else(|| "latest".to_string()),
+        }
+    }
 }
 
 pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {

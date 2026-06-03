@@ -2,7 +2,10 @@
 
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
-use clap::{Args, Subcommand};
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::build_cache::BuildCache;
 use fastskill_core::core::change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
@@ -10,29 +13,10 @@ use fastskill_core::core::change_detection::{
 use fastskill_core::core::version_bump::{
     bump_version, get_current_version, parse_version, update_skill_version, BumpType,
 };
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::info;
 use walkdir::WalkDir;
-
-/// Package preset subcommands for simplified workflows
-#[derive(Debug, Clone, Subcommand)]
-pub enum PackagePreset {
-    /// Auto-detect and package changed skills (hash-based detection)
-    Auto {
-        /// Force package all skills regardless of changes
-        #[arg(long)]
-        force: bool,
-    },
-    /// Package specific skills by ID
-    Skill {
-        /// Skill IDs to package
-        #[arg(required = true)]
-        skills: Vec<String>,
-        /// Bump version type (major, minor, patch)
-        #[arg(long, value_enum)]
-        bump: Option<BumpTypeArg>,
-    },
-}
 
 /// Package skills into ZIP artifacts
 ///
@@ -51,55 +35,41 @@ pub enum PackagePreset {
 ///
 /// Note: the `evals/` directory is omitted from packaged skill ZIPs; exclusion is enforced in
 /// `fastskill_core::core::packaging` when building archives, not in this CLI module.
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct PackageArgs {
-    /// Package preset command
-    #[command(subcommand)]
-    pub preset: Option<PackagePreset>,
-
     // ===== Advanced options (grouped for help clarity) =====
     /// Auto-detect changed skills (hash-based)
-    #[arg(long)]
     pub detect_changes: bool,
 
     /// Use git diff for change detection (format: base_ref head_ref)
-    #[arg(long, num_args = 2, value_names = ["BASE", "HEAD"])]
     pub git_diff: Option<Vec<String>>,
 
     /// Package specific skills (skill IDs)
-    #[arg(long, num_args = 1..)]
     pub skills: Option<Vec<String>>,
 
     /// Bump version type (major, minor, patch)
-    #[arg(long, value_enum)]
     pub bump: Option<BumpTypeArg>,
 
     /// Auto-detect bump type from changes
-    #[arg(long)]
     pub auto_bump: bool,
 
     /// Output directory for artifacts
-    #[arg(short, long, default_value = "./artifacts")]
     pub output: PathBuf,
 
     /// Force package all skills regardless of changes
-    #[arg(long)]
     pub force: bool,
 
     /// Dry run (show what would be packaged)
-    #[arg(long)]
     pub dry_run: bool,
 
     /// Skills directory to scan
-    #[arg(long, default_value = "./skills")]
     pub skills_dir: PathBuf,
 
     /// Recursively scan skills directory for nested skills
-    #[arg(long)]
     pub recursive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, clap::ValueEnum)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BumpTypeArg {
     Major,
     Minor,
@@ -128,52 +98,204 @@ pub(crate) struct PackagePlan {
 
 impl PackagePlan {
     fn from_args(args: &PackageArgs) -> Self {
-        match &args.preset {
-            Some(PackagePreset::Auto { force }) => PackagePlan {
-                skills: None,
-                bump: None,
-                detect_changes: true,
-                force: *force,
+        PackagePlan {
+            skills: args.skills.clone(),
+            bump: args.bump.clone(),
+            detect_changes: args.detect_changes,
+            force: args.force,
+        }
+    }
+}
+
+impl IntoCommandSpec for PackageArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Package skills into ZIP artifacts",
+            syntax: Some("package [OPTIONS]"),
+            category: Some("packaging"),
+            args: vec![
+                ArgSpec {
+                    name: "detect-changes",
+                    kind: ArgKind::Flag,
+                    long: Some("detect-changes"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Auto-detect changed skills (hash-based)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "git-diff",
+                    kind: ArgKind::Option,
+                    long: Some("git-diff"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Use git diff for change detection (BASE HEAD)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "skills",
+                    kind: ArgKind::Option,
+                    long: Some("skills"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Package specific skills (skill IDs)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "bump",
+                    kind: ArgKind::Option,
+                    long: Some("bump"),
+                    value_type: ArgValueType::Enum(vec!["major", "minor", "patch"]),
+                    cardinality: Cardinality::Optional,
+                    help: "Bump version type (major, minor, patch)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "auto-bump",
+                    kind: ArgKind::Flag,
+                    long: Some("auto-bump"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Auto-detect bump type from changes",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "output",
+                    kind: ArgKind::Option,
+                    long: Some("output"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output directory for artifacts",
+                    default: Some(ArgValue::Str("./artifacts".to_string())),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "force",
+                    kind: ArgKind::Flag,
+                    long: Some("force"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Force package all skills regardless of changes",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "dry-run",
+                    kind: ArgKind::Flag,
+                    long: Some("dry-run"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Dry run (show what would be packaged)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "skills-dir",
+                    kind: ArgKind::Option,
+                    long: Some("skills-dir"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Skills directory to scan",
+                    default: Some(ArgValue::Str("./skills".to_string())),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "recursive",
+                    kind: ArgKind::Flag,
+                    long: Some("recursive"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Recursively scan skills directory for nested skills",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for PackageArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            detect_changes: matches!(map.get("detect-changes"), Some(ArgValue::Bool(true))),
+            git_diff: match map.get("git-diff") {
+                Some(ArgValue::List(items)) => {
+                    let strings: Vec<String> = items
+                        .iter()
+                        .filter_map(|i| {
+                            if let ArgValue::Str(s) = i {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if strings.is_empty() {
+                        None
+                    } else {
+                        Some(strings)
+                    }
+                }
+                _ => None,
             },
-            Some(PackagePreset::Skill { skills, bump }) => PackagePlan {
-                skills: Some(skills.clone()),
-                bump: bump.clone(),
-                detect_changes: false,
-                force: args.force,
+            skills: match map.get("skills") {
+                Some(ArgValue::List(items)) => {
+                    let strings: Vec<String> = items
+                        .iter()
+                        .filter_map(|i| {
+                            if let ArgValue::Str(s) = i {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    if strings.is_empty() {
+                        None
+                    } else {
+                        Some(strings)
+                    }
+                }
+                _ => None,
             },
-            None => PackagePlan {
-                skills: args.skills.clone(),
-                bump: args.bump.clone(),
-                detect_changes: args.detect_changes,
-                force: args.force,
-            },
+            bump: map.get("bump").and_then(|v| match v {
+                ArgValue::Str(s) | ArgValue::Enum(s) => match s.as_str() {
+                    "major" => Some(BumpTypeArg::Major),
+                    "minor" => Some(BumpTypeArg::Minor),
+                    "patch" => Some(BumpTypeArg::Patch),
+                    _ => None,
+                },
+                _ => None,
+            }),
+            auto_bump: matches!(map.get("auto-bump"), Some(ArgValue::Bool(true))),
+            output: map
+                .get("output")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(PathBuf::from(s))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| PathBuf::from("./artifacts")),
+            force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
+            dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
+            skills_dir: map
+                .get("skills-dir")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(PathBuf::from(s))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| PathBuf::from("./skills")),
+            recursive: matches!(map.get("recursive"), Some(ArgValue::Bool(true))),
         }
     }
 }
 
 /// Validate package arguments for conflicting preset and manual flags (PKG_001)
-fn validate_package_args(args: &PackageArgs) -> CliResult<()> {
-    if args.preset.is_some() {
-        let has_conflicting_flags =
-            args.skills.is_some() || args.detect_changes || args.git_diff.is_some() || args.force;
-
-        if has_conflicting_flags {
-            return Err(CliError::Validation(
-                "PKG_001: Cannot combine preset with manual flags. Use preset OR advanced flags, not both."
-                    .to_string(),
-            ));
-        }
-    }
-
-    match &args.preset {
-        Some(PackagePreset::Skill { skills, .. }) if skills.is_empty() => {
-            return Err(CliError::Validation(
-                "PKG_002: Package skill preset requires at least one skill ID".to_string(),
-            ));
-        }
-        _ => {}
-    }
-
+fn validate_package_args(_args: &PackageArgs) -> CliResult<()> {
     Ok(())
 }
 
@@ -459,7 +581,6 @@ mod tests {
         let nonexistent_dir = temp_dir.path().join("nonexistent");
 
         let args = PackageArgs {
-            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -484,7 +605,6 @@ mod tests {
         fs::create_dir_all(&skills_dir).unwrap();
 
         let args = PackageArgs {
-            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: None,
@@ -509,7 +629,6 @@ mod tests {
         fs::create_dir_all(&skills_dir).unwrap();
 
         let args = PackageArgs {
-            preset: None,
             detect_changes: false,
             git_diff: None,
             skills: Some(vec!["test-skill".to_string()]),
@@ -609,144 +728,5 @@ mod tests {
 
         let skills = get_all_skills_recursive(&nonexistent_dir).unwrap();
         assert_eq!(skills.len(), 0);
-    }
-
-    #[test]
-    fn test_validate_package_args_preset_conflict_pkg_001() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Auto { force: false }),
-            detect_changes: true, // Conflict!
-            git_diff: None,
-            skills: None,
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let result = validate_package_args(&args);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PKG_001")));
-    }
-
-    #[test]
-    fn test_validate_package_args_preset_with_skills_conflict() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Auto { force: false }),
-            detect_changes: false,
-            git_diff: None,
-            skills: Some(vec!["skill1".to_string()]), // Conflict!
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let result = validate_package_args(&args);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_package_args_preset_skill_empty_pkg_002() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Skill {
-                skills: vec![], // Empty skills list
-                bump: None,
-            }),
-            detect_changes: false,
-            git_diff: None,
-            skills: None,
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let result = validate_package_args(&args);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, CliError::Validation(msg) if msg.contains("PKG_002")));
-    }
-
-    #[test]
-    fn test_validate_package_args_preset_valid() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Auto { force: true }),
-            detect_changes: false,
-            git_diff: None,
-            skills: None,
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let result = validate_package_args(&args);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_package_plan_auto_preset() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Auto { force: true }),
-            detect_changes: false,
-            git_diff: None,
-            skills: None,
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let plan = PackagePlan::from_args(&args);
-
-        assert!(plan.detect_changes);
-        assert!(plan.force);
-        assert!(plan.skills.is_none());
-    }
-
-    #[test]
-    fn test_package_plan_skill_preset() {
-        let args = PackageArgs {
-            preset: Some(PackagePreset::Skill {
-                skills: vec!["skill1".to_string(), "skill2".to_string()],
-                bump: Some(BumpTypeArg::Patch),
-            }),
-            detect_changes: false,
-            git_diff: None,
-            skills: None,
-            bump: None,
-            auto_bump: false,
-            output: PathBuf::from("./artifacts"),
-            force: false,
-            dry_run: false,
-            skills_dir: PathBuf::from("./skills"),
-            recursive: false,
-        };
-
-        let plan = PackagePlan::from_args(&args);
-
-        assert_eq!(
-            plan.skills,
-            Some(vec!["skill1".to_string(), "skill2".to_string()])
-        );
-        assert_eq!(plan.bump, Some(BumpTypeArg::Patch));
-        assert!(!plan.detect_changes);
     }
 }

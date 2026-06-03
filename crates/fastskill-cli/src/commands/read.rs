@@ -5,16 +5,56 @@
 
 use crate::config;
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::FastSkillService;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Read skill documentation
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct ReadArgs {
     /// Skill ID to read
-    #[arg(help = "Skill identifier (e.g., 'pptx', 'scope/pptx', 'pptx@1.2.3')")]
     pub skill_id: String,
+}
+
+impl IntoCommandSpec for ReadArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Read full SKILL.md content for a skill",
+            syntax: Some("read <SKILL_ID>"),
+            category: Some("discovery"),
+            args: vec![ArgSpec {
+                name: "skill-id",
+                kind: ArgKind::Positional,
+                value_type: ArgValueType::String,
+                cardinality: Cardinality::Required,
+                help: "Skill identifier (e.g., 'pptx', 'scope/pptx', 'pptx@1.2.3')",
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for ReadArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            skill_id: map
+                .get("skill-id")
+                .map(|v| {
+                    if let ArgValue::Str(s) = v {
+                        s.clone()
+                    } else {
+                        panic!("fw bug: skill-id wrong type")
+                    }
+                })
+                .unwrap_or_else(|| panic!("fw bug: missing required skill-id")),
+        }
+    }
 }
 
 /// Execute the read command

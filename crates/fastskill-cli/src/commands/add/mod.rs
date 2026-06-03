@@ -9,11 +9,16 @@ use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{detect_skill_source, SkillSource};
 use chrono::Utc;
 use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::core::skill_manager::SourceType;
 use fastskill_core::{FastSkillService, SkillDefinition};
 pub use install::copy_dir_recursive;
 pub use skill_def::create_skill_from_path;
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -140,6 +145,142 @@ pub struct AddArgs {
     /// Add all skills found under the directory (only for local folders)
     #[arg(short = 'r', long)]
     pub recursive: bool,
+}
+
+impl IntoCommandSpec for AddArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Add a skill (from local path, zip, git URL, or registry ID)",
+            syntax: Some("add <SOURCE> [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "source",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help:
+                        "Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@1.2.3)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "source-type",
+                    kind: ArgKind::Option,
+                    long: Some("source-type"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Override source type (registry, github/git, local)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "branch",
+                    kind: ArgKind::Option,
+                    long: Some("branch"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Git branch to checkout (only for git URLs)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "tag",
+                    kind: ArgKind::Option,
+                    long: Some("tag"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Git tag to checkout (only for git URLs)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "force",
+                    kind: ArgKind::Flag,
+                    short: Some('f'),
+                    long: Some("force"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Force registration even if skill already exists",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "editable",
+                    kind: ArgKind::Flag,
+                    short: Some('e'),
+                    long: Some("editable"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Install skill in editable mode (for local development)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "group",
+                    kind: ArgKind::Option,
+                    long: Some("group"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Add skill to a specific group",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "recursive",
+                    kind: ArgKind::Flag,
+                    short: Some('r'),
+                    long: Some("recursive"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Add all skills found under the directory (only for local folders)",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for AddArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            source: map
+                .get("source")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default(),
+            source_type: map.get("source-type").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            branch: map.get("branch").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            tag: map.get("tag").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
+            editable: matches!(map.get("editable"), Some(ArgValue::Bool(true))),
+            group: map.get("group").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            recursive: matches!(map.get("recursive"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 fn resolve_source(args: &AddArgs) -> SkillSource {

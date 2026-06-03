@@ -4,29 +4,119 @@ use super::helpers::get_skill_name;
 use super::AnalysisContext;
 use crate::commands::common::validate_format_args;
 use crate::error::CliResult;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::analysis::{skill_similarity, SimilarityPair};
 use fastskill_core::OutputFormat;
 use std::collections::HashMap;
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Clone)]
 pub struct MatrixArgs {
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
-    #[arg(long, default_value = "0.0", value_parser = super::validate_threshold,
-          help = "Minimum similarity threshold to display (0.0 to 1.0)")]
     pub threshold: f32,
-    #[arg(
-        short,
-        long,
-        default_value = "10",
-        help = "Number of similar skills to show per skill"
-    )]
     pub limit: usize,
-    #[arg(long, help = "Show all similar skills instead of top-N summary")]
     pub full: bool,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+impl IntoCommandSpec for MatrixArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Show pairwise similarity matrix for all indexed skills",
+            syntax: Some("analyze matrix [OPTIONS]"),
+            category: Some("analysis"),
+            args: vec![
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "threshold",
+                    kind: ArgKind::Option,
+                    long: Some("threshold"),
+                    value_type: ArgValueType::Float,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Float(0.0)),
+                    help: "Minimum similarity threshold to display (0.0 to 1.0)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "limit",
+                    kind: ArgKind::Option,
+                    short: Some('l'),
+                    long: Some("limit"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Int(10)),
+                    help: "Number of similar skills to show per skill",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "full",
+                    kind: ArgKind::Flag,
+                    long: Some("full"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Show all similar skills instead of top-N summary",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for MatrixArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        MatrixArgs {
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+            threshold: match map.get("threshold") {
+                Some(ArgValue::Float(f)) => *f as f32,
+                _ => 0.0,
+            },
+            limit: match map.get("limit") {
+                Some(ArgValue::Int(n)) => *n as usize,
+                _ => 10,
+            },
+            full: matches!(map.get("full"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 /// Execute the matrix command

@@ -18,46 +18,31 @@ impl AppContext for FsCtx {}
 /// Shared application state captured by each command closure.
 ///
 /// Created once in `main()` and cloned via `Arc` into every registered command.
+/// Global flags (--skills-dir, --global, --verbose) are parsed by the framework
+/// and accessed via `AppContext::opt_global_args()` in each handler.
 pub struct FsState {
     /// Shared cell for lazy service initialisation.
     service_cell: Arc<tokio::sync::OnceCell<Arc<FastSkillService>>>,
-
-    /// Optional override for the skills directory (from `--skills-dir`).
-    pub skills_dir_override: Option<PathBuf>,
-
-    /// Whether `--global` was passed (use `~/.config/fastskill/skills`).
-    pub global: bool,
-
-    /// Whether `--verbose` / `-v` was passed.
-    #[allow(dead_code)]
-    pub verbose: bool,
-
-    /// The remaining argv after `strip_global_flags`, starting with the
-    /// binary name.  Bridge closures use this to reconstruct subcommand args.
-    pub raw_remaining_args: Vec<String>,
 }
 
 impl FsState {
-    pub fn new(
-        skills_dir_override: Option<PathBuf>,
-        global: bool,
-        verbose: bool,
-        raw_remaining_args: Vec<String>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             service_cell: Arc::new(tokio::sync::OnceCell::new()),
-            skills_dir_override,
-            global,
-            verbose,
-            raw_remaining_args,
         }
     }
 
     /// Initialise (or reuse) the `FastSkillService` and return an `Arc` to it.
-    pub async fn service(&self) -> crate::error::CliResult<Arc<FastSkillService>> {
+    ///
+    /// `global` and `skills_dir` come from the framework-parsed global flags
+    /// (extracted from `ctx.opt_global_args()` in each handler). The OnceCell
+    /// ensures the service is initialised only once per process invocation.
+    pub async fn service_with(
+        &self,
+        global: bool,
+        skills_dir: Option<PathBuf>,
+    ) -> crate::error::CliResult<Arc<FastSkillService>> {
         use crate::error::CliError;
-        let global = self.global;
-        let skills_dir = self.skills_dir_override.clone();
         self.service_cell
             .get_or_try_init(|| async move {
                 let cfg = crate::config::create_service_config(global, skills_dir, None)?;

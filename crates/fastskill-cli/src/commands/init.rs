@@ -7,7 +7,10 @@
 
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::manifest::{
     DependenciesSection, FastSkillToolConfig, MetadataSection, SkillProjectToml, ToolSection,
 };
@@ -21,35 +24,127 @@ use std::io::{self, Write};
 use std::path::Path;
 
 /// Initialize skill-project.toml for the current directory
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct InitArgs {
     /// Skip interactive prompts and use defaults
-    #[arg(long)]
     yes: bool,
 
     /// Force reinitialization even if skill-project.toml exists
-    #[arg(long)]
     force: bool,
 
     /// Set version directly
-    #[arg(long)]
     version: Option<String>,
 
     /// Set skill description
-    #[arg(long)]
     description: Option<String>,
 
     /// Set skill author
-    #[arg(long)]
     author: Option<String>,
 
     /// Set download URL
-    #[arg(long)]
     download_url: Option<String>,
 
     /// Skills directory path (required for project-level, optional for skill-level)
-    #[arg(long)]
     skills_dir: Option<String>,
+}
+
+impl IntoCommandSpec for InitArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Initialize skill-project.toml in current skill directory",
+            syntax: Some("init [OPTIONS]"),
+            category: Some("project"),
+            args: vec![
+                ArgSpec {
+                    name: "yes",
+                    kind: ArgKind::Flag,
+                    long: Some("yes"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Skip interactive prompts and use defaults",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "force",
+                    kind: ArgKind::Flag,
+                    long: Some("force"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Force reinitialization even if skill-project.toml exists",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "version",
+                    kind: ArgKind::Option,
+                    long: Some("version"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Set version directly",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "description",
+                    kind: ArgKind::Option,
+                    long: Some("description"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Set skill description",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "author",
+                    kind: ArgKind::Option,
+                    long: Some("author"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Set skill author",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "download-url",
+                    kind: ArgKind::Option,
+                    long: Some("download-url"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Set download URL",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+fn opt_str(v: &ArgValue) -> Option<String> {
+    if let ArgValue::Str(s) = v {
+        Some(s.clone())
+    } else {
+        None
+    }
+}
+
+fn bool_flag(v: &ArgValue) -> Option<bool> {
+    if let ArgValue::Bool(b) = v {
+        Some(*b)
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for InitArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            yes: map.get("yes").and_then(bool_flag).unwrap_or(false),
+            force: map.get("force").and_then(bool_flag).unwrap_or(false),
+            version: map.get("version").and_then(opt_str),
+            description: map.get("description").and_then(opt_str),
+            author: map.get("author").and_then(opt_str),
+            download_url: map.get("download-url").and_then(opt_str),
+            // skills_dir is omitted from the spec; use the global --skills-dir flag instead
+            skills_dir: None,
+        }
+    }
 }
 
 pub async fn execute_init(args: InitArgs) -> CliResult<()> {

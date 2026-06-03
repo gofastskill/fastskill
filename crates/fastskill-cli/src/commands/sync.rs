@@ -11,7 +11,10 @@ use crate::utils::agents_md::{
 };
 use crate::utils::messages;
 use aikit_sdk::{instruction_file_with_override, DeployError};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use dirs;
 use fastskill_core::core::skill_manager::SkillDefinition;
 use fastskill_core::FastSkillService;
@@ -27,26 +30,105 @@ use tracing::debug;
 /// file so the agent can discover available skills. It does NOT manage filesystem links
 /// or symlinks; editable skill links are established by `fastskill add -e` or
 /// `fastskill install`.
-#[derive(Debug, Args)]
-#[command(
-    after_help = "Examples:\n  fastskill sync --yes\n  fastskill sync --agent claude --yes\n  fastskill sync --agent claude --agent codex --yes\n  fastskill sync --all --yes\n  fastskill sync --agents-file CUSTOM.md --yes"
-)]
+#[derive(Debug)]
 pub struct SyncArgs {
     /// Non-interactive mode: include all installed skills
-    #[arg(short = 'y', long)]
     pub yes: bool,
 
     /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
-    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
     pub agent: Vec<String>,
 
     /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
-    #[arg(long)]
     pub all: bool,
 
     /// Path to metadata file (overrides auto-detection)
-    #[arg(long)]
     pub agents_file: Option<String>,
+}
+
+impl IntoCommandSpec for SyncArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Sync installed skills to the agent's metadata file",
+            syntax: Some("sync [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "yes",
+                    long: Some("yes"),
+                    short: Some('y'),
+                    help: "Non-interactive mode: include all installed skills",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "agent",
+                    long: Some("agent"),
+                    short: None,
+                    help: "Target runtime(s) for this operation; repeatable",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "all",
+                    long: Some("all"),
+                    short: None,
+                    help: "Target all runtimes discovered by aikit",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "agents-file",
+                    long: Some("agents-file"),
+                    short: None,
+                    help: "Path to metadata file (overrides auto-detection)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for SyncArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        SyncArgs {
+            yes: matches!(map.get("yes"), Some(ArgValue::Bool(true))),
+            agent: match map.get("agent") {
+                Some(ArgValue::List(items)) => items
+                    .iter()
+                    .filter_map(|i| {
+                        if let ArgValue::Str(s) = i {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+            all: matches!(map.get("all"), Some(ArgValue::Bool(true))),
+            agents_file: map.get("agents-file").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 impl From<&SyncArgs> for RuntimeSelectionInput {

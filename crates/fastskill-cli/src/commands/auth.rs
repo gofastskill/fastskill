@@ -4,6 +4,11 @@ use crate::auth_config;
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
 use clap::{Args, Subcommand};
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 
 /// Authentication command arguments
 #[derive(Debug, Args)]
@@ -42,12 +47,102 @@ pub struct LoginArgs {
     pub role: String,
 }
 
+impl IntoCommandSpec for LoginArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Login to a skill registry",
+            syntax: Some("auth login [OPTIONS]"),
+            category: Some("auth"),
+            args: vec![
+                ArgSpec {
+                    name: "registry",
+                    kind: ArgKind::Option,
+                    long: Some("registry"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Registry URL to authenticate with",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "role",
+                    kind: ArgKind::Option,
+                    long: Some("role"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Role for the token (default: manager)",
+                    default: Some(ArgValue::Str("manager".to_string())),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for LoginArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            registry: map.get("registry").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            role: map
+                .get("role")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "manager".to_string()),
+        }
+    }
+}
+
 /// Logout command arguments
 #[derive(Debug, Args)]
 pub struct LogoutArgs {
     /// Registry URL to logout from
     #[arg(long)]
     pub registry: Option<String>,
+}
+
+impl IntoCommandSpec for LogoutArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Logout from a skill registry",
+            syntax: Some("auth logout [OPTIONS]"),
+            category: Some("auth"),
+            args: vec![ArgSpec {
+                name: "registry",
+                kind: ArgKind::Option,
+                long: Some("registry"),
+                value_type: ArgValueType::String,
+                cardinality: Cardinality::Optional,
+                help: "Registry URL to logout from",
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for LogoutArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            registry: map.get("registry").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 /// Whoami command arguments
@@ -58,17 +153,42 @@ pub struct WhoamiArgs {
     pub registry: Option<String>,
 }
 
-/// Execute authentication command
-pub async fn execute_auth(args: AuthArgs) -> CliResult<()> {
-    match args.command {
-        AuthCommand::Login(login_args) => execute_login(login_args).await,
-        AuthCommand::Logout(logout_args) => execute_logout(logout_args),
-        AuthCommand::Whoami(whoami_args) => execute_whoami(whoami_args),
+impl IntoCommandSpec for WhoamiArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Show current authenticated user",
+            syntax: Some("auth whoami [OPTIONS]"),
+            category: Some("auth"),
+            args: vec![ArgSpec {
+                name: "registry",
+                kind: ArgKind::Option,
+                long: Some("registry"),
+                value_type: ArgValueType::String,
+                cardinality: Cardinality::Optional,
+                help: "Registry URL to check (default: from FASTSKILL_API_URL or http://localhost:8080)",
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for WhoamiArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            registry: map.get("registry").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+        }
     }
 }
 
 /// Execute login command
-async fn execute_login(args: LoginArgs) -> CliResult<()> {
+pub async fn execute_login(args: LoginArgs) -> CliResult<()> {
     // Determine registry URL
     let registry_url = args
         .registry
@@ -124,7 +244,7 @@ async fn execute_login(args: LoginArgs) -> CliResult<()> {
 }
 
 /// Execute logout command
-fn execute_logout(args: LogoutArgs) -> CliResult<()> {
+pub fn execute_logout(args: LogoutArgs) -> CliResult<()> {
     // Determine registry URL
     let registry_url = args
         .registry
@@ -143,7 +263,7 @@ fn execute_logout(args: LogoutArgs) -> CliResult<()> {
 }
 
 /// Execute whoami command
-fn execute_whoami(args: WhoamiArgs) -> CliResult<()> {
+pub fn execute_whoami(args: WhoamiArgs) -> CliResult<()> {
     // Determine registry URL
     let registry_url = args
         .registry

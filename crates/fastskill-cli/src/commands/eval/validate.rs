@@ -4,36 +4,124 @@ use crate::commands::common::{runtime_selection_error_to_cli, validate_format_ar
 use crate::error::{CliError, CliResult};
 use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::checks::load_checks;
 use fastskill_evals::resolve_eval_config;
 use fastskill_evals::suite::load_suite;
+use std::collections::HashMap;
 use std::env;
 
 /// Arguments for `fastskill eval validate`
-#[derive(Debug, Args)]
-#[command(
-    about = "Validate eval configuration and files",
-    after_help = "Examples:\n  fastskill eval validate\n  fastskill eval validate --agent codex\n  fastskill eval validate --agent codex --agent claude\n  fastskill eval validate --all"
-)]
+#[derive(Debug)]
 pub struct ValidateArgs {
     /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
-    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
     pub agent: Vec<String>,
 
     /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
-    #[arg(long)]
     pub all: bool,
 
     /// Output format: table, json, grid, xml (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+impl IntoCommandSpec for ValidateArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Validate eval configuration and files",
+            syntax: Some("eval validate [OPTIONS]"),
+            category: Some("quality"),
+            args: vec![
+                ArgSpec {
+                    name: "agent",
+                    kind: ArgKind::Option,
+                    short: Some('a'),
+                    long: Some("agent"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Target runtime(s); repeatable (mutually exclusive with --all)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "all",
+                    kind: ArgKind::Flag,
+                    long: Some("all"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Target all runtimes (mutually exclusive with --agent)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for ValidateArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        ValidateArgs {
+            agent: match map.get("agent") {
+                Some(ArgValue::List(items)) => items
+                    .iter()
+                    .filter_map(|i| {
+                        if let ArgValue::Str(s) = i {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+            all: matches!(map.get("all"), Some(ArgValue::Bool(true))),
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 impl From<&ValidateArgs> for RuntimeSelectionInput {

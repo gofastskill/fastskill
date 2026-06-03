@@ -5,7 +5,10 @@ use crate::error::{CliError, CliResult};
 use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
 use chrono::Utc;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::artifacts::{
@@ -16,6 +19,7 @@ use fastskill_evals::checks::load_checks;
 use fastskill_evals::resolve_eval_config;
 use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
 use fastskill_evals::suite::load_suite;
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,59 +27,206 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 /// Arguments for `fastskill eval run`
-#[derive(Debug, Args)]
-#[command(
-    about = "Run eval cases against an agent",
-    after_help = "Examples:\n  fastskill eval run --agent codex --output-dir /tmp/evals\n  fastskill eval run --agent codex --agent claude --output-dir /tmp/evals\n  fastskill eval run --all --output-dir /tmp/evals\n  fastskill eval run --agent agent --output-dir ./evals --case my-case\n  fastskill eval run --agent codex --output-dir ./evals --tag basic"
-)]
+#[derive(Debug)]
 pub struct RunArgs {
     /// Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
-    #[arg(long, short = 'a', action = clap::ArgAction::Append)]
     pub agent: Vec<String>,
 
     /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
-    #[arg(long)]
     pub all: bool,
 
     /// Output directory for artifacts (required)
-    #[arg(long, required = true)]
     pub output_dir: PathBuf,
 
     /// Optional model override forwarded to the agent
-    #[arg(long)]
     pub model: Option<String>,
 
     /// Filter: run only the case with this ID
-    #[arg(long)]
     pub case: Option<String>,
 
     /// Filter: run only cases with this tag
-    #[arg(long)]
     pub tag: Option<String>,
 
     /// Output format: table, json, grid, xml (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Do not fail with non-zero exit code on suite failure
-    #[arg(long)]
     pub no_fail: bool,
 
     /// Override trials per case from config
-    #[arg(long)]
     pub trials: Option<u32>,
 
     /// Enable CI mode: exit non-zero if suite pass rate below threshold
-    #[arg(long)]
     pub ci: bool,
 
     /// Override pass threshold (0.0-1.0)
-    #[arg(long)]
     pub threshold: Option<f64>,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+impl IntoCommandSpec for RunArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Run eval cases against an agent",
+            syntax: Some("eval run [OPTIONS]"),
+            category: Some("quality"),
+            args: vec![
+                ArgSpec {
+                    name: "agent",
+                    kind: ArgKind::Option,
+                    short: Some('a'),
+                    long: Some("agent"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Target runtime(s); repeatable (mutually exclusive with --all)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "all",
+                    kind: ArgKind::Flag,
+                    long: Some("all"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Target all runtimes (mutually exclusive with --agent)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "output-dir",
+                    kind: ArgKind::Option,
+                    long: Some("output-dir"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Output directory for artifacts (required)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "model",
+                    kind: ArgKind::Option,
+                    long: Some("model"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Optional model override forwarded to the agent",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "case",
+                    kind: ArgKind::Option,
+                    long: Some("case"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Filter: run only the case with this ID",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "tag",
+                    kind: ArgKind::Option,
+                    long: Some("tag"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Filter: run only cases with this tag",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for RunArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        RunArgs {
+            agent: match map.get("agent") {
+                Some(ArgValue::List(items)) => items
+                    .iter()
+                    .filter_map(|i| {
+                        if let ArgValue::Str(s) = i {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+            all: matches!(map.get("all"), Some(ArgValue::Bool(true))),
+            output_dir: map
+                .get("output-dir")
+                .map(|v| {
+                    if let ArgValue::Str(s) = v {
+                        PathBuf::from(s)
+                    } else {
+                        panic!("fw bug")
+                    }
+                })
+                .unwrap_or_else(|| panic!("fw bug: missing output-dir")),
+            model: map.get("model").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            case: map.get("case").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            tag: map.get("tag").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+            no_fail: false,
+            trials: None,
+            ci: false,
+            threshold: None,
+        }
+    }
 }
 
 impl From<&RunArgs> for RuntimeSelectionInput {

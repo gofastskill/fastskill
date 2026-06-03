@@ -2,10 +2,14 @@
 
 use crate::error::{CliError, CliResult};
 use crate::utils::{api_client::ApiClient, messages};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::repository::{
     RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
 };
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::info;
 use url::Url;
@@ -17,34 +21,157 @@ use url::Url;
 ///   --local-dir <path>  Publish to local directory
 ///   --registry <name>   Use configured repository
 ///   (default)           Use FASTSKILL_API_URL environment variable
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct PublishArgs {
     /// Package file or directory containing ZIP artifacts
-    #[arg(short, long, default_value = "./artifacts")]
     pub artifacts: PathBuf,
 
     /// Repository name from configuration (mutually exclusive with --api-url and --local-dir)
-    #[arg(long)]
     pub registry: Option<String>,
 
     /// API URL for publishing (e.g., https://api.example.com)
     /// Mutually exclusive with --local-dir and --registry
-    #[arg(long)]
     pub api_url: Option<String>,
 
     /// Local directory for publishing
     /// Mutually exclusive with --api-url and --registry
-    #[arg(long)]
     pub local_dir: Option<String>,
 
     /// Wait for validation to complete (default: true for API mode)
     /// For local mode, this flag has no effect
-    #[arg(long, default_value = "true")]
     pub wait: bool,
 
     /// Maximum wait time in seconds (default: 300)
-    #[arg(long, default_value = "300")]
     pub max_wait: u64,
+}
+
+impl IntoCommandSpec for PublishArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Publish artifacts to remote API or local folder",
+            syntax: Some("publish [OPTIONS]"),
+            category: Some("registry"),
+            args: vec![
+                ArgSpec {
+                    name: "artifacts",
+                    kind: ArgKind::Option,
+                    long: Some("artifacts"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Package file or directory containing ZIP artifacts",
+                    default: Some(ArgValue::Str("./artifacts".to_string())),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "registry",
+                    kind: ArgKind::Option,
+                    long: Some("registry"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Repository name from configuration",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "api-url",
+                    kind: ArgKind::Option,
+                    long: Some("api-url"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "API URL for publishing (e.g., https://api.example.com)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "local-dir",
+                    kind: ArgKind::Option,
+                    long: Some("local-dir"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Local directory for publishing",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "wait",
+                    kind: ArgKind::Option,
+                    long: Some("wait"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Wait for validation to complete (default: true for API mode)",
+                    default: Some(ArgValue::Bool(true)),
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "max-wait",
+                    kind: ArgKind::Option,
+                    long: Some("max-wait"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    help: "Maximum wait time in seconds (default: 300)",
+                    default: Some(ArgValue::Int(300)),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for PublishArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            artifacts: map
+                .get("artifacts")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(PathBuf::from(s))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| PathBuf::from("./artifacts")),
+            registry: map.get("registry").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            api_url: map.get("api-url").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            local_dir: map.get("local-dir").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            wait: map
+                .get("wait")
+                .and_then(|v| {
+                    if let ArgValue::Bool(b) = v {
+                        Some(*b)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(true),
+            max_wait: map
+                .get("max-wait")
+                .and_then(|v| {
+                    if let ArgValue::Int(n) = v {
+                        Some(*n as u64)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(300),
+        }
+    }
 }
 
 /// Context for publish operations

@@ -1,14 +1,57 @@
 //! Disable command implementation
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::FastSkillService;
+use std::collections::HashMap;
 
 /// Disable skills by ID
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct DisableArgs {
     /// Skill IDs to disable
     pub skill_ids: Vec<String>,
+}
+
+impl IntoCommandSpec for DisableArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Disable skills by ID",
+            syntax: Some("disable <SKILL_ID>..."),
+            category: Some("management"),
+            args: vec![ArgSpec {
+                name: "skill-ids",
+                kind: ArgKind::Positional,
+                value_type: ArgValueType::String,
+                cardinality: Cardinality::Repeated,
+                help: "Skill IDs to disable",
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for DisableArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            skill_ids: match map.get("skill-ids") {
+                Some(ArgValue::List(items)) => items
+                    .iter()
+                    .filter_map(|i| {
+                        if let ArgValue::Str(s) = i {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+        }
+    }
 }
 
 pub async fn execute_disable(service: &FastSkillService, args: DisableArgs) -> CliResult<()> {

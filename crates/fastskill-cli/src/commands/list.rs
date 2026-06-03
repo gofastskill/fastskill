@@ -9,7 +9,10 @@
 
 use crate::commands::common::validate_format_args;
 use crate::error::{manifest_required_message, CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::manifest::{SkillProjectToml, SkillSource};
 use fastskill_core::core::project::resolve_project_file;
@@ -21,23 +24,91 @@ use std::env;
 use std::path::PathBuf;
 
 /// List locally installed skills
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct ListArgs {
     /// Output format: table, json, grid, xml (default: table)
-    #[arg(long, value_enum, help = "Output format: table, json, grid, xml")]
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
-    #[arg(long, help = "Shorthand for --format json")]
     pub json: bool,
 
     /// Show detailed information (version, manifest/lock/installed status, source path, type)
-    #[arg(long, help = "Show detailed information")]
     pub details: bool,
 
     /// Skills directory path (overrides default discovery)
-    #[arg(long, help = "Skills directory path")]
+    #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+}
+
+fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
+    match s {
+        "table" => Some(fastskill_core::OutputFormat::Table),
+        "json" => Some(fastskill_core::OutputFormat::Json),
+        "grid" => Some(fastskill_core::OutputFormat::Grid),
+        "xml" => Some(fastskill_core::OutputFormat::Xml),
+        _ => None,
+    }
+}
+
+impl IntoCommandSpec for ListArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "List locally installed skills",
+            syntax: Some("list [OPTIONS]"),
+            category: Some("discovery"),
+            args: vec![
+                ArgSpec {
+                    name: "format",
+                    kind: ArgKind::Option,
+                    long: Some("format"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Output format: table, json, grid, xml (default: table)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "details",
+                    kind: ArgKind::Flag,
+                    long: Some("details"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Show detailed information",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for ListArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            format: map
+                .get("format")
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .and_then(parse_output_format),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
+            details: matches!(map.get("details"), Some(ArgValue::Bool(true))),
+            // skills_dir is omitted from the spec; rely on the global --skills-dir flag
+            skills_dir: None,
+        }
+    }
 }
 
 /// Extract source path and type from SkillSource

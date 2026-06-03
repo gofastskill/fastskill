@@ -3,10 +3,14 @@
 use crate::config::get_skill_search_locations_for_display;
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
 use crate::utils::manifest_utils;
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::lock::project_lock_path;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::FastSkillService;
+use std::collections::HashMap;
 use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -22,18 +26,91 @@ use tokio::fs;
 /// - Always updates skills.lock to reflect removals (when manifest exists)
 ///
 /// Use this command when you want to completely stop using a skill.
-#[derive(Debug, Args)]
+#[derive(Debug)]
 pub struct RemoveArgs {
     /// Skill IDs to remove
     pub skill_ids: Vec<String>,
 
     /// Force removal without confirmation
-    #[arg(short, long)]
     pub force: bool,
 
     /// Skills directory path (overrides default discovery)
-    #[arg(long, help = "Skills directory path")]
+    #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+}
+
+impl IntoCommandSpec for RemoveArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Uninstall skills (removes from manifest and local installation)",
+            syntax: Some("remove <SKILL_ID>... [OPTIONS]"),
+            category: Some("packages"),
+            args: vec![
+                ArgSpec {
+                    name: "skill-ids",
+                    long: None,
+                    short: None,
+                    help: "Skill IDs to remove",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "force",
+                    long: Some("force"),
+                    short: Some('f'),
+                    help: "Force removal without confirmation",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "skills-dir",
+                    long: Some("skills-dir"),
+                    short: None,
+                    help: "Skills directory path (overrides default discovery)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+impl FromArgValueMap for RemoveArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        RemoveArgs {
+            skill_ids: match map.get("skill-ids") {
+                Some(ArgValue::List(items)) => items
+                    .iter()
+                    .filter_map(|i| {
+                        if let ArgValue::Str(s) = i {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                _ => vec![],
+            },
+            force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
+            skills_dir: map.get("skills-dir").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(PathBuf::from(s))
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 /// Validate that all skills exist before removal; returns parsed SkillIds
