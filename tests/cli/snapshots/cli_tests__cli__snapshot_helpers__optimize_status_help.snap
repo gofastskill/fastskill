@@ -1,0 +1,20 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Show the status of a training run
+
+Usage: fastskill optimize status [OPTIONS] <run-dir>
+
+Arguments:
+  <run-dir>  Path to the run directory
+
+Options:
+      --skills-dir <skills-dir>  Override the skills directory path
+      --watch                    Poll and re-render every ~2 seconds
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+  -v, --verbose                  Enable verbose output
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: optimize status <run-dir> [--watch]
