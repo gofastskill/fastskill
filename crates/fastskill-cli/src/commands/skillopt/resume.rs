@@ -1,4 +1,4 @@
-//! `fastskill skillopt resume` subcommand
+//! `fastskill optimize resume` subcommand
 
 use super::config::{build_run_config, load_suite_with_splits, validate_config, SkillOptToml};
 use crate::error::{CliError, CliResult};
@@ -9,7 +9,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill skillopt resume`
+/// Arguments for `fastskill optimize resume`
 #[derive(Debug)]
 pub struct ResumeArgs {
     /// Path to the run directory to resume
@@ -20,7 +20,7 @@ impl IntoCommandSpec for ResumeArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Resume an interrupted optimization run",
-            syntax: Some("skillopt resume <run-dir>"),
+            syntax: Some("optimize resume <run-dir>"),
             args: vec![ArgSpec {
                 name: "run-dir",
                 kind: ArgKind::Positional,
@@ -50,29 +50,34 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     // 1. Verify run dir exists
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_MISSING: run directory not found: {}",
+            "OPTIMIZE_RUN_DIR_MISSING: run directory not found: {}",
             args.run_dir.display()
         )));
     }
 
-    // 2. Read stored skillopt.toml from the run directory
-    let stored_config_path = args.run_dir.join("skillopt.toml");
+    // 2. Read stored config from the run directory; try optimize.toml first, then skillopt.toml
+    let stored_config_path = {
+        let new_path = args.run_dir.join("optimize.toml");
+        if new_path.exists() {
+            new_path
+        } else {
+            args.run_dir.join("skillopt.toml") // backward compat for pre-rename run dirs
+        }
+    };
     if !stored_config_path.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_CORRUPT: missing skillopt.toml in run directory: {}",
+            "OPTIMIZE_RUN_DIR_CORRUPT: missing optimize.toml in run directory: {}",
             args.run_dir.display()
         )));
     }
 
     let config_str = std::fs::read_to_string(&stored_config_path).map_err(|e| {
-        CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_CORRUPT: cannot read skillopt.toml: {e}"
-        ))
+        CliError::Config(format!("OPTIMIZE_RUN_DIR_CORRUPT: cannot read config: {e}"))
     })?;
 
     let cfg: SkillOptToml = toml::from_str(&config_str).map_err(|e| {
         CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_CORRUPT: invalid skillopt.toml: {e}"
+            "OPTIMIZE_RUN_DIR_CORRUPT: invalid config toml: {e}"
         ))
     })?;
 
@@ -87,7 +92,7 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     let checks = if let Some(ref checks_path) = cfg.checks {
         let checks_path = base_dir.join(checks_path);
         fastskill_evals::load_checks(&checks_path)
-            .map_err(|e| CliError::Config(format!("SKILLOPT_CHECKS_PARSE_ERROR: {e}")))?
+            .map_err(|e| CliError::Config(format!("OPTIMIZE_CHECKS_PARSE_ERROR: {e}")))?
     } else {
         vec![]
     };
@@ -97,7 +102,7 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
         Some(a) => a,
         None => {
             eprintln!(
-                "SKILLOPT_OPTIMIZER_DEFAULT_WARN: optimizer_agent not set, defaulting to target_agent '{}'",
+                "OPTIMIZE_OPTIMIZER_DEFAULT_WARN: optimizer_agent not set, defaulting to target_agent '{}'",
                 cfg.target_agent
             );
             cfg.target_agent.clone()
@@ -107,11 +112,11 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     // 6. Read skill document
     let skill_path = base_dir.join(&cfg.skill);
     let initial_skill_md = std::fs::read_to_string(&skill_path)
-        .map_err(|e| CliError::Config(format!("SKILLOPT_SKILL_NOT_FOUND: {e}")))?;
+        .map_err(|e| CliError::Config(format!("OPTIMIZE_SKILL_NOT_FOUND: {e}")))?;
 
     // 7. Build RunConfig
     let run_config = build_run_config(&cfg, &optimizer_agent)
-        .map_err(|e| CliError::Config(format!("SKILLOPT_TRAINING_FAILED: invalid config: {e}")))?;
+        .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: invalid config: {e}")))?;
 
     // 8. Resume training
     let outcome = aikit_skillopt::resume_skill(
@@ -123,7 +128,7 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
         run_config,
     )
     .await
-    .map_err(|e| CliError::Config(format!("SKILLOPT_TRAINING_FAILED: {e}")))?;
+    .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
 
     println!("{}", outcome.best_artifact_path.display());
     Ok(())

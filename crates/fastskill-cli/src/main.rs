@@ -409,19 +409,19 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
             )?
     };
 
-    // ── skillopt: fully migrated to typed API (spec #89 reference migration) ──
+    // ── optimize: fully migrated to typed API ────────────────────────────────────
     let builder = {
         use cli_framework::spec::command_tree::GroupMetadata;
         builder
             .register_group(
-                &path!["skillopt"],
+                &path!["optimize"],
                 GroupMetadata {
                     summary: "Iterative skill-document optimization via text-gradient",
                     hidden: false,
                 },
             )?
             .register(
-                path!["skillopt", "run"],
+                path!["optimize", "run"],
                 |_ctx, args: skillopt::run::RunArgs| async move {
                     skillopt::run::execute_run(args)
                         .await
@@ -429,7 +429,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register(
-                path!["skillopt", "resume"],
+                path!["optimize", "resume"],
                 |_ctx, args: skillopt::resume::ResumeArgs| async move {
                     skillopt::resume::execute_resume(args)
                         .await
@@ -437,7 +437,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register(
-                path!["skillopt", "status"],
+                path!["optimize", "status"],
                 |_ctx, args: skillopt::status::StatusArgs| async move {
                     skillopt::status::execute_status(args)
                         .await
@@ -445,7 +445,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register(
-                path!["skillopt", "inspect"],
+                path!["optimize", "inspect"],
                 |_ctx, args: skillopt::inspect::InspectArgs| async move {
                     skillopt::inspect::execute_inspect(args)
                         .await
@@ -453,7 +453,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register(
-                path!["skillopt", "export"],
+                path!["optimize", "export"],
                 |_ctx, args: skillopt::export::ExportArgs| async move {
                     skillopt::export::execute_export(args)
                         .await

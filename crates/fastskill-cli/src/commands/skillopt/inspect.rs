@@ -1,4 +1,4 @@
-//! `fastskill skillopt inspect` subcommand
+//! `fastskill optimize inspect` subcommand
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -8,7 +8,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill skillopt inspect`
+/// Arguments for `fastskill optimize inspect`
 #[derive(Debug)]
 pub struct InspectArgs {
     /// Path to the run directory
@@ -34,7 +34,7 @@ impl IntoCommandSpec for InspectArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Inspect per-step artifacts from a training run",
-            syntax: Some("skillopt inspect <run-dir> --step <n> [--show <mode>]"),
+            syntax: Some("optimize inspect <run-dir> --step <n> [--show <mode>]"),
             args: vec![
                 ArgSpec {
                     name: "run-dir",
@@ -100,7 +100,7 @@ impl FromArgValueMap for InspectArgs {
 pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_MISSING: run directory not found: {}",
+            "OPTIMIZE_RUN_DIR_MISSING: run directory not found: {}",
             args.run_dir.display()
         )));
     }
@@ -108,7 +108,7 @@ pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
     let step_dir = args.run_dir.join(format!("step-{}", args.step));
     if !step_dir.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_STEP_NOT_FOUND: no artifacts for step {} in: {}",
+            "OPTIMIZE_STEP_NOT_FOUND: no artifacts for step {} in: {}",
             args.step,
             args.run_dir.display()
         )));
