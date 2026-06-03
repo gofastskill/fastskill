@@ -2,27 +2,89 @@
 
 use super::config::{build_run_config, load_suite_with_splits, validate_config, SkillOptToml};
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill skillopt run`
-#[derive(Debug, Args)]
-#[command(
-    about = "Run skill optimization from a config file",
-    after_help = "Examples:\n  fastskill skillopt run --config skillopt.toml\n  fastskill skillopt run --config skillopt.toml --out-dir /tmp/runs"
-)]
+#[derive(Debug)]
 pub struct RunArgs {
     /// Path to skillopt.toml config file
-    #[arg(long, required = true)]
     pub config: PathBuf,
 
     /// Override the out_dir from the config file
-    #[arg(long)]
     pub out_dir: Option<PathBuf>,
 
     /// Resume from this run directory instead of starting fresh
-    #[arg(long)]
     pub resume: Option<PathBuf>,
+}
+
+impl IntoCommandSpec for RunArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Run skill optimization from a config file",
+            syntax: Some("skillopt run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
+            args: vec![
+                ArgSpec {
+                    name: "config",
+                    kind: ArgKind::Option,
+                    long: Some("config"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Path to skillopt.toml config file",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "out-dir",
+                    kind: ArgKind::Option,
+                    long: Some("out-dir"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Override the out_dir from the config file",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "resume",
+                    kind: ArgKind::Option,
+                    long: Some("resume"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Resume from this run directory instead of starting fresh",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for RunArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            config: match map.get("config") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'config' missing from validated map"),
+            },
+            out_dir: map.get("out-dir").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(PathBuf::from(s))
+                } else {
+                    None
+                }
+            }),
+            resume: map.get("resume").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(PathBuf::from(s))
+                } else {
+                    None
+                }
+            }),
+        }
+    }
 }
 
 pub async fn execute_run(args: RunArgs) -> CliResult<()> {

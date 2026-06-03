@@ -21,7 +21,7 @@ mod error;
 pub mod runtime_selector;
 mod utils;
 
-use cli_framework::prelude::{AppBuilder, Command};
+use cli_framework::prelude::AppBuilder;
 use context::{FsCtx, FsState};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,12 +41,14 @@ macro_rules! register_cmd {
      $module:ident, $fn:ident) => {
         let $builder = $builder.register_command({
             let state = Arc::clone(&$state);
-            Command {
-                id: $id,
-                summary: $summary,
-                syntax: $syntax,
-                category: $category,
-                spec: None,
+            cli_framework::command::Command {
+                id: Arc::from($id),
+                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
+                    summary: $summary,
+                    syntax: $syntax,
+                    category: $category,
+                    ..Default::default()
+                }),
                 validator: None,
                 expose_mcp: $expose_mcp,
                 execute: Arc::new(move |_ctx, _args| {
@@ -54,8 +56,7 @@ macro_rules! register_cmd {
                     Box::pin(async move {
                         let raw = state.raw_remaining_args.clone();
                         let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(args).await?;
-                        Ok(())
+                        $module::$fn(args).await.map_err(anyhow::Error::from)
                     })
                 }),
             }
@@ -67,12 +68,14 @@ macro_rules! register_cmd {
      $module:ident, $fn:ident, global) => {
         let $builder = $builder.register_command({
             let state = Arc::clone(&$state);
-            Command {
-                id: $id,
-                summary: $summary,
-                syntax: $syntax,
-                category: $category,
-                spec: None,
+            cli_framework::command::Command {
+                id: Arc::from($id),
+                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
+                    summary: $summary,
+                    syntax: $syntax,
+                    category: $category,
+                    ..Default::default()
+                }),
                 validator: None,
                 expose_mcp: $expose_mcp,
                 execute: Arc::new(move |_ctx, _args| {
@@ -80,8 +83,9 @@ macro_rules! register_cmd {
                     Box::pin(async move {
                         let raw = state.raw_remaining_args.clone();
                         let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(args, state.global).await?;
-                        Ok(())
+                        $module::$fn(args, state.global)
+                            .await
+                            .map_err(anyhow::Error::from)
                     })
                 }),
             }
@@ -93,12 +97,14 @@ macro_rules! register_cmd {
      $module:ident, $fn:ident, svc) => {
         let $builder = $builder.register_command({
             let state = Arc::clone(&$state);
-            Command {
-                id: $id,
-                summary: $summary,
-                syntax: $syntax,
-                category: $category,
-                spec: None,
+            cli_framework::command::Command {
+                id: Arc::from($id),
+                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
+                    summary: $summary,
+                    syntax: $syntax,
+                    category: $category,
+                    ..Default::default()
+                }),
                 validator: None,
                 expose_mcp: $expose_mcp,
                 execute: Arc::new(move |_ctx, _args| {
@@ -107,8 +113,7 @@ macro_rules! register_cmd {
                         let svc = state.service().await?;
                         let raw = state.raw_remaining_args.clone();
                         let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(&svc, args).await?;
-                        Ok(())
+                        $module::$fn(&svc, args).await.map_err(anyhow::Error::from)
                     })
                 }),
             }
@@ -120,12 +125,14 @@ macro_rules! register_cmd {
      $module:ident, $fn:ident, svc_global) => {
         let $builder = $builder.register_command({
             let state = Arc::clone(&$state);
-            Command {
-                id: $id,
-                summary: $summary,
-                syntax: $syntax,
-                category: $category,
-                spec: None,
+            cli_framework::command::Command {
+                id: Arc::from($id),
+                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
+                    summary: $summary,
+                    syntax: $syntax,
+                    category: $category,
+                    ..Default::default()
+                }),
                 validator: None,
                 expose_mcp: $expose_mcp,
                 execute: Arc::new(move |_ctx, _args| {
@@ -134,8 +141,9 @@ macro_rules! register_cmd {
                         let svc = state.service().await?;
                         let raw = state.raw_remaining_args.clone();
                         let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(&svc, args, state.global).await?;
-                        Ok(())
+                        $module::$fn(&svc, args, state.global)
+                            .await
+                            .map_err(anyhow::Error::from)
                     })
                 }),
             }
@@ -147,12 +155,14 @@ macro_rules! register_cmd {
      $module:ident, $fn:ident, svc_val) => {
         let $builder = $builder.register_command({
             let state = Arc::clone(&$state);
-            Command {
-                id: $id,
-                summary: $summary,
-                syntax: $syntax,
-                category: $category,
-                spec: None,
+            cli_framework::command::Command {
+                id: Arc::from($id),
+                spec: Arc::new(cli_framework::spec::command_tree::CommandSpec {
+                    summary: $summary,
+                    syntax: $syntax,
+                    category: $category,
+                    ..Default::default()
+                }),
                 validator: None,
                 expose_mcp: $expose_mcp,
                 execute: Arc::new(move |_ctx, _args| {
@@ -161,8 +171,7 @@ macro_rules! register_cmd {
                         let svc = state.service().await?;
                         let raw = state.raw_remaining_args.clone();
                         let args = parse_from_args::<$args_type>(&raw[1..])?;
-                        $module::$fn(svc, args).await?;
-                        Ok(())
+                        $module::$fn(svc, args).await.map_err(anyhow::Error::from)
                     })
                 }),
             }
@@ -409,18 +418,59 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         eval,
         execute_eval
     );
-    register_cmd!(
-        builder,
-        "skillopt",
-        "Iterative skill-document optimization via text-gradient",
-        Some("skillopt <run|resume|status|inspect|export>"),
-        Some("quality"),
-        false,
-        skillopt::SkillOptCommand,
-        state,
-        skillopt,
-        execute_skillopt
-    );
+    // ── skillopt: fully migrated to typed API (spec #89 reference migration) ──
+    let builder = {
+        use cli_framework::path;
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["skillopt"],
+                GroupMetadata {
+                    summary: "Iterative skill-document optimization via text-gradient",
+                    hidden: false,
+                },
+            )?
+            .register(
+                path!["skillopt", "run"],
+                |_ctx, args: skillopt::run::RunArgs| async move {
+                    skillopt::run::execute_run(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["skillopt", "resume"],
+                |_ctx, args: skillopt::resume::ResumeArgs| async move {
+                    skillopt::resume::execute_resume(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["skillopt", "status"],
+                |_ctx, args: skillopt::status::StatusArgs| async move {
+                    skillopt::status::execute_status(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["skillopt", "inspect"],
+                |_ctx, args: skillopt::inspect::InspectArgs| async move {
+                    skillopt::inspect::execute_inspect(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register(
+                path!["skillopt", "export"],
+                |_ctx, args: skillopt::export::ExportArgs| async move {
+                    skillopt::export::execute_export(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+    };
     // ── Service commands ─────────────────────────────────────────────────────
     register_cmd!(
         builder,

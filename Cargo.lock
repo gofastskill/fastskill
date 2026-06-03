@@ -1114,7 +1114,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "cli-framework"
 version = "0.4.2"
-source = "git+https://github.com/aroff/cli-framework?rev=6d198a219bae68a228bc4661715cf758c9230626#6d198a219bae68a228bc4661715cf758c9230626"
+source = "git+https://github.com/aroff/cli-framework?rev=76a83e0d57e88b55e5f8c44fd3dffe1444443924#76a83e0d57e88b55e5f8c44fd3dffe1444443924"
 dependencies = [
  "ailoop-core",
  "anyhow",
@@ -1125,7 +1125,6 @@ dependencies = [
  "crossterm 0.28.1",
  "dirs 5.0.1",
  "httpdate",
- "log",
  "regex",
  "reqwest 0.12.28",
  "rmcp",
@@ -1138,6 +1137,7 @@ dependencies = [
  "toml 0.8.23",
  "tower",
  "tower-http",
+ "tracing",
  "uuid",
 ]
 

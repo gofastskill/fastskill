@@ -1,23 +1,64 @@
 //! `fastskill skillopt status` subcommand
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Arguments for `fastskill skillopt status`
-#[derive(Debug, Args)]
-#[command(
-    about = "Show the status of a training run",
-    after_help = "Examples:\n  fastskill skillopt status .skillopt/runs/2026-06-02T14-00-00Z\n  fastskill skillopt status .skillopt/runs/2026-06-02T14-00-00Z --watch"
-)]
+#[derive(Debug)]
 pub struct StatusArgs {
     /// Path to the run directory
     pub run_dir: PathBuf,
 
     /// Poll and re-render every ~2 seconds
-    #[arg(long)]
     pub watch: bool,
+}
+
+impl IntoCommandSpec for StatusArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Show the status of a training run",
+            syntax: Some("skillopt status <run-dir> [--watch]"),
+            args: vec![
+                ArgSpec {
+                    name: "run-dir",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Path to the run directory",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "watch",
+                    kind: ArgKind::Flag,
+                    long: Some("watch"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Poll and re-render every ~2 seconds",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for StatusArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            run_dir: match map.get("run-dir") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'run-dir' missing from validated map"),
+            },
+            watch: matches!(map.get("watch"), Some(ArgValue::Bool(true))),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

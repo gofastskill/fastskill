@@ -1,22 +1,66 @@
 //! `fastskill skillopt export` subcommand
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill skillopt export`
-#[derive(Debug, Args)]
-#[command(
-    about = "Export the best skill document from a completed run",
-    after_help = "Examples:\n  fastskill skillopt export .skillopt/runs/2026-06-02T14-00-00Z --out ./SKILL.md"
-)]
+#[derive(Debug)]
 pub struct ExportArgs {
     /// Path to the run directory
     pub run_dir: PathBuf,
 
     /// Destination path for the exported skill document
-    #[arg(long, required = true)]
     pub out: PathBuf,
+}
+
+impl IntoCommandSpec for ExportArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Export the best skill document from a completed run",
+            syntax: Some("skillopt export <run-dir> --out <path>"),
+            args: vec![
+                ArgSpec {
+                    name: "run-dir",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Path to the run directory",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "out",
+                    kind: ArgKind::Option,
+                    long: Some("out"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Destination path for the exported skill document",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for ExportArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            run_dir: match map.get("run-dir") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'run-dir' missing from validated map"),
+            },
+            out: match map.get("out") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'out' missing from validated map"),
+            },
+        }
+    }
 }
 
 pub async fn execute_export(args: ExportArgs) -> CliResult<()> {

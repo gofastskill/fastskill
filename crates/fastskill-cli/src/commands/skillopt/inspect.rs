@@ -1,35 +1,100 @@
 //! `fastskill skillopt inspect` subcommand
 
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill skillopt inspect`
-#[derive(Debug, Args)]
-#[command(
-    about = "Inspect per-step artifacts from a training run",
-    after_help = "Examples:\n  fastskill skillopt inspect .skillopt/runs/2026-06-02T14-00-00Z --step 3\n  fastskill skillopt inspect .skillopt/runs/2026-06-02T14-00-00Z --step 3 --show diffs"
-)]
+#[derive(Debug)]
 pub struct InspectArgs {
     /// Path to the run directory
     pub run_dir: PathBuf,
 
     /// Step number to inspect
-    #[arg(long, required = true)]
     pub step: u32,
 
     /// What to show
-    #[arg(long, value_enum, default_value = "all")]
     pub show: ShowMode,
 }
 
-#[derive(Debug, Clone, clap::ValueEnum)]
+#[derive(Debug, Clone)]
 pub enum ShowMode {
     Patches,
     Diffs,
     Gate,
     Skips,
     All,
+}
+
+impl IntoCommandSpec for InspectArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Inspect per-step artifacts from a training run",
+            syntax: Some("skillopt inspect <run-dir> --step <n> [--show <mode>]"),
+            args: vec![
+                ArgSpec {
+                    name: "run-dir",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Path to the run directory",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "step",
+                    kind: ArgKind::Option,
+                    long: Some("step"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Required,
+                    help: "Step number to inspect",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "show",
+                    kind: ArgKind::Option,
+                    long: Some("show"),
+                    value_type: ArgValueType::Enum(vec![
+                        "patches", "diffs", "gate", "skips", "all",
+                    ]),
+                    cardinality: Cardinality::Optional,
+                    default: Some(ArgValue::Enum("all".to_string())),
+                    help: "What to show: patches, diffs, gate, skips, or all",
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for InspectArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            run_dir: match map.get("run-dir") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'run-dir' missing from validated map"),
+            },
+            step: match map.get("step") {
+                Some(ArgValue::Int(i)) => *i as u32,
+                _ => panic!("framework bug: required 'step' missing from validated map"),
+            },
+            show: match map.get("show") {
+                Some(ArgValue::Enum(s)) | Some(ArgValue::Str(s)) => match s.as_str() {
+                    "patches" => ShowMode::Patches,
+                    "diffs" => ShowMode::Diffs,
+                    "gate" => ShowMode::Gate,
+                    "skips" => ShowMode::Skips,
+                    _ => ShowMode::All,
+                },
+                _ => ShowMode::All,
+            },
+        }
+    }
 }
 
 pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {

@@ -2,18 +2,48 @@
 
 use super::config::{build_run_config, load_suite_with_splits, validate_config, SkillOptToml};
 use crate::error::{CliError, CliResult};
-use clap::Args;
+use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
+use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
+use cli_framework::spec::command_tree::CommandSpec;
+use cli_framework::spec::value::ArgValue;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Arguments for `fastskill skillopt resume`
-#[derive(Debug, Args)]
-#[command(
-    about = "Resume an interrupted optimization run",
-    after_help = "Examples:\n  fastskill skillopt resume .skillopt/runs/2026-06-02T14-00-00Z"
-)]
+#[derive(Debug)]
 pub struct ResumeArgs {
     /// Path to the run directory to resume
     pub run_dir: PathBuf,
+}
+
+impl IntoCommandSpec for ResumeArgs {
+    fn command_spec() -> CommandSpec {
+        CommandSpec {
+            summary: "Resume an interrupted optimization run",
+            syntax: Some("skillopt resume <run-dir>"),
+            args: vec![ArgSpec {
+                name: "run-dir",
+                kind: ArgKind::Positional,
+                value_type: ArgValueType::String,
+                cardinality: Cardinality::Required,
+                help: "Path to the run directory to resume",
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+}
+
+#[allow(clippy::panic)]
+impl FromArgValueMap for ResumeArgs {
+    fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        Self {
+            run_dir: match map.get("run-dir") {
+                Some(ArgValue::Str(s)) => PathBuf::from(s),
+                _ => panic!("framework bug: required 'run-dir' missing from validated map"),
+            },
+        }
+    }
 }
 
 pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {

@@ -22,6 +22,7 @@ pub fn arg(name: &'static str, kind: ArgKind, value_type: ArgValueType) -> ArgSp
         conflicts_with: vec![],
         requires: vec![],
         help: "",
+        ..Default::default()
     }
 }
 
