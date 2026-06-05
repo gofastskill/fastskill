@@ -70,7 +70,7 @@ cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "76a83e0
 validator = { version = "0.20", features = ["derive"] }
 
 # SQLite for vector index
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # SHA256 hashing for file integrity
 sha2 = "0.10"

@@ -90,7 +90,6 @@ pub async fn execute_serve(
     );
 
     println!("FastSkill HTTP server starting...");
-    println!("  Listening on: http://{}:{}", args.host, args.port);
 
     let server =
         fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, args.port);

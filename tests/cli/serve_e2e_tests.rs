@@ -273,6 +273,52 @@ fn test_serve_health_endpoints() {
 }
 
 #[test]
+fn test_serve_starts_without_skill_project_toml() {
+    if !can_bind_localhost_or_skip() {
+        return;
+    }
+
+    // Create a temp dir with NO skill-project.toml
+    let temp_dir = TempDir::new().unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+        .args(&["serve", "--port", "18086"])
+        .current_dir(temp_dir.path())
+        .spawn()
+        .expect("Failed to start server");
+
+    assert!(
+        wait_for_port(18086, 5),
+        "Server failed to start on port 18086 without skill-project.toml"
+    );
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let client = reqwest::Client::new();
+
+    let health_status = rt.block_on(async {
+        client
+            .get("http://127.0.0.1:18086/healthz")
+            .send()
+            .await
+            .expect("GET /healthz")
+            .status()
+    });
+    assert_eq!(health_status, reqwest::StatusCode::OK, "/healthz should return 200 without skill-project.toml");
+
+    let ready_status = rt.block_on(async {
+        client
+            .get("http://127.0.0.1:18086/readyz")
+            .send()
+            .await
+            .expect("GET /readyz")
+            .status()
+    });
+    assert_eq!(ready_status, reqwest::StatusCode::OK, "/readyz should return 200 without skill-project.toml");
+
+    child.kill().expect("Failed to kill server");
+}
+
+#[test]
 fn test_serve_port_already_in_use_error() {
     if !can_bind_localhost_or_skip() {
         return;
