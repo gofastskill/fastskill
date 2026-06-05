@@ -1,4 +1,4 @@
-//! `fastskill skillopt status` subcommand
+//! `fastskill optimize status` subcommand
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Arguments for `fastskill skillopt status`
+/// Arguments for `fastskill optimize status`
 #[derive(Debug)]
 pub struct StatusArgs {
     /// Path to the run directory
@@ -23,7 +23,7 @@ impl IntoCommandSpec for StatusArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Show the status of a training run",
-            syntax: Some("skillopt status <run-dir> [--watch]"),
+            syntax: Some("optimize status <run-dir> [--watch]"),
             args: vec![
                 ArgSpec {
                     name: "run-dir",
@@ -81,7 +81,7 @@ struct StepRecordView {
 pub async fn execute_status(args: StatusArgs) -> CliResult<()> {
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_MISSING: run directory not found: {}",
+            "OPTIMIZE_RUN_DIR_MISSING: run directory not found: {}",
             args.run_dir.display()
         )));
     }
@@ -103,7 +103,7 @@ fn render_status(run_dir: &Path) -> CliResult<()> {
 
     if !state_path.exists() || !history_path.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_CORRUPT: missing runtime_state.json or history.json in: {}",
+            "OPTIMIZE_RUN_DIR_CORRUPT: missing runtime_state.json or history.json in: {}",
             run_dir.display()
         )));
     }
@@ -111,7 +111,7 @@ fn render_status(run_dir: &Path) -> CliResult<()> {
     let state_bytes = std::fs::read(&state_path).map_err(CliError::Io)?;
     let state: RuntimeStateView = serde_json::from_slice(&state_bytes).map_err(|e| {
         CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_CORRUPT: malformed runtime_state.json: {e}"
+            "OPTIMIZE_RUN_DIR_CORRUPT: malformed runtime_state.json: {e}"
         ))
     })?;
 

@@ -1,4 +1,4 @@
-//! `fastskill skillopt export` subcommand
+//! `fastskill optimize export` subcommand
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -8,7 +8,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill skillopt export`
+/// Arguments for `fastskill optimize export`
 #[derive(Debug)]
 pub struct ExportArgs {
     /// Path to the run directory
@@ -22,7 +22,7 @@ impl IntoCommandSpec for ExportArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Export the best skill document from a completed run",
-            syntax: Some("skillopt export <run-dir> --out <path>"),
+            syntax: Some("optimize export <run-dir> --out <path>"),
             args: vec![
                 ArgSpec {
                     name: "run-dir",
@@ -66,7 +66,7 @@ impl FromArgValueMap for ExportArgs {
 pub async fn execute_export(args: ExportArgs) -> CliResult<()> {
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_RUN_DIR_MISSING: run directory not found: {}",
+            "OPTIMIZE_RUN_DIR_MISSING: run directory not found: {}",
             args.run_dir.display()
         )));
     }
@@ -74,7 +74,7 @@ pub async fn execute_export(args: ExportArgs) -> CliResult<()> {
     let best_skill_path = args.run_dir.join("best_skill.md");
     if !best_skill_path.exists() {
         return Err(CliError::Config(format!(
-            "SKILLOPT_EXPORT_BEST_MISSING: best_skill.md not found in run directory: {}",
+            "OPTIMIZE_EXPORT_BEST_MISSING: best_skill.md not found in run directory: {}",
             args.run_dir.display()
         )));
     }

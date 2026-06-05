@@ -1,4 +1,4 @@
-//! CLI integration tests for skillopt commands
+//! CLI integration tests for optimize commands
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
@@ -12,17 +12,17 @@ use tempfile::TempDir;
 
 #[test]
 fn test_skillopt_help() {
-    let result = run_fastskill_command(&["skillopt", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "--help"], None);
     assert!(result.success);
-    assert_snapshot_with_settings("skillopt_help", &result.stdout, &cli_snapshot_settings());
+    assert_snapshot_with_settings("optimize_help", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
 fn test_skillopt_run_help() {
-    let result = run_fastskill_command(&["skillopt", "run", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "run", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
-        "skillopt_run_help",
+        "optimize_run_help",
         &result.stdout,
         &cli_snapshot_settings(),
     );
@@ -30,10 +30,10 @@ fn test_skillopt_run_help() {
 
 #[test]
 fn test_skillopt_resume_help() {
-    let result = run_fastskill_command(&["skillopt", "resume", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "resume", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
-        "skillopt_resume_help",
+        "optimize_resume_help",
         &result.stdout,
         &cli_snapshot_settings(),
     );
@@ -41,10 +41,10 @@ fn test_skillopt_resume_help() {
 
 #[test]
 fn test_skillopt_status_help() {
-    let result = run_fastskill_command(&["skillopt", "status", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "status", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
-        "skillopt_status_help",
+        "optimize_status_help",
         &result.stdout,
         &cli_snapshot_settings(),
     );
@@ -52,10 +52,10 @@ fn test_skillopt_status_help() {
 
 #[test]
 fn test_skillopt_inspect_help() {
-    let result = run_fastskill_command(&["skillopt", "inspect", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "inspect", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
-        "skillopt_inspect_help",
+        "optimize_inspect_help",
         &result.stdout,
         &cli_snapshot_settings(),
     );
@@ -63,10 +63,10 @@ fn test_skillopt_inspect_help() {
 
 #[test]
 fn test_skillopt_export_help() {
-    let result = run_fastskill_command(&["skillopt", "export", "--help"], None);
+    let result = run_fastskill_command(&["optimize", "export", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
-        "skillopt_export_help",
+        "optimize_export_help",
         &result.stdout,
         &cli_snapshot_settings(),
     );
@@ -77,7 +77,7 @@ fn test_skillopt_export_help() {
 #[test]
 fn test_skillopt_run_config_missing() {
     let result = run_fastskill_command(
-        &["skillopt", "run", "--config", "/tmp/nonexistent-skillopt-config-xyz.toml"],
+        &["optimize", "run", "--config", "/tmp/nonexistent-skillopt-config-xyz.toml"],
         None,
     );
     assert!(!result.success);
@@ -95,7 +95,7 @@ fn test_skillopt_run_no_selection_cases() {
     let suite_csv = "id,prompt,should_trigger,tags\ntrain-1,hello,true,train\n";
     fs::write(base.join("suite.csv"), suite_csv).unwrap();
 
-    // Write a valid skillopt.toml
+    // Write a valid config
     let toml = r#"
 skill = "SKILL.md"
 skill_name = "test-skill"
@@ -121,7 +121,7 @@ timeout_seconds = 30
 
     let result = run_fastskill_command(
         &[
-            "skillopt",
+            "optimize",
             "run",
             "--config",
             config_path.to_str().unwrap(),
@@ -131,8 +131,8 @@ timeout_seconds = 30
     assert!(!result.success);
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        combined.contains("SKILLOPT_NO_SELECTION_CASES"),
-        "Expected SKILLOPT_NO_SELECTION_CASES in: {}",
+        combined.contains("OPTIMIZE_NO_SELECTION_CASES"),
+        "Expected OPTIMIZE_NO_SELECTION_CASES in: {}",
         combined
     );
 }
@@ -167,7 +167,7 @@ timeout_seconds = 30
 
     let result = run_fastskill_command(
         &[
-            "skillopt",
+            "optimize",
             "run",
             "--config",
             config_path.to_str().unwrap(),
@@ -212,7 +212,7 @@ timeout_seconds = 30
 
     let result = run_fastskill_command(
         &[
-            "skillopt",
+            "optimize",
             "run",
             "--config",
             config_path.to_str().unwrap(),
@@ -233,14 +233,14 @@ timeout_seconds = 30
 #[test]
 fn test_skillopt_resume_missing_run_dir() {
     let result = run_fastskill_command(
-        &["skillopt", "resume", "/tmp/nonexistent-skillopt-run-dir-xyz"],
+        &["optimize", "resume", "/tmp/nonexistent-skillopt-run-dir-xyz"],
         None,
     );
     assert!(!result.success);
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        combined.contains("SKILLOPT_RUN_DIR_MISSING"),
-        "Expected SKILLOPT_RUN_DIR_MISSING in: {}",
+        combined.contains("OPTIMIZE_RUN_DIR_MISSING"),
+        "Expected OPTIMIZE_RUN_DIR_MISSING in: {}",
         combined
     );
 }
@@ -251,7 +251,7 @@ fn test_skillopt_export_missing_best_skill() {
     // Run dir exists but has no best_skill.md
     let result = run_fastskill_command(
         &[
-            "skillopt",
+            "optimize",
             "export",
             dir.path().to_str().unwrap(),
             "--out",
@@ -262,8 +262,8 @@ fn test_skillopt_export_missing_best_skill() {
     assert!(!result.success);
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        combined.contains("SKILLOPT_EXPORT_BEST_MISSING"),
-        "Expected SKILLOPT_EXPORT_BEST_MISSING in: {}",
+        combined.contains("OPTIMIZE_EXPORT_BEST_MISSING"),
+        "Expected OPTIMIZE_EXPORT_BEST_MISSING in: {}",
         combined
     );
 }
@@ -281,7 +281,7 @@ fn test_skillopt_export_byte_identical() {
     let out_path = dir.path().join("exported_skill.md");
     let result = run_fastskill_command(
         &[
-            "skillopt",
+            "optimize",
             "export",
             dir.path().to_str().unwrap(),
             "--out",

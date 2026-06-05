@@ -1,0 +1,19 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Resume an interrupted optimization run
+
+Usage: fastskill optimize resume [OPTIONS] <run-dir>
+
+Arguments:
+  <run-dir>  Path to the run directory to resume
+
+Options:
+      --skills-dir <skills-dir>  Override the skills directory path
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+  -v, --verbose                  Enable verbose output
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: optimize resume <run-dir>

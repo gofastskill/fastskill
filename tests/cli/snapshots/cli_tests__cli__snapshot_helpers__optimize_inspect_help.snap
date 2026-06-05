@@ -1,0 +1,21 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Inspect per-step artifacts from a training run
+
+Usage: fastskill optimize inspect [OPTIONS] --step <step> <run-dir>
+
+Arguments:
+  <run-dir>  Path to the run directory
+
+Options:
+      --skills-dir <skills-dir>  Override the skills directory path
+      --step <step>              Step number to inspect
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --show <show>              What to show: patches, diffs, gate, skips, or all [possible: patches|diffs|gate|skips|all] [default: all]
+  -v, --verbose                  Enable verbose output
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: optimize inspect <run-dir> --step <n> [--show <mode>]

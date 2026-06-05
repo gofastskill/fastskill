@@ -1,0 +1,20 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Export the best skill document from a completed run
+
+Usage: fastskill optimize export [OPTIONS] --out <out> <run-dir>
+
+Arguments:
+  <run-dir>  Path to the run directory
+
+Options:
+      --out <out>                Destination path for the exported skill document
+      --skills-dir <skills-dir>  Override the skills directory path
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+  -v, --verbose                  Enable verbose output
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: optimize export <run-dir> --out <path>
