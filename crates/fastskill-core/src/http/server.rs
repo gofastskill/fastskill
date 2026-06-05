@@ -412,14 +412,24 @@ impl FastSkillServer {
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
         // Load project configuration (same as previous create_router logic)
         let current_dir = env::current_dir()?;
-        let project_config = crate::core::load_project_config(&current_dir)
-            .map_err(|e| format!("Failed to load project config: {}", e))?;
+        let project_config = crate::core::load_project_config(&current_dir).ok();
+        if project_config.is_none() {
+            tracing::warn!(
+                "No skill-project.toml found in {} or any parent. \
+                 Project-level features (manifest, skills install) will be unavailable. \
+                 Run `fastskill init` in your project root to create one.",
+                current_dir.display()
+            );
+        }
 
-        let state = AppState::new(self.service.clone())?.with_project_config(
-            project_config.project_root,
-            project_config.project_file_path,
-            project_config.skills_directory,
-        );
+        let mut state = AppState::new(self.service.clone())?;
+        if let Some(cfg) = project_config {
+            state = state.with_project_config(
+                cfg.project_root,
+                cfg.project_file_path,
+                cfg.skills_directory,
+            );
+        }
 
         // Build versioned v1 router with compression (applied to fastskill routes only)
         let v1_router = Router::new()
@@ -484,6 +494,7 @@ impl FastSkillServer {
         info!("Starting FastSkill HTTP server on {}", self.addr);
 
         let addr_str = self.addr.to_string();
+        println!("  Listening on: http://{}", self.addr);
         server.serve(&addr_str).await?;
 
         Ok(())
