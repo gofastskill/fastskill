@@ -12,7 +12,7 @@ The FastSkill Registry Web UI provides a user-friendly interface for browsing, s
 Start the server with the registry enabled:
 
 ```bash
-fastskill serve --enable-registry
+fastskill serve
 ```
 
 Then open `http://localhost:8080/registry` in your browser.
@@ -88,11 +88,11 @@ For sources with hundreds of skills, the UI uses virtual scrolling to:
 
 The UI uses the following API endpoints:
 
-- `GET /api/registry/sources` - List all sources
-- `GET /api/registry/skills` - Get all skills from all sources
-- `GET /api/registry/sources/:name/skills` - Get skills from specific source
-- `POST /api/skills` - Install a skill
-- `DELETE /api/skills/:id` - Uninstall a skill
+- `GET /api/v1/registry/sources` - List all sources
+- `GET /api/v1/registry/skills` - Get all skills from all sources
+- `GET /api/v1/registry/sources/{name}/skills` - Get skills from specific source
+- `POST /api/v1/skills` - Install a skill
+- `DELETE /api/v1/skills/{id}` - Uninstall a skill
 
 ## Performance
 

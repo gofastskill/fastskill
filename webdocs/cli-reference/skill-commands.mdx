@@ -126,28 +126,7 @@ Adds a new slide to an existing presentation.
 - Read-only operation (does not execute scripts or modify data)
 - Only works with already-installed skills
 
-# PPTX Skill
-
-This skill provides tools for creating and editing PowerPoint presentations.
-
-Skill read: pptx
-```
-
-**Use Cases**:
-- Load skill documentation into agent context
-- Resolve skill resources (scripts, references, assets)
-- Check skill availability programmatically
-
-**Error Handling**:
-- Exit code 0: Success
-- Exit code 1: Skill not found or invalid identifier
-- Exit code 2: System error (file access, size limit exceeded)
-
-**Limitations**:
-- Maximum file size: 500KB for SKILL.md files
-- Single skill per invocation
-- Read-only operation (does not execute scripts or modify data)
-- Only works with already-installed skills
+You can also run `fastskill <skill-id>` with no subcommand; it routes to the same read behavior.
 
 ### fastskill install
 
@@ -205,24 +184,6 @@ fastskill update --dry-run
 - `--version <VERSION>`: Update to specific version
 - `--source <SOURCE>`: Update from specific source
 - `--strategy <STRATEGY>`: Update strategy: latest, patch, minor, major (default: latest)
-
-### fastskill update
-
-Update skills in the skills storage directory to their latest versions from source. The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
-
-```bash
-# Update all skills
-fastskill update
-
-# Update specific skill
-fastskill update my-skill-id
-
-# Check for updates without installing
-fastskill update --check
-
-# Show what would be updated
-fastskill update --dry-run
-```
 
 ### fastskill show
 
@@ -300,6 +261,10 @@ fastskill remove my-skill-id --force
 fastskill remove skill1 skill2 skill3
 ```
 
+**Options**:
+- `--force`, `-f`: Skip confirmation
+- `--skills-dir <PATH>`: Override skills directory
+
 ### fastskill repos
 
 Manage skill repositories and browse remote skill catalog for discovering and installing skills.
@@ -357,6 +322,8 @@ fastskill list --format xml
 **Options**:
 - `--format <table|json|grid|xml>`: Output format (default: table)
 - `--json`: Shorthand for --format json (mutually exclusive with --format)
+- `--details`: Extra columns (version, paths, reconciliation detail)
+- `--skills-dir <PATH>`: Override skills directory for this invocation
 
 **Example JSON Output**:
 ```json
@@ -387,24 +354,6 @@ fastskill disable text-processor
 fastskill disable skill1 skill2 skill3
 ```
 
-### fastskill remove
-
-Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`.
-
-```bash
-# Remove skill (with confirmation)
-fastskill remove my-skill-id
-
-# Force removal without confirmation
-fastskill remove my-skill-id --force
-
-# Remove multiple skills
-fastskill remove skill1 skill2 skill3
-```
-
-**Options**:
-- `--force`: Force removal without confirmation prompt
-
 ## Examples
 
 ### Skill Development Workflow
@@ -426,7 +375,7 @@ fastskill update my-skill
 fastskill disable my-skill
 
 # 6. Remove skill
-fastskill remove my-skill --confirm
+fastskill remove my-skill --force
 ```
 
 ### Batch Operations

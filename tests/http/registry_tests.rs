@@ -1,5 +1,20 @@
 //! Tests for registry API endpoints
-
+//!
+//! All registry HTTP API endpoints are served under `/api/v1/registry/…` after
+//! the migration from the flat unversioned `/api/…` namespace.
+//!
+//! Versioned registry API URL reference (post-migration):
+//!   GET  /api/v1/registry/index/skills
+//!   GET  /api/v1/registry/sources
+//!   GET  /api/v1/registry/skills
+//!   GET  /api/v1/registry/sources/{name}/skills
+//!   GET  /api/v1/registry/sources/{name}/marketplace
+//!   POST /api/v1/registry/refresh
+//!   POST /api/v1/registry/publish
+//!   GET  /api/v1/registry/publish/status/{job_id}
+//!
+//! The raw index surface remains unchanged at /index/{*skill_id} (not /api/v1/…).
+//!
 // Note: These are placeholder tests - actual integration tests would require
 // a running server and mock marketplace.json responses
 // Full implementation would use tokio-test and http mocking

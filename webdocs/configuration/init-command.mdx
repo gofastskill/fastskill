@@ -205,7 +205,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install FastSkill
-        run: cargo install fastskill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 
       - name: Initialize FastSkill
         env:

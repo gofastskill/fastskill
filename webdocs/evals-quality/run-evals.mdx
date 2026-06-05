@@ -1,0 +1,57 @@
+---
+title: "Run Evals"
+description: "Operational guide for running, reporting, and scoring FastSkill eval suites."
+---
+
+# Run Evals
+
+This workflow is the day-to-day path for quality checks.
+
+## Run the suite
+
+```bash
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
+```
+
+Common focused runs:
+
+```bash
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --tag smoke
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --case login-happy-path
+```
+
+## Summarize the run
+
+```bash
+fastskill eval report --run-dir ./.fastskill/eval-runs/<run-id>
+```
+
+Use this for release notes and quick stakeholder review.
+
+## Re-score without re-running agent
+
+```bash
+fastskill eval score --run-dir ./.fastskill/eval-runs/<run-id>
+```
+
+Use this when scoring logic changed and you want consistency across previous runs.
+
+## CI usage pattern
+
+```bash
+fastskill eval validate --agent codex
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
+fastskill eval report --run-dir ./.fastskill/eval-runs/<run-id> --json
+```
+
+## Practical gating policy
+
+- Block merge if smoke tag fails
+- Block release if full suite fails
+- Keep per-tag pass-rate trends to detect slow quality drift
+
+## See also
+
+- [Eval setup](/evals-quality/setup)
+- [Cluster analysis](/evals-quality/cluster-analysis)
+- [eval command](/cli-reference/eval-command)

@@ -5,80 +5,21 @@ description: "Comprehensive guide to validating FastSkill skill definitions incl
 
 ## Overview
 
-Skill validation ensures that skills are properly defined, secure, and ready for production use. FastSkill provides multiple levels of validation to catch issues early in the development process.
+Skill validation means checking that each skill installs cleanly, exposes the metadata agents expect, and matches what your `skill-project.toml` declares.
 
 <Info>
 Validation happens at multiple stages: definition validation, registration validation, and runtime validation.
 </Info>
 
-## Validation Types
+## What FastSkill checks
 
-### 1. Structure Validation
+- **Layout**: a `SKILL.md` file with readable YAML frontmatter at the skill root
+- **Identifiers**: skill ids that work on disk and in manifests (letters, numbers, `-`, `_`)
+- **Versions**: semantic versions where a version is required (for example `1.2.0`)
+- **Paths**: references that resolve under the skill directory
+- **Consistency**: `fastskill list` compares installed files with `skill-project.toml` and `skills.lock`
 
-Validates that skill definitions follow the correct schema and format:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
-use std::path::PathBuf;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ServiceConfig {
-        skill_storage_path: PathBuf::from("./skills"),
-        ..Default::default()
-    };
-
-    let mut service = FastSkillService::new(config).await?;
-    service.initialize().await?;
-
-    // Create skill definition
-    let skill = SkillDefinition::new(
-        SkillId::new("text-processor".to_string())?,
-        "Text Processor".to_string(),
-        "Process text documents".to_string(),
-        "1.0.0".to_string(),
-    );
-
-    // Validation happens automatically during registration
-    match service.skill_manager().register_skill(skill).await {
-        Ok(_) => println!("✅ Skill definition is structurally valid"),
-        Err(e) => {
-            println!("❌ Validation error: {}", e);
-            // Fix the issues before proceeding
-        }
-    }
-
-    service.shutdown().await?;
-    Ok(())
-}
-```
-
-### 2. Security Validation
-
-FastSkill performs basic security validation during skill registration:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig, SkillDefinition, SkillId};
-use std::path::PathBuf;
-
-// Security validation happens automatically during registration
-// The service checks for:
-// - Valid skill ID format (alphanumeric, dashes, underscores only)
-// - Valid file paths
-// - Safe skill file references
-```
-
-### 3. Structure Validation
-
-FastSkill validates skill structure during registration:
-
-```rust
-// Validation checks include:
-// - Required fields (id, name, description, version)
-// - Valid skill ID format
-// - Valid version format (semantic versioning)
-// - File path validity
-```
+Run `fastskill install` or `fastskill add …` to surface validation errors before agents load a skill.
 
 ## Validation Rules
 
@@ -176,115 +117,20 @@ Installing skills...
 Fix issues and try again.
 ```
 
-## Batch Validation
+## Check everything installed
 
-Validate multiple skills efficiently:
-
-```rust
-use fastskill::{FastSkillService, ServiceConfig};
-use std::path::PathBuf;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ServiceConfig {
-        skill_storage_path: PathBuf::from("./skills"),
-        ..Default::default()
-    };
-
-    let mut service = FastSkillService::new(config).await?;
-    service.initialize().await?;
-
-    // Get all skills
-    let skills = service.skill_manager().list_skills(None).await?;
-
-    // Validate all skills by attempting to get them
-    let mut valid_count = 0;
-    let mut invalid_count = 0;
-
-    for skill in skills {
-        match service.skill_manager().get_skill(&skill.id).await {
-            Ok(Some(_)) => {
-                valid_count += 1;
-            }
-            Ok(None) | Err(_) => {
-                invalid_count += 1;
-                eprintln!("Invalid skill: {}", skill.id);
-            }
-        }
-    }
-
-    println!("📊 Validation Results:");
-    println!("   ✅ Valid skills: {}", valid_count);
-    println!("   ❌ Invalid skills: {}", invalid_count);
-
-    service.shutdown().await?;
-    Ok(())
-}
+```bash
+fastskill list
+fastskill show
 ```
 
-## Integration with CI/CD
-
-### GitHub Actions
-
-```yaml
-# .github/workflows/validate-skills.yml
-name: Validate Skills
-on:
-  push:
-    paths:
-      - 'skills/**'
-  pull_request:
-    paths:
-      - 'skills/**'
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-
-    - name: Install FastSkill
-      run: |
-        cd tools/fastskill/rust
-        cargo install --path . --bin fastskill --features git-support
-
-    - name: Validate skills
-      run: |
-        # List skills to verify they can be loaded
-        fastskill show
-        
-    - name: Check skill structure
-      run: |
-        # Skills are validated automatically when registered
-        # This step ensures skills can be discovered and loaded
-        fastskill search "test" || true
-```
-
-### Pre-commit Hooks
-
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: local
-    hooks:
-      - id: check-skills
-        name: Verify skill installation
-        entry: fastskill list
-        language: system
-        files: ^skill-project\.toml$
-        pass_filenames: false
-```
+If you use automation, run the same commands after `fastskill install` or `fastskill install --lock` so broken skills fail the job early. See [CI/CD integration](/integration/cicd-pipelines) for runner outlines without repository-specific install paths.
 
 ## Best Practices
 
 <Steps>
-<Step title="Validate early and often">
-  Run validation as part of your development workflow, not just before deployment.
+<Step title="Validate after every manifest change">
+  Run `fastskill install` and `fastskill list` whenever `skill-project.toml` or skills change.
 </Step>
 
 <Step title="Use multiple validation levels">
@@ -299,8 +145,8 @@ repos:
   Track validation success rates and common issues to improve skill quality over time.
 </Step>
 
-<Step title="Document validation rules">
-  Maintain clear documentation of your validation rules and requirements for skill contributors.
+<Step title="Write expectations in your team handbook">
+  Capture which registries, groups, and approval steps apply to your org so skill owners know what "valid" means for you.
 </Step>
 </Steps>
 

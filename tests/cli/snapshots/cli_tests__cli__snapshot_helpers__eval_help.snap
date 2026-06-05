@@ -1,0 +1,21 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Evaluation commands for skill quality assurance
+
+Usage: fastskill eval <COMMAND>
+
+Commands:
+  validate  Validate eval configuration and files
+  run       Run eval cases against an agent
+  report    Show a report for a completed eval run
+  score     Re-score saved eval artifacts without running the agent again
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+Examples:
+  fastskill eval validate
+  fastskill eval run --agent codex --output-dir [TEMP_DIR]

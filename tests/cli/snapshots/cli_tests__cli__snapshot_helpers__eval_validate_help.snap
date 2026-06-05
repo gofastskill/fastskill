@@ -1,0 +1,20 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Validate eval configuration and files
+
+Usage: fastskill eval validate [OPTIONS]
+
+Options:
+  -a, --agent <AGENT>    Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+      --all              Target all runtimes discovered by aikit (mutually exclusive with --agent)
+      --format <FORMAT>  Output format: table, json, grid, xml
+      --json             Shorthand for --format json
+  -h, --help             Print help
+
+Examples:
+  fastskill eval validate
+  fastskill eval validate --agent codex
+  fastskill eval validate --agent codex --agent claude
+  fastskill eval validate --all

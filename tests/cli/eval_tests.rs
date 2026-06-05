@@ -1,0 +1,994 @@
+//! CLI integration tests for eval commands
+
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+
+use super::snapshot_helpers::{
+    assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
+    run_fastskill_command_with_env,
+};
+
+#[test]
+fn test_eval_help() {
+    let result = run_fastskill_command(&["eval", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings("eval_help", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_eval_validate_help() {
+    let result = run_fastskill_command(&["eval", "validate", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings(
+        "eval_validate_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
+fn test_eval_run_help() {
+    let result = run_fastskill_command(&["eval", "run", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings("eval_run_help", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_eval_report_help() {
+    let result = run_fastskill_command(&["eval", "report", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings("eval_report_help", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_eval_score_help() {
+    let result = run_fastskill_command(&["eval", "score", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings("eval_score_help", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_eval_run_requires_agent() {
+    let result = run_fastskill_command(&["eval", "run", "--output-dir", "/tmp/evals"], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("--agent") || combined.contains("agent"),
+        "Expected error about missing --agent, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_requires_output_dir() {
+    let result = run_fastskill_command(&["eval", "run", "--agent", "codex"], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("--output-dir")
+            || combined.contains("output-dir")
+            || combined.contains("output_dir"),
+        "Expected error about missing --output-dir, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_rejects_unsupported_agent() {
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "unsupported-agent-xyz",
+            "--output-dir",
+            "/tmp/evals",
+        ],
+        None,
+    );
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("unsupported-agent-xyz") || combined.contains("not a supported agent"),
+        "Expected error about unsupported agent, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_no_project_file() {
+    use tempfile::TempDir;
+    let dir = TempDir::new().unwrap();
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("skill-project.toml") || combined.contains("EVAL_CONFIG_MISSING"),
+        "Expected error about missing skill-project.toml, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_no_eval_config() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_CONFIG_MISSING") || combined.contains("eval"),
+        "Expected EVAL_CONFIG_MISSING error, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_with_eval_config() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    // Create evals directory and prompts.csv
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+
+    // Create SKILL.md so it's detected as skill context
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+
+    // Create skill-project.toml with eval config
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(
+        result.success,
+        "Expected eval validate to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("valid") || result.stdout.contains("prompts"),
+        "Expected valid output, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_eval_validate_invalid_csv_missing_column() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    // CSV missing required 'should_trigger' column
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt\ntest-1,\"Test prompt\"\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(
+        !result.success,
+        "Expected eval validate to fail due to missing CSV column"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_INVALID_CSV") || combined.contains("should_trigger"),
+        "Expected EVAL_INVALID_CSV error, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_invalid_checks_toml() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    // Invalid TOML syntax
+    fs::write(
+        evals_dir.join("checks.toml"),
+        "[[check]\nname = broken toml {\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(
+        !result.success,
+        "Expected eval validate to fail due to invalid checks TOML"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_CHECKS_INVALID")
+            || combined.contains("TOML")
+            || combined.contains("toml"),
+        "Expected EVAL_CHECKS_INVALID error, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_with_counts_in_json_output() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\ntest-2,\"Another prompt\",false,\"\",\n",
+    )
+    .unwrap();
+    fs::write(
+        evals_dir.join("checks.toml"),
+        "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+    )
+    .unwrap();
+
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate", "--json"], Some(dir.path()));
+    assert!(
+        result.success,
+        "Expected eval validate to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let output: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(output["valid"], true);
+    assert_eq!(output["case_count"], 2);
+    assert_eq!(output["check_count"], 1);
+}
+
+#[test]
+fn test_eval_report_requires_run_dir() {
+    let result = run_fastskill_command(&["eval", "report"], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("--run-dir") || combined.contains("run-dir"),
+        "Expected error about missing --run-dir, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_score_requires_run_dir() {
+    let result = run_fastskill_command(&["eval", "score"], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("--run-dir") || combined.contains("run-dir"),
+        "Expected error about missing --run-dir, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_report_nonexistent_run_dir() {
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "report",
+            "--run-dir",
+            "/tmp/nonexistent-fastskill-eval-dir-xyz123",
+        ],
+        None,
+    );
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_ARTIFACTS_CORRUPT") || combined.contains("not exist"),
+        "Expected error about nonexistent dir, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_persists_event_trace_jsonl() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrace-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    // Create a fake `agent` executable so aikit_sdk::is_agent_available("agent") succeeds.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trace-case",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    let run_dir = summary["run_dir"].as_str().unwrap();
+    let trace_path = std::path::Path::new(run_dir)
+        .join("trace-case")
+        .join("trial-1")
+        .join("trace.jsonl");
+    let trace_jsonl = fs::read_to_string(&trace_path).unwrap();
+
+    assert!(
+        trace_jsonl.contains("\"type\":\"raw_json\""),
+        "expected persisted trace.jsonl to contain raw_json event, got: {}",
+        trace_jsonl
+    );
+
+    let result_path = std::path::Path::new(run_dir)
+        .join("trace-case")
+        .join("trial-1")
+        .join("result.json");
+    let case_result: Value =
+        serde_json::from_str(&fs::read_to_string(result_path).unwrap()).unwrap();
+    assert_eq!(case_result["command_count"], 1);
+}
+
+#[test]
+fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrial-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    // Fake agent that passes the first 3 invocations, then fails.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nstate_dir=\"${FASTSKILL_TEST_STATE_DIR:?}\"\nmkdir -p \"$state_dir\"\nlock=\"$state_dir/lock\"\ncount_file=\"$state_dir/count\"\nexec 9>\"$lock\"\nflock 9\ncount=0\nif [[ -f \"$count_file\" ]]; then count=$(cat \"$count_file\" || echo 0); fi\ncount=$((count+1))\necho \"$count\" > \"$count_file\"\nflock -u 9\n# Emit a raw_json line so trace persists and command_count=1.\necho '{\"event\":\"ok\"}'\nif [[ $count -le 3 ]]; then exit 0; else exit 1; fi\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let state_dir = dir.path().join("state");
+    let env_vars = vec![
+        ("PATH", merged_path.as_str()),
+        ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+    ];
+
+    // Threshold 0.6 should pass for 3/5.
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trial-case",
+            "--trials",
+            "5",
+            "--threshold",
+            "0.6",
+            "--ci",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run to succeed in CI mode at threshold=0.6, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(summary["cases"][0]["id"], "trial-case");
+    assert_eq!(summary["cases"][0]["status"], "passed");
+    assert_eq!(summary["cases"][0]["pass_count"], 3);
+    assert_eq!(summary["cases"][0]["total_trials"], 5);
+
+    // Reset state and require 100% suite pass rate should fail in --ci mode.
+    fs::remove_file(state_dir.join("count")).ok();
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "trial-case",
+            "--trials",
+            "5",
+            "--threshold",
+            "1.0",
+            "--ci",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "Expected eval run to fail in CI mode at threshold=1.0"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("threshold") || combined.contains("Eval suite failed"),
+        "Expected threshold-related failure, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_parallelism_reduces_wall_time() {
+    use std::env;
+    use std::fs;
+    use std::time::Instant;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nsleep-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nparallel = 4\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nsleep 0.5\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let start = Instant::now();
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "sleep-case",
+            "--trials",
+            "4",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    let elapsed = start.elapsed();
+    assert!(
+        result.success,
+        "Expected eval run to succeed, got stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    // If trials executed sequentially with sleep(0.5), 4 trials would take ~2s.
+    // With parallel=4, it should be comfortably below that.
+    assert!(
+        elapsed.as_secs_f64() < 1.6,
+        "Expected parallel trials to complete faster; elapsed={:?}",
+        elapsed
+    );
+}
+
+// ─── RFC-055: new runtime-selection primitive tests ─────────────────────────
+
+#[test]
+fn test_eval_run_conflicting_flags() {
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "codex",
+            "--all",
+            "--output-dir",
+            "/tmp/evals",
+        ],
+        None,
+    );
+    assert!(!result.success, "eval run --agent codex --all must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_CONFLICTING_FLAGS"),
+        "Expected RUNTIME_CONFLICTING_FLAGS, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_unknown_runtime_id() {
+    use tempfile::TempDir;
+    let dir = TempDir::new().unwrap();
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "invalid-runtime-xyz",
+            "--output-dir",
+            dir.path().to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(!result.success, "eval run with unknown runtime must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_UNKNOWN_ID"),
+        "Expected RUNTIME_UNKNOWN_ID, got: {}",
+        combined
+    );
+    assert!(
+        combined.contains("invalid-runtime-xyz"),
+        "Error must name the unknown runtime, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_no_selection_error() {
+    let result = run_fastskill_command(&["eval", "run", "--output-dir", "/tmp/evals"], None);
+    assert!(!result.success, "eval run without --agent or --all must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_NO_SELECTION") || combined.contains("--agent") || combined.contains("agent"),
+        "Expected RUNTIME_NO_SELECTION or mention of --agent, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_run_all_flag() {
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nall-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    // Create a fake "agent" binary so at least one runtime is available.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    // Use --no-fail because most runtimes won't be available in CI.
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--all",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--no-fail",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "eval run --all with --no-fail must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+}
+
+#[test]
+fn test_eval_validate_conflicting_flags() {
+    let result = run_fastskill_command(
+        &["eval", "validate", "--agent", "codex", "--all"],
+        None,
+    );
+    assert!(!result.success, "eval validate --agent codex --all must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_CONFLICTING_FLAGS"),
+        "Expected RUNTIME_CONFLICTING_FLAGS, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_unknown_runtime_id() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "validate", "--agent", "invalid-runtime-xyz"],
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "eval validate with unknown runtime must fail"
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_UNKNOWN_ID"),
+        "Expected RUNTIME_UNKNOWN_ID, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_validate_all_flag() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["eval", "validate", "--all"], Some(dir.path()));
+    assert!(
+        result.success,
+        "eval validate --all must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("valid") || result.stdout.contains("prompts"),
+        "Expected valid output, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_eval_run_json_output_contains_agent_field() {
+    use serde_json::Value;
+    use std::env;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nagent-json-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("agent");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+
+    let output_dir = dir.path().join("out");
+    let path = env::var("PATH").unwrap_or_default();
+    let merged_path = format!("{}:{}", bin_dir.display(), path);
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "agent",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "Expected eval run --json to succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert!(
+        summary.get("agent").is_some(),
+        "JSON summary must contain 'agent' field; got: {}",
+        summary
+    );
+    assert_eq!(
+        summary["agent"].as_str().unwrap(),
+        "agent",
+        "JSON 'agent' field must match the requested agent"
+    );
+}
+
+#[test]
+fn test_eval_validate_agent_flag() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let result =
+        run_fastskill_command(&["eval", "validate", "--agent", "codex"], Some(dir.path()));
+    assert!(
+        result.success,
+        "eval validate --agent codex must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("valid") || result.stdout.contains("prompts"),
+        "Expected valid output, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_eval_report_displays_token_info_when_present() {
+    use std::fs;
+    use tempfile::TempDir;
+    use fastskill_evals::artifacts::{
+        CaseStatus, CaseSummary, SummaryResult, write_summary,
+    };
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("run");
+    fs::create_dir_all(&run_dir).unwrap();
+
+    let summary = SummaryResult {
+        suite_pass: true,
+        suite_pass_rate: Some(1.0),
+        agent: "agent".to_string(),
+        model: None,
+        total_cases: 1,
+        passed: 1,
+        failed: 0,
+        trials_per_case: Some(1),
+        parallel: None,
+        pass_threshold: Some(1.0),
+        run_dir: run_dir.clone(),
+        checks_path: None,
+        skill_project_root: dir.path().to_path_buf(),
+        cases: vec![CaseSummary {
+            id: "token-case".to_string(),
+            status: CaseStatus::Passed,
+            command_count: Some(1),
+            input_tokens: Some(1234),
+            output_tokens: Some(567),
+            pass_count: Some(1),
+            total_trials: Some(1),
+            pass_rate: Some(1.0),
+            trials: vec![],
+        }],
+    };
+    write_summary(&run_dir, &summary).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "report", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        result.success,
+        "eval report must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("in=1234") && result.stdout.contains("out=567"),
+        "eval report must display token totals when present; got: {}",
+        result.stdout
+    );
+}

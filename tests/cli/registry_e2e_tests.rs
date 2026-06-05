@@ -2,7 +2,7 @@
 //!
 //! These tests execute the CLI binary and verify actual behavior.
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::snapshot_helpers::{
     assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,

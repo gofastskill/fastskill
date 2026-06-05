@@ -1,0 +1,19 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Run skill optimization from a config file
+
+Usage: fastskill optimize run [OPTIONS] --config <config>
+
+Options:
+      --config <config>          Path to optimize config file
+      --skills-dir <skills-dir>  Override the skills directory path
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --out-dir <out-dir>        Override the out_dir from the config file
+      --resume <resume>          Resume from this run directory instead of starting fresh
+  -v, --verbose                  Enable verbose output
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: optimize run --config <path> [--out-dir <dir>] [--resume <run-dir>]

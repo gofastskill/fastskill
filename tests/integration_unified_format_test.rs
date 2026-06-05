@@ -267,7 +267,7 @@ test-skill = "1.0.0"
     let entries = project.to_skill_entries().unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].id, "test-skill");
-    assert_eq!(entries[0].version, Some("1.0.0".to_string()));
+    assert_eq!(entries[0].version, "1.0.0".to_string());
 
     // Test 5: Verify skill-project.toml with all sections
     let full_project = SkillProjectToml {

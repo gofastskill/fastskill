@@ -36,7 +36,7 @@ fastskill serve --host 0.0.0.0 --port 3000
 
 ## Authentication Model
 
-`fastskill serve` runs as a local development server and does not enforce built-in JWT authentication.
+`fastskill serve` binds an HTTP server on your machine and does not enforce built-in JWT authentication.
 
 - No token endpoint is exposed
 - API routes do not require `Authorization` or `x-api-key` headers
@@ -44,18 +44,65 @@ fastskill serve --host 0.0.0.0 --port 3000
 
 If you expose the server on a shared or untrusted network, use network controls or a reverse proxy.
 
+## API Base Path
+
+All application routes are served under the versioned `/api/v1/…` namespace. Requests to the
+unversioned `/api/…` prefix are automatically redirected with HTTP 308 to the corresponding
+`/api/v1/…` path, providing a non-breaking migration path for older clients.
+
+## Health Probes
+
+The server exposes two standard health endpoints immediately after startup:
+
+- `GET /healthz` — Liveness probe. Returns HTTP 200 with a JSON body containing the fastskill
+  crate version, e.g. `{"status":"ok","version":"0.9.118"}`.
+- `GET /readyz` — Readiness probe. Returns HTTP 200 when the server is ready to accept traffic.
+  Returns HTTP 503 while graceful shutdown is in progress.
+
+These endpoints are suitable for use with container orchestrators (Kubernetes, ECS, Docker).
+
+## Response Headers
+
+Every `/api/v1/…` response includes:
+
+- `X-API-Version: v1` — Identifies the API version that served the request.
+
+## Graceful Shutdown
+
+Sending `SIGINT` (Ctrl-C) or `SIGTERM` causes the server to:
+
+1. Flip `/readyz` to HTTP 503 so load balancers stop routing new traffic.
+2. Drain in-flight requests to completion.
+3. Stop the background `ValidationWorker` (if registry is configured).
+4. Exit cleanly with exit code 0.
+
 ## Core Endpoints
 
-- `GET /` - Web UI
-- `GET /api/status` - Service status
-- `GET /api/project` - Project view
-- `GET /api/skills` - List skills
-- `POST /api/search` - Search skills
-- `POST /api/reindex` - Reindex skills
-- `POST /api/registry/publish` - Publish package (anonymous scope)
-- `GET /api/registry/publish/status/:job_id` - Publish job status
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/status` | GET | Service status and uptime |
+| `/api/v1/project` | GET | Project view from `skill-project.toml` |
+| `/api/v1/skills` | GET | List installed skills |
+| `/api/v1/skills` | POST | Install a skill |
+| `/api/v1/skills/{id}` | GET/PUT/DELETE | Get, update, or remove a skill |
+| `/api/v1/skills/upgrade` | POST | Upgrade skills |
+| `/api/v1/search` | POST | Search skills |
+| `/api/v1/reindex` | POST | Reindex all skills |
+| `/api/v1/reindex/{id}` | POST | Reindex a specific skill |
+| `/api/v1/registry/publish` | POST | Publish package (anonymous scope) |
+| `/api/v1/registry/publish/status/{job_id}` | GET | Publish job status |
+| `/api/v1/registry/sources` | GET | List registry sources |
+| `/api/v1/manifest/skills` | GET/POST | Manifest skill management |
+| `/v1/skills` | GET/POST/DELETE | Claude-API compatible skills surface (unchanged) |
+| `/index/{*skill_id}` | GET | Raw skill index (unchanged) |
+| `/healthz` | GET | Liveness probe |
+| `/readyz` | GET | Readiness probe |
+
+## Redirect Behavior
+
+`GET /api/skills` → HTTP 308 → `GET /api/v1/skills` (and similarly for all `/api/…` paths).
 
 ## See Also
 
-- [API Reference](/api-reference/overview)
+- [CLI Reference Overview](/cli-reference/overview)
 - [publish Command](/cli-reference/publish-command)

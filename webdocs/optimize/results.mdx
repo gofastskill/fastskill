@@ -1,0 +1,134 @@
+---
+title: "Inspecting and Exporting Results"
+description: "Drill into step artifacts to understand what changed, and export the best skill document."
+---
+
+# Inspecting and Exporting Results
+
+## Inspect a step
+
+After a run completes (or while it's running), use `inspect` to see exactly what happened at any step:
+
+```bash
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7
+```
+
+This prints all artifacts for step 7 by default (`--show all`):
+
+- **Patch** — the JSON diff the optimizer proposed
+- **Skill diff** — a unified diff of the skill document before and after
+- **Gate scores** — the before/after scores that drove the accept/reject decision
+- **Skips** — any eval cases that were skipped this step (e.g. due to timeout)
+
+### Show only what you need
+
+```bash
+# Show only the unified diff
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7 --show diffs
+
+# Show only gate scores
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7 --show gate
+
+# Show only the patch JSON
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7 --show patches
+
+# Show skipped cases
+fastskill optimize inspect .skillopt/runs/<timestamp> --step 7 --show skips
+```
+
+`--show` options:
+
+| Value | Output |
+|---|---|
+| `all` (default) | Everything: patch, diff, gate scores, skips |
+| `patches` | The raw JSON patch the optimizer proposed |
+| `diffs` | Unified diff of `skill_before.md` vs `skill_after.md` |
+| `gate` | Gate scores JSON (before/after scores and accept/reject decision) |
+| `skips` | Cases skipped in this step |
+
+### Interpreting gate scores
+
+A typical `gate_scores.json` looks like this:
+
+```json
+{
+  "score_before": 0.67,
+  "score_after": 0.74,
+  "delta": 0.07,
+  "epsilon": 0.02,
+  "accepted": true,
+  "trials": 3
+}
+```
+
+If `delta < epsilon`, the patch is rejected. If the step was rejected, the skill document is rolled back to the `skill_before.md` state.
+
+### Finding a step to inspect
+
+Use `status` to read the history table first, then pick the step with the largest positive delta or the last accepted step before a regression:
+
+```bash
+fastskill optimize status .skillopt/runs/<timestamp>
+```
+
+---
+
+## Export the best skill
+
+When you're happy with the results, export the best skill document to your skills directory:
+
+```bash
+fastskill optimize export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
+```
+
+This copies `best_skill.md` from the run directory to the destination path. Parent directories are created if they don't exist. The output is byte-identical to the run directory copy.
+
+**Note:** `best_skill.md` is the highest-scoring skill document seen across all accepted steps — not necessarily the final step. If the last few steps were rejected, `best_skill.md` reflects the best earlier checkpoint.
+
+---
+
+## Comparing multiple runs
+
+To compare two runs side by side:
+
+```bash
+# Check final best score for each
+fastskill optimize status .skillopt/runs/run-A
+fastskill optimize status .skillopt/runs/run-B
+
+# Diff the best skill documents directly
+diff \
+  .skillopt/runs/run-A/best_skill.md \
+  .skillopt/runs/run-B/best_skill.md
+```
+
+---
+
+## Artifacts reference
+
+Every step directory contains the same set of files:
+
+| File | Description |
+|---|---|
+| `patch.json` | Structured patch proposed by the optimizer agent |
+| `gate_scores.json` | Before/after scores, delta, epsilon, accept/reject, trial count |
+| `skips.json` | Array of case IDs skipped this step (timeout, error, etc.) |
+| `skill_before.md` | Full skill document text before applying the patch |
+| `skill_after.md` | Full skill document text after applying the patch |
+
+Top-level run files:
+
+| File | Description |
+|---|---|
+| `skillopt.toml` | Provenance copy of the config used for this run |
+| `runtime_state.json` | Current best score, epoch, global step (updated live) |
+| `history.json` | Array of step records: step index, accepted, scores, tokens |
+| `best_skill.md` | The best skill document seen across all accepted steps |
+
+---
+
+## See also
+
+- [Running and monitoring](/optimize/running)
+- [Configuration reference](/optimize/configuration)
+- [Skill Optimization overview](/optimize/overview)

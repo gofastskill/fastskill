@@ -1,0 +1,21 @@
+[package]
+name = "fastskill-evals"
+version.workspace = true
+edition.workspace = true
+description = "Standalone eval infrastructure for agent task evaluation"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["eval", "agent", "ai", "testing", "fastskill"]
+categories = ["development-tools::testing"]
+
+[dependencies]
+fastskill-core = { path = "../fastskill-core", default-features = false, features = ["filesystem-storage"] }
+aikit-evals.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

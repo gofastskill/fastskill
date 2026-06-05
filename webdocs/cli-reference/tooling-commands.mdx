@@ -1,0 +1,98 @@
+---
+title: "Sync, marketplace, and analyze"
+description: "CLI reference for fastskill sync, fastskill marketplace, and fastskill analyze."
+---
+
+## fastskill sync
+
+Writes installed skills into the agent metadata file (Claude Code / compatible layouts). Agent and file path are auto-detected when omitted.
+
+```bash
+fastskill sync
+fastskill sync --yes
+fastskill sync --agent claude
+fastskill sync --agents-file custom.md
+```
+
+| Option | Description |
+|--------|-------------|
+| `-y, --yes` | Non-interactive: include all installed skills |
+| `-a, --agent <AGENT>` | Target agent (optional; auto-detected) |
+| `--agents-file <PATH>` | Override metadata file path |
+
+## fastskill marketplace
+
+### marketplace create
+
+Scans a directory for skills (folders with `SKILL.md`) and writes `marketplace.json`.
+
+```bash
+fastskill marketplace create --path ./skills --name my-marketplace
+fastskill marketplace create -p . -o .claude-plugin/marketplace.json --name "My Marketplace"
+```
+
+| Option | Description |
+|--------|-------------|
+| `-p, --path <DIR>` | Root to scan (default: `.`) |
+| `-o, --output <FILE>` | Output path (default under `.claude-plugin/` in the scan directory) |
+| `--base-url <URL>` | Base URL for download links |
+| `--name <NAME>` | **Required.** Marketplace name |
+| `--owner-name`, `--owner-email`, `--description`, `--version` | Optional metadata |
+
+## fastskill analyze
+
+Requires a running service context (installed skills and index) like other service commands.
+
+### analyze matrix
+
+Pairwise similarity between indexed skills.
+
+```bash
+fastskill analyze matrix
+fastskill analyze matrix --threshold 0.8 --limit 5
+fastskill analyze matrix --full --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--format <FORMAT>` | `table`, `json`, `grid`, `xml` |
+| `--json` | Shorthand for `--format json` |
+| `--threshold <0..1>` | Minimum similarity to show (default `0.0`) |
+| `-l, --limit <N>` | Similar skills per skill (default `10`) |
+| `--full` | Show all pairs instead of condensed view |
+
+### analyze cluster
+
+Groups skills by semantic similarity.
+
+```bash
+fastskill analyze cluster
+fastskill analyze cluster -k 8 --min-size 2 --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-k, --num-clusters <N>` | Number of clusters (default `5`) |
+| `--min-size <N>` | Hide smaller clusters (default `1`) |
+| `--format`, `--json` | Output selection |
+
+### analyze duplicates
+
+Finds near-duplicate skills.
+
+```bash
+fastskill analyze duplicates
+fastskill analyze duplicates --threshold 0.92 --severity critical
+```
+
+| Option | Description |
+|--------|-------------|
+| `--threshold <0..1>` | Minimum similarity (default `0.88`) |
+| `--limit <N>` | Max pairs to show (default `20`) |
+| `--severity <LEVEL>` | `all`, `medium`, `high`, or `critical` |
+| `--format`, `--json` | Output selection |
+
+## See also
+
+- [Discovery commands](/cli-reference/discovery-commands) (search, reindex)
+- [Repository command](/cli-reference/repository-command) (`repos`)

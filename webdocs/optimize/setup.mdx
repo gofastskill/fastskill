@@ -1,0 +1,107 @@
+---
+title: "Setup: Eval Data and Grading"
+description: "Prepare the suite CSV and checks TOML that drive skill optimization."
+---
+
+# Setup: Eval Data and Grading
+
+Before you run `fastskill optimize`, you need two data files:
+
+1. **Suite CSV** — the eval cases the optimizer learns from.
+2. **Checks TOML** — the grading rules that score each response. _(Optional but strongly recommended.)_
+
+## 1. Create the suite CSV
+
+The suite is a CSV file with one row per eval case. Required columns:
+
+| Column | Required | Description |
+|---|---|---|
+| `id` | Yes | Unique stable identifier for the case. Used in progress reporting and step artifacts. |
+| `prompt` | Yes | The user message sent to the target agent. |
+| `should_trigger` | Yes | `true` if the skill should activate on this prompt, `false` if not. |
+| `split` | No | `train` or `test`. Defaults to `train` if absent. |
+| `tags` | No | Comma-separated tags. You can encode split as `split:train` here instead. |
+
+**Example `suite.csv`:**
+
+```csv
+id,prompt,should_trigger,split
+case-001,Deploy the app to production,true,train
+case-002,Show me the logs for the last hour,true,train
+case-003,What is the capital of France?,false,train
+case-004,Restart the web service,true,test
+case-005,Write me a poem,false,test
+```
+
+### Train vs test split
+
+The optimizer trains only on `train` rows. The `test` split is held out and used for gating final epoch updates. This prevents the optimizer from over-fitting to the exact prompts it learned from.
+
+**Rule:** You must have at least one `train` case (the `selection` set). If the suite has zero training cases, `fastskill optimize run` will exit with error `SKILLOPT_NO_SELECTION_CASES`.
+
+### Tips for writing cases
+
+- Keep prompts realistic — use the same phrasing a real user would.
+- Include both positive cases (`should_trigger: true`) and negative cases (`should_trigger: false`). A mix prevents the optimizer from making the skill trigger on everything.
+- Aim for 20–50 training cases for a focused skill, more for broader skills.
+- Assign 10–20% of cases to `test` for a meaningful hold-out gate.
+
+---
+
+## 2. Create the checks TOML (grading)
+
+Checks define what a "pass" looks like for each eval response. Without checks, the optimizer uses only `should_trigger` match as the signal, which is a weak grading signal.
+
+**Example `checks.toml`:**
+
+```toml
+[[check]]
+id = "trigger-match"
+type = "skill_triggered"
+weight = 1.0
+
+[[check]]
+id = "no-hallucination"
+type = "llm_rubric"
+prompt = "Does the response avoid making up facts? Answer yes or no."
+weight = 0.5
+
+[[check]]
+id = "concise"
+type = "llm_rubric"
+prompt = "Is the response concise and under 200 words? Answer yes or no."
+weight = 0.3
+```
+
+Check types:
+
+| Type | Description |
+|---|---|
+| `skill_triggered` | Passes if the skill triggered on a `should_trigger: true` case (or correctly didn't trigger on a `false` case). This is the primary signal. |
+| `llm_rubric` | Asks a judge model the `prompt` question and parses a yes/no answer. Use for quality dimensions beyond trigger accuracy. |
+
+Checks are scored and the weighted sum determines the per-case pass rate used by the gate.
+
+---
+
+## 3. Directory layout
+
+We recommend this layout to keep things organized:
+
+```
+my-skill/
+├── SKILL.md              # the seed skill you want to optimize
+├── optimize.toml         # optimize run config (see next page)
+└── evals/
+    ├── suite.csv         # eval cases
+    └── checks.toml       # grading rules
+```
+
+---
+
+## Next: configure the run
+
+Once you have your suite and checks files ready, write the `optimize.toml` config and start the run.
+
+- [Configuration reference](/optimize/configuration)
+- [Running and monitoring](/optimize/running)

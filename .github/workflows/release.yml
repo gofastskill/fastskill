@@ -126,13 +126,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # crates.io + pin avoids Cargo panicking on `cargo install --git` (LocalPool EnterError).
       - name: Install cross-rs
         if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --version 0.2.5 --locked
 
       - name: Build release binary (cross)
         if: matrix.use-cross
-        run: cross build --release --verbose --target ${{ matrix.target }} --no-default-features --features "filesystem-storage,hot-reload"
+        run: cross build --release --verbose --target ${{ matrix.target }} -p fastskill-cli -F vendored-openssl
         env:
           RUSTFLAGS: ""
 
@@ -339,6 +340,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
+          owner: ${{ github.repository_owner }}
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
@@ -477,6 +479,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
+          owner: ${{ github.repository_owner }}
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           repositories: homebrew-cli,scoop-bucket
@@ -529,7 +532,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/fastskill.rb
           git commit -m "chore: update fastskill to v${VERSION}"
-          git push "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" "$BRANCH"
+          git push --force "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/gofastskill/homebrew-cli.git" "$BRANCH"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

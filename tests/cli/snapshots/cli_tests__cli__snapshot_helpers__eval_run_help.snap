@@ -1,0 +1,29 @@
+---
+source: tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Run eval cases against an agent
+
+Usage: fastskill eval run [OPTIONS] --output-dir <OUTPUT_DIR>
+
+Options:
+  -a, --agent <AGENT>            Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
+      --all                      Target all runtimes discovered by aikit (mutually exclusive with --agent)
+      --output-dir <OUTPUT_DIR>  Output directory for artifacts (required)
+      --model <MODEL>            Optional model override forwarded to the agent
+      --case <CASE>              Filter: run only the case with this ID
+      --tag <TAG>                Filter: run only cases with this tag
+      --format <FORMAT>          Output format: table, json, grid, xml
+      --json                     Shorthand for --format json
+      --no-fail                  Do not fail with non-zero exit code on suite failure
+      --trials <TRIALS>          Override trials per case from config
+      --ci                       Enable CI mode: exit non-zero if suite pass rate below threshold
+      --threshold <THRESHOLD>    Override pass threshold (0.0-1.0)
+  -h, --help                     Print help
+
+Examples:
+  fastskill eval run --agent codex --output-dir [TEMP_DIR]
+  fastskill eval run --agent codex --agent claude --output-dir [TEMP_DIR]
+  fastskill eval run --all --output-dir [TEMP_DIR]
+  fastskill eval run --agent agent --output-dir ./evals --case my-case
+  fastskill eval run --agent codex --output-dir ./evals --tag basic

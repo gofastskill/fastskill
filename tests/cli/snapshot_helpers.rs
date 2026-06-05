@@ -213,6 +213,22 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         .replace_all(&result, "tcp connect error: [NETWORK_ERROR]")
         .to_string();
 
+    // reqwest 0.12 may stop error chains at "error sending request for url (...)"
+    // without including the lower-level socket error details.
+    result = regex::Regex::new(r"error sending request for url \(([^)]+)\)(?:\n|$)")
+        .unwrap()
+        .replace_all(
+            &result,
+            "error sending request for url ($1): error trying to connect: tcp connect error: [NETWORK_ERROR]\n",
+        )
+        .to_string();
+
+    // reqwest URL parser errors may now return only "builder error" without detail.
+    result = regex::Regex::new(r"builder error(?:\: invalid port number)?")
+        .unwrap()
+        .replace_all(&result, "builder error: invalid port number")
+        .to_string();
+
     // Ignore standalone network placeholders when transient git failures are logged on stdout.
     result = regex::Regex::new(r"(?m)^\[GIT_NETWORK_ERROR\]\n?")
         .unwrap()

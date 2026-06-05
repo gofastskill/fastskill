@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install FastSkill
-        run: cargo install fastskill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
       - name: Sync skills
         run: fastskill sync --agent claude --yes
       - name: Commit CLAUDE.md
@@ -63,3 +63,16 @@ directory contains at least one valid `SKILL.md`. Run `fastskill sync --agent cl
 
 **Wrong file detected:** If AGENTS.md exists alongside CLAUDE.md, fastskill picks
 AGENTS.md (it is checked first). Use `--agent claude` to force CLAUDE.md.
+
+## HTTP API
+
+When using `fastskill serve`, the Claude-compatible skills API surface is available at:
+
+- `GET /v1/skills` — list skills (Anthropic-compatible endpoint, URL unchanged)
+- `POST /v1/skills` — create/install a skill
+- `GET /v1/skills/{skill_id}` — get a specific skill
+- `DELETE /v1/skills/{skill_id}` — remove a skill
+- `GET /v1/skills/{skill_id}/versions` — list versions
+
+The internal application API has moved to `/api/v1/…` (e.g. `GET /api/v1/status`).
+The Claude-compatible `/v1/skills…` surface and the raw index `/index/…` URLs are unchanged.

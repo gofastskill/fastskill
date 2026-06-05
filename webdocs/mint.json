@@ -22,11 +22,6 @@
     },
     "anchors": [
         {
-            "name": "Community",
-            "icon": "slack",
-            "url": "https://join.slack.com/t/fastskill/shared_invite/zt-2example"
-        },
-        {
             "name": "GitHub",
             "icon": "github",
             "url": "https://github.com/gofastskill/fastskill"
@@ -40,59 +35,40 @@
                 "index",
                 "quickstart",
                 "installation",
-                "core-concepts",
                 "cheatsheet"
             ]
         },
         {
             "group": "Configuration",
             "pages": [
-                "configuration/init-command",
-                "configuration/service-config",
-                "configuration/environment",
-                "configuration/best-practices"
+                "configuration/init-command"
             ]
         },
         {
             "group": "Skill Management",
             "pages": [
-                "skill-management/registration",
                 "skill-management/manifest-system",
-                "skill-management/lifecycle",
                 "skill-management/validation",
-                "skill-management/hot-reloading"
+                "skill-management/reconciliation"
             ]
         },
         {
-            "group": "Discovery & Routing",
+            "group": "Evals & Quality",
             "pages": [
-                "discovery/skill-discovery",
-                "discovery/intelligent-routing",
-                "search/embedding-search"
+                "evals-quality/overview",
+                "evals-quality/setup",
+                "evals-quality/run-evals",
+                "evals-quality/cluster-analysis"
             ]
         },
         {
-            "group": "Tool Calling",
+            "group": "Skill Optimization",
             "pages": [
-                "tool-calling/available-tools",
-                "tool-calling/execution",
-                "tool-calling/development"
-            ]
-        },
-        {
-            "group": "Progressive Loading",
-            "pages": [
-                "progressive-loading/strategies",
-                "progressive-loading/cache-management",
-                "progressive-loading/performance"
-            ]
-        },
-        {
-            "group": "API Reference",
-            "pages": [
-                "api-reference/overview",
-                "api-reference/claude-code-v1-api",
-                "api-reference/authentication"
+                "optimize/overview",
+                "optimize/setup",
+                "optimize/configuration",
+                "optimize/running",
+                "optimize/results"
             ]
         },
         {
@@ -101,7 +77,6 @@
                 "cli-reference/overview",
                 "cli-reference/skill-commands",
                 "cli-reference/discovery-commands",
-                "cli-reference/sources-command",
                 "cli-reference/auth-command",
                 "cli-reference/init-command",
                 "cli-reference/install-command",
@@ -111,7 +86,9 @@
                 "cli-reference/reindex-command",
                 "cli-reference/search-command",
                 "cli-reference/serve-command",
-                "cli-reference/repository-command"
+                "cli-reference/repository-command",
+                "cli-reference/eval-command",
+                "cli-reference/tooling-commands"
             ]
         },
         {
@@ -126,32 +103,19 @@
             ]
         },
         {
-            "group": "Examples & Tutorials",
-            "pages": [
-                "examples/basic-examples",
-                "examples/integration-tutorials",
-                "examples/advanced-patterns",
-                "examples/notebooks"
-            ]
-        },
-        {
             "group": "Advanced Topics",
             "pages": [
                 "security/model",
-                "security/best-practices",
-                "skill-management/reconciliation",
-                "advanced-topics/event-system",
-                "advanced-topics/build-systems",
-                "advanced-topics/feature-flags",
-                "testing/framework",
-                "testing/debugging"
+                "security/best-practices"
             ]
         },
         {
             "group": "Integration",
             "pages": [
                 "integration/cursor-integration",
-                "integration/kubernetes-deployment"
+                "integration/claude-code-integration",
+                "integration/cicd-pipelines",
+                "integration/blob-storage"
             ]
         }
     ],

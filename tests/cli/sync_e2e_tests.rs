@@ -430,22 +430,19 @@ fn test_sync_error_for_unsupported_agent() {
     )
     .unwrap();
 
-    // Copilot is a known agent key (validate_agent_key passes) but it has no instruction_file
-    // in the catalog, so instruction_file_with_override returns UnsupportedConcept
+    // "copilot" is not a runnable agent (not in runnable_agents()); the shared resolver
+    // now returns RUNTIME_UNKNOWN_ID before reaching instruction_file_with_override.
     let result = run_fastskill_command(
         &["sync", "--yes", "--agent", "copilot"],
         Some(temp_dir.path()),
     );
 
     assert!(!result.success, "sync with --agent copilot must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        result.stdout.contains("does not support metadata files")
-            || result.stderr.contains("does not support metadata files"),
-        "error must explain that copilot does not support metadata files"
-    );
-    assert!(
-        result.stdout.contains("--agents-file") || result.stderr.contains("--agents-file"),
-        "error must suggest --agents-file as alternative"
+        combined.contains("RUNTIME_UNKNOWN_ID") || combined.contains("copilot"),
+        "error must identify the unknown agent, got: {}",
+        combined
     );
 }
 
@@ -461,16 +458,18 @@ fn test_sync_error_for_unknown_agent_key() {
     )
     .unwrap();
 
-    // An entirely unknown key must be rejected by the pre-flight validate_agent_key check
+    // An unknown runtime ID must be rejected by resolve_runtime_selection via RUNTIME_UNKNOWN_ID.
     let result = run_fastskill_command(
         &["sync", "--yes", "--agent", "notarealkey"],
         Some(temp_dir.path()),
     );
 
     assert!(!result.success, "sync with unknown agent key must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
-        result.stdout.contains("Invalid agent key") || result.stderr.contains("Invalid agent key"),
-        "error must identify the bad key"
+        combined.contains("RUNTIME_UNKNOWN_ID") || combined.contains("notarealkey"),
+        "error must identify the unknown runtime, got: {}",
+        combined
     );
 }
 
@@ -560,5 +559,191 @@ Test skill content.
         "sync_no_agents_md_creates_file",
         &result.stdout,
         &cli_snapshot_settings(),
+    );
+}
+
+// ─── RFC-055: new runtime-selection primitive tests ─────────────────────────
+
+#[test]
+fn test_sync_all_flag_succeeds() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(&["sync", "--all", "--yes"], Some(temp_dir.path()));
+
+    assert!(
+        result.success,
+        "sync --all must succeed when runtimes are available; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    // At least one metadata file must have been written (e.g. CLAUDE.md for "claude" runtime).
+    let has_any_metadata = temp_dir.path().join("CLAUDE.md").exists()
+        || temp_dir.path().join("AGENTS.md").exists()
+        || temp_dir.path().join("GEMINI.md").exists();
+    assert!(
+        has_any_metadata,
+        "sync --all must write at least one metadata file"
+    );
+}
+
+#[test]
+fn test_sync_conflicting_flags_error() {
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["sync", "--agent", "claude", "--all", "--yes"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success, "sync --agent claude --all must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_CONFLICTING_FLAGS"),
+        "error must contain RUNTIME_CONFLICTING_FLAGS, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_sync_runtime_unknown_id_error() {
+    let temp_dir = TempDir::new().unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["sync", "--agent", "invalid-runtime-xyz", "--yes"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!result.success, "sync --agent invalid-runtime-xyz must fail");
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("RUNTIME_UNKNOWN_ID"),
+        "error must contain RUNTIME_UNKNOWN_ID, got: {}",
+        combined
+    );
+    assert!(
+        combined.contains("invalid-runtime-xyz"),
+        "error must name the unknown runtime, got: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_sync_no_flags_falls_back_to_auto_detect() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // No --agent, no --all, no --agents-file → falls back to aikit auto-detection (§15 row 2).
+    let result = run_fastskill_command(&["sync", "--yes"], Some(temp_dir.path()));
+
+    assert!(
+        result.success,
+        "sync --yes without --agent or --all must succeed via auto-detection; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+}
+
+#[test]
+fn test_sync_duplicate_agents_deduplicated() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // Passing --agent claude twice should deduplicate (write CLAUDE.md once without error).
+    let result = run_fastskill_command(
+        &["sync", "--agent", "claude", "--agent", "claude", "--yes"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        result.success,
+        "sync --agent claude --agent claude must succeed (deduplication); stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let claude_md = temp_dir.path().join("CLAUDE.md");
+    assert!(claude_md.exists(), "CLAUDE.md must be created");
+}
+
+#[test]
+fn test_sync_single_valid_agent_succeeds() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("test-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: test-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# Test Skill\n",
+    )
+    .unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["sync", "--agent", "claude", "--yes"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        result.success,
+        "sync --agent claude must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let claude_md = temp_dir.path().join("CLAUDE.md");
+    assert!(claude_md.exists(), "CLAUDE.md must be written by sync --agent claude");
+    let content = fs::read_to_string(&claude_md).unwrap();
+    assert!(
+        content.contains("<skills_system"),
+        "CLAUDE.md must contain skills section"
     );
 }

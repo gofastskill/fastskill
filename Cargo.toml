@@ -1,28 +1,28 @@
-[package]
-name = "fastskill"
-version = "0.9.96"
+[workspace]
+members = [
+    "crates/fastskill-evals",
+    "crates/fastskill-core",
+    "crates/fastskill-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.9.131"
 edition = "2021"
-description = "FastSkill is a AI Skills management tool"
 authors = ["aroff"]
 license = "Apache-2.0"
 repository = "https://github.com/aroff/fastskill"
-keywords = ["fastskill", "AI Skills", "ai tools", "anthropic", "claude"]
-categories = ["tools"]
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[[bin]]
-name = "fastskill"
-path = "src/bin/fastskill.rs"
-
-[dependencies]
+[workspace.dependencies]
 # aikit-sdk for agent metadata file resolution
-aikit-sdk = { git = "https://github.com/goaikit/aikit", branch = "main" }
+aikit-sdk = { git = "https://github.com/goaikit/aikit", rev = "ec112be4aaedaa0d08a11b4824d69bf082e2f5a5" }
+# aikit-evals provides the generic eval runner infrastructure
+aikit-evals = { git = "https://github.com/goaikit/aikit", rev = "ec112be4aaedaa0d08a11b4824d69bf082e2f5a5" }
+# aikit-skillopt provides the text-gradient skill optimization loop
+aikit-skillopt = { git = "https://github.com/goaikit/aikit", rev = "ec112be4aaedaa0d08a11b4824d69bf082e2f5a5" }
 
 # Async runtime
-tokio = { version = "1.0", features = ["rt-multi-thread", "net", "fs", "io-util", "macros", "process"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "net", "fs", "io-util", "macros", "process"] }
 async-trait = "0.1"
 futures = "0.3"
 
@@ -37,37 +37,40 @@ anyhow = "1.0"
 thiserror = "2.0"
 
 # Utilities
-uuid = { version = "1.0", default-features = false, features = ["v4", "serde"] }
+uuid = { version = "1.23", default-features = false, features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 once_cell = "1.19"
 regex = { version = "1.10", default-features = false, features = ["unicode-perl"] }
+num_cpus = "1.16"
 
 # File system and I/O
 tokio-util = { version = "0.7", features = ["io"] }
-notify = { version = "6.0", optional = true }
+notify = "6.0"
 walkdir = "2.5"
-fs2 = "0.4"  # Cross-platform file locking
+fs2 = "0.4"
 
 # Archive handling
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 # HTTP client for embedding API (rustls for musl compatibility)
-reqwest = { version = "0.11", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 
 # Multipart form data handling for skill uploads
 multer = "3.1"
 
 # HTTP server
-axum = { version = "0.7", features = ["macros", "json", "multipart"] }
+axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["util", "timeout", "limit"] }
-tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "fs"] }
 
+# CLI framework for versioned API server hosting
+cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "76a83e0d57e88b55e5f8c44fd3dffe1444443924", default-features = false, features = ["api-server"] }
 
 # Request validation
 validator = { version = "0.20", features = ["derive"] }
 
 # SQLite for vector index
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # SHA256 hashing for file integrity
 sha2 = "0.10"
@@ -80,51 +83,30 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
-config = "0.14"
+config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
 inquire = "0.7"
 
-# Git support removed - now uses system git binary
-
-# URL parsing for CLI
+# URL parsing
 url = "2.5"
 
 # File utilities
-tempfile = "3.0"
+tempfile = "3.27"
 
 # Directory utilities
 dirs = "6.0"
 
-# Embed static assets for installed binary (no filesystem static dir)
+# Embed static assets
 include_dir = "0.7"
 
 # Semantic versioning
 semver = "1.0"
 
-# AWS S3 storage (optional - only for registry publishing)
-aws-sdk-s3 = { version = "1", optional = true }
-aws-config = { version = "1", optional = true }
+# AWS S3 storage (for registry publishing)
+aws-sdk-s3 = "1"
+aws-config = "1"
 
-[dev-dependencies]
-tempfile = "3.0"
-wiremock = "0.5"
-insta = "1.34"
-assert_cmd = "2.0"
-predicates = "3.0"
-
-
-[features]
-default = ["filesystem-storage", "registry-publish"]
-
-# Storage backends
-filesystem-storage = []
-hot-reload = ["notify"]
-# git-support removed - git operations always available if system git is installed
-
-# Registry publishing (requires AWS SDK)
-registry-publish = ["aws-sdk-s3", "aws-config"]
-
-[lints.clippy]
+[workspace.lints.clippy]
 # Warn about critical lints that should be avoided in production code
 unwrap_used = "warn"
 expect_used = "warn"

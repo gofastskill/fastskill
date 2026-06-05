@@ -1,0 +1,50 @@
+# Changelog
+
+## [Unreleased]
+
+### Breaking Changes
+
+- **All internal API routes moved from `/api/<path>` to `/api/v1/<path>`.**
+  Affected endpoints include `/api/skills`, `/api/project`, `/api/status`, `/api/search`,
+  `/api/resolve`, `/api/reindex`, `/api/registry/…`, and `/api/manifest/…`.
+  Update any client URL strings from `/api/…` to `/api/v1/…`.
+  Unversioned `/api/…` requests are redirected with HTTP 308 to the corresponding `/api/v1/…`
+  path, providing a temporary migration bridge for existing clients.
+
+### Added
+
+- **Liveness probe** (`GET /healthz`): Returns HTTP 200 with JSON `{status, version}` where
+  `version` is the fastskill crate version. Suitable for Kubernetes, ECS, and Docker health checks.
+- **Readiness probe** (`GET /readyz`): Returns HTTP 200 when the server is ready to accept
+  traffic. Returns HTTP 503 while graceful shutdown is in progress.
+- **`X-API-Version: v1` response header**: Present on all `/api/v1/…` responses to identify
+  the API version that served the request.
+- **Graceful shutdown**: Sending SIGINT or SIGTERM causes the server to drain in-flight requests,
+  flip `/readyz` to 503, stop the `ValidationWorker` cleanly, and exit with code 0.
+
+### Fixed
+
+- **ValidationWorker leak**: The background validation task now exits cleanly when the server
+  shuts down. Previously, the task was leaked on SIGINT/SIGTERM.
+- **axum 0.8 route parameter syntax**: All route literals updated from `:param`/`*rest` (axum
+  0.7 syntax) to `{param}`/`{*rest}` (axum 0.8 syntax), fixing a latent panic on parameterised
+  routes at server startup.
+- **Compression scope**: gzip (`CompressionLayer`) is now applied only to versioned application
+  routes (`/api/v1/…`) rather than globally, leaving health probes and host routes uncompressed.
+
+### Preserved Contracts
+
+- `GET /v1/skills` and all `/v1/skills/{skill_id}/…` (Claude-compatible API surface) — URL
+  unchanged, served via `mount("/v1")`.
+- `GET /index/{*skill_id}` (raw skill index) — URL unchanged, served via `mount("/index")`.
+- Console UI static files (`/`, `/index.html`, `/app.js`, `/styles.css`, `/dashboard`) —
+  URLs unchanged.
+- `fastskill serve --host … --port …` CLI arguments — unchanged.
+
+### Dependencies
+
+- `tower-http` bumped from `0.5` to `0.6` (required for `CorsLayer` type compatibility with
+  cli-framework).
+- `cli-framework` added as a git dependency (`features = ["api-server"]`) providing the
+  versioned API server host.
+- `tokio-util` `"sync"` feature added for `CancellationToken` support.

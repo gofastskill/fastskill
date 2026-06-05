@@ -1,6 +1,6 @@
 ---
-title: repository
-api: "repository"
+title: "repos Command"
+description: "Manage skill repositories and browse the remote catalog with fastskill repos."
 ---
 
 # repos Command
@@ -75,7 +75,7 @@ fastskill repos add registry --repo-type http-registry https://api.example.com \
 
 # Add with API key
 fastskill repos add registry --repo-type http-registry https://api.example.com \
-  --auth-type api-key --auth-env API_KEY
+  --auth-type api_key --auth-env API_KEY
 ```
 
 **Options**:
@@ -86,7 +86,7 @@ fastskill repos add registry --repo-type http-registry https://api.example.com \
 | `--priority` | - | number | 0 | Lower number = higher priority (used for conflict resolution) |
 | `--branch` | - | string | none | Git branch to checkout (for git-marketplace) |
 | `--tag` | - | string | none | Git tag to checkout (for git-marketplace) |
-| `--auth-type` | - | string | none | Authentication type: `pat`, `ssh-key`, `ssh`, `basic`, or `api_key` |
+| `--auth-type` | - | string | none | Authentication type: `pat`, `ssh-key`, `ssh`, `basic`, or `api_key` (use underscore, not hyphen) |
 | `--auth-env` | - | string | none | Environment variable for PAT, password, or API key |
 | `--auth-key-path` | - | path | none | SSH key path for ssh-key or ssh auth |
 | `--auth-username` | - | string | none | Username for basic auth |
@@ -368,9 +368,8 @@ url = "https://github.com/team/skills.git"
 branch = "main"
 priority = 1
 
-[[tool.fastskill.repositories.repositories.auth]]
-type = "pat"
-env_var = "GITHUB_TOKEN"
+# Authentication is usually configured via CLI flags (--auth-type, --auth-env)
+# or your registry provider docs; avoid duplicating secrets in committed files.
 ```
 
 ## Authentication Types
@@ -420,7 +419,7 @@ env_var = "GITHUB_TOKEN"
   - Example:
     ```bash
     fastskill repos add registry --repo-type http-registry https://api.example.com \
-      --auth-type api-key --auth-env API_KEY
+      --auth-type api_key --auth-env API_KEY
     ```
 
 ## Multi-Source Skill Resolution
@@ -435,15 +434,14 @@ fastskill repos add local-dev --repo-type local ./skills --priority 2
 ```
 
 **Resolution process**:
-1. Skills are searched in priority order (0, 1, 2, ...)
-2. First match wins
-3. Higher priority sources override lower priority sources
-4. Useful for overriding public skills with custom versions
+1. Repositories are consulted in ascending priority order (0 before 1 before 2).
+2. The first repository that satisfies the lookup wins for that skill id.
+3. Lower numeric priority means earlier in that order (0 is tried before 10).
 
 **Example**:
 - `public-registry` (priority 0): `pptx v1.0.0`
 - `team-skills` (priority 1): `pptx v1.2.0`
-- Result: `pptx v1.0.0` is used (from higher priority source)
+- Result: `pptx v1.0.0` from `public-registry` is used because priority 0 is consulted first.
 
 ## Examples
 
