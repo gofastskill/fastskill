@@ -45,7 +45,20 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+source = "git+https://github.com/goaikit/aikit?rev=435a1132#435a1132859bbfaf2977c0fb0ce070c795525132"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "aikit-agent"
+version = "0.1.0"
+source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,9 +71,9 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+source = "git+https://github.com/goaikit/aikit?rev=435a1132#435a1132859bbfaf2977c0fb0ce070c795525132"
 dependencies = [
- "aikit-sdk",
+ "aikit-sdk 0.3.0 (git+https://github.com/goaikit/aikit?rev=435a1132)",
  "async-trait",
  "base64 0.22.1",
  "num_cpus",
@@ -75,9 +88,29 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+source = "git+https://github.com/goaikit/aikit?rev=435a1132#435a1132859bbfaf2977c0fb0ce070c795525132"
 dependencies = [
- "aikit-agent",
+ "aikit-agent 0.1.0 (git+https://github.com/goaikit/aikit?rev=435a1132)",
+ "dirs 6.0.0",
+ "glob",
+ "jsonschema",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "uuid",
+ "walkdir",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "aikit-sdk"
+version = "0.3.0"
+source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+dependencies = [
+ "aikit-agent 0.1.0 (git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132)",
  "dirs 6.0.0",
  "glob",
  "jsonschema",
@@ -95,10 +128,10 @@ dependencies = [
 [[package]]
 name = "aikit-skillopt"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+source = "git+https://github.com/goaikit/aikit?rev=435a1132#435a1132859bbfaf2977c0fb0ce070c795525132"
 dependencies = [
  "aikit-evals",
- "aikit-sdk",
+ "aikit-sdk 0.3.0 (git+https://github.com/goaikit/aikit?rev=435a1132)",
  "aikit-textgrad",
  "anyhow",
  "async-trait",
@@ -108,10 +141,10 @@ dependencies = [
 [[package]]
 name = "aikit-textgrad"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit?rev=ec112be4aaedaa0d08a11b4824d69bf082e2f5a5#ec112be4aaedaa0d08a11b4824d69bf082e2f5a5"
+source = "git+https://github.com/goaikit/aikit?rev=435a1132#435a1132859bbfaf2977c0fb0ce070c795525132"
 dependencies = [
  "aikit-evals",
- "aikit-sdk",
+ "aikit-sdk 0.3.0 (git+https://github.com/goaikit/aikit?rev=435a1132)",
  "anyhow",
  "async-trait",
  "serde",
@@ -1116,6 +1149,7 @@ name = "cli-framework"
 version = "0.4.2"
 source = "git+https://github.com/aroff/cli-framework?rev=76a83e0d57e88b55e5f8c44fd3dffe1444443924#76a83e0d57e88b55e5f8c44fd3dffe1444443924"
 dependencies = [
+ "aikit-sdk 0.3.0 (git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132)",
  "ailoop-core",
  "anyhow",
  "async-trait",
@@ -1852,7 +1886,7 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 name = "fastskill-cli"
 version = "0.9.133"
 dependencies = [
- "aikit-sdk",
+ "aikit-sdk 0.3.0 (git+https://github.com/goaikit/aikit?rev=435a1132)",
  "aikit-skillopt",
  "anyhow",
  "assert_cmd",

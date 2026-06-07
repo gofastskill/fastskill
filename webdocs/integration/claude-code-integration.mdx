@@ -64,6 +64,25 @@ directory contains at least one valid `SKILL.md`. Run `fastskill sync --agent cl
 **Wrong file detected:** If AGENTS.md exists alongside CLAUDE.md, fastskill picks
 AGENTS.md (it is checked first). Use `--agent claude` to force CLAUDE.md.
 
+## MCP Registration
+
+Register `fastskill` as an MCP server inside Claude Code with a single command:
+
+```bash
+# Register for the current project (stdio transport, recommended)
+fastskill mcp install --agent claude --stdio --scope project --overwrite
+
+# Register globally (writes to ~/.claude.json)
+fastskill mcp install --agent claude --stdio --scope global --overwrite
+
+# Preview the config change without writing any files
+fastskill mcp install --agent claude --stdio --dry-run
+```
+
+After running the command, reload Claude Code. The tools exposed by `fastskill mcp serve --transport stdio` will be callable from the agent.
+
+> **Deprecated:** Manually editing `~/.claude.json` or `.mcp.json` to add a `fastskill` MCP entry is deprecated. Use `fastskill mcp install` instead.
+
 ## HTTP API
 
 When using `fastskill serve`, the Claude-compatible skills API surface is available at:
