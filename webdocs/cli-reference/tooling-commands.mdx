@@ -1,24 +1,11 @@
 ---
-title: "Sync, marketplace, and analyze"
-description: "CLI reference for fastskill sync, fastskill marketplace, and fastskill analyze."
+title: "Marketplace, analyze, and doctor"
+description: "CLI reference for fastskill marketplace, fastskill analyze, and fastskill doctor."
 ---
 
-## fastskill sync
-
-Writes installed skills into the agent metadata file (Claude Code / compatible layouts). Agent and file path are auto-detected when omitted.
-
-```bash
-fastskill sync
-fastskill sync --yes
-fastskill sync --agent claude
-fastskill sync --agents-file custom.md
-```
-
-| Option | Description |
-|--------|-------------|
-| `-y, --yes` | Non-interactive: include all installed skills |
-| `-a, --agent <AGENT>` | Target agent (optional; auto-detected) |
-| `--agents-file <PATH>` | Override metadata file path |
+<Note>
+`fastskill sync` has been removed. Agents read the skills directory directly; no metadata-file sync is needed.
+</Note>
 
 ## fastskill marketplace
 
@@ -91,6 +78,28 @@ fastskill analyze duplicates --threshold 0.92 --severity critical
 | `--limit <N>` | Max pairs to show (default `20`) |
 | `--severity <LEVEL>` | `all`, `medium`, `high`, or `critical` |
 | `--format`, `--json` | Output selection |
+
+## fastskill doctor
+
+Check environment readiness for fastskill. Reports the status of the skills directory, `skill-project.toml`, embedding provider, API key, and auth token. Exits 0 when no hard failures are found; exits 1 when the skills directory is inaccessible.
+
+```bash
+fastskill doctor
+fastskill doctor --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit results as JSON array of `{check, status, message}` |
+
+**Example output:**
+
+```
+[PASS] Skills directory accessible
+[PASS] skill-project.toml present
+[WARN] Embedding provider not configured (semantic search unavailable)
+[WARN] No authenticated registry
+```
 
 ## See also
 

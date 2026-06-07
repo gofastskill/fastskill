@@ -73,3 +73,75 @@ fn test_version_flag() {
     // Version flag might not be implemented yet, but should not crash
     assert!(result.success || result.stderr.contains("fastskill"));
 }
+
+#[test]
+fn test_help_does_not_show_removed_commands() {
+    let result = run_fastskill_command(&["--help"], None);
+
+    let output = format!("{}{}", result.stdout, result.stderr);
+    // These commands were removed in CLI surface redesign (issue #183)
+    assert!(
+        !output.contains("  resolve "),
+        "removed command 'resolve' must not appear in --help"
+    );
+    assert!(
+        !output.contains("  sync "),
+        "removed command 'sync' must not appear in --help"
+    );
+    assert!(
+        !output.contains("  disable "),
+        "removed command 'disable' must not appear in --help"
+    );
+    assert!(
+        !output.contains("  show "),
+        "removed command 'show' must not appear in --help"
+    );
+}
+
+#[test]
+fn test_doctor_command_help() {
+    let result = run_fastskill_command(&["doctor", "--help"], None);
+
+    assert!(result.success);
+    let output = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        output.contains("doctor") || output.contains("Doctor"),
+        "doctor --help must mention 'doctor'"
+    );
+    assert!(
+        output.contains("--json") || output.contains("json"),
+        "doctor --help must mention --json flag"
+    );
+}
+
+#[test]
+fn test_read_command_help_has_new_flags() {
+    let result = run_fastskill_command(&["read", "--help"], None);
+
+    assert!(result.success);
+    let output = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        output.contains("--meta"),
+        "read --help must include --meta flag"
+    );
+    assert!(
+        output.contains("--tree"),
+        "read --help must include --tree flag"
+    );
+}
+
+#[test]
+fn test_search_command_help_has_new_flags() {
+    let result = run_fastskill_command(&["search", "--help"], None);
+
+    assert!(result.success);
+    let output = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        output.contains("--paths"),
+        "search --help must include --paths flag"
+    );
+    assert!(
+        output.contains("--content"),
+        "search --help must include --content flag"
+    );
+}

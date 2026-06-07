@@ -1,11 +1,11 @@
 ---
 title: "CLI Reference Overview"
-description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, sync, package, publish, and serve."
+description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, package, publish, and serve."
 ---
 
 ## Overview
 
-The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search and `sync`, packaging and optional publish, plus `serve` when you want a local HTTP surface.
+The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, packaging and optional publish, plus `serve` when you want a local HTTP surface.
 
 <Info>
 The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
@@ -88,14 +88,8 @@ fastskill list --help         # Help for list command
   <Card title="fastskill list" icon="list">
     List locally installed skills with reconciliation status (supports `--format table|json|grid|xml`, `--json`). See [skill commands](/cli-reference/skill-commands#list).
   </Card>
-  <Card title="fastskill disable" icon="toggle">
-    Disable skills by ID. See [skill commands](/cli-reference/skill-commands#fastskill-disable).
-  </Card>
   <Card title="fastskill remove" icon="trash">
     Remove skills by ID. See [skill commands](/cli-reference/skill-commands#fastskill-remove).
-  </Card>
-  <Card title="fastskill show" icon="list">
-    Show skill details and dependency tree. See [skill commands](/cli-reference/skill-commands#fastskill-show).
   </Card>
 </CardGroup>
 
@@ -133,11 +127,11 @@ fastskill list --help         # Help for list command
   <Card title="fastskill eval" icon="check">
     Validate and run skill evaluation suites. See [eval Command](/cli-reference/eval-command).
   </Card>
-  <Card title="fastskill sync" icon="refresh-cw">
-    Sync installed skills to agent metadata. See [tooling commands](/cli-reference/tooling-commands#fastskill-sync).
-  </Card>
   <Card title="fastskill analyze" icon="chart-network">
     Similarity matrix, clusters, duplicates. See [tooling commands](/cli-reference/tooling-commands#fastskill-analyze).
+  </Card>
+  <Card title="fastskill doctor" icon="stethoscope">
+    Check environment readiness (skills directory, embedding provider, auth). See [tooling commands](/cli-reference/tooling-commands#fastskill-doctor).
   </Card>
 </CardGroup>
 

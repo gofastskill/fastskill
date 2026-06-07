@@ -185,23 +185,33 @@ fastskill update --dry-run
 - `--source <SOURCE>`: Update from specific source
 - `--strategy <STRATEGY>`: Update strategy: latest, patch, minor, major (default: latest)
 
-### fastskill show
+### fastskill read (metadata and tree)
 
-Display skill information and dependency tree.
+Display skill metadata or dependency tree. Use `--meta` for structured metadata and `--tree` for the dependency tree.
 
 ```bash
-# Show all skills
-fastskill show
+# Read full SKILL.md content (default)
+fastskill read my-skill-id
 
-# Show specific skill
-fastskill show my-skill-id
+# Show structured metadata (replaces `fastskill show <id>`)
+fastskill read my-skill-id --meta
 
-# Show dependency tree
-fastskill show --tree
+# Show dependency tree (replaces `fastskill show <id> --tree`)
+fastskill read my-skill-id --tree
 
-# Show dependency tree for specific skill
-fastskill show my-skill-id --tree
+# Metadata and tree together
+fastskill read my-skill-id --meta --tree
+
+# Metadata as JSON
+fastskill read my-skill-id --meta --json
+
+# List all installed skills
+fastskill list
 ```
+
+<Note>
+`fastskill show` has been removed. Use `fastskill read <id> --meta` to view skill metadata or `fastskill list` to enumerate all installed skills.
+</Note>
 
 ### fastskill add
 
@@ -342,18 +352,6 @@ fastskill list --format xml
 
 **Note**: This command reads installed skill manifests from the skills directory as the source of truth and cross-references `skill-project.toml` (desired) and `skills.lock` (pinned) to report reconciliation status.
 
-### fastskill disable
-
-Disable skills to prevent them from being used.
-
-```bash
-# Disable skill
-fastskill disable text-processor
-
-# Batch operations
-fastskill disable skill1 skill2 skill3
-```
-
 ## Examples
 
 ### Skill Development Workflow
@@ -365,16 +363,13 @@ fastskill add https://github.com/org/my-skill.git
 # 2. List skills to verify installation
 fastskill list
 
-# 3. Show skill details
-fastskill show my-skill
+# 3. Show skill metadata
+fastskill read my-skill --meta
 
 # 4. Update to latest version
 fastskill update my-skill
 
-# 5. Disable if needed
-fastskill disable my-skill
-
-# 6. Remove skill
+# 5. Remove skill when no longer needed
 fastskill remove my-skill --force
 ```
 
@@ -396,13 +391,16 @@ fastskill reindex
 # Install with locked versions for reproducible builds
 fastskill install --lock --without dev
 
-# Reindex for search
+# Reindex for search (auto-triggered after add/install/update/remove when embedding is configured)
 fastskill reindex
+
+# Check environment readiness
+fastskill doctor
 
 # Verify installation
 fastskill list
 ```
 
 <Note>
-Skill commands support both interactive use and automation. Use appropriate options for your workflow.
+Skill commands support both interactive use and automation. Use appropriate options for your workflow. Reindex runs automatically after `add`/`install`/`update`/`remove` when an embedding provider is configured; use `--no-reindex` to suppress or `fastskill doctor` to check environment readiness.
 </Note>

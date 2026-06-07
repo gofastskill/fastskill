@@ -4,6 +4,47 @@
 
 ### Breaking Changes
 
+- **CLI command-surface redesign: four commands removed (issue #183).**
+  `fastskill resolve`, `fastskill sync`, `fastskill disable`, and `fastskill show` have been
+  removed with no hidden aliases. Migration table:
+
+  | Removed command | Replacement |
+  |---|---|
+  | `fastskill resolve <query>` | `fastskill search <query> --local --paths --json` |
+  | `fastskill show [id]` | `fastskill read <id> --meta` (by id) or `fastskill list` (all) |
+  | `fastskill show <id> --tree` | `fastskill read <id> --tree` |
+  | `fastskill sync` | No replacement — agents read the skills directory directly |
+  | `fastskill disable <id>` | `fastskill remove <id>` |
+
+  Shell completion scripts auto-derive from the registered command tree and no longer suggest
+  the removed commands.
+
+- **`reindex` exits 0 when no embedding provider is configured** (previously exited 1).
+  If your CI pipeline relied on `reindex` failing to detect missing configuration, switch to
+  `fastskill doctor` instead.
+
+- **`add`, `install`, `update`, and `remove` now auto-trigger `reindex`** after a successful
+  run when an embedding provider is configured. Pass `--no-reindex` or set
+  `auto_reindex = false` in `[tool.fastskill]` of `skill-project.toml` to opt out.
+
+### Added
+
+- **`fastskill doctor`**: new diagnostics command that reports environment readiness
+  (skills directory, `skill-project.toml`, embedding provider, API key, auth token). Exits 0
+  when no hard failures; exits 1 when the skills directory is inaccessible. `--json` flag emits
+  a JSON array of `{check, status, message}` objects.
+
+- **`fastskill read --meta` / `--tree`**: `read` now accepts `--meta` (structured metadata),
+  `--tree` (dependency tree), `--locked`, `--format`, and `--json`. These flags replace
+  `fastskill show` entirely.
+
+- **`fastskill search --paths` / `--content`**: local search gains `--paths` (emit absolute
+  SKILL.md path per result, forces JSON) and `--content <none|preview|full>` (include skill
+  content). Both flags require `--local`.
+
+- **`auto_reindex` config field**: `[tool.fastskill]` in `skill-project.toml` accepts
+  `auto_reindex = false` to disable the new automatic reindex side-effect globally.
+
 - **All internal API routes moved from `/api/<path>` to `/api/v1/<path>`.**
   Affected endpoints include `/api/skills`, `/api/project`, `/api/status`, `/api/search`,
   `/api/resolve`, `/api/reindex`, `/api/registry/…`, and `/api/manifest/…`.
