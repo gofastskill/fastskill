@@ -8,26 +8,26 @@ use cli_framework::spec::value::ArgValue;
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum DoctorStatus {
-    Ok,
-    Warning,
-    Error,
+    Pass,
+    Warn,
+    Fail,
 }
 
 impl std::fmt::Display for DoctorStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DoctorStatus::Ok => write!(f, "ok"),
-            DoctorStatus::Warning => write!(f, "warning"),
-            DoctorStatus::Error => write!(f, "error"),
+            DoctorStatus::Pass => write!(f, "pass"),
+            DoctorStatus::Warn => write!(f, "warn"),
+            DoctorStatus::Fail => write!(f, "fail"),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct DoctorCheckResult {
-    pub name: String,
+    pub check: String,
     pub status: DoctorStatus,
     pub message: String,
 }
@@ -76,14 +76,14 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     let skills_dir = &service.config().skill_storage_path;
     let skills_dir_check = if skills_dir.exists() && skills_dir.is_dir() {
         DoctorCheckResult {
-            name: "skills_dir".to_string(),
-            status: DoctorStatus::Ok,
+            check: "skills_dir".to_string(),
+            status: DoctorStatus::Pass,
             message: format!("Skills directory found: {}", skills_dir.display()),
         }
     } else {
         DoctorCheckResult {
-            name: "skills_dir".to_string(),
-            status: DoctorStatus::Error,
+            check: "skills_dir".to_string(),
+            status: DoctorStatus::Fail,
             message: format!(
                 "Skills directory not found or not a directory: {}",
                 skills_dir.display()
@@ -99,14 +99,14 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
         let project_file = fastskill_core::core::project::resolve_project_file(&current_dir);
         if project_file.found {
             DoctorCheckResult {
-                name: "project_toml".to_string(),
-                status: DoctorStatus::Ok,
+                check: "project_toml".to_string(),
+                status: DoctorStatus::Pass,
                 message: format!("skill-project.toml found: {}", project_file.path.display()),
             }
         } else {
             DoctorCheckResult {
-                name: "project_toml".to_string(),
-                status: DoctorStatus::Warning,
+                check: "project_toml".to_string(),
+                status: DoctorStatus::Warn,
                 message: "skill-project.toml not found. Run 'fastskill init' to create one."
                     .to_string(),
             }
@@ -117,14 +117,14 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     // Check 3: Embedding configuration present
     let embedding_check = if service.config().embedding.is_some() {
         DoctorCheckResult {
-            name: "embedding_config".to_string(),
-            status: DoctorStatus::Ok,
+            check: "embedding_config".to_string(),
+            status: DoctorStatus::Pass,
             message: "Embedding configuration found.".to_string(),
         }
     } else {
         DoctorCheckResult {
-            name: "embedding_config".to_string(),
-            status: DoctorStatus::Warning,
+            check: "embedding_config".to_string(),
+            status: DoctorStatus::Warn,
             message: "No embedding configuration. Semantic search and reindex are disabled. Add [tool.fastskill.embedding] to skill-project.toml.".to_string(),
         }
     };
@@ -134,14 +134,14 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     let api_key_check = if service.config().embedding.is_some() {
         if std::env::var("OPENAI_API_KEY").is_ok() {
             DoctorCheckResult {
-                name: "api_key".to_string(),
-                status: DoctorStatus::Ok,
+                check: "api_key".to_string(),
+                status: DoctorStatus::Pass,
                 message: "OPENAI_API_KEY environment variable is set.".to_string(),
             }
         } else {
             DoctorCheckResult {
-                name: "api_key".to_string(),
-                status: DoctorStatus::Warning,
+                check: "api_key".to_string(),
+                status: DoctorStatus::Warn,
                 message:
                     "OPENAI_API_KEY environment variable not set. Set it to enable embeddings."
                         .to_string(),
@@ -149,8 +149,8 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
         }
     } else {
         DoctorCheckResult {
-            name: "api_key".to_string(),
-            status: DoctorStatus::Warning,
+            check: "api_key".to_string(),
+            status: DoctorStatus::Warn,
             message: "No embedding config — API key check skipped.".to_string(),
         }
     };
@@ -161,14 +161,14 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
         || std::env::var("FASTSKILL_TOKEN").is_ok()
     {
         DoctorCheckResult {
-            name: "auth_token".to_string(),
-            status: DoctorStatus::Ok,
+            check: "auth_token".to_string(),
+            status: DoctorStatus::Pass,
             message: "Auth token found in environment.".to_string(),
         }
     } else {
         DoctorCheckResult {
-            name: "auth_token".to_string(),
-            status: DoctorStatus::Warning,
+            check: "auth_token".to_string(),
+            status: DoctorStatus::Warn,
             message: "No auth token set. Remote registry operations may fail. Run 'fastskill auth login'.".to_string(),
         }
     };
@@ -183,7 +183,7 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     // Exit 0 unless skills_dir is inaccessible
     let has_error = checks
         .iter()
-        .any(|c| c.name == "skills_dir" && c.status == DoctorStatus::Error);
+        .any(|c| c.check == "skills_dir" && c.status == DoctorStatus::Fail);
     if has_error {
         return Err(CliError::Config(
             "Skills directory is inaccessible. Fix the skills directory to proceed.".to_string(),
@@ -198,20 +198,20 @@ fn print_human(checks: &[DoctorCheckResult]) {
     println!("{}", "=".repeat(40));
     for check in checks {
         let icon = match check.status {
-            DoctorStatus::Ok => "[ok]",
-            DoctorStatus::Warning => "[warn]",
-            DoctorStatus::Error => "[error]",
+            DoctorStatus::Pass => "[PASS]",
+            DoctorStatus::Warn => "[WARN]",
+            DoctorStatus::Fail => "[FAIL]",
         };
-        println!("{} {}: {}", icon, check.name, check.message);
+        println!("{} {}: {}", icon, check.check, check.message);
     }
     println!();
     let errors = checks
         .iter()
-        .filter(|c| c.status == DoctorStatus::Error)
+        .filter(|c| c.status == DoctorStatus::Fail)
         .count();
     let warnings = checks
         .iter()
-        .filter(|c| c.status == DoctorStatus::Warning)
+        .filter(|c| c.status == DoctorStatus::Warn)
         .count();
     if errors == 0 && warnings == 0 {
         println!("All checks passed.");
@@ -225,7 +225,7 @@ fn print_json(checks: &[DoctorCheckResult]) {
         .iter()
         .map(|c| {
             serde_json::json!({
-                "name": c.name,
+                "check": c.check,
                 "status": c.status.to_string(),
                 "message": c.message,
             })

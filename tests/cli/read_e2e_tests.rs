@@ -219,3 +219,163 @@ fn test_read_invalid_skill_id_error() {
         &cli_snapshot_settings(),
     );
 }
+
+fn create_test_skill_dir(temp_dir: &TempDir) -> std::path::PathBuf {
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("meta-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    let skill_content = r#"---
+name: meta-skill
+description: A skill for testing metadata display
+version: 2.0.0
+author: Test Author
+tags: [meta, test]
+---
+# Meta Skill
+
+This is the skill body content.
+"#;
+    fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    skills_dir
+}
+
+#[test]
+fn test_read_meta_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    create_test_skill_dir(&temp_dir);
+
+    let result = run_fastskill_command(&["read", "meta-skill", "--meta"], Some(temp_dir.path()));
+
+    assert!(result.success, "read --meta failed: {}", result.stderr);
+    // --meta should show metadata, not the full SKILL.md body
+    assert!(
+        result.stdout.contains("meta-skill") || result.stdout.contains("2.0.0"),
+        "Expected metadata in output, got: {}",
+        result.stdout
+    );
+    // Should NOT contain raw body content like "This is the skill body"
+    assert!(
+        !result.stdout.contains("This is the skill body content"),
+        "read --meta should not include file body: {}",
+        result.stdout
+    );
+
+    assert_snapshot_with_settings("read_meta_flag", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_read_tree_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    create_test_skill_dir(&temp_dir);
+
+    let result = run_fastskill_command(&["read", "meta-skill", "--tree"], Some(temp_dir.path()));
+
+    assert!(result.success, "read --tree failed: {}", result.stderr);
+    // --tree should display dependency info and not raw body
+    assert!(
+        result.stdout.contains("meta-skill"),
+        "Expected skill name in tree output, got: {}",
+        result.stdout
+    );
+    assert!(
+        !result.stdout.contains("This is the skill body content"),
+        "read --tree should not include file body: {}",
+        result.stdout
+    );
+
+    assert_snapshot_with_settings("read_tree_flag", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
+fn test_read_meta_json_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    create_test_skill_dir(&temp_dir);
+
+    let result =
+        run_fastskill_command(&["read", "meta-skill", "--meta", "--json"], Some(temp_dir.path()));
+
+    assert!(result.success, "read --meta --json failed: {}", result.stderr);
+    // Should be valid JSON containing id, name, version, description
+    assert!(
+        result.stdout.contains("\"meta-skill\"") || result.stdout.contains("meta-skill"),
+        "Expected skill id/name in JSON output, got: {}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("2.0.0"),
+        "Expected version in JSON output, got: {}",
+        result.stdout
+    );
+    // Should not contain raw body content
+    assert!(
+        !result.stdout.contains("This is the skill body content"),
+        "read --meta --json should not include file body: {}",
+        result.stdout
+    );
+
+    assert_snapshot_with_settings(
+        "read_meta_json_flag",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
+fn test_read_locked_without_meta_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    fs::create_dir_all(temp_dir.path().join(".claude").join("skills")).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    let result =
+        run_fastskill_command(&["read", "some-skill", "--locked"], Some(temp_dir.path()));
+
+    assert!(!result.success, "read --locked without --meta should fail");
+    assert!(
+        result.stderr.contains("--meta") || result.stderr.contains("locked"),
+        "Expected error about --meta requirement, got: {}",
+        result.stderr
+    );
+}
+
+#[test]
+fn test_read_shorthand_streams_content() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".claude").join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let skill_dir = skills_dir.join("shorthand-skill");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: shorthand-skill\nversion: 1.0.0\ndescription: shorthand test\n---\n# Shorthand\n\nBody content here.\n",
+    )
+    .unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    // Test both `fastskill read <id>` and bare positional routing
+    let result =
+        run_fastskill_command(&["read", "shorthand-skill"], Some(temp_dir.path()));
+    assert!(result.success, "read shorthand-skill failed: {}", result.stderr);
+    assert!(
+        result.stdout.contains("Body content here"),
+        "Expected SKILL.md body in output, got: {}",
+        result.stdout
+    );
+}

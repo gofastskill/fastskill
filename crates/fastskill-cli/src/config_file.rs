@@ -100,7 +100,7 @@ pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<Fa
             embedding,
             skills_directory: config.skills_directory,
             server,
-            auto_reindex: true,
+            auto_reindex: config.auto_reindex,
         }))
     } else {
         // skill-project.toml exists but no [tool.fastskill] section

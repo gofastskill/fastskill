@@ -279,6 +279,9 @@ pub struct FastSkillToolConfig {
     /// Optional evaluation configuration
     #[serde(default)]
     pub eval: Option<EvalConfigToml>,
+    /// Auto-run reindex after mutating commands when embedding is configured (default: true)
+    #[serde(default = "default_auto_reindex")]
+    pub auto_reindex: bool,
 }
 
 /// Evaluation configuration in TOML format ([tool.fastskill.eval])
@@ -324,6 +327,10 @@ fn default_fail_on_missing_agent() -> bool {
 
 fn default_install_depth() -> u32 {
     5
+}
+
+fn default_auto_reindex() -> bool {
+    true
 }
 
 /// HTTP server configuration in TOML format

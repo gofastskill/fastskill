@@ -9,7 +9,11 @@ use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality}
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::output;
-use fastskill_core::{FastSkillService, OutputFormat, SearchQuery, SearchScope};
+use fastskill_core::{
+    ContentMode, FastSkillService, OutputFormat, ResolveContextRequest, ResolveScope, SearchQuery,
+    SearchScope,
+};
+use serde_json;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -257,6 +261,11 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     // Validate arguments
     validate_search_args(&args)?;
 
+    // When --paths is set, use context_resolver for canonical path output
+    if args.paths {
+        return execute_search_with_paths(service, &args).await;
+    }
+
     // Determine search scope
     let scope = determine_search_scope(&args)?;
 
@@ -287,6 +296,44 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     Ok(())
 }
 
+/// Execute search with --paths flag: uses context_resolver to include canonical paths
+async fn execute_search_with_paths(service: &FastSkillService, args: &SearchArgs) -> CliResult<()> {
+    let content_mode = parse_content_mode(args.content.as_deref().unwrap_or("none"))?;
+
+    let request = ResolveContextRequest {
+        prompt: args.query.clone(),
+        limit: args.limit,
+        scope: ResolveScope::Local,
+        include_content: content_mode,
+        resolve_paths: true,
+    };
+
+    let response = service
+        .context_resolver()
+        .resolve_context(request)
+        .await
+        .map_err(CliError::Service)?;
+
+    let json_output = serde_json::to_string_pretty(&response)
+        .map_err(|e| CliError::Validation(format!("Failed to serialize results to JSON: {}", e)))?;
+
+    println!("{}", json_output);
+    Ok(())
+}
+
+/// Parse content mode string into ContentMode enum
+fn parse_content_mode(s: &str) -> CliResult<ContentMode> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(ContentMode::None),
+        "preview" => Ok(ContentMode::Preview),
+        "full" => Ok(ContentMode::Full),
+        other => Err(CliError::Config(format!(
+            "Invalid --content value '{}': must be none, preview, or full",
+            other
+        ))),
+    }
+}
+
 /// Validate search arguments for conflicting options
 fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
     // Validate --repository flag only works with remote search
@@ -311,9 +358,9 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
         ));
     }
 
-    if args.content.is_some() && !args.paths {
+    if args.content.is_some() && !args.local {
         return Err(CliError::Config(
-            "Error: --content requires --paths. Use 'fastskill search --local --paths --content <mode> <query>'.".to_string(),
+            "--content is only valid with --local. Use 'fastskill search --local --paths --content <mode> <query>'.".to_string(),
         ));
     }
 
