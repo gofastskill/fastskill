@@ -424,6 +424,8 @@ skills_directory = ".claude/skills"
             editable: true,
             group: None,
             recursive: false,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = super::super::execute_add(&service, args, false).await;
@@ -486,6 +488,8 @@ skills_directory = ".claude/skills"
             editable: false,
             group: None,
             recursive: false,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = super::super::execute_add(&service, args, false).await;

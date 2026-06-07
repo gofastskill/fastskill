@@ -70,16 +70,16 @@ pub struct ReindexArgs {
     pub skills_dir: Option<std::path::PathBuf>,
 
     /// Force re-indexing of all skills (ignore existing hashes)
-    force: bool,
+    pub force: bool,
 
     /// Maximum number of concurrent embedding requests
-    max_concurrent: usize,
+    pub max_concurrent: usize,
 
     /// Show progress bars and processing details
-    progress: bool,
+    pub progress: bool,
 
     /// Suppress progress output, show only final summary
-    no_progress: bool,
+    pub no_progress: bool,
 }
 
 impl IntoCommandSpec for ReindexArgs {
@@ -294,15 +294,11 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
     }
 
     // Check if embedding is configured
-    let embedding_config = service.config().embedding.as_ref().ok_or_else(|| {
-        let searched_paths = crate::config_file::get_config_search_paths();
-        let mut error_msg = "Error: Embedding configuration required but not found.\n\nSearched locations:\n".to_string();
-        for path in searched_paths {
-            error_msg.push_str(&format!("  - {}\n", path.display()));
-        }
-        error_msg.push_str("\nTo set up FastSkill, run:\n  fastskill init\n\nOr manually add to skill-project.toml:\n  [tool.fastskill.embedding]\n  openai_base_url = \"https://api.openai.com/v1\"\n  embedding_model = \"text-embedding-3-small\"\n\nThen set your API key:\n  export OPENAI_API_KEY=\"your-key-here\"\n");
-        CliError::Config(error_msg)
-    })?;
+    if service.config().embedding.is_none() {
+        println!("Reindex skipped: no embedding provider configured. Run 'fastskill doctor' for setup guidance.");
+        return Ok(());
+    }
+    let embedding_config = service.config().embedding.as_ref().unwrap();
 
     // Get OpenAI API key
     let api_key = crate::config_file::get_openai_api_key()?;
@@ -787,13 +783,9 @@ Test skill content"#,
             no_progress: false,
         };
 
+        // With no embedding config, reindex is a no-op (informational message, exit 0)
         let result = execute_reindex(&service, args).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("Embedding configuration required"));
-        } else {
-            panic!("Expected Config error");
-        }
+        assert!(result.is_ok());
     }
 
     #[tokio::test]

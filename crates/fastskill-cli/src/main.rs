@@ -62,8 +62,8 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
 }
 
 use commands::{
-    add, analyze, auth, disable, eval, init, install, list, marketplace, package, publish, read,
-    reindex, remove, repos, resolve, search, serve, show, skillopt, sync, update,
+    add, analyze, auth, doctor, eval, init, install, list, marketplace, package, publish, read,
+    reindex, remove, repos, search, serve, skillopt, update,
 };
 
 #[tokio::main]
@@ -153,14 +153,6 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .map_err(anyhow::Error::from)
             }
         })?
-        .register(path!["show"], |ctx, args: show::ShowArgs| {
-            let global = ctx_global(ctx);
-            async move {
-                show::execute_show(args, global)
-                    .await
-                    .map_err(anyhow::Error::from)
-            }
-        })?
         .register(
             path!["package"],
             |_ctx, args: package::PackageArgs| async move {
@@ -180,21 +172,9 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
 
     // ── Typed commands that need FsState (service injection) ─────────────────
     let builder = {
-        let state_disable = Arc::clone(&state);
         let state_list = Arc::clone(&state);
         let state_read = Arc::clone(&state);
         builder
-            .register(path!["disable"], move |ctx, args: disable::DisableArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_disable);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    disable::execute_disable(&svc, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
             .register(path!["list"], move |ctx, args: list::ListArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
@@ -545,24 +525,12 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
 
     // ── Typed commands migrated from register_cmd! (spec #89) ───────────────
     let builder = {
-        let state_sync = Arc::clone(&state);
         let state_reindex = Arc::clone(&state);
         let state_remove = Arc::clone(&state);
-        let state_resolve = Arc::clone(&state);
         let state_search = Arc::clone(&state);
         let state_serve = Arc::clone(&state);
+        let state_doctor = Arc::clone(&state);
         builder
-            .register(path!["sync"], move |ctx, args: sync::SyncArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_sync);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    sync::execute_sync(&svc, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
             .register(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
@@ -585,17 +553,6 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["resolve"], move |ctx, args: resolve::ResolveArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_resolve);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    resolve::execute_resolve(&svc, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
             .register(path!["search"], move |ctx, args: search::SearchArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
@@ -614,6 +571,17 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 async move {
                     let svc = state.service_with(global, skills_dir).await?;
                     serve::execute_serve(svc, args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register(path!["doctor"], move |ctx, args: doctor::DoctorArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                let state = Arc::clone(&state_doctor);
+                async move {
+                    let svc = state.service_with(global, skills_dir).await?;
+                    doctor::execute_doctor(&svc, args)
                         .await
                         .map_err(anyhow::Error::from)
                 }

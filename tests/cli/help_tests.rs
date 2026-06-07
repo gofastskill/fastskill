@@ -55,18 +55,6 @@ fn test_search_command_help() {
 }
 
 #[test]
-fn test_disable_command_help() {
-    let result = run_fastskill_command(&["disable", "--help"], None);
-
-    assert!(result.success);
-    assert_snapshot_with_settings(
-        "disable_command_help",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
 fn test_remove_command_help() {
     let result = run_fastskill_command(&["remove", "--help"], None);
 

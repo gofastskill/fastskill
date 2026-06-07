@@ -45,6 +45,12 @@ pub struct SearchArgs {
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+
+    /// Output resolved file paths instead of search results (--local only)
+    pub paths: bool,
+
+    /// Content mode for resolved skill context: none, inline, ref (--local --paths only)
+    pub content: Option<String>,
 }
 
 impl IntoCommandSpec for SearchArgs {
@@ -153,6 +159,28 @@ impl IntoCommandSpec for SearchArgs {
                     default: None,
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "paths",
+                    long: Some("paths"),
+                    short: None,
+                    help: "Output resolved file paths instead of search results (--local only)",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "content",
+                    long: Some("content"),
+                    short: None,
+                    help: "Content mode for resolved skill context: none, inline, ref (--local --paths only)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -213,6 +241,14 @@ impl FromArgValueMap for SearchArgs {
                     None
                 }
             }),
+            paths: matches!(map.get("paths"), Some(ArgValue::Bool(true))),
+            content: map.get("content").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
         }
     }
 }
@@ -265,6 +301,19 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
         return Err(CliError::Config(
             "Error: --json and --format cannot be used together. Use one output selector."
                 .to_string(),
+        ));
+    }
+
+    if args.paths && !args.local {
+        return Err(CliError::Config(
+            "Error: --paths requires --local. Use 'fastskill search --local --paths <query>'."
+                .to_string(),
+        ));
+    }
+
+    if args.content.is_some() && !args.paths {
+        return Err(CliError::Config(
+            "Error: --content requires --paths. Use 'fastskill search --local --paths --content <mode> <query>'.".to_string(),
         ));
     }
 
@@ -329,6 +378,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -350,6 +401,8 @@ mod tests {
             json: false,
             embedding: Some("false".to_string()),
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -368,6 +421,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -386,6 +441,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -404,6 +461,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -422,6 +481,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -440,6 +501,8 @@ mod tests {
             json: true,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -458,6 +521,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -486,6 +551,8 @@ mod tests {
             json: false,
             embedding: Some("false".to_string()), // Force text search
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = execute_search(&service, args).await;
@@ -505,6 +572,8 @@ mod tests {
             json: true,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -523,6 +592,8 @@ mod tests {
             json: false,
             embedding: Some("auto".to_string()),
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let mode = determine_embedding_mode(&args);

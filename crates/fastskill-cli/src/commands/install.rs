@@ -41,6 +41,12 @@ pub struct InstallArgs {
 
     /// Maximum transitive dependency depth (overrides config file setting)
     depth: Option<u32>,
+
+    /// Trigger reindex after install (overrides config)
+    reindex: bool,
+
+    /// Skip reindex after install
+    no_reindex: bool,
 }
 
 impl IntoCommandSpec for InstallArgs {
@@ -86,6 +92,24 @@ impl IntoCommandSpec for InstallArgs {
                     help: "Maximum transitive dependency depth (overrides config file setting)",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Trigger reindex after install (overrides config)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("no-reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Skip reindex after install",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -128,6 +152,8 @@ impl FromArgValueMap for InstallArgs {
                     None
                 }
             }),
+            reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
+            no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -411,7 +437,16 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         )));
     }
 
-    Ok(())
+    let auto_reindex = crate::config_file::load_auto_reindex_config();
+    crate::utils::reindex_utils::maybe_auto_reindex(
+        &service,
+        "install",
+        args.reindex,
+        args.no_reindex,
+        auto_reindex,
+        false,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -447,6 +482,8 @@ mod tests {
             only: None,
             lock: false,
             depth: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_install(args).await;
@@ -490,6 +527,8 @@ mod tests {
             only: None,
             lock: true,
             depth: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_install(args).await;
@@ -529,6 +568,8 @@ mod tests {
             only: None,
             lock: false,
             depth: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         // Should succeed with empty manifest (no skills to install) or fail on service/repos; shouldn't panic
@@ -575,6 +616,8 @@ test-skill = { path = "source-skill" }
             only: None,
             lock: false,
             depth: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_install(args).await;

@@ -30,6 +30,13 @@ pub struct FastSkillConfig {
     /// HTTP server configuration
     #[serde(default)]
     pub server: Option<HttpServerConfig>,
+    /// Automatically reindex after add/install/update/remove (default: true)
+    #[serde(default = "default_true")]
+    pub auto_reindex: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// HTTP server configuration (CLI version)
@@ -93,6 +100,7 @@ pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<Fa
             embedding,
             skills_directory: config.skills_directory,
             server,
+            auto_reindex: true,
         }))
     } else {
         // skill-project.toml exists but no [tool.fastskill] section
@@ -106,22 +114,11 @@ pub fn get_openai_api_key() -> CliResult<String> {
         .map_err(|_| CliError::Config("OPENAI_API_KEY environment variable not set".to_string()))
 }
 
-/// Get all searched configuration paths for error reporting
-pub fn get_config_search_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    // Walk up directory tree for skill-project.toml
-    if let Ok(current_dir) = std::env::current_dir() {
-        let mut current = current_dir;
-        loop {
-            let project_file = current.join("skill-project.toml");
-            paths.push(project_file);
-
-            if !current.pop() {
-                break;
-            }
-        }
+/// Load the auto_reindex setting from config (defaults to true)
+pub fn load_auto_reindex_config() -> bool {
+    if let Ok(Some(config)) = load_config() {
+        config.auto_reindex
+    } else {
+        true
     }
-
-    paths
 }

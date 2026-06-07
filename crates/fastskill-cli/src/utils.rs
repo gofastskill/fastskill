@@ -1,10 +1,10 @@
 //! Utility functions for CLI operations
 
-pub mod agents_md;
 pub mod api_client;
 pub mod install_utils;
 pub mod manifest_utils;
 pub mod messages;
+pub mod reindex_utils;
 
 use crate::config::get_skill_search_locations_for_display;
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};

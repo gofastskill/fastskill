@@ -145,6 +145,14 @@ pub struct AddArgs {
     /// Add all skills found under the directory (only for local folders)
     #[arg(short = 'r', long)]
     pub recursive: bool,
+
+    /// Trigger reindex after adding (overrides config)
+    #[arg(long)]
+    pub reindex: bool,
+
+    /// Skip reindex after adding
+    #[arg(long)]
+    pub no_reindex: bool,
 }
 
 impl IntoCommandSpec for AddArgs {
@@ -229,6 +237,24 @@ impl IntoCommandSpec for AddArgs {
                     help: "Add all skills found under the directory (only for local folders)",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Trigger reindex after adding (overrides config)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("no-reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Skip reindex after adding",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -279,6 +305,8 @@ impl FromArgValueMap for AddArgs {
                 }
             }),
             recursive: matches!(map.get("recursive"), Some(ArgValue::Bool(true))),
+            reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
+            no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -332,6 +360,14 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
 }
 
 pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
+    if args.reindex && args.no_reindex {
+        return Err(CliError::Validation(
+            "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
+    let reindex = args.reindex;
+    let no_reindex = args.no_reindex;
+
     let source = resolve_source(&args);
 
     if args.editable {
@@ -372,16 +408,26 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     }
 
     match source {
-        SkillSource::ZipFile(path) => sources::add_from_zip(&ctx, &path).await,
+        SkillSource::ZipFile(path) => sources::add_from_zip(&ctx, &path).await?,
         SkillSource::Folder(path) => {
             validate_folder_has_skill(&path)?;
-            sources::add_from_folder(&ctx, &path).await
+            sources::add_from_folder(&ctx, &path).await?
         }
         SkillSource::GitUrl(url) => {
-            sources::add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref()).await
+            sources::add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref()).await?
         }
-        SkillSource::SkillId(skill_id) => sources::add_from_registry(&ctx, &skill_id).await,
+        SkillSource::SkillId(skill_id) => sources::add_from_registry(&ctx, &skill_id).await?,
     }
+    let auto_reindex = crate::config_file::load_auto_reindex_config();
+    crate::utils::reindex_utils::maybe_auto_reindex(
+        service,
+        "add",
+        reindex,
+        no_reindex,
+        auto_reindex,
+        false,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -413,6 +459,8 @@ mod tests {
             editable: false,
             group: None,
             recursive: false,
+            reindex: false,
+            no_reindex: false,
         };
         let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
@@ -468,6 +516,8 @@ mod tests {
             editable: false,
             group: None,
             recursive: false,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_add(&service, args, false).await;

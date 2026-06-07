@@ -53,6 +53,12 @@ pub struct UpdateArgs {
 
     /// Update strategy: latest, patch, minor, major
     strategy: String,
+
+    /// Trigger reindex after update (overrides config)
+    reindex: bool,
+
+    /// Skip reindex after update
+    no_reindex: bool,
 }
 
 impl IntoCommandSpec for UpdateArgs {
@@ -116,6 +122,24 @@ impl IntoCommandSpec for UpdateArgs {
                     help: "Update strategy: latest, patch, minor, major",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Trigger reindex after update (overrides config)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-reindex",
+                    kind: ArgKind::Flag,
+                    long: Some("no-reindex"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Skip reindex after update",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -143,15 +167,43 @@ impl FromArgValueMap for UpdateArgs {
                 .get("strategy")
                 .and_then(opt_str)
                 .unwrap_or_else(|| "latest".to_string()),
+            reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
+            no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
         }
     }
 }
 
 pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
+    let reindex = args.reindex;
+    let no_reindex = args.no_reindex;
+    let check = args.check;
+    let dry_run = args.dry_run;
+
     if global {
-        return execute_update_global(args).await;
+        execute_update_global(args).await?;
+    } else {
+        execute_update_project(args).await?;
     }
-    execute_update_project(args).await
+
+    if !check && !dry_run {
+        let auto_reindex_config = crate::config_file::load_auto_reindex_config();
+        let config = create_service_config(global, None, None)?;
+        if let Ok(mut svc) = fastskill_core::FastSkillService::new(config).await {
+            if svc.initialize().await.is_ok() {
+                let _ = crate::utils::reindex_utils::maybe_auto_reindex(
+                    &svc,
+                    "update",
+                    reindex,
+                    no_reindex,
+                    auto_reindex_config,
+                    false,
+                )
+                .await;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
@@ -459,6 +511,8 @@ mod tests {
             version: None,
             source: None,
             strategy: "latest".to_string(),
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_update(args, false).await;
@@ -549,6 +603,8 @@ version = "1.0.0"
             version: None,
             source: None,
             strategy: "invalid-strategy".to_string(),
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_update(args, false).await;
@@ -607,6 +663,8 @@ version = "1.0.0"
             version: None,
             source: None,
             strategy: "latest".to_string(),
+            reindex: false,
+            no_reindex: false,
         };
 
         // Should succeed in check mode even with no skills
@@ -667,6 +725,8 @@ source = { path = ".claude/skills/test-skill" }
             version: None,
             source: None,
             strategy: "latest".to_string(),
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_update(args, false).await;
