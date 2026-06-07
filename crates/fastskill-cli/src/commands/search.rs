@@ -272,12 +272,23 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     // Determine output format
     let format = determine_output_format(&args)?;
 
+    // Warn when local semantic search is requested but no embedding provider is configured
+    let embedding_mode = determine_embedding_mode(&args);
+    if args.local
+        && service.config().embedding.is_none()
+        && args.embedding.as_deref() != Some("false")
+    {
+        eprintln!(
+            "Warning: semantic search requires an embedding provider. Falling back to text search."
+        );
+    }
+
     // Create search query
     let query = SearchQuery {
         query: args.query.clone(),
         scope,
         limit: args.limit,
-        embedding: determine_embedding_mode(&args),
+        embedding: embedding_mode,
     };
 
     // Execute search
