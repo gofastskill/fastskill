@@ -37,10 +37,17 @@ fn test_doctor_json_flag() {
 
     let result = run_fastskill_command(&["doctor", "--json"], Some(temp_dir.path()));
     assert!(result.success, "doctor --json failed: {}", result.stderr);
-    // Output should be valid JSON with a checks array
+    // Output should be a valid JSON array (top-level '[')
+    let trimmed = result.stdout.trim();
     assert!(
-        result.stdout.contains("\"checks\""),
-        "Expected JSON output with 'checks' key, got: {}",
+        trimmed.starts_with('['),
+        "Expected JSON array output (starting with '['), got: {}",
+        result.stdout
+    );
+    // Each element must have check, status, message fields
+    assert!(
+        result.stdout.contains("\"check\""),
+        "Expected 'check' field in JSON output, got: {}",
         result.stdout
     );
 }

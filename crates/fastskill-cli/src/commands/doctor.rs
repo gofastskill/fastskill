@@ -231,10 +231,9 @@ fn print_json(checks: &[DoctorCheckResult]) {
             })
         })
         .collect();
-    let output = serde_json::json!({ "checks": items });
     println!(
         "{}",
-        serde_json::to_string_pretty(&output).unwrap_or_default()
+        serde_json::to_string_pretty(&items).unwrap_or_default()
     );
 }
 

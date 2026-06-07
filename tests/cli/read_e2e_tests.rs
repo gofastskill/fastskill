@@ -369,13 +369,25 @@ fn test_read_shorthand_streams_content() {
     )
     .unwrap();
 
-    // Test both `fastskill read <id>` and bare positional routing
-    let result =
-        run_fastskill_command(&["read", "shorthand-skill"], Some(temp_dir.path()));
+    // Test `fastskill read <id>`
+    let result = run_fastskill_command(&["read", "shorthand-skill"], Some(temp_dir.path()));
     assert!(result.success, "read shorthand-skill failed: {}", result.stderr);
     assert!(
         result.stdout.contains("Body content here"),
         "Expected SKILL.md body in output, got: {}",
         result.stdout
+    );
+
+    // Test bare positional shorthand `fastskill <id>` (AC 30)
+    let bare_result = run_fastskill_command(&["shorthand-skill"], Some(temp_dir.path()));
+    assert!(
+        bare_result.success,
+        "bare positional shorthand-skill failed: {}",
+        bare_result.stderr
+    );
+    assert!(
+        bare_result.stdout.contains("Body content here"),
+        "Expected SKILL.md body from bare positional shorthand, got: {}",
+        bare_result.stdout
     );
 }
