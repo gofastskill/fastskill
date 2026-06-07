@@ -37,7 +37,23 @@ For semantic search over skills, index the skills directory:
 fastskill reindex --skills-dir .claude/skills/
 ```
 
-### 3. Cursor integration
+### 3. MCP Registration
+
+Register `fastskill` as an MCP server inside Cursor with a single command:
+
+```bash
+# Register for the current project (stdio transport, recommended)
+fastskill mcp install --agent cursor --stdio --scope project --overwrite
+
+# Preview the config change without writing any files
+fastskill mcp install --agent cursor --stdio --dry-run
+```
+
+After running the command, reload Cursor. The tools exposed by `fastskill mcp serve --transport stdio` will be callable from the agent.
+
+> **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is deprecated. Use `fastskill mcp install` instead.
+
+### 4. Cursor integration
 
 Cursor reads AGENTS.md and native skills/agents configuration to discover available skills.
 

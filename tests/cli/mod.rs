@@ -12,6 +12,7 @@ pub mod example_tests;
 pub mod help_tests;
 pub mod init_tests;
 pub mod install_e2e_tests;
+pub mod mcp_install_e2e_tests;
 pub mod install_recursive;
 pub mod install_tests;
 pub mod integration_tests;
