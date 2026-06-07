@@ -68,6 +68,16 @@ A *distinct, first-class* catalog produced by `marketplace create`, consumed by 
 A configured remote (or local) source of skills, managed by `repos`. Types: `git-marketplace`, `http-registry`, `zip-url`, `local`. Conflicts resolved by **priority** (lower number = higher precedence).
 _Avoid_: **source**, **registry** — both are deprecated command aliases now folded into `repos`; do not reintroduce them as concepts.
 
+### Serving surfaces
+
+Two orthogonal, first-class ways to expose skills to a client — distinguished by *protocol/consumer*, not redundant:
+
+**serve**:
+The HTTP REST API + bundled web UI. Consumers: humans (browser), CI, REST clients.
+
+**mcp**:
+The Model Context Protocol server. Consumer: agents speaking MCP. Kept separate from `serve` on purpose — different transport, different audience. Do not fold one into the other.
+
 ## Resolved decisions
 
 - **`sync` is removed.** It wrote skills into an agent metadata file for *older agents that lacked native skill support*. Modern targets (Claude Code) read skills directly, so the command is obsolete. Propagation now has exactly two members: `install` (Manifest → skills dir) and `reindex` (skills dir → Vector index, conditional on an Embedding provider).
