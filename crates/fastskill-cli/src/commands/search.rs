@@ -53,7 +53,7 @@ pub struct SearchArgs {
     /// Output resolved file paths instead of search results (--local only)
     pub paths: bool,
 
-    /// Content mode for resolved skill context: none, inline, ref (--local --paths only)
+    /// Content to include in JSON output: none, preview, full (--local --paths only)
     pub content: Option<String>,
 }
 
@@ -178,7 +178,7 @@ impl IntoCommandSpec for SearchArgs {
                     name: "content",
                     long: Some("content"),
                     short: None,
-                    help: "Content mode for resolved skill context: none, inline, ref (--local --paths only)",
+                    help: "Content to include in JSON output: none, preview, full (--local --paths only)",
                     kind: ArgKind::Option,
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
@@ -375,6 +375,12 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
         ));
     }
 
+    // Validate the content mode value eagerly so an invalid value is rejected
+    // regardless of whether --paths is also present.
+    if let Some(content) = args.content.as_deref() {
+        parse_content_mode(content)?;
+    }
+
     Ok(())
 }
 
@@ -445,6 +451,91 @@ mod tests {
         if let Err(CliError::Config(msg)) = result {
             assert!(msg.contains("--repository is only valid for remote search"));
         }
+    }
+
+    #[test]
+    fn test_validate_search_args_paths_without_local() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: false,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: true,
+            content: None,
+        };
+        let result = validate_search_args(&args);
+        assert!(result.is_err());
+        match result {
+            Err(CliError::Config(msg)) => {
+                assert!(msg.contains("--paths"));
+                assert!(msg.contains("--local"));
+            }
+            other => panic!("expected CliError::Config, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_validate_search_args_content_without_local() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: false,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: false,
+            content: Some("full".to_string()),
+        };
+        let result = validate_search_args(&args);
+        assert!(matches!(result, Err(CliError::Config(_))));
+    }
+
+    #[test]
+    fn test_validate_search_args_invalid_content_value() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: true,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: false,
+            content: Some("bogus".to_string()),
+        };
+        let result = validate_search_args(&args);
+        match result {
+            Err(CliError::Config(msg)) => assert!(msg.contains("must be none, preview, or full")),
+            other => panic!("expected CliError::Config, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_validate_search_args_local_paths_content_full_ok() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: true,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: true,
+            embedding: None,
+            skills_dir: None,
+            paths: true,
+            content: Some("full".to_string()),
+        };
+        assert!(validate_search_args(&args).is_ok());
     }
 
     #[test]

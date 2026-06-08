@@ -208,6 +208,12 @@ fn group_passes_filter(
 }
 
 pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
+    if args.reindex && args.no_reindex {
+        return Err(CliError::Validation(
+            "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
+
     println!("Installing skills...");
     println!();
 

@@ -88,6 +88,54 @@ async fn main() {
         "Error initialising app",
     );
 
+    // `fastskill <skill-id>` (no subcommand) is a shorthand that routes to
+    // `read`. We rewrite the args here, before dispatch, when the first
+    // positional token is not a recognized top-level command or command group.
+    // Global flags (and their values) that precede the subcommand are skipped.
+    let raw = {
+        // The set of recognized first path segments: every registered command
+        // (including built-ins like `spec`/`completion`/`mcp`) and every group
+        // node (`analyze`, `auth`, `repos`, ...). `help` is clap-provided.
+        let registry = app.command_registry();
+        let mut known: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        known.insert("help");
+        // Retired commands (issue #183): keep them out of the read shorthand so
+        // `fastskill resolve|sync|disable|show` still surfaces an explicit
+        // "unrecognized subcommand" error instead of being read as a skill id.
+        for retired in ["resolve", "sync", "disable", "show"] {
+            known.insert(retired);
+        }
+        for (path, _) in registry.all_tree_commands() {
+            known.insert(path.split('/').next().unwrap_or(path));
+        }
+        for (path, _) in registry.groups() {
+            known.insert(path.split('/').next().unwrap_or(path));
+        }
+
+        let mut i = 1;
+        while i < raw.len() {
+            let a = &raw[i];
+            if a == "--skills-dir" {
+                // value-taking global flag in `--flag value` form
+                i += 2;
+                continue;
+            }
+            if a.starts_with('-') {
+                // boolean/global flag or `--flag=value` form
+                i += 1;
+                continue;
+            }
+            break;
+        }
+        if i < raw.len() && !known.contains(raw[i].as_str()) {
+            let mut rewritten = raw;
+            rewritten.insert(i, "read".to_string());
+            rewritten
+        } else {
+            raw
+        }
+    };
+
     match app.run_with_args(raw).await {
         Ok(()) => std::process::exit(0),
         Err(e) => {

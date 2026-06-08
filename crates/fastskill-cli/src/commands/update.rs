@@ -174,6 +174,11 @@ impl FromArgValueMap for UpdateArgs {
 }
 
 pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
+    if args.reindex && args.no_reindex {
+        return Err(CliError::Validation(
+            "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
     let reindex = args.reindex;
     let no_reindex = args.no_reindex;
     let check = args.check;

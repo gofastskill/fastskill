@@ -1,7 +1,8 @@
 //! Read command - streams skill documentation to stdout
 //!
-//! Reads and outputs the full SKILL.md content. For metadata only (name, version, description),
-//! use `show`. For structured metadata with optional formats, use `--meta`.
+//! Reads and outputs the full SKILL.md content. For structured metadata
+//! (name, version, description, author, source) use `--meta`; for the
+//! dependency tree use `--tree`.
 
 use crate::commands::common::validate_format_args;
 use crate::config;
