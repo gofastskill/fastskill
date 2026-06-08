@@ -37,6 +37,12 @@ pub struct RemoveArgs {
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+
+    /// Trigger reindex after removal (overrides config)
+    pub reindex: bool,
+
+    /// Skip reindex after removal
+    pub no_reindex: bool,
 }
 
 impl IntoCommandSpec for RemoveArgs {
@@ -79,6 +85,28 @@ impl IntoCommandSpec for RemoveArgs {
                     default: None,
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "reindex",
+                    long: Some("reindex"),
+                    short: None,
+                    help: "Trigger reindex after removal (overrides config)",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-reindex",
+                    long: Some("no-reindex"),
+                    short: None,
+                    help: "Skip reindex after removal",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -109,6 +137,8 @@ impl FromArgValueMap for RemoveArgs {
                     None
                 }
             }),
+            reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
+            no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -312,6 +342,14 @@ pub async fn execute_remove(
     args: RemoveArgs,
     global: bool,
 ) -> CliResult<()> {
+    if args.reindex && args.no_reindex {
+        return Err(CliError::Validation(
+            "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
+    let reindex = args.reindex;
+    let no_reindex = args.no_reindex;
+
     // Validate inputs
     if args.skill_ids.is_empty() {
         return Err(CliError::Config("No skill IDs provided".to_string()));
@@ -349,7 +387,16 @@ pub async fn execute_remove(
         }
     }
 
-    Ok(())
+    let auto_reindex = crate::config_file::load_auto_reindex_config();
+    crate::utils::reindex_utils::maybe_auto_reindex(
+        service,
+        "remove",
+        reindex,
+        no_reindex,
+        auto_reindex,
+        false,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -380,6 +427,8 @@ mod tests {
             skill_ids: vec![],
             force: false,
             skills_dir: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -406,6 +455,8 @@ mod tests {
             skill_ids: vec!["invalid@skill@id".to_string()],
             force: true,
             skills_dir: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -432,6 +483,8 @@ mod tests {
             skill_ids: vec!["nonexistent@1.0.0".to_string()],
             force: true,
             skills_dir: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         // This should fail because the skill doesn't exist
@@ -497,6 +550,8 @@ source = { path = ".claude/skills/test-skill" }
             skill_ids: vec!["test-skill".to_string()],
             force: true,
             skills_dir: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -568,6 +623,8 @@ source = { path = ".claude/skills/test-skill" }
             skill_ids: vec!["test-skill".to_string()],
             force: true,
             skills_dir: None,
+            reindex: false,
+            no_reindex: false,
         };
 
         let result = execute_remove(&service, args, false).await;

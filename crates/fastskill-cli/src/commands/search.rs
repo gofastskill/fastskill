@@ -9,7 +9,11 @@ use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality}
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::output;
-use fastskill_core::{FastSkillService, OutputFormat, SearchQuery, SearchScope};
+use fastskill_core::{
+    ContentMode, FastSkillService, OutputFormat, ResolveContextRequest, ResolveScope, SearchQuery,
+    SearchScope,
+};
+use serde_json;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -45,6 +49,12 @@ pub struct SearchArgs {
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
+
+    /// Output resolved file paths instead of search results (--local only)
+    pub paths: bool,
+
+    /// Content to include in JSON output: none, preview, full (--local --paths only)
+    pub content: Option<String>,
 }
 
 impl IntoCommandSpec for SearchArgs {
@@ -153,6 +163,28 @@ impl IntoCommandSpec for SearchArgs {
                     default: None,
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "paths",
+                    long: Some("paths"),
+                    short: None,
+                    help: "Output resolved file paths instead of search results (--local only)",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "content",
+                    long: Some("content"),
+                    short: None,
+                    help: "Content to include in JSON output: none, preview, full (--local --paths only)",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -213,6 +245,14 @@ impl FromArgValueMap for SearchArgs {
                     None
                 }
             }),
+            paths: matches!(map.get("paths"), Some(ArgValue::Bool(true))),
+            content: map.get("content").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
         }
     }
 }
@@ -221,18 +261,34 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     // Validate arguments
     validate_search_args(&args)?;
 
+    // When --paths is set, use context_resolver for canonical path output
+    if args.paths {
+        return execute_search_with_paths(service, &args).await;
+    }
+
     // Determine search scope
     let scope = determine_search_scope(&args)?;
 
     // Determine output format
     let format = determine_output_format(&args)?;
 
+    // Warn when local semantic search is requested but no embedding provider is configured
+    let embedding_mode = determine_embedding_mode(&args);
+    if args.local
+        && service.config().embedding.is_none()
+        && args.embedding.as_deref() != Some("false")
+    {
+        eprintln!(
+            "Warning: semantic search requires an embedding provider. Falling back to text search."
+        );
+    }
+
     // Create search query
     let query = SearchQuery {
         query: args.query.clone(),
         scope,
         limit: args.limit,
-        embedding: determine_embedding_mode(&args),
+        embedding: embedding_mode,
     };
 
     // Execute search
@@ -251,6 +307,44 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     Ok(())
 }
 
+/// Execute search with --paths flag: uses context_resolver to include canonical paths
+async fn execute_search_with_paths(service: &FastSkillService, args: &SearchArgs) -> CliResult<()> {
+    let content_mode = parse_content_mode(args.content.as_deref().unwrap_or("none"))?;
+
+    let request = ResolveContextRequest {
+        prompt: args.query.clone(),
+        limit: args.limit,
+        scope: ResolveScope::Local,
+        include_content: content_mode,
+        resolve_paths: true,
+    };
+
+    let response = service
+        .context_resolver()
+        .resolve_context(request)
+        .await
+        .map_err(CliError::Service)?;
+
+    let json_output = serde_json::to_string_pretty(&response)
+        .map_err(|e| CliError::Validation(format!("Failed to serialize results to JSON: {}", e)))?;
+
+    println!("{}", json_output);
+    Ok(())
+}
+
+/// Parse content mode string into ContentMode enum
+fn parse_content_mode(s: &str) -> CliResult<ContentMode> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(ContentMode::None),
+        "preview" => Ok(ContentMode::Preview),
+        "full" => Ok(ContentMode::Full),
+        other => Err(CliError::Config(format!(
+            "Invalid --content value '{}': must be none, preview, or full",
+            other
+        ))),
+    }
+}
+
 /// Validate search arguments for conflicting options
 fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
     // Validate --repository flag only works with remote search
@@ -266,6 +360,25 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
             "Error: --json and --format cannot be used together. Use one output selector."
                 .to_string(),
         ));
+    }
+
+    if args.paths && !args.local {
+        return Err(CliError::Config(
+            "Error: --paths requires --local. Use 'fastskill search --local --paths <query>'."
+                .to_string(),
+        ));
+    }
+
+    if args.content.is_some() && !args.local {
+        return Err(CliError::Config(
+            "--content is only valid with --local. Use 'fastskill search --local --paths --content <mode> <query>'.".to_string(),
+        ));
+    }
+
+    // Validate the content mode value eagerly so an invalid value is rejected
+    // regardless of whether --paths is also present.
+    if let Some(content) = args.content.as_deref() {
+        parse_content_mode(content)?;
     }
 
     Ok(())
@@ -329,6 +442,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -336,6 +451,91 @@ mod tests {
         if let Err(CliError::Config(msg)) = result {
             assert!(msg.contains("--repository is only valid for remote search"));
         }
+    }
+
+    #[test]
+    fn test_validate_search_args_paths_without_local() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: false,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: true,
+            content: None,
+        };
+        let result = validate_search_args(&args);
+        assert!(result.is_err());
+        match result {
+            Err(CliError::Config(msg)) => {
+                assert!(msg.contains("--paths"));
+                assert!(msg.contains("--local"));
+            }
+            other => panic!("expected CliError::Config, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_validate_search_args_content_without_local() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: false,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: false,
+            content: Some("full".to_string()),
+        };
+        let result = validate_search_args(&args);
+        assert!(matches!(result, Err(CliError::Config(_))));
+    }
+
+    #[test]
+    fn test_validate_search_args_invalid_content_value() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: true,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: false,
+            content: Some("bogus".to_string()),
+        };
+        let result = validate_search_args(&args);
+        match result {
+            Err(CliError::Config(msg)) => assert!(msg.contains("must be none, preview, or full")),
+            other => panic!("expected CliError::Config, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_validate_search_args_local_paths_content_full_ok() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: true,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: true,
+            embedding: None,
+            skills_dir: None,
+            paths: true,
+            content: Some("full".to_string()),
+        };
+        assert!(validate_search_args(&args).is_ok());
     }
 
     #[test]
@@ -350,6 +550,8 @@ mod tests {
             json: false,
             embedding: Some("false".to_string()),
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -368,6 +570,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -386,6 +590,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -404,6 +610,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -422,6 +630,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let scope = determine_search_scope(&args).unwrap();
@@ -440,6 +650,8 @@ mod tests {
             json: true,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -458,6 +670,8 @@ mod tests {
             json: false,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let format = determine_output_format(&args).unwrap();
@@ -486,6 +700,8 @@ mod tests {
             json: false,
             embedding: Some("false".to_string()), // Force text search
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = execute_search(&service, args).await;
@@ -505,6 +721,8 @@ mod tests {
             json: true,
             embedding: None,
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let result = validate_search_args(&args);
@@ -523,6 +741,8 @@ mod tests {
             json: false,
             embedding: Some("auto".to_string()),
             skills_dir: None,
+            paths: false,
+            content: None,
         };
 
         let mode = determine_embedding_mode(&args);

@@ -34,9 +34,10 @@ pub struct AnalysisContext {
 }
 
 pub async fn load_analysis_context(svc: &FastSkillService) -> CliResult<Option<AnalysisContext>> {
-    let vector_svc = svc.vector_index_service().ok_or_else(|| {
-        CliError::Config("Vector index not available. Run 'fastskill reindex' first.".to_string())
-    })?;
+    let Some(vector_svc) = svc.vector_index_service() else {
+        println!("Note: semantic analysis requires an embedding provider. Results may be limited to structural analysis.");
+        return Ok(None);
+    };
     let skills = vector_svc
         .get_all_skills()
         .await

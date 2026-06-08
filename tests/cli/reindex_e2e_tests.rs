@@ -235,3 +235,33 @@ fn test_reindex_progress_conflict() {
     assert!(!result.success);
     assert!(result.stderr.contains("--progress") && result.stderr.contains("--no-progress"));
 }
+
+#[test]
+fn test_reindex_no_embedding_provider_exits_zero() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    // Config WITHOUT embedding section
+    let config_content = "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n";
+    fs::write(temp_dir.path().join("skill-project.toml"), config_content).unwrap();
+
+    let result = run_fastskill_command(&["reindex"], Some(temp_dir.path()));
+
+    assert!(
+        result.success,
+        "reindex should exit 0 when no embedding provider is configured, got: {}",
+        result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.to_lowercase().contains("skipped"),
+        "Expected informational 'skipped' message, got: {}",
+        combined
+    );
+    assert!(
+        !combined.contains("Error") && !combined.contains("panic"),
+        "Should not contain error/panic, got: {}",
+        combined
+    );
+}
