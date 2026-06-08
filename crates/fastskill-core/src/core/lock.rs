@@ -439,7 +439,6 @@ mod tests {
             description: "test".to_string(),
             version: "1.0.0".to_string(),
             author: None,
-            enabled: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             skill_file: std::path::PathBuf::from("SKILL.md"),

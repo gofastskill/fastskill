@@ -30,7 +30,7 @@
 //!     let service = FastSkillService::new(config).await?;
 //!
 //!     // List available skills
-//!     let skills = service.skill_manager().list_skills(None).await?;
+//!     let skills = service.skill_manager().list_skills().await?;
 //!     println!("Found {} skills", skills.len());
 //!
 //!     // Discover relevant skills
@@ -127,6 +127,6 @@ mod tests {
         };
 
         let service = FastSkillService::new(config).await.unwrap();
-        assert!(service.skill_manager().list_skills(None).await.is_ok());
+        assert!(service.skill_manager().list_skills().await.is_ok());
     }
 }

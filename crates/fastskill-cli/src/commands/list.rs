@@ -178,7 +178,7 @@ pub async fn execute_list(
 
     // Installed skills from service
     let skill_manager = service.skill_manager();
-    let installed_skills = skill_manager.list_skills(None).await.map_err(|e| {
+    let installed_skills = skill_manager.list_skills().await.map_err(|e| {
         CliError::Service(fastskill_core::ServiceError::Custom(format!(
             "Failed to list installed skills: {}",
             e

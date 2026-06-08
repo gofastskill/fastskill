@@ -176,7 +176,7 @@ async fn resolve_skill(
             // Check for partial matches
             let all_skills = service
                 .skill_manager()
-                .list_skills(None)
+                .list_skills()
                 .await
                 .map_err(CliError::Service)?;
 
@@ -371,7 +371,7 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
             // T024: If no exact match, check for multiple partial matches
             let all_skills = service
                 .skill_manager()
-                .list_skills(None)
+                .list_skills()
                 .await
                 .map_err(CliError::Service)?;
 

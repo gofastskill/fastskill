@@ -13,7 +13,6 @@ pub struct SkillMetadata {
     pub description: String,
     pub version: String,
     pub author: Option<String>,
-    pub enabled: bool,
     pub token_estimate: usize,
     pub last_updated: chrono::DateTime<chrono::Utc>,
 }
@@ -26,8 +25,7 @@ impl From<&SkillDefinition> for SkillMetadata {
             description: skill.description.clone(),
             version: skill.version.clone(),
             author: skill.author.clone(),
-            enabled: skill.enabled,
-            token_estimate: skill.description.len() / 4, // Rough estimate
+            token_estimate: skill.description.len() / 4,
             last_updated: skill.updated_at,
         }
     }
@@ -229,7 +227,7 @@ pub fn parse_yaml_frontmatter(content: &str) -> Result<SkillFrontmatter, Service
 #[async_trait]
 impl MetadataService for MetadataServiceImpl {
     async fn discover_skills(&self, query: &str) -> Result<Vec<SkillMetadata>, ServiceError> {
-        let all_skills = self.skill_manager.list_skills(None).await?;
+        let all_skills = self.skill_manager.list_skills().await?;
 
         // Filter and score skills based on query relevance
         let mut scored_skills: Vec<(f32, &SkillDefinition)> = all_skills
@@ -283,5 +281,26 @@ impl MetadataService for MetadataServiceImpl {
 
         // Extract and parse YAML frontmatter
         self.parse_frontmatter(&content)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_frontmatter_with_legacy_enabled_key() {
+        let content =
+            "---\nname: test-skill\ndescription: A test skill\nenabled: true\n---\n# Body";
+        let result = parse_yaml_frontmatter(content);
+        assert!(
+            result.is_ok(),
+            "parse_yaml_frontmatter should succeed with legacy enabled key"
+        );
+        let fm = result.unwrap();
+        assert!(
+            fm.extra.contains_key("enabled"),
+            "extra map should contain the enabled key"
+        );
     }
 }

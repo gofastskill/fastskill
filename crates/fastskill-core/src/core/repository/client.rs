@@ -175,7 +175,6 @@ impl RepositoryClient for MarketplaceRepositoryClient {
                     description: info.description,
                     version: info.version.unwrap_or_else(|| "1.0.0".to_string()),
                     author: None,
-                    enabled: true,
                     token_estimate: 0,
                     last_updated: Utc::now(),
                 })
@@ -439,7 +438,6 @@ impl RepositoryClient for CratesRegistryClient {
                     description: s.description.clone(),
                     version: s.latest_version.clone(),
                     author: None, // Not available in SkillSummary
-                    enabled: true,
                     token_estimate: s.description.len() / 4, // Rough estimate
                     last_updated: s.published_at.unwrap_or_else(chrono::Utc::now),
                 })
@@ -488,7 +486,6 @@ impl RepositoryClient for CratesRegistryClient {
                         .unwrap_or_else(|| "".to_string()),
                     version: e.vers,
                     author: e.metadata.as_ref().and_then(|m| m.author.clone()),
-                    enabled: true,
                     token_estimate: 0,
                     last_updated: Utc::now(),
                 })

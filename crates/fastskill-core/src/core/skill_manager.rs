@@ -27,7 +27,6 @@ pub struct SkillDefinition {
     pub description: String,
     pub version: String,
     pub author: Option<String>,
-    pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 
@@ -63,7 +62,6 @@ impl SkillDefinition {
             description,
             version,
             author: None,
-            enabled: true,
             created_at: now,
             updated_at: now,
             skill_file: std::path::PathBuf::from(format!("./skills/{}/SKILL.md", id)),
@@ -99,12 +97,7 @@ pub trait SkillManagementService: Send + Sync {
         updates: SkillUpdate,
     ) -> Result<(), ServiceError>;
     async fn unregister_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
-    async fn list_skills(
-        &self,
-        filters: Option<SkillFilters>,
-    ) -> Result<Vec<SkillDefinition>, ServiceError>;
-    async fn enable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
-    async fn disable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError>;
+    async fn list_skills(&self) -> Result<Vec<SkillDefinition>, ServiceError>;
 }
 
 #[derive(Debug)]
@@ -126,18 +119,12 @@ impl SkillManager {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SkillFilters {
-    pub enabled: Option<bool>,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct SkillUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
     pub author: Option<String>,
-    pub enabled: Option<bool>,
     pub source_url: Option<String>,
     pub source_type: Option<SourceType>,
     pub source_branch: Option<String>,
@@ -197,9 +184,6 @@ impl SkillManagementService for SkillManager {
             if let Some(author) = updates.author {
                 skill.author = Some(author);
             }
-            if let Some(enabled) = updates.enabled {
-                skill.enabled = enabled;
-            }
             if let Some(source_url) = updates.source_url {
                 skill.source_url = Some(source_url);
             }
@@ -244,42 +228,8 @@ impl SkillManagementService for SkillManager {
         }
     }
 
-    async fn list_skills(
-        &self,
-        filters: Option<SkillFilters>,
-    ) -> Result<Vec<SkillDefinition>, ServiceError> {
+    async fn list_skills(&self) -> Result<Vec<SkillDefinition>, ServiceError> {
         let skills = self.skills.read().await;
-        let mut filtered_skills: Vec<SkillDefinition> = skills.values().cloned().collect();
-
-        if let Some(filters) = filters {
-            // Filter by enabled status
-            if let Some(enabled) = filters.enabled {
-                filtered_skills.retain(|skill| skill.enabled == enabled);
-            }
-        }
-
-        Ok(filtered_skills)
-    }
-
-    async fn enable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError> {
-        self.update_skill(
-            skill_id,
-            SkillUpdate {
-                enabled: Some(true),
-                ..Default::default()
-            },
-        )
-        .await
-    }
-
-    async fn disable_skill(&self, skill_id: &SkillId) -> Result<(), ServiceError> {
-        self.update_skill(
-            skill_id,
-            SkillUpdate {
-                enabled: Some(false),
-                ..Default::default()
-            },
-        )
-        .await
+        Ok(skills.values().cloned().collect())
     }
 }

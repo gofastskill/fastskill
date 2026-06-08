@@ -49,12 +49,6 @@ pub enum SkillEvent {
     /// Hot reload disabled
     HotReloadDisabled,
 
-    /// Skill enabled
-    SkillEnabled { skill_id: String },
-
-    /// Skill disabled
-    SkillDisabled { skill_id: String },
-
     /// Custom event
     Custom {
         event_type: String,
@@ -68,7 +62,6 @@ pub struct SkillUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
-    pub enabled: Option<bool>,
 }
 
 /// Hot reload configuration
@@ -204,8 +197,6 @@ impl EventBus {
             SkillEvent::SkillValidationFailed { .. } => "skill:validation:failed",
             SkillEvent::HotReloadEnabled { .. } => "hot-reload:enabled",
             SkillEvent::HotReloadDisabled => "hot-reload:disabled",
-            SkillEvent::SkillEnabled { .. } => "skill:enabled",
-            SkillEvent::SkillDisabled { .. } => "skill:disabled",
             SkillEvent::Custom { event_type, .. } => event_type.as_str(),
         }
         .to_string();
@@ -300,12 +291,6 @@ impl EventHandler for LoggingEventHandler {
             SkillEvent::HotReloadDisabled => {
                 info!("Hot reload disabled");
             }
-            SkillEvent::SkillEnabled { skill_id } => {
-                info!("[OK] Skill enabled: {}", skill_id);
-            }
-            SkillEvent::SkillDisabled { skill_id } => {
-                info!("Skill disabled: {}", skill_id);
-            }
             SkillEvent::Custom { event_type, data } => {
                 debug!("Custom event: {} - {:?}", event_type, data);
             }
@@ -350,8 +335,6 @@ impl EventHandler for MetricsEventHandler {
             SkillEvent::SkillValidationFailed { .. } => "skill:validation:failed".to_string(),
             SkillEvent::HotReloadEnabled { .. } => "hot-reload:enabled".to_string(),
             SkillEvent::HotReloadDisabled => "hot-reload:disabled".to_string(),
-            SkillEvent::SkillEnabled { .. } => "skill:enabled".to_string(),
-            SkillEvent::SkillDisabled { .. } => "skill:disabled".to_string(),
             SkillEvent::Custom { event_type, .. } => event_type.clone(),
         };
 
@@ -433,17 +416,5 @@ impl EventBus {
     /// Publish hot reload disabled event
     pub async fn publish_hot_reload_disabled(&self) -> Result<usize, ServiceError> {
         self.publish_event(SkillEvent::HotReloadDisabled).await
-    }
-
-    /// Publish skill enabled event
-    pub async fn publish_skill_enabled(&self, skill_id: String) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillEnabled { skill_id })
-            .await
-    }
-
-    /// Publish skill disabled event
-    pub async fn publish_skill_disabled(&self, skill_id: String) -> Result<usize, ServiceError> {
-        self.publish_event(SkillEvent::SkillDisabled { skill_id })
-            .await
     }
 }

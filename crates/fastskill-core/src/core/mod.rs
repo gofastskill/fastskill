@@ -109,7 +109,7 @@ pub use service::{
 
 // skill_manager
 pub use skill_manager::{
-    SkillDefinition, SkillFilters, SkillManagementService, SkillManager, SkillUpdate, SourceType,
+    SkillDefinition, SkillManagementService, SkillManager, SkillUpdate, SourceType,
 };
 
 // sources
