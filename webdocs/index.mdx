@@ -13,7 +13,7 @@ New here? Read the [Welcome](/welcome) page for the full story, then [Quick star
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, **search**, **`fastskill sync`** into agent metadata, and **publish** flows when you ship skills to others.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, **search**, and **publish** flows when you ship skills to others. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
 
@@ -21,7 +21,7 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
 
 <CardGroup cols={2}>
   <Card title="Package & lifecycle" icon="package">
-    `add`, `install`, `update`, `remove`, `list`, `show` with `skill-project.toml` and `skills.lock`.
+    `add`, `install`, `update`, `remove`, `list`, `read` with `skill-project.toml` and `skills.lock`.
   </Card>
 
   <Card title="Validation" icon="check-circle">
@@ -36,8 +36,8 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
     Catalog search by default; `--local` for installed skills, embeddings, and keyword fallback.
   </Card>
 
-  <Card title="Agent sync" icon="refresh-cw">
-    `fastskill sync` writes the installed skill set into agent metadata files. See [tooling commands](/cli-reference/tooling-commands).
+  <Card title="Diagnostics" icon="stethoscope">
+    `fastskill doctor` reports configuration and environment readiness, including whether semantic search is available. See [tooling commands](/cli-reference/tooling-commands).
   </Card>
 
   <Card title="Publish & catalogs" icon="upload">
@@ -55,18 +55,18 @@ fastskill install
 fastskill list
 ```
 
-Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill eval validate`, `fastskill sync --yes`. Full walkthrough: [Quick start](/quickstart).
+Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill eval validate`, `fastskill doctor`. Full walkthrough: [Quick start](/quickstart).
 
 ## How it fits together
 
 - **You**: edit `SKILL.md` and manifests; agents **read** skill content. FastSkill does not execute skill logic as a runtime sandbox.
-- **CLI**: single entry point for installs, checks, search, evals, sync, and packaging.
+- **CLI**: single entry point for installs, checks, search, evals, and packaging.
 - **Optional `serve`**: HTTP API and UI on your machine for browsing and integrations.
 
 ## Use cases (summary)
 
 - **Authors**: init, validate, eval, package, publish when ready.
-- **Developers**: install, list, read, search, sync for what agents load.
+- **Developers**: install, list, read, search for what agents load.
 - **Teams**: shared manifest + lock; groups for optional stacks.
 - **Automation**: `install --lock`, package, publish in CI (patterns in [CI/CD](/integration/cicd-pipelines)).
 

@@ -17,10 +17,9 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 | Check updates only | `fastskill update --check` | Reports newer versions without changing files |
 | List installed | `fastskill list` | Lists locally installed skills with reconciliation status (table) |
 | List installed (JSON) | `fastskill list --json` | Same as list, machine-readable |
-| Show all skills | `fastskill show` | Lists installed skills with versions from the lock file |
-| Show one skill | `fastskill show my-skill-id` | ID, version, description, source |
-| Show dependency tree | `fastskill show --tree` | Dependency relationships between installed skills |
-| Read skill content | `fastskill read my-skill-id` | Skill docs and base path in an agent-oriented format |
+| Read skill content | `fastskill read my-skill-id` | Full `SKILL.md` and base path in an agent-oriented format |
+| Read skill metadata | `fastskill read my-skill-id --meta` | ID, version, description, source (add `--json` for machine output) |
+| Dependency tree | `fastskill read my-skill-id --tree` | Dependency relationships for the skill |
 | Remove skill | `fastskill remove my-skill-id` | Removes from skills dir, updates manifest and lock; prompts for confirmation |
 | Force remove | `fastskill remove my-skill-id --force` | Removes without confirmation |
 
@@ -36,21 +35,25 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 | Folder of skills | `fastskill add ./skills -r` | Adds each subdirectory that contains `SKILL.md` (local trees only) |
 | Network share (Windows) | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory |
 
-## Sync to agent metadata
-
-| Operation | Command | What It Does |
-|-----------|---------|--------------|
-| Sync all (non-interactive) | `fastskill sync --yes` | Writes the skill list to the auto-detected file (`AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`) |
-| Sync for one agent | `fastskill sync --agent claude --yes` | Targets that agent's file (for example `CLAUDE.md` for `claude`) |
-| Custom file | `fastskill sync --agents-file custom.md --yes` | Overrides auto-detection |
-| Interactive | `fastskill sync` | Choose which skills to expose in the metadata file |
-
 ## Search
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
 | Catalog search | `fastskill search "query"` | Searches remote catalogs by default |
 | Installed only | `fastskill search "query" --local` | Searches skills already on disk |
+| Resolve paths (agents) | `fastskill search "query" --local --paths` | Emits canonical skill paths instead of result rows |
+| Paths with content | `fastskill search "query" --local --paths --content full` | Includes `SKILL.md` content (`none`, `preview`, or `full`) in JSON |
+
+## Diagnostics
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Environment check | `fastskill doctor` | Reports configuration and environment readiness, including whether an embedding provider is configured for semantic search |
+| Machine-readable | `fastskill doctor --json` | Same checks as JSON |
+
+<Note>
+Modern agents (Claude Code, Cursor, …) read skills directly from the skills directory — there is no metadata-file sync step. Just `fastskill install` (or `fastskill add`) and the agent discovers them.
+</Note>
 
 ## Skill authoring
 

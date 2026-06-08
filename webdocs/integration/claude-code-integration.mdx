@@ -5,64 +5,70 @@ description: "Integrate FastSkill with Claude Code for intelligent skill discove
 
 ## Overview
 
-FastSkill integrates with Claude Code using CLAUDE.md as the instruction file. Run
-`fastskill sync` to expose installed skills — fastskill auto-detects CLAUDE.md when
-it exists in the project root.
+Claude Code reads skills **directly** from the skills directory (`.claude/skills/` by
+default). FastSkill's job is to get the right skills onto disk and keep them reconciled with
+your manifest — once a skill is installed, Claude Code discovers it natively. There is no
+metadata file to generate or keep in sync.
 
 ## Quick start
 
 ```bash
-# Auto-detect (recommended — picks up CLAUDE.md if it exists)
-fastskill sync --yes
+# Install the skills declared in skill-project.toml
+fastskill install
 
-# Explicit (targets CLAUDE.md regardless of what other files exist)
-fastskill sync --agent claude --yes
+# ...or add one directly
+fastskill add scope/pptx@1.0.0
+
+# Verify what Claude Code will see
+fastskill list
 ```
+
+That's it — the next time Claude Code runs in this project, the installed skills are available.
 
 ## How it works
 
-`fastskill sync` calls aikit-sdk to resolve the metadata file:
-
-1. Scans the project root for AGENTS.md, CLAUDE.md, GEMINI.md in that order
-2. Uses the first file found
-3. If none exist and `--agent claude` is set, creates CLAUDE.md
-4. If none exist and no `--agent` is set, creates AGENTS.md
+1. `fastskill install` / `fastskill add` materializes skills into the configured
+   `skills_directory` (default `.claude/skills/`).
+2. Each skill is a folder containing `SKILL.md` plus its resources.
+3. Claude Code scans that directory and loads skills by their `SKILL.md` frontmatter — no
+   export or sync step is involved.
+4. Use `fastskill read <skill-id>` to see exactly what an agent loads, or
+   `fastskill read <skill-id> --meta` for just the metadata.
 
 ## GitHub Actions
 
+Keep the skills directory reconciled in CI so commits always carry the resolved skill set:
+
 ```yaml
-name: Update Claude Code skills
+name: Reconcile skills
 on:
   push:
     paths:
-      - '.claude/skills/**'
       - 'skill-project.toml'
+      - 'skills.lock'
 
 jobs:
-  update-claude-md:
+  install-skills:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install FastSkill
         run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
-      - name: Sync skills
-        run: fastskill sync --agent claude --yes
-      - name: Commit CLAUDE.md
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add CLAUDE.md
-          git commit -m 'chore: update CLAUDE.md skills' || echo "No changes"
-          git push
+      - name: Install skills from lock
+        run: fastskill install --lock
+      - name: Verify
+        run: fastskill list
 ```
 
 ## Troubleshooting
 
-**CLAUDE.md not updated:** Confirm `skill-project.toml` is present and the skills
-directory contains at least one valid `SKILL.md`. Run `fastskill sync --agent claude --yes`.
+**Claude Code doesn't see a skill:** Confirm it is installed with `fastskill list`, and that
+the skills directory contains a valid `SKILL.md` for it. `fastskill read <skill-id>` should
+print its content.
 
-**Wrong file detected:** If AGENTS.md exists alongside CLAUDE.md, fastskill picks
-AGENTS.md (it is checked first). Use `--agent claude` to force CLAUDE.md.
+**Wrong skills directory:** Claude Code and FastSkill must agree on the location. The default
+is `.claude/skills/`; override it via `skills_directory` in `.fastskill/config.yaml` or the
+`--skills-dir` flag.
 
 ## MCP Registration
 

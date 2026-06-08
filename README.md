@@ -13,7 +13,7 @@ FastSkill helps you manage AI skills with a clean, repeatable workflow:
 - Keep installs reproducible with `skill-project.toml` and `skills.lock`
 - Discover skills with remote and local search
 - Validate and evaluate skill quality before sharing
-- Sync installed skills into agent metadata files
+- Diagnose your environment with `fastskill doctor`
 
 ## Quick start
 
@@ -82,10 +82,11 @@ fastskill install --lock
 | `fastskill add <source>` | Add a skill dependency from local, git, zip, or registry |
 | `fastskill install` | Apply dependencies from `skill-project.toml` |
 | `fastskill list` | List installed skills |
+| `fastskill read <id>` | Print a skill's full `SKILL.md` (add `--meta` for metadata, `--tree` for its dependency tree) |
 | `fastskill search "<query>"` | Search remote catalog (default) |
 | `fastskill search "<query>" --local` | Search installed skills |
 | `fastskill eval validate` | Validate eval configuration and checks |
-| `fastskill sync --yes` | Sync installed skills to agent metadata |
+| `fastskill doctor` | Diagnose configuration and environment (e.g. whether semantic search is available) |
 | `fastskill package` | Package skills for distribution |
 
 ## Documentation
@@ -102,7 +103,7 @@ This repository is a Rust workspace with three primary crates:
 
 - [`crates/fastskill-cli`](crates/fastskill-cli): CLI binary and command routing.
 - [`crates/fastskill-core`](crates/fastskill-core): reusable service/library layer.
-- [`crates/evals-core`](crates/evals-core): standalone evaluation engine primitives.
+- [`crates/fastskill-evals`](crates/fastskill-evals): standalone evaluation engine primitives.
 
 Each crate has its own docs:
 
@@ -110,8 +111,8 @@ Each crate has its own docs:
 - `crates/fastskill-cli/CONTRIBUTING.md`
 - `crates/fastskill-core/README.md`
 - `crates/fastskill-core/CONTRIBUTING.md`
-- `crates/evals-core/README.md`
-- `crates/evals-core/CONTRIBUTING.md`
+- `crates/fastskill-evals/README.md`
+- `crates/fastskill-evals/CONTRIBUTING.md`
 
 ## License
 

@@ -5,39 +5,30 @@ description: "Integrate FastSkill with Cursor IDE for intelligent skill discover
 
 ## Overview
 
-FastSkill integrates seamlessly with Cursor IDE to provide AI agents with access to a comprehensive skill registry. This enables Cursor's AI to discover and utilize specialized tools and workflows automatically.
+Cursor discovers skills **directly** from the skills directory (`.claude/skills/` by default)
+and via the FastSkill MCP server. FastSkill's job is to install the right skills onto disk and
+keep them reconciled with your manifest — there is no metadata file to generate or keep in sync.
 
 <Info>
-Cursor integration uses AGENTS.md. Run `fastskill sync` to sync installed skills — fastskill
-automatically detects the correct metadata file for your agent (AGENTS.md for Cursor,
-CLAUDE.md for Claude Code, GEMINI.md for Gemini). Use `--agent cursor-agent` to target
-Cursor explicitly.
+Modern agents (Cursor, Claude Code, …) read installed skills from the skills directory natively.
+Just `fastskill install` (or `fastskill add`) and the skills are available. Register the MCP
+server below for richer, tool-based access from inside Cursor.
 </Info>
 
-## How It Works
-
-### 1. Sync skills to AGENTS.md (Cursor)
-
-Expose installed skills to Cursor by syncing them into AGENTS.md. Cursor uses AGENTS.md
-as its instruction file; fastskill auto-detects this when AGENTS.md exists:
+## Quick start
 
 ```bash
-# Sync all installed skills to AGENTS.md (non-interactive)
-fastskill sync --yes
+# 1. Install the skills declared in skill-project.toml
+fastskill install
 
-# Or run interactively to choose which skills to expose
-fastskill sync
-```
+# 2. Verify what is on disk
+fastskill list
 
-### 2. Optional: Skill indexing and search
-
-For semantic search over skills, index the skills directory:
-
-```bash
+# 3. (Optional) Build the local index for semantic search
 fastskill reindex --skills-dir .claude/skills/
 ```
 
-### 3. MCP Registration
+## MCP registration
 
 Register `fastskill` as an MCP server inside Cursor with a single command:
 
@@ -49,285 +40,108 @@ fastskill mcp install --agent cursor --stdio --scope project --overwrite
 fastskill mcp install --agent cursor --stdio --dry-run
 ```
 
-After running the command, reload Cursor. The tools exposed by `fastskill mcp serve --transport stdio` will be callable from the agent.
+After running the command, reload Cursor. The tools exposed by
+`fastskill mcp serve --transport stdio` will be callable from the agent.
 
-> **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is deprecated. Use `fastskill mcp install` instead.
-
-### 4. Cursor integration
-
-Cursor reads AGENTS.md and native skills/agents configuration to discover available skills.
-
-## Configuration
-
-### Basic setup
-
-Ensure your project has a `skill-project.toml` with `[tool.fastskill]` and a `skills_directory`. Then run:
-
-```bash
-fastskill sync --yes
-```
-
-This updates AGENTS.md with the list of installed skills so Cursor (and other agents) can discover them. Use `fastskill sync` without `--yes` to choose which skills to expose interactively.
-
-## AGENTS.md format
-
-`fastskill sync` writes a `<skills_system>` section into the detected metadata file
-(AGENTS.md for Cursor) with `<available_skills>` listing each skill's id, description, and location (project or global). Cursor and other agents that read AGENTS.md use this to discover and invoke skills (e.g. via `fastskill read <skill-id>`).
+> **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is
+> deprecated. Use `fastskill mcp install` instead.
 
 ## How Cursor uses the skills
 
-### Tool discovery
-
 When you ask Cursor to perform a task, it:
 
-1. **Reads available skills** from AGENTS.md (Cursor's instruction file) and native Cursor skills/agents
-2. **Matches task requirements** against skill descriptions
-3. **Identifies relevant skills** for the task
-4. **Provides access** to the full SKILL.md content via `fastskill read <skill-id>`
+1. **Reads available skills** from the skills directory (and the FastSkill MCP server, if
+   registered).
+2. **Matches task requirements** against each skill's `description` frontmatter.
+3. **Loads the full `SKILL.md`** for relevant skills to get instructions and parameters —
+   the same content `fastskill read <skill-id>` prints.
 
-### Example Usage
+### Example
 
-**User Query:** *"Help me create a PowerPoint presentation for my quarterly review"*
+**User query:** *"Help me create a PowerPoint presentation for my quarterly review."*
 
-**Cursor Process:**
-1. Scans skills registry for "presentation" or "powerpoint" related skills
-2. Finds relevant skills (pptx, presentation-tools, etc.)
-3. Accesses full SKILL.md content for implementation details
-4. Provides step-by-step guidance using the skill
+Cursor scans installed skills for presentation-related descriptions, finds a match (e.g.
+`pptx`), loads its `SKILL.md`, and follows the skill's instructions to complete the task.
 
-### Context Awareness
+## Configuration
 
-Cursor can now understand:
-- **Available tools**: What skills are installed
-- **Skill capabilities**: What each skill can do
-- **Usage patterns**: How to combine multiple skills
-- **Implementation details**: Specific instructions and parameters
-
-## Advanced Configuration
-
-### Agent detection
-
-`fastskill sync` automatically detects which metadata file to use by scanning the project
-directory for known files in this order: AGENTS.md, CLAUDE.md, GEMINI.md. The first
-file found is used. If none exist, AGENTS.md is created.
-
-| Agent | Metadata file | Agent key |
-|---|---|---|
-| Cursor | AGENTS.md | `cursor-agent` |
-| Claude Code | CLAUDE.md | `claude` |
-| Google Gemini | GEMINI.md | `gemini` |
-| GitHub Copilot | *(unsupported — use `--agents-file`)* | `copilot` |
-
-To target Cursor explicitly regardless of what files exist:
+Ensure your project has a `skill-project.toml` and that Cursor and FastSkill agree on the
+skills directory. The default is `.claude/skills/`; override it via `skills_directory` in
+`.fastskill/config.yaml` or the `--skills-dir` flag.
 
 ```bash
-fastskill sync --yes --agent cursor-agent
+fastskill install
+fastskill list
 ```
 
-To write to a completely custom path:
+### Multiple skill directories
 
 ```bash
-fastskill sync --yes --agents-file custom.md
-```
-
-### Multiple Skill Directories
-
-```bash
-# Index multiple directories
 fastskill reindex --skills-dir .claude/skills/
 fastskill reindex --skills-dir ./custom-skills/
-
-# Or use different output files
-# Configure separate exports for each directory
 ```
-
-### Choosing which skills to sync
-
-Run `fastskill sync` without `--yes` to interactively select which installed skills appear
-in the detected metadata file.
 
 ## Automation
 
-### GitHub Actions
-
-Update skills metadata when skills change:
+Keep the skills directory reconciled in CI so commits always carry the resolved skill set:
 
 ```yaml
-# .github/workflows/update-skills.yml
-name: Update skills metadata
+# .github/workflows/reconcile-skills.yml
+name: Reconcile skills
 on:
   push:
     paths:
-      - '.claude/skills/**'
       - 'skill-project.toml'
+      - 'skills.lock'
 
 jobs:
-  update-agents:
+  install-skills:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install FastSkill CLI
         run: |
           # Add the steps your org uses to place `fastskill` on PATH (release tarball, package, etc.)
           fastskill -V
-
-      - name: Sync skills to metadata file
-        run: fastskill sync --agent cursor-agent --yes
-
-      - name: Commit metadata file
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add AGENTS.md
-          git commit -m 'chore: update AGENTS.md skills' || echo "No changes"
-          git push
-```
-
-### Pre-commit hooks
-
-```bash
-#!/bin/bash
-# .git/hooks/pre-commit
-if git diff --cached --name-only | grep -q ".claude/skills/"; then
-    echo "Skills changed, syncing metadata file..."
-    fastskill sync --agent cursor-agent --yes
-    git add AGENTS.md
-fi
+      - name: Install skills from lock
+        run: fastskill install --lock
+      - name: Verify
+        run: fastskill list
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-#### AGENTS.md not updated
-```bash
-# Ensure skill-project.toml and skills directory exist
-cat skill-project.toml
-ls -la .claude/skills/  # or your configured skills_directory
-
-# Sync manually
-fastskill sync --yes
-```
-
-#### Cursor not recognizing skills
-```bash
-# Ensure AGENTS.md exists and contains a skills section
-cat AGENTS.md | head -80
-
-# Re-sync installed skills
-fastskill sync --yes
-```
-
-#### Outdated skill list
-```bash
-fastskill sync --yes
-```
-
-### Debug Commands
+**Cursor doesn't see a skill**
 
 ```bash
-# Check FastSkill configuration
-fastskill --help
+# Confirm it is installed and reconciled
+fastskill list
 
-# Test search functionality
-fastskill search "test query" --embedding false
-
-# Verify index exists
-ls -la .claude/skills/.fastskill/index.db
-
-# Check detected metadata file
-wc -l AGENTS.md
+# Confirm its content is readable
+fastskill read <skill-id>
 ```
 
-## Performance Considerations
-
-### File Size
-
-- **Small repositories**: < 10KB
-- **Medium repositories**: 50-200KB
-- **Large repositories**: 500KB+
-
-### Generation Time
-
-- **Small**: < 5 seconds
-- **Medium**: 10-30 seconds
-- **Large**: 1-5 minutes
-
-### Update Frequency
-
-- **On-demand**: Update when skills change
-- **Scheduled**: Daily/weekly regeneration
-- **Event-driven**: Update on git push to skills directory
-
-## Integration Patterns
-
-### Multi-environment setup
-
-Use different files per environment via `--agents-file`:
+**Semantic search returns nothing**
 
 ```bash
-fastskill sync --yes --agents-file AGENTS-dev.md
-fastskill sync --yes --agents-file AGENTS-prod.md
+# Reindex (requires an embedding provider; see `fastskill doctor`)
+fastskill reindex --skills-dir .claude/skills/
+
+# Keyword fallback works without a provider
+fastskill search "test query" --local --embedding false
 ```
 
-### Team Collaboration
+**Check environment readiness**
 
-Share skills registry across team:
-
-```yaml
-# Generate team-wide registry
-markdown_export:
-  output_path: "docs/team-skills.md"
-  header_instructions: |
-    Team Skills Registry - Updated $(date)
-    This file contains all skills available to the development team.
-```
-
-### Documentation Integration
-
-Include in project docs:
-
-```yaml
-# Generate for docs site
-markdown_export:
-  output_path: "docs/skills/index.md"
-  header_instructions: |
-    # Available Skills
-
-    This page lists all skills available in the project.
-```
-
-## Future Enhancements
-
-### Planned Features
-
-- **Filtered exports**: Export only skills relevant to specific projects
-- **Version tracking**: Track skill versions and changes
-- **Dependency mapping**: Show skill relationships and dependencies
-- **Usage analytics**: Track which skills are most used
-- **Collaborative editing**: Allow team members to contribute skill updates
-
-### Custom Templates
-
-Allow custom markdown templates:
-
-```yaml
-markdown_export:
-  template: "custom-template.md"
-  variables:
-    project_name: "My Project"
-    team: "Engineering"
+```bash
+fastskill doctor
 ```
 
 ## Summary
 
 FastSkill's Cursor integration provides:
 
-✅ **Automatic skill discovery** for AI agents
-✅ **Seamless integration** with existing workflows
-✅ **Up-to-date documentation** through automated generation
-✅ **Performance optimized** for large skill repositories
-✅ **Flexible configuration** for different use cases
-
-The integration bridges the gap between static skill definitions and dynamic AI agent capabilities, enabling Cursor to provide more intelligent and context-aware assistance.
+- **Direct skill discovery** — Cursor reads installed skills from the skills directory, no sync step
+- **MCP access** — register the FastSkill MCP server for tool-based access inside Cursor
+- **Reproducible installs** — `skill-project.toml` + `skills.lock` keep the skill set consistent across the team
+- **Optional semantic search** — `fastskill reindex` + `fastskill search --local` when an embedding provider is configured
