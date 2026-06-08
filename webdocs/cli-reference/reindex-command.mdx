@@ -343,44 +343,21 @@ fastskill reindex --skills-dir .claude/skills/
 
 ## Integration Features
 
-### Cursor Integration
+### Agent discovery
 
-When reindex completes, it can optionally generate a markdown file for Cursor:
-
-```bash
-fastskill reindex --skills-dir .claude/skills/
-# Creates: .claude/skills/.fastskill/skills.md
-```
-
-This file contains all indexed skills in markdown format. To expose installed skills to AI agents,
-use `fastskill sync` to update the agent's metadata file (auto-detected: AGENTS.md, CLAUDE.md,
-GEMINI.md, etc.) instead.
-
-### Configuration for Markdown Export
-
-Add to `.fastskill/config.yaml`:
-
-```yaml
-markdown_export:
-  enabled: true
-  output_path: "docs/skills-registry.md"
-  header_instructions: |
-    Skills are modular packages in `.claude/skills/<category>/<skill-name>/SKILL.md`
-    that provide specialized workflows, tool integrations, and domain knowledge.
-    Each SKILL.md contains YAML frontmatter and full instructions.
-    Use the `description` field to identify relevant skills.
-  fastskill_usage_instructions: |
-    Use `fastskill search "query"` to search for skills semantically.
-    Use `fastskill reindex` to update the skill index.
-```
+Reindexing only populates the local vector index used by `fastskill search --local`. Agents
+(Claude Code, Cursor, …) discover installed skills directly from the skills directory — there is
+no separate metadata file to generate or sync.
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### "Embedding not configured"
+#### Reindex skipped: no embedding provider configured
+`reindex` requires an embedding provider. When none is configured it is skipped (not an error) —
+run `fastskill doctor` to confirm, then configure one in `.fastskill/config.yaml`:
+
 ```bash
-# Solution: Create .fastskill/config.yaml
 cat > .fastskill/config.yaml << EOF
 embedding:
   openai_base_url: "https://api.openai.com/v1"

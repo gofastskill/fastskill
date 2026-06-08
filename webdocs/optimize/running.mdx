@@ -85,7 +85,7 @@ Re-reads and re-prints every ~2 seconds until the run completes.
 fastskill optimize resume .skillopt/runs/2026-06-03T14-22-01Z
 ```
 
-The `resume` subcommand reads the stored `skillopt.toml` copy from the run directory (saved at run-start for provenance), re-validates it against the current files, and calls the training loop at the last checkpoint.
+The `resume` subcommand reads the stored `optimize.toml` copy from the run directory (saved at run-start for provenance; legacy run directories from before the rename may instead contain `skillopt.toml`, which is still read for backward compatibility), re-validates it against the current files, and calls the training loop at the last checkpoint.
 
 **Note:** Resume uses the config stored *inside* the run directory, not your original config file. This ensures the run is reproducible regardless of changes you may have made to the config since starting.
 
@@ -118,7 +118,7 @@ Every run creates a self-contained directory:
 
 ```
 .skillopt/runs/2026-06-03T14-22-01Z/
-├── skillopt.toml          # stored config (provenance copy)
+├── optimize.toml          # stored config (provenance copy)
 ├── runtime_state.json     # live state: best_score, epoch, global_step
 ├── history.json           # array of step records
 ├── best_skill.md          # best skill document seen so far

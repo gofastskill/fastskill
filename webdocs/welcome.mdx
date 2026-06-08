@@ -5,7 +5,7 @@ description: "Package manager and operational toolkit for Agent AI Skills. Disco
 
 # Welcome to FastSkill
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It follows the Claude Code skill layout (`SKILL.md`) and adds manifests, lockfiles, validation, optional eval suites, search, and agent sync so teams can **operate** skills—not only host a catalog.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It follows the Claude Code skill layout (`SKILL.md`) and adds manifests, lockfiles, validation, optional eval suites, and search so teams can **operate** skills—not only host a catalog.
 
 ## The Problem We're Solving
 
@@ -59,9 +59,9 @@ fastskill init                    # Skill author: create skill-project metadata
 fastskill add ./my-skill -e       # Add or link a skill (editable when local)
 fastskill install --without dev   # Install manifest without dev-only groups
 fastskill update                  # Move pinned versions forward when you choose
-fastskill show --tree             # Inspect what is installed
+fastskill read my-skill --tree    # Inspect a skill and its dependency tree
 fastskill eval validate           # Check eval config and prompts (optional)
-fastskill sync --yes              # Write installed skills to agent metadata
+fastskill doctor                  # Diagnose configuration and environment
 ```
 
 ### Dependency management
@@ -134,11 +134,11 @@ FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) an
 - **Reconciliation**: `fastskill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
 - **Eval suites**: `fastskill eval` for validate / run / report / score against defined cases ([eval command](/cli-reference/eval-command))
 
-### 3. **Discovery & agent sync**
+### 3. **Discovery**
 
 - **Search**: remote catalogs by default; `--local` for installed skills and embeddings
-- **Read & show**: inspect what agents will load
-- **Sync**: push the installed set into agent metadata files (`fastskill sync`)
+- **Read**: inspect what agents will load — full content, or `--meta`/`--tree` for metadata and dependencies
+- **Direct discovery**: agents read installed skills straight from the skills directory; no metadata-file sync step
 
 ### 4. **Publish & registries** (when you distribute)
 
@@ -274,8 +274,8 @@ FastSkill focuses on **repeatable operations** for AI agent skills:
 ## What's Next?
 
 - [Manifest system](/skill-management/manifest-system) for `skill-project.toml`, locks, and how installs resolve
-- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands) (`sync`, `analyze`, …)
-- [Cursor integration](/integration/cursor-integration) for metadata files in the editor
+- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands) (`doctor`, `analyze`, …)
+- [Cursor integration](/integration/cursor-integration) for using installed skills in the editor
 - [Registry overview](/registry/overview) when you are ready to publish or browse catalogs
 
 ---
