@@ -110,7 +110,7 @@ pub async fn search_skills(
         let skills_list = state
             .service
             .skill_manager()
-            .list_skills(None)
+            .list_skills()
             .await
             .map_err(|e| HttpError::ServiceError(format!("Failed to list skills: {}", e)))?;
 

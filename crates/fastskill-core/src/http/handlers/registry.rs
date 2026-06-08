@@ -199,7 +199,7 @@ pub async fn list_all_skills(
 
     // Get all installed skills
     let installed_skills = skill_manager
-        .list_skills(None)
+        .list_skills()
         .await
         .map_err(|e| HttpError::InternalServerError(e.to_string()))?;
 
@@ -306,7 +306,7 @@ pub async fn list_source_skills(
 
     // Get installed skills to check installation status
     let installed_skills = skill_manager
-        .list_skills(None)
+        .list_skills()
         .await
         .map_err(|e| HttpError::InternalServerError(e.to_string()))?;
 

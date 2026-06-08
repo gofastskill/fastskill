@@ -26,7 +26,6 @@ fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> s
         "description": skill.description,
         "version": skill.version,
         "author": skill.author,
-        "enabled": skill.enabled,
         "created_at": skill.created_at.to_rfc3339(),
         "updated_at": skill.updated_at.to_rfc3339(),
         "skill_file": skill.skill_file,
@@ -42,7 +41,7 @@ fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> s
 pub async fn list_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillsListResponse>>> {
-    let skills = state.service.skill_manager().list_skills(None).await?;
+    let skills = state.service.skill_manager().list_skills().await?;
 
     let skill_responses: Vec<SkillResponse> = skills
         .clone()
@@ -73,7 +72,7 @@ pub async fn get_skill(
 ) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
     // Check permissions
 
-    let skills = state.service.skill_manager().list_skills(None).await?;
+    let skills = state.service.skill_manager().list_skills().await?;
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
     let skill = skills
@@ -174,7 +173,7 @@ pub async fn delete_skill(
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
 
-    let skills = state.service.skill_manager().list_skills(None).await?;
+    let skills = state.service.skill_manager().list_skills().await?;
     let skill = skills
         .into_iter()
         .find(|s| s.id == skill_id_parsed)

@@ -60,8 +60,7 @@ impl AppState {
 
 /// GET / - Root endpoint with HTML dashboard
 pub async fn root(State(state): State<AppState>) -> Html<String> {
-    let skills: Vec<_> =
-        (state.service.skill_manager().list_skills(None).await).unwrap_or_default();
+    let skills: Vec<_> = (state.service.skill_manager().list_skills().await).unwrap_or_default();
 
     let skills_count = skills.len();
     let uptime = state.uptime_seconds();
@@ -238,7 +237,7 @@ pub async fn root(State(state): State<AppState>) -> Html<String> {
 pub async fn status(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<StatusResponse>>> {
-    let skills = state.service.skill_manager().list_skills(None).await?;
+    let skills = state.service.skill_manager().list_skills().await?;
     let skills_count = skills.len();
 
     let config = state.service.config();
