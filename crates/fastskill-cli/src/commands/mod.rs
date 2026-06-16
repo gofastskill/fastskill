@@ -11,6 +11,7 @@ pub mod install;
 pub mod list;
 pub mod marketplace;
 pub mod package;
+#[cfg(feature = "registry-publish")]
 pub mod publish;
 pub mod read;
 pub mod registry;

@@ -103,7 +103,7 @@ assert_cmd = "2.2"
 predicates = "3.0"
 
 [features]
-default = ["filesystem-storage", "registry-publish"]
+default = ["filesystem-storage"]
 
 # Storage backends
 filesystem-storage = []

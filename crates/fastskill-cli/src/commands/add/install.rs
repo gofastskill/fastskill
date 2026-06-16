@@ -376,6 +376,7 @@ version = "1.0.0"
 
     #[cfg(unix)]
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_add_editable_local_creates_symlink() {
         let _lock = fastskill_core::test_utils::DIR_MUTEX
             .lock()
@@ -440,6 +441,7 @@ skills_directory = ".claude/skills"
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_add_non_editable_local_creates_directory() {
         let _lock = fastskill_core::test_utils::DIR_MUTEX
             .lock()

@@ -295,9 +295,12 @@ mod tests {
         let result = parse_yaml_frontmatter(content);
         assert!(
             result.is_ok(),
-            "parse_yaml_frontmatter should succeed with legacy enabled key"
+            "parse_yaml_frontmatter should succeed with legacy enabled key: {:?}",
+            result.as_ref().err()
         );
-        let fm = result.unwrap();
+        let Ok(fm) = result else {
+            return;
+        };
         assert!(
             fm.extra.contains_key("enabled"),
             "extra map should contain the enabled key"

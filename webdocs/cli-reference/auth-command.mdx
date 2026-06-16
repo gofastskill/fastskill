@@ -9,7 +9,7 @@ The `auth` command manages authentication for FastSkill registries. It supports 
 
 <Info>
 Authentication is required for:
-- Publishing skills to registries
+- Publishing skills to registries in `registry-publish` builds
 - Accessing private repositories
 - Performing admin operations on registries
 </Info>
@@ -70,7 +70,7 @@ fastskill auth login --registry https://registry.example.com
 # Token stored and ready to use
 
 # 2. Publish a skill
-fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --registry https://registry.example.com
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --api-url https://registry.example.com
 
 # 3. Token is used automatically
 ```
@@ -115,8 +115,8 @@ fastskill auth logout --registry https://registry.example.com
 # Output: Successfully logged out from https://registry.example.com
 
 # 3. Try to publish (will fail)
-fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --registry https://registry.example.com
-# Error: No authentication token found for registry: https://registry.example.com
+fastskill publish --artifacts ./artifacts/pptx-1.2.3.zip --api-url https://registry.example.com
+# Remote registry rejects the request if it requires authentication
 ```
 
 ### auth whoami
@@ -234,10 +234,10 @@ fastskill auth whoami --registry https://staging-registry.example.com
 
 ```bash
 # Publish to production
-fastskill publish --registry https://prod-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+fastskill publish --api-url https://prod-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
 
 # Publish to staging
-fastskill publish --registry https://staging-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+fastskill publish --api-url https://staging-registry.example.com --artifacts ./artifacts/pptx-1.2.3.zip
 ```
 
 ## Role-Based Access Control (RBAC)
@@ -407,8 +407,8 @@ export FASTSKILL_API_URL=https://registry.example.com
 # 3. Package skill
 fastskill package --skills pptx --bump patch --output ./artifacts
 
-# 4. Publish (token is used automatically)
-fastskill publish --artifacts ./artifacts --registry https://registry.example.com
+# 4. Publish (requires a registry-publish build; token is used automatically)
+fastskill publish --artifacts ./artifacts --api-url https://registry.example.com
 
 # 5. Verify
 echo "Published successfully!"
@@ -424,10 +424,10 @@ fastskill auth login --registry https://prod.example.com --role admin
 fastskill auth login --registry https://staging.example.com --role manager
 
 # 3. Publish to staging
-fastskill publish --registry https://staging.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+fastskill publish --api-url https://staging.example.com --artifacts ./artifacts/pptx-1.2.3.zip
 
 # 4. Promote to production
-fastskill publish --registry https://prod.example.com --artifacts ./artifacts/pptx-1.2.3.zip
+fastskill publish --api-url https://prod.example.com --artifacts ./artifacts/pptx-1.2.3.zip
 ```
 
 ## Troubleshooting
@@ -492,9 +492,9 @@ fastskill publish --registry https://prod.example.com --artifacts ./artifacts/pp
 
 <Accordion title="Multiple registries confused">
   <Tip>
-  **Specify registry explicitly**: Use `--registry` flag to avoid confusion.
+  **Specify registry explicitly**: Use `--api-url` for registry API URLs or `--registry` for configured repository names.
   ```bash
-  fastskill publish --registry https://prod.example.com --artifacts ./artifacts/pptx.zip
+  fastskill publish --api-url https://prod.example.com --artifacts ./artifacts/pptx.zip
   ```
   </Tip>
 
@@ -562,5 +562,5 @@ Authentication tokens are valuable credentials. Treat them like passwords and fo
 ## See Also
 
 - [Registry Overview](/registry/overview) - Understanding registries
-- [Publish Command](/cli-reference/publish-command) - Publishing skills
+- [Publish Command](/cli-reference/publish-command) - Optional registry publishing
 - [repos Command](/cli-reference/repository-command) - Managing repositories

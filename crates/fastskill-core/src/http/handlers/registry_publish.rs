@@ -42,7 +42,7 @@ pub struct PublishStatusResponse {
     pub blob_storage_url: Option<String>,
 }
 
-/// POST /api/registry/publish - Publish a skill package
+/// POST /api/v1/registry/publish - Publish a skill package
 pub async fn publish_package(
     State(state): State<AppState>,
     mut multipart: Multipart,
@@ -185,7 +185,7 @@ pub async fn publish_package(
     Ok(Json(ApiResponse::success(response)))
 }
 
-/// GET /api/registry/publish/status/:job_id - Get publish job status
+/// GET /api/v1/registry/publish/status/:job_id - Get publish job status
 pub async fn get_publish_status(
     Path(job_id): Path<String>,
     State(state): State<AppState>,

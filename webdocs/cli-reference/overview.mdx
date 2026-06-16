@@ -1,11 +1,11 @@
 ---
 title: "CLI Reference Overview"
-description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, package, publish, and serve."
+description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, package, and serve."
 ---
 
 ## Overview
 
-The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, packaging and optional publish, plus `serve` when you want a local HTTP surface.
+The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, packaging, plus `serve` when you want a local HTTP surface.
 
 <Info>
 The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
@@ -107,14 +107,14 @@ fastskill list --help         # Help for list command
   </Card>
 </CardGroup>
 
-### Packaging & publish
+### Packaging
 
 <CardGroup cols={2}>
   <Card title="fastskill package" icon="archive">
     Package skills into ZIP artifacts with change detection and version bumps. See [package Command](/cli-reference/package-command).
   </Card>
   <Card title="fastskill publish" icon="upload">
-    Publish packaged artifacts to blob storage with job tracking. See [publish Command](/cli-reference/publish-command).
+    Optional operator command for registry publishing. It is available only in builds compiled with `registry-publish`. See [publish Command](/cli-reference/publish-command).
   </Card>
 </CardGroup>
 
@@ -189,7 +189,7 @@ index_url = "https://api.fastskill.io/index"
 priority = 0
 ```
 
-For publishing, create `.fastskill/publish.toml`:
+For opt-in registry publishing builds, create `.fastskill/publish.toml`:
 
 ```toml .fastskill/publish.toml
 [blob_storage]

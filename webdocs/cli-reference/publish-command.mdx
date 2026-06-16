@@ -1,11 +1,15 @@
 ---
-title: publish
+title: "publish (optional)"
 api: "publish"
 ---
 
 # publish Command
 
 Publish skill packages to a registry API or local folder.
+
+<Warning>
+`fastskill publish` is an optional operator command. Public/default builds do not include it. Build or install FastSkill with the `registry-publish` feature when you need this command.
+</Warning>
 
 ## Usage
 
@@ -18,10 +22,13 @@ fastskill publish [OPTIONS]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--artifacts <PATH>` | Package file or directory containing ZIP artifacts | `./artifacts` |
-| `--target <TARGET>` | API URL (for example `https://registry.example.com`) or local folder path | `FASTSKILL_API_URL` or `http://localhost:8080` |
-| `--wait` | Wait for validation to complete | `true` |
-| `--no-wait` | Do not wait for validation (overrides `--wait`) | `false` |
+| `--registry <NAME>` | Repository name from `repositories.toml` | none |
+| `--api-url <URL>` | Registry API base URL, for example `https://registry.example.com` | `FASTSKILL_API_URL` if no target flag is set |
+| `--local-dir <PATH>` | Local directory to copy ZIP artifacts into | none |
+| `--wait <BOOL>` | Wait for validation to complete in API mode | `true` |
 | `--max-wait <SECONDS>` | Maximum wait time in seconds | `300` |
+
+`--registry`, `--api-url`, and `--local-dir` are mutually exclusive.
 
 ## Examples
 
@@ -30,7 +37,7 @@ fastskill publish [OPTIONS]
 ```bash
 fastskill publish \
   --artifacts ./artifacts \
-  --target http://localhost:8080
+  --api-url http://localhost:8080
 ```
 
 Local `fastskill serve` publish endpoints do not require auth headers.
@@ -41,17 +48,25 @@ Local `fastskill serve` publish endpoints do not require auth headers.
 fastskill auth login --registry https://registry.example.com
 fastskill publish \
   --artifacts ./artifacts \
-  --target https://registry.example.com
+  --api-url https://registry.example.com
 ```
 
 Remote registries may require authentication depending on server configuration.
+
+### Publish Through a Configured Repository
+
+```bash
+fastskill publish \
+  --artifacts ./artifacts \
+  --registry official
+```
 
 ### Publish to Local Folder
 
 ```bash
 fastskill publish \
   --artifacts ./artifacts \
-  --target ./local-registry
+  --local-dir ./local-registry
 ```
 
 ## Local Publish Identity
@@ -66,14 +81,14 @@ When publishing to local `fastskill serve`, identity is deterministic and anonym
 
 1. Upload package using multipart form data
 2. Package is staged for validation
-3. Check status with `/api/registry/publish/status/:job_id`
+3. Check status with `/api/v1/registry/publish/status/:job_id`
 4. Accepted packages are written to configured outputs
 
 ## Troubleshooting
 
 - **"No artifacts found"**: Verify `--artifacts` path points to a ZIP file or directory containing ZIP files
-- **"Publish timeout"**: Increase `--max-wait` or rerun with `--no-wait`
-- **"Registry unavailable"**: Check `--target` URL and network connectivity
+- **"Publish timeout"**: Increase `--max-wait` or set `--wait false`
+- **"Registry unavailable"**: Check `--api-url` URL and network connectivity
 
 ## See Also
 

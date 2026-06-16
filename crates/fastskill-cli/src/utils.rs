@@ -1,5 +1,6 @@
 //! Utility functions for CLI operations
 
+#[cfg(feature = "registry-publish")]
 pub mod api_client;
 pub mod install_utils;
 pub mod manifest_utils;

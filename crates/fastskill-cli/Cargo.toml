@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core library
-fastskill-core = { path = "../fastskill-core", features = ["filesystem-storage", "registry-publish", "hot-reload"] }
+fastskill-core = { path = "../fastskill-core", default-features = false, features = ["filesystem-storage", "hot-reload"] }
 
 # CLI framework for AppBuilder, command registry, MCP server, and doctor
 cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor", "testkit"] }
@@ -88,9 +88,9 @@ dirs.workspace = true
 # Semantic versioning
 semver.workspace = true
 
-# AWS S3 storage (for registry publishing)
-aws-sdk-s3.workspace = true
-aws-config.workspace = true
+# AWS S3 storage (optional; only compiled with registry publishing)
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
 
 # Vendored OpenSSL — required for musl cross-compilation because cli-framework and
 # aikit-sdk depend on reqwest without default-features = false, which unifies
@@ -99,6 +99,8 @@ aws-config.workspace = true
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
 
 [features]
+default = []
+registry-publish = ["fastskill-core/registry-publish", "dep:aws-sdk-s3", "dep:aws-config"]
 vendored-openssl = ["dep:openssl"]
 
 [dev-dependencies]

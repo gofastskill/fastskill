@@ -105,15 +105,17 @@ impl IndexManager {
             }
         }
 
-        // Step 4: Acquire exclusive file lock with timeout
+        // Step 4: Acquire exclusive lock with timeout. Use a sidecar lock file
+        // because the index file is replaced by atomic rename during update.
+        let lock_path = index_path.with_extension("lock");
         let lock_start = Instant::now();
         let file = loop {
             let file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
-                .truncate(true)
-                .open(&index_path)
+                .truncate(false)
+                .open(&lock_path)
                 .map_err(ServiceError::Io)?;
 
             // Try to acquire exclusive lock
@@ -122,12 +124,12 @@ impl IndexManager {
                     let elapsed = lock_start.elapsed();
                     if elapsed.as_millis() > 0 {
                         info!(
-                            "Acquired lock on index file: {:?} (waited {}ms)",
+                            "Acquired lock for index file: {:?} (waited {}ms)",
                             index_path,
                             elapsed.as_millis()
                         );
                     } else {
-                        info!("Acquired lock on index file: {:?}", index_path);
+                        info!("Acquired lock for index file: {:?}", index_path);
                     }
                     break file;
                 }
@@ -137,12 +139,12 @@ impl IndexManager {
                     if elapsed >= self.lock_timeout {
                         warn!(
                             "Lock timeout exceeded for {:?} after {} seconds",
-                            index_path,
+                            lock_path,
                             self.lock_timeout.as_secs()
                         );
                         return Err(ServiceError::Custom(format!(
                             "Timeout waiting for file lock on {:?} (exceeded {} seconds)",
-                            index_path,
+                            lock_path,
                             self.lock_timeout.as_secs()
                         )));
                     }
@@ -150,7 +152,7 @@ impl IndexManager {
                     if elapsed.as_secs() > 0 && elapsed.as_secs().is_multiple_of(5) {
                         info!(
                             "Waiting for lock on {:?} ({}s elapsed, timeout: {}s)",
-                            index_path,
+                            lock_path,
                             elapsed.as_secs(),
                             self.lock_timeout.as_secs()
                         );
@@ -160,7 +162,7 @@ impl IndexManager {
                     continue;
                 }
                 Err(e) => {
-                    warn!("Failed to acquire lock on {:?}: {}", index_path, e);
+                    warn!("Failed to acquire lock on {:?}: {}", lock_path, e);
                     return Err(ServiceError::Io(e));
                 }
             }
@@ -385,5 +387,85 @@ impl IndexManager {
         }
 
         Ok(entries)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::core::registry_index::VersionEntry;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn entry(version: &str) -> VersionEntry {
+        VersionEntry {
+            name: "testorg/test-skill".to_string(),
+            vers: version.to_string(),
+            deps: Vec::new(),
+            cksum: format!("checksum-{version}"),
+            features: HashMap::new(),
+            yanked: false,
+            links: None,
+            download_url: format!("https://example.com/test-skill-{version}.zip"),
+            published_at: "2024-01-01T00:00:00Z".to_string(),
+            metadata: None,
+            scoped_name: None,
+        }
+    }
+
+    fn read_entries(registry_path: PathBuf) -> Vec<VersionEntry> {
+        let index_path = get_skill_index_path(&registry_path, "testorg/test-skill").unwrap();
+        IndexManager::read_entries_from_path(&index_path).unwrap()
+    }
+
+    #[test]
+    fn atomic_update_preserves_existing_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = IndexManager::new(registry_path.clone());
+
+        for i in 0..25 {
+            let version = format!("1.0.{i}");
+            let update = entry(&version);
+            let result = manager.atomic_update("testorg/test-skill", &version, &update);
+            assert!(
+                result.is_ok(),
+                "atomic_update failed for {version}: {result:?}"
+            );
+        }
+
+        let entries = read_entries(registry_path);
+        assert_eq!(entries.len(), 25);
+    }
+
+    #[test]
+    fn atomic_update_serializes_concurrent_same_skill_writes() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = Arc::new(IndexManager::new(registry_path.clone()));
+
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let manager = Arc::clone(&manager);
+                std::thread::spawn(move || {
+                    let version = format!("1.0.{i}");
+                    let update = entry(&version);
+                    manager.atomic_update("testorg/test-skill", &version, &update)
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let result = handle.join().unwrap();
+            assert!(
+                result.is_ok(),
+                "concurrent atomic_update failed: {result:?}"
+            );
+        }
+
+        let entries = read_entries(registry_path);
+        assert_eq!(entries.len(), 10);
     }
 }

@@ -94,6 +94,8 @@ Each skill has a single file at `{scope}/{id}` containing newline-delimited JSON
 
 The registry index is maintained automatically during the publishing process. No manual index management is required.
 
+Publishing requires a FastSkill build compiled with the `registry-publish` feature.
+
 ### Publishing Workflow
 
 ```bash
@@ -231,7 +233,6 @@ Published skills are automatically uploaded to configured blob storage:
 ## See Also
 
 - [Package Command](/cli-reference/package-command)
-- [Publish Command](/cli-reference/publish-command)
+- [Publish Command](/cli-reference/publish-command) - optional `registry-publish` builds only
 - [Blob Storage Guide](/integration/blob-storage)
 - [Registry Overview](/registry/overview)
-

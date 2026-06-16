@@ -108,10 +108,10 @@ The conversion preserves all available metadata and enables FastSkill to work wi
 
 ## Generating marketplace.json
 
-Use the `fastskill registry create` command to generate `marketplace.json` in Claude Code format from a directory of skills:
+Use the `fastskill marketplace create` command to generate `marketplace.json` in Claude Code format from a directory of skills:
 
 ```bash
-fastskill registry create --path ./skills --name my-repo
+fastskill marketplace create ./skills --name my-repo
 ```
 
 **Options:**
@@ -213,4 +213,3 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 - [Repository Command](/cli-reference/repository-command)
 - [Sources Configuration](/registry/sources)
 - [Registry Overview](/registry/overview)
-

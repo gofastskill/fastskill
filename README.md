@@ -95,7 +95,7 @@ fastskill install --lock
 - [Quick Start](webdocs/quickstart.mdx)
 - [Installation](webdocs/installation.mdx)
 - [CLI Reference](webdocs/cli-reference/overview.mdx)
-- [Registry Guide](docs/REGISTRY.md)
+- [Registry Guide](webdocs/registry/overview.mdx)
 
 ## Crates
 

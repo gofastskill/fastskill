@@ -1,13 +1,12 @@
 //! HTTP request handlers
 
-pub mod claude_api;
 pub mod manifest;
 pub mod registry;
+#[cfg(feature = "registry-publish")]
 pub mod registry_publish;
 pub mod reindex;
 pub mod resolve;
 pub mod search;
-pub mod skill_storage;
 pub mod skills;
 pub mod status;
 
@@ -15,4 +14,4 @@ pub mod status;
 pub use status::AppState;
 
 // Note: Handler functions are accessed via module paths (e.g., skills::list_skills)
-// to avoid ambiguous re-exports between skills and claude_api modules
+// to avoid ambiguous re-exports between modules.
