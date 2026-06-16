@@ -5,279 +5,74 @@ description: "Package manager and operational toolkit for Agent AI Skills. Disco
 
 # Welcome to FastSkill
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It follows the Claude Code skill layout (`SKILL.md`) and adds manifests, lockfiles, validation, optional eval suites, and search so teams can **operate** skills—not only host a catalog.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill follows the `SKILL.md` skill layout and adds manifests, lockfiles, validation, search, evals, and optional operator publishing.
 
-## The Problem We're Solving
+## Highlights
 
-AI agent skills are scattered across repositories with no standard way to discover, version, or manage them. FastSkill brings package management to AI skills, solving:
+- Manage skill dependencies with `skill-project.toml` and `skills.lock`
+- Install from local folders, git repositories, or registries
+- Search skills across remote catalogs or local installs
+- Validate and evaluate skills before sharing
+- Diagnose your environment with `fastskill doctor`
+- Publish skills only when the optional registry feature is enabled
 
-- **Discovery**: Skills scattered across repos with no search or discovery mechanism
-- **Versioning**: No version control or reproducible deployments
-- **Dependencies**: Manual dependency management with runtime conflicts
-- **Environments**: Hard to keep optional tools separate from what production agents need
-- **Integration**: Each project reinvents skill loading and management
-
-## How FastSkill Solves These Problems
-
-FastSkill extends the Claude Code skill standard with a **manifest-first workflow**: one `skill-project.toml`, reproducible installs via `skills.lock`, validation and `fastskill eval` for quality gates, then discovery and optional operator publishing when you distribute outward.
-
-### Semantic discovery
-
-**Find skills by meaning, not just keywords.**
-
-FastSkill uses OpenAI embeddings to enable semantic search—find skills by what they do, not just what they're called. This means you can search for "powerpoint presentation" and find skills that create presentations, even if they don't use those exact words.
+## Quick start
 
 ```bash
-# Semantic search finds skills by meaning
-fastskill search "create data visualizations"
-# Returns: chart-generator, dashboard-builder, data-plotter
-```
-
-### Package management for skills
-
-**Declarative skill management, similar to npm for Node.js or Poetry for Python.**
-
-FastSkill uses a unified `skill-project.toml` file at the project root for all configuration, similar to `pyproject.toml` and `package.json`:
-
-```toml
-# skill-project.toml - Unified configuration
-[dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
-pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
-```
-
-**Benefits:**
-- **Reproducible installs**: `skills.lock` preserves exact versions
-- **Groups**: optional vs production skill sets
-- **Version tracking**: update when you choose
-- **Unified config**: dependencies and repositories in one manifest
-
-### Lifecycle commands
-
-```bash
-fastskill init                    # Skill author: create skill-project metadata
-fastskill add ./my-skill -e       # Add or link a skill (editable when local)
-fastskill install --without dev   # Install manifest without dev-only groups
-fastskill update                  # Move pinned versions forward when you choose
-fastskill read my-skill --tree    # Inspect a skill and its dependency tree
-fastskill eval validate           # Check eval config and prompts (optional)
-fastskill doctor                  # Diagnose configuration and environment
-```
-
-### Dependency management
-
-**Automatic resolution with conflict detection.**
-
-Skills declare dependencies that FastSkill resolves automatically:
-
-```toml
-[dependencies]
-web-scraper = { source = "registry", name = "team-tools", version = "^1.0" }
-data-processor = { source = "git", url = "https://github.com/org/data.git" }
-```
-
-### Version control and automation
-
-```bash
-fastskill add https://github.com/org/skill.git
-git add skill-project.toml skills.lock
-git commit -m "Add data processing skill"
-```
-
-In automation, the same commands apply: install the `fastskill` binary in the environment, check out your repo, then run `fastskill install --lock` (and set secrets for tokens or API keys).
-
-#### Multi-environment manifests
-
-Different skill sets for different environments:
-
-```toml
-[dependencies]
-# Development environment gets extra tools
-dev-tools = { source = "source", name = "registry", skill = "dev-tools", groups = ["dev"] }
-
-# Production gets monitoring
-monitoring = { source = "source", name = "registry", skill = "monitoring", groups = ["prod"] }
-```
-
-### Performance
-
-**Pre-computed embeddings and efficient storage.**
-
-FastSkill includes performance optimizations that make skill management scalable:
-
-**Pre-computed Embeddings:**
-- Skills can bundle pre-computed embeddings in ZIP packages
-- No API calls needed during installation
-- Faster search and discovery
-- Consistent embeddings across installations
-
-**Local Vector Storage:**
-- SQLite-based embedding database
-- Fast semantic search without external API calls
-- Offline operation capability
-- Incremental indexing for efficiency
-
-## Expanding the Claude Code Standard
-
-FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) and adds operational depth around it:
-
-### 1. **Package management & lifecycle**
-
-- **Manifests & locks**: `skill-project.toml` and `skills.lock` like other package ecosystems
-- **Install / update / remove**: Same verbs you expect from a package manager
-- **Groups**: optional vs production skill sets
-- **Editable installs**: point at local folders while authoring
-
-### 2. **Validation & evals**
-
-- **Install-time checks**: structure and metadata when skills are added or installed
-- **Reconciliation**: `fastskill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
-- **Eval suites**: `fastskill eval` for validate / run / report / score against defined cases ([eval command](/cli-reference/eval-command))
-
-### 3. **Discovery**
-
-- **Search**: remote catalogs by default; `--local` for installed skills and embeddings
-- **Read**: inspect what agents will load — full content, or `--meta`/`--tree` for metadata and dependencies
-- **Direct discovery**: agents read installed skills straight from the skills directory; no metadata-file sync step
-
-### 4. **Publish & registries** (when you distribute)
-
-- **Package**: ZIP artifacts with versioning
-- **Publish**: API or local folder targets when you ship skills to others
-- **Repositories**: `fastskill repos` for catalog sources—not the only story; many teams spend most time in install, list, validate, and eval
-
-## Key Features
-
-### Declarative configuration
-
-Define your skills declaratively in `skill-project.toml` at your project root:
-
-```toml
-# skill-project.toml
-[dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
-data-processor = { source = "source", name = "team-tools", skill = "data-processor", groups = ["prod"] }
-```
-
-### Reproducible installs
-
-Lock files ensure exact reproducibility:
-
-```toml
-# skills.lock - Exact installed state
-[[skills]]
-id = "web-scraper"
-version = "1.2.3"
-commit_hash = "abc123def456"
-fetched_at = "2024-01-01T12:00:00Z"
-```
-
-### Group-based organization
-
-Organize skills by environment:
-
-```bash
-# Install all skills
+fastskill init
+fastskill add ./my-skill -e --group dev
 fastskill install
-
-# Install without dev group
-fastskill install --without dev
-
-# Install only production
-fastskill install --only prod
+fastskill list
 ```
 
-### Editable installs
+## Features
 
-Point FastSkill at a folder on disk while you iterate:
+### Projects
+
+Use `skill-project.toml` to define dependencies and `skills.lock` to pin them.
 
 ```bash
-# Install in editable mode
 fastskill add ./local-skill -e --group dev
-```
-
-### Repositories
-
-```bash
-fastskill repos add team-tools --repo-type git-marketplace https://github.com/org/skills.git
-fastskill repos list
 fastskill install
+fastskill list
 ```
 
-### Search
+### Discovery
 
-Find skills by meaning:
+Search by meaning, or stay local when you only want installed skills.
 
 ```bash
-# Search by capability
-fastskill search "create presentations"
-
-# Find visualization tools
-fastskill search "charts and graphs"
+fastskill search "create data visualizations"
+fastskill reindex
+fastskill search "create data visualizations" --local
 ```
 
-## Use Cases
+### Validation and evals
 
-### Individuals
+Use `fastskill list`, `fastskill eval validate`, and `fastskill doctor` to check readiness before you share skills.
 
-**Manage a personal skill library:**
-- Track skills you use across projects
-- Version control your skill configurations
-- Update skills safely
-- Discover new skills by capability
+### Distribution
 
-### Teams
+`fastskill package` builds skill artifacts. Registry publish is available only in builds that enable `registry-publish`.
 
-**Share skill configurations:**
-- Standardize skill sets across team members
-- Separate optional skills from production sets
-- Track skill updates in version control
-- Collaborate on skill selection
+## How it fits together
 
-### Organizations
+- **Authors** edit `SKILL.md`, install dependencies, validate, and package when ready.
+- **Developers** install, list, read, and search installed skills.
+- **Teams** keep shared manifests and locks for reproducible installs.
+- **Automation** uses `fastskill install --lock` and the same commands as local workflows.
 
-**Operate skills at scale:**
-- Standard manifests and locks across projects
-- Auditing via list/show and validation
-- Environment-specific groups
-- Optional private sources and operator publish flows when you distribute
+## Use cases
 
-### Skill Authors
+- **Individuals**: manage a personal skill library and keep installs reproducible.
+- **Teams**: share manifests and locks across teammates.
+- **Organizations**: operate many skills with consistent versions and environment groups.
+- **Skill authors**: validate, evaluate, package, and optionally publish when ready.
 
-**Author, check, then ship:**
-- `fastskill init` and packaging for versioned ZIPs
-- Validation and `fastskill eval` before release
-- Dependencies declared in the manifest
-- Distribute via Git, ZIP, or registries when needed
+## Next steps
 
-## Getting Started
-
-Ready to get started? Here's a quick path:
-
-1. **[Install FastSkill](/installation)** - CLI on your PATH
-2. **[Quick Start](/quickstart)** - First manifest, install, search
-3. **[Skill validation](/skill-management/validation)** - Reconciliation and checks
-4. **[Evals and quality](/evals-quality/overview)** - Setup, runs, reports, and cluster analysis
-5. **[CLI reference](/cli-reference/overview)** - All commands and flags
-
-## Why FastSkill?
-
-FastSkill focuses on **repeatable operations** for AI agent skills:
-
-- **Reproducibility**: lock files for consistent installs
-- **Scale**: many skills and repositories in one project
-- **Collaboration**: shared manifests and locks
-- **Reliability**: explicit versions and dependency entries
-- **Performance**: optional precomputed embeddings in packages
-- **Standards-based**: Claude Code `SKILL.md` layout
-
-## What's Next?
-
-- [Manifest system](/skill-management/manifest-system) for `skill-project.toml`, locks, and how installs resolve
-- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands) (`doctor`, `analyze`, …)
-- [Cursor integration](/integration/cursor-integration) for using installed skills in the editor
-- [Registry overview](/registry/overview) when you are ready to publish or browse catalogs
-
----
-
-**FastSkill**: Package manager and operational toolkit for Agent AI Skills—manageable, versioned, and reproducible.
+- [Installation](/installation)
+- [Quick Start](/quickstart)
+- [Skill validation](/skill-management/validation)
+- [CLI reference](/cli-reference/overview)
+- [Registry overview](/registry/overview)

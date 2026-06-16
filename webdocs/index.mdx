@@ -13,11 +13,11 @@ New here? Read the [Welcome](/welcome) page for the full story, then [Quick star
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, **search**, and **publish** flows when you ship skills to others. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill follows the `SKILL.md` skill layout and adds manifests, lockfiles, validation, search, evals, and optional operator publishing. Modern agents read installed skills directly from the skills directory, so there is no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
 
-## What you can do
+## Highlights
 
 <CardGroup cols={2}>
   <Card title="Package & lifecycle" icon="package">
@@ -41,29 +41,29 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
   </Card>
 
   <Card title="Publish & catalogs" icon="upload">
-    `package` and `publish` when you distribute; `repos` for remote sources. See [Registry overview](/registry/overview).
+    `package` and optional `publish` when you distribute; `repos` for remote sources. See [Registry overview](/registry/overview).
   </Card>
 </CardGroup>
 
-## Quick start (CLI)
+## Quick start
 
 ```bash
 fastskill -V
-fastskill init            # in a skill directory, when authoring
+fastskill init
 fastskill add ./my-skill -e --group dev
 fastskill install
 fastskill list
 ```
 
-Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill eval validate`, `fastskill doctor`. Full walkthrough: [Quick start](/quickstart).
+Full walkthrough: [Quick start](/quickstart).
 
 ## How it fits together
 
-- **You**: edit `SKILL.md` and manifests; agents **read** skill content. FastSkill does not execute skill logic as a runtime sandbox.
+- **You**: edit `SKILL.md` and manifests; agents read skill content.
 - **CLI**: single entry point for installs, checks, search, evals, and packaging.
 - **Optional `serve`**: HTTP API and UI on your machine for browsing and integrations.
 
-## Use cases (summary)
+## Use cases
 
 - **Authors**: init, validate, eval, and package when ready; publish requires an operator build with `registry-publish`.
 - **Developers**: install, list, read, search for what agents load.
