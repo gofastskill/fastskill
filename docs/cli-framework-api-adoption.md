@@ -1,6 +1,6 @@
 # fastskill → cli-framework `api-server` adoption spec
 
-Status: draft (2026-05-25). Goal: replace fastskill's hand-rolled Axum host with cli-framework's shipped `api-server` (+ optional `api-swagger`) host, so fastskill follows the one enforced API structure (`/api/{version}/...`, fixed `/healthz`+`/readyz`, `X-API-Version`, graceful shutdown). cli-framework is consumed as a **library only** — fastskill keeps its clap CLI; only the serve path changes.
+Status: implemented and updated for the public release (2026-06-16). FastSkill uses cli-framework's `api-server` host and one public API structure: `/api/{version}/...`, fixed `/healthz` and `/readyz`, `X-API-Version`, and graceful shutdown. Registry publish is now an opt-in `registry-publish` build feature. The old Claude-compatible `/v1/skills...` HTTP surface has been removed; use MCP integration for Claude Code.
 
 References (verified against source 2026-05-25):
 - cli-framework host API: `aroff/cli-framework` `src/api/mod.rs` (`ApiServerBuilder`, `ApiServer`), `skill/examples/with_api/src/main.rs`. Features `api-server`, `api-swagger`.
@@ -15,7 +15,7 @@ cli-framework `api-server` pins **axum 0.8, tower 0.5, tower-http 0.6**, and `pu
 **Verified 2026-05-25 (post-pull):**
 - ✅ **axum 0.8** — done (`Cargo.toml:61` `axum = "0.8"`; bumped 0.7.9 → 0.8.9 in PR #138).
 - ❌ **tower-http still 0.5** (`Cargo.toml:63`) — **must bump to 0.6** so the `tower_http::cors::CorsLayer` passed to `.cors(...)` is the same major cli-framework links. Keep features `cors, trace, compression-gzip, fs`.
-- ⚠️ **axum 0.8 path-param syntax.** axum 0.8 replaced `:param` / `*rest` with `{param}` / `{*rest}` and panics on the old form. fastskill route literals still use the 0.7 form (`/api/skills/:id`, `/v1/skills/:skill_id`, `/index/*skill_id`, …). Confirm whether #138 migrated these; regardless, when routes are re-registered under the version router / mounts they MUST use `{id}` / `{*skill_id}`.
+- ✅ **axum 0.8 path-param syntax.** Routes use `{param}` / `{*rest}` syntax.
 - tower 0.5 — ok.
 
 Steps:
@@ -46,7 +46,6 @@ let server = ApiServerBuilder::new()
         // openapi field exists ONLY with feature "api-swagger" (Phase 2)
     })
     .default_version(DefaultVersion::Pinned(ApiVersionName::parse("v1")?))
-    .mount("/v1", claude_api_router)            // external Anthropic-compat surface (§4)
     .mount("/index", registry_index_router)     // raw registry index files (§4)
     .cors(fastskill_cors_layer)                 // build_cors_layer(config) result
     .root_fallback(ui_router)                   // SPA / static console (§5)
@@ -75,9 +74,9 @@ Current families (`server.rs:314-423`) and where each goes:
 | `/api/search`, `/api/resolve`, `/api/reindex*` | `create_search_routes` | → `version("v1")` → `/api/v1/...` |
 | `/api/status` | `create_status_routes` | → `version("v1")` → `/api/v1/status` (app status, NOT a health check — see §6) |
 | `/api/manifest/skills*` | `create_manifest_routes` | → `version("v1")` → `/api/v1/manifest/...` |
-| `/api/registry/*`, `/api/registry/publish*` | `create_registry_routes` | → `version("v1")` → `/api/v1/registry/...` (multipart publish included — §8) |
+| `/api/registry/*` | `create_registry_routes` | → `version("v1")` → `/api/v1/registry/...` |
+| `/api/registry/publish*` | `create_registry_routes` | Optional under `registry-publish` → `/api/v1/registry/publish...` |
 | `/index/*skill_id` | `create_registry_routes` | **mount** `"/index"` (raw index files; external/CDN-like path, keep unversioned) |
-| `/v1/skills*` (Claude-API) | `create_claude_api_routes` | **mount** `"/v1"` (external Anthropic-compat contract — DO NOT version-shift, §4) |
 | `/`, `/index.html`, `/app.js`, `/styles.css`, `/dashboard` | `create_ui_routes` | **root_fallback** (§5) |
 
 To build the `v1` router: merge skills+search+status+manifest+registry sub-routers with their paths rewritten to drop the leading `/api`, then `.with_state(state)`. The host prepends `/api/v1`.
@@ -91,16 +90,15 @@ Every fastskill `/api/...` route literal (~30 across `server.rs:314-421`) loses 
 - integration tests under `tests/` that hit `/api/...`;
 - any external clients of the internal API.
 
-The Claude-API `/v1/...` surface and the `/index/*` surface are preserved verbatim via `mount(...)`, so external consumers of those are unaffected.
+The raw `/index/*` surface is preserved verbatim via `mount(...)`, so external consumers of raw index files are unaffected. The old Claude-compatible `/v1/skills...` HTTP surface is removed.
 
 ---
 
 ## 4. Auxiliary mounts (not versioned)
 
-- **Claude-API compatibility (`/v1/skills...`).** `crates/.../handlers/claude_api.rs` explicitly mirrors Anthropic's skill API ("matching Anthropic's API specification"). Forcing it under `/api/v1/...` would break that contract. Mount it verbatim: `.mount("/v1", claude_api_router.with_state(state))`. Note this coexists with fastskill's own `/api/v1/...` — two distinct surfaces, intentional; document it.
 - **Raw registry index (`/index/*skill_id`).** A CDN-like artifact path consumed by skill installers; keep its URL stable via `.mount("/index", index_router.with_state(state))` rather than versioning it. (Decision: preserve URL > consistency, because external installers may hardcode it. If no external consumer relies on it, folding into `/api/v1/registry/...` is the alternative.)
 
-`mount()` paths participate in host collision checks; `/v1` and `/index` do not overlap `/api`, `/healthz`, `/readyz`, `/api/docs`, so they pass.
+`mount()` paths participate in host collision checks; `/index` does not overlap `/api`, `/healthz`, `/readyz`, `/api/docs`, so it passes.
 
 ---
 
@@ -131,7 +129,7 @@ Action: collect the UI routes (the `serve_embedded_static` handler + `/dashboard
 
 ## 8. Multipart upload
 
-`POST /api/registry/publish` (`handlers/registry_publish.rs:45-186`) uses `axum::extract::Multipart`. It works unchanged inside the versioned router; the path becomes `/api/v1/registry/publish`. Requires axum's `multipart` feature (already enabled). No host-level body-limit is imposed; if a cap is wanted, add a per-route `RequestBodyLimitLayer` on fastskill's router (tower-http `limit`).
+`POST /api/v1/registry/publish` (`handlers/registry_publish.rs`) uses `axum::extract::Multipart`. It exists only when FastSkill is built with the `registry-publish` feature. Requires axum's `multipart` feature (already enabled). No host-level body-limit is imposed; if a cap is wanted, add a per-route `RequestBodyLimitLayer` on FastSkill's router (tower-http `limit`).
 
 ---
 
@@ -142,7 +140,7 @@ Action: collect the UI routes (the `serve_embedded_static` handler + `/dashboard
 fastskill ships no OpenAPI document today. With `api-server` only, omit the `openapi` field (it's `#[cfg(feature = "api-swagger")]`). To get runtime docs at `/api/docs` + `/api/v1/openapi.json`:
 1. Enable feature `api-swagger` on the cli-framework dep (pulls `utoipa-swagger-ui`).
 2. Produce an OpenAPI `serde_json::Value` for the v1 surface (hand-written or via utoipa) and set `openapi: Some(value)` on the `ApiVersion`.
-3. Embedded Swagger UI works offline (no CDN). The Claude-API `/v1` mount is not auto-documented (it's a mount, not a version) — document it separately if needed.
+3. Embedded Swagger UI works offline (no CDN).
 
 ---
 
@@ -150,9 +148,9 @@ fastskill ships no OpenAPI document today. With `api-server` only, omit the `ope
 
 Documentation is in-scope for this migration, not a follow-up. Update everything that describes the API surface or how to run the server:
 
-- **Console UI** (`crates/fastskill-core/src/http/static/app.js`, `index.html`): rewrite all fetch/XHR calls from `/api/...` to `/api/v1/...`. The Claude-API `/v1/...` and `/index/*` paths are unchanged.
+- **Console UI** (`crates/fastskill-core/src/http/static/app.js`, `index.html`): rewrite all fetch/XHR calls from `/api/...` to `/api/v1/...`. The `/index/*` paths are unchanged.
 - **README / usage docs**: update any documented endpoints to `/api/v1/...`; document the new health endpoints `/healthz` + `/readyz`, the `X-API-Version` header, and the no-version → 308 redirect behaviour.
-- **`webdocs/`** (the docs site): update the HTTP API reference/base path to `/api/v1/...`; note that `/v1/skills...` remains the Anthropic-compatible surface (a separate `mount`, not versioned).
+- **`webdocs/`** (the docs site): update the HTTP API reference/base path to `/api/v1/...`; note that the old Claude-compatible `/v1/skills...` surface is removed.
 - **`docs/`**: keep this adoption spec as the record; add/adjust any API how-to docs.
 - **CHANGELOG**: entry noting the breaking move to `/api/v1/...`, the added `/healthz`/`/readyz`, graceful shutdown, and that `/v1/...` (Claude-compat) and `/index/*` are unchanged.
 - Migrate any `tests/` (integration) that hit `/api/...` to `/api/v1/...`.
@@ -161,7 +159,7 @@ Documentation is in-scope for this migration, not a follow-up. Update everything
 
 1. **Deps (§0):** axum 0.8 is done; **bump tower-http 0.5 → 0.6** and fix any axum-0.8 `{param}` route syntax; add `cli-framework` (`api-server`).
 2. **Build the `v1` router:** copy `create_skill/search/status/manifest/registry` routers, strip the `/api` prefix from every literal, merge, `.with_state(state)`.
-3. **Mounts:** Claude-API router → `mount("/v1")`; `/index/*` → `mount("/index")` (both `.with_state`).
+3. **Mounts:** `/index/*` → `mount("/index")` (`.with_state`).
 4. **UI:** UI routes → `root_fallback(...)`.
 5. **Rewrite `FastSkillServer::serve()`** to build `ApiServerBuilder` (version + default_version + mounts + cors + root_fallback + health_version), `build()`, grab `shutdown_token()`, start the worker bound to it, `server.serve(&addr).await`.
 6. **Delete** the old listener bind, `axum::serve`, manual router-merge/middleware-stack, and `/health`-style status-as-health assumptions.
@@ -173,7 +171,7 @@ Documentation is in-scope for this migration, not a follow-up. Update everything
 
 ## 11. Acceptance criteria
 
-1. `fastskill serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...` (incl. multipart publish); `/v1/skills...` (Claude-API, unchanged); `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`.
+1. `fastskill serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...`; optional multipart publish under `registry-publish`; `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`.
 2. `/healthz` returns `{status, version}` with **fastskill's** crate version; `/readyz` reflects the readiness check (or always-ready).
 3. `X-API-Version: v1` present on `/api/v1/...` responses.
 4. `GET /api/...` with no version → 308 redirect to `/api/v1/...` (default Pinned) — or, if `DefaultVersion::None` is chosen, a 404 listing versions.

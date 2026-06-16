@@ -61,9 +61,11 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
         })
 }
 
+#[cfg(feature = "registry-publish")]
+use commands::publish;
 use commands::{
-    add, analyze, auth, doctor, eval, init, install, list, marketplace, package, publish, read,
-    reindex, remove, repos, search, serve, skillopt, update,
+    add, analyze, auth, doctor, eval, init, install, list, marketplace, package, read, reindex,
+    remove, repos, search, serve, skillopt, update,
 };
 
 #[tokio::main]
@@ -208,15 +210,17 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .await
                     .map_err(anyhow::Error::from)
             },
-        )?
-        .register(
-            path!["publish"],
-            |_ctx, args: publish::PublishArgs| async move {
-                publish::execute_publish(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
         )?;
+
+    #[cfg(feature = "registry-publish")]
+    let builder = builder.register(
+        path!["publish"],
+        |_ctx, args: publish::PublishArgs| async move {
+            publish::execute_publish(args)
+                .await
+                .map_err(anyhow::Error::from)
+        },
+    )?;
 
     // ── Typed commands that need FsState (service injection) ─────────────────
     let builder = {

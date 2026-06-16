@@ -1,10 +1,14 @@
 //! Axum HTTP server implementation
 
+#[cfg(feature = "registry-publish")]
 use crate::core::registry::{StagingManager, ValidationWorker, ValidationWorkerConfig};
-use crate::core::service::{FastSkillService, ServiceConfig};
+use crate::core::service::FastSkillService;
+#[cfg(feature = "registry-publish")]
+use crate::core::service::ServiceConfig;
+#[cfg(feature = "registry-publish")]
+use crate::http::handlers::registry_publish;
 use crate::http::handlers::{
-    claude_api, manifest, registry, registry_publish, reindex, resolve, search, skills, status,
-    AppState,
+    manifest, registry, reindex, resolve, search, skills, status, AppState,
 };
 use axum::{
     body::Body,
@@ -18,6 +22,7 @@ use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVe
 use include_dir::{include_dir, Dir};
 use std::env;
 use std::net::SocketAddr;
+#[cfg(feature = "registry-publish")]
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -56,6 +61,7 @@ async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
 }
 
 /// Validate blob storage configuration fields
+#[cfg(feature = "registry-publish")]
 fn validate_blob_storage_fields(blob_config: &crate::core::BlobStorageConfig) -> Vec<&'static str> {
     let mut missing = Vec::new();
 
@@ -79,6 +85,7 @@ fn validate_blob_storage_fields(blob_config: &crate::core::BlobStorageConfig) ->
 }
 
 /// Build error message for validation failures
+#[cfg(feature = "registry-publish")]
 fn build_validation_error_message(
     missing: &[&str],
     incomplete_fields: &[(&str, Vec<&str>)],
@@ -108,6 +115,7 @@ fn build_validation_error_message(
 }
 
 /// Validate registry configuration and return detailed error message if invalid
+#[cfg(feature = "registry-publish")]
 fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
     let mut missing = Vec::new();
     let mut incomplete_fields = Vec::new();
@@ -332,7 +340,7 @@ impl FastSkillServer {
 
     /// Registry API routes under /api/v1/ (prefix stripped, axum 0.8 params)
     fn create_registry_api_routes_v1() -> Router<AppState> {
-        Router::new()
+        let router = Router::new()
             .route("/registry/index/skills", get(registry::list_index_skills))
             .route("/registry/sources", get(registry::list_sources))
             .route("/registry/skills", get(registry::list_all_skills))
@@ -344,12 +352,17 @@ impl FastSkillServer {
                 "/registry/sources/{name}/marketplace",
                 get(registry::get_marketplace),
             )
-            .route("/registry/refresh", post(registry::refresh_sources))
+            .route("/registry/refresh", post(registry::refresh_sources));
+
+        #[cfg(feature = "registry-publish")]
+        let router = router
             .route("/registry/publish", post(registry_publish::publish_package))
             .route(
                 "/registry/publish/status/{job_id}",
                 get(registry_publish::get_publish_status),
-            )
+            );
+
+        router
     }
 
     /// Raw index routes for mount("/index") — paths relative to the mount point
@@ -369,31 +382,6 @@ impl FastSkillServer {
             .route(
                 "/manifest/skills/{id}",
                 delete(manifest::remove_skill_from_manifest),
-            )
-    }
-
-    /// Claude Code v1 API routes for mount("/v1") — paths relative to the mount point
-    fn create_claude_api_routes_v1() -> Router<AppState> {
-        Router::new()
-            .route("/skills", post(claude_api::create_skill))
-            .route("/skills", get(claude_api::list_skills))
-            .route("/skills/{skill_id}", get(claude_api::get_skill))
-            .route("/skills/{skill_id}", delete(claude_api::delete_skill))
-            .route(
-                "/skills/{skill_id}/versions",
-                post(claude_api::create_skill_version),
-            )
-            .route(
-                "/skills/{skill_id}/versions",
-                get(claude_api::list_skill_versions),
-            )
-            .route(
-                "/skills/{skill_id}/versions/{version}",
-                get(claude_api::get_skill_version),
-            )
-            .route(
-                "/skills/{skill_id}/versions/{version}",
-                delete(claude_api::delete_skill_version),
             )
     }
 
@@ -442,9 +430,6 @@ impl FastSkillServer {
             .layer(CompressionLayer::new())
             .with_state(state.clone());
 
-        // Claude-API surface mounted at /v1 (unchanged URL contract)
-        let claude_router = Self::create_claude_api_routes_v1().with_state(state.clone());
-
         // Raw index surface mounted at /index (unchanged URL contract)
         let index_router = Self::create_registry_index_routes_v1().with_state(state.clone());
 
@@ -461,33 +446,36 @@ impl FastSkillServer {
                 deprecation: None,
             })
             .default_version(DefaultVersion::Pinned(ApiVersionName::parse("v1")?))
-            .mount("/v1", claude_router)
             .mount("/index", index_router)
             .cors(cors_layer)
             .root_fallback(ui_router)
             .health_version(env!("CARGO_PKG_VERSION"))
             .build();
 
+        #[cfg(feature = "registry-publish")]
         let shutdown = server.shutdown_token();
 
-        // Start validation worker bound to the server shutdown token
-        let config = self.service.config();
-        if validate_registry_config(config).is_ok() {
-            let staging_dir = config
-                .staging_dir
-                .clone()
-                .unwrap_or_else(|| PathBuf::from(".staging"));
+        // Start validation worker bound to the server shutdown token.
+        #[cfg(feature = "registry-publish")]
+        {
+            let config = self.service.config();
+            if validate_registry_config(config).is_ok() {
+                let staging_dir = config
+                    .staging_dir
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from(".staging"));
 
-            let staging_manager = StagingManager::new(staging_dir);
-            if staging_manager.initialize().is_ok() {
-                let worker_config = ValidationWorkerConfig {
-                    poll_interval_secs: 5,
-                    blob_storage_config: config.registry_blob_storage.clone(),
-                    registry_index_path: config.registry_index_path.clone(),
-                    blob_base_url: config.registry_blob_base_url.clone(),
-                };
-                let worker = ValidationWorker::new(staging_manager, worker_config);
-                worker.start_with_shutdown(shutdown.clone());
+                let staging_manager = StagingManager::new(staging_dir);
+                if staging_manager.initialize().is_ok() {
+                    let worker_config = ValidationWorkerConfig {
+                        poll_interval_secs: 5,
+                        blob_storage_config: config.registry_blob_storage.clone(),
+                        registry_index_path: config.registry_index_path.clone(),
+                        blob_base_url: config.registry_blob_base_url.clone(),
+                    };
+                    let worker = ValidationWorker::new(staging_manager, worker_config);
+                    worker.start_with_shutdown(shutdown.clone());
+                }
             }
         }
 

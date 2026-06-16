@@ -75,7 +75,7 @@ impl ApiClient {
     /// Publish a package to the registry API
     /// The server will extract the scope from the JWT token's user account
     pub async fn publish_package(&self, package_path: &Path) -> CliResult<PublishApiResponse> {
-        let url = format!("{}/api/registry/publish", self.base_url);
+        let url = format!("{}/api/v1/registry/publish", self.base_url);
 
         // Read package file
         let package_data = std::fs::read(package_path).map_err(CliError::Io)?;
@@ -139,7 +139,10 @@ impl ApiClient {
 
     /// Get publish job status
     pub async fn get_publish_status(&self, job_id: &str) -> CliResult<PublishStatusApiResponse> {
-        let url = format!("{}/api/registry/publish/status/{}", self.base_url, job_id);
+        let url = format!(
+            "{}/api/v1/registry/publish/status/{}",
+            self.base_url, job_id
+        );
 
         // Build request
         let mut request = self.client.get(&url);

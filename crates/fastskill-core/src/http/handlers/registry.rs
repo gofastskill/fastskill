@@ -139,7 +139,7 @@ async fn get_sources_manager_from_repos(
     Ok(sources_manager)
 }
 
-/// GET /api/registry/sources - List all configured sources/repositories
+/// GET /api/v1/registry/sources - List all configured sources/repositories
 pub async fn list_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<Vec<SourceResponse>>>> {
@@ -185,7 +185,7 @@ pub async fn list_sources(
     Ok(Json(ApiResponse::success(source_responses)))
 }
 
-/// GET /api/registry/skills - Get all skills grouped by source
+/// GET /api/v1/registry/skills - Get all skills grouped by source
 pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
@@ -271,7 +271,7 @@ pub async fn list_all_skills(
     })))
 }
 
-/// GET /api/registry/sources/:name/skills - Get skills from a specific source
+/// GET /api/v1/registry/sources/:name/skills - Get skills from a specific source
 pub async fn list_source_skills(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
@@ -337,7 +337,7 @@ pub async fn list_source_skills(
     })))
 }
 
-/// GET /api/registry/sources/:name/marketplace - Get raw marketplace.json
+/// GET /api/v1/registry/sources/:name/marketplace - Get raw marketplace.json
 pub async fn get_marketplace(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
@@ -372,7 +372,7 @@ pub async fn get_marketplace(
     Ok(Json(ApiResponse::success(marketplace)))
 }
 
-/// POST /api/registry/refresh - Refresh sources cache
+/// POST /api/v1/registry/refresh - Refresh sources cache
 pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
@@ -399,7 +399,7 @@ impl SourceDefinition {
     }
 }
 
-/// GET /api/registry/index/skills - List all skills from the registry index
+/// GET /api/v1/registry/index/skills - List all skills from the registry index
 /// Query parameters:
 ///   - scope: Filter by scope (optional)
 ///   - all_versions: Include all versions (default: false)

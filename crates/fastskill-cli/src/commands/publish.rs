@@ -296,17 +296,11 @@ pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
 /// Publish to API with authentication
 async fn publish_to_api_with_auth(context: &PublishContext) -> CliResult<()> {
     let token = crate::auth_config::get_token_with_refresh(&context.target).await?;
-    let token_str = token.ok_or_else(|| {
-        CliError::Validation(format!(
-            "No authentication token found for registry: {}. Run `fastskill auth login` to authenticate.",
-            context.target
-        ))
-    })?;
 
     publish_to_api(
         &context.target,
         &context.packages,
-        Some(&token_str),
+        token.as_deref(),
         context.wait,
         context.max_wait,
     )
@@ -473,7 +467,7 @@ async fn publish_single_package(
         println!(
             "{}",
             messages::info(&format!(
-                "Check status with: GET {}/api/registry/publish/status/{}",
+                "Check status with: GET {}/api/v1/registry/publish/status/{}",
                 api_url, response.job_id
             ))
         );
@@ -595,7 +589,7 @@ fn extract_api_url_from_repository(repo: &RepositoryDefinition) -> CliResult<Str
             // For non-HTTP URLs, we can't determine the API URL
             Err(CliError::Config(format!(
                 "Cannot determine API URL for http-registry '{}'. \
-                Please specify storage.base_url in repositories.toml or use --target flag.",
+                Please specify storage.base_url in repositories.toml or use --api-url.",
                 repo.name
             )))
         }

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+#[cfg(feature = "registry-publish")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Authentication configuration structure
@@ -150,6 +151,7 @@ fn decode_token_unsafe(token: &str) -> Option<Claims> {
 }
 
 /// Check if a JWT token is expired or expiring soon
+#[cfg(feature = "registry-publish")]
 fn is_token_expired_or_expiring_soon(token: &str, buffer_seconds: u64) -> CliResult<bool> {
     match decode_token_unsafe(token) {
         Some(claims) => {
@@ -209,6 +211,7 @@ pub fn get_token_for_registry(registry_url: &str) -> CliResult<Option<String>> {
 }
 
 /// Get token with automatic refresh if needed
+#[cfg(feature = "registry-publish")]
 pub async fn get_token_with_refresh(registry_url: &str) -> CliResult<Option<String>> {
     // Check environment variable first
     if let Ok(token) = std::env::var("FASTSKILL_API_TOKEN") {
@@ -283,6 +286,7 @@ pub async fn get_token_with_refresh(registry_url: &str) -> CliResult<Option<Stri
 }
 
 /// Refresh token for a registry by calling /auth/token endpoint
+#[cfg(feature = "registry-publish")]
 async fn refresh_token_for_registry(registry_url: &str, role: &str) -> CliResult<String> {
     let client = reqwest::Client::new();
     let token_url = format!("{}/auth/token", registry_url);

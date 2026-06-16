@@ -1,19 +1,19 @@
 ---
 title: "CI/CD Pipeline Integration"
-description: "Use FastSkill in automated pipelines to package and publish skills with reproducible installs."
+description: "Use FastSkill in automated pipelines to package skills and optionally publish them with reproducible installs."
 ---
 
 # CI/CD Pipeline Integration
 
-This page describes how teams typically wire `fastskill` into automation: detect changes, package ZIPs, and publish to a registry or object storage. It stays product-focused; adapt steps to GitHub Actions, GitLab CI, Jenkins, or any runner you already use.
+This page describes how teams typically wire `fastskill` into automation: detect changes, package ZIPs, and optionally publish to a registry. Publishing requires a FastSkill build compiled with the `registry-publish` feature.
 
 ## What you can automate
 
 - **Automatic Change Detection**: Detect which skills have changed using git diff or file hashing
 - **Version Bumping**: Automatically increment semantic versions (major, minor, patch)
 - **Artifact Creation**: Package skills into ZIP files with metadata and checksums
-- **Blob Storage Publishing**: Upload artifacts to S3 (supports S3-compatible services)
-- **Registry Index Management**: Maintain a crates.io-like registry for skill distribution
+- **Optional Registry Publishing**: Send packaged artifacts to a registry API or local handoff directory
+- **Registry Index Management**: Maintain a registry index for skill distribution in operator builds
 
 ## Change Detection Strategies
 
@@ -85,13 +85,13 @@ Future versions may analyze commit messages or change types to determine appropr
 
 ```bash
 fastskill package --detect-changes --auto-bump --output ./artifacts
-fastskill publish --registry official   # or --api-url / --local-dir; see publish docs
+fastskill publish --registry official   # requires registry-publish; or use --api-url / --local-dir
 ```
 
 ### Example: hosted runner (outline)
 
 1. Check out your repository with enough history for `fastskill package --git-diff <from> <to>`.
-2. Install the `fastskill` binary using the same method you use on laptops (release archive, package feed, or internal installer). Avoid hard-coding monorepo paths from the FastSkill source tree.
+2. Install the `fastskill` binary using the same method you use on laptops. Use an operator build with `registry-publish` if the job publishes artifacts.
 3. Restore secrets for registries (`FASTSKILL_API_URL`, tokens, cloud credentials) as environment variables.
 4. Run `fastskill package …` then `fastskill publish …` with the flags from [package](/cli-reference/package-command) and [publish](/cli-reference/publish-command).
 
@@ -118,7 +118,7 @@ jobs:
 
 ### Other runners
 
-GitLab CI, Jenkins, Buildkite, and others follow the same outline: put `fastskill` on `PATH`, check out sources, run `package` then `publish`. Copy the CLI arguments from `fastskill package --help` and `fastskill publish --help` rather than relying on historical workflow snippets.
+GitLab CI, Jenkins, Buildkite, and others follow the same outline: put `fastskill` on `PATH`, check out sources, run `package`, then run `publish` only in jobs that use a `registry-publish` build. Copy the CLI arguments from `fastskill package --help` and `fastskill publish --help` rather than relying on historical workflow snippets.
 
 ```groovy
 // Jenkins-style pseudocode — replace install and credentials with yours
@@ -231,6 +231,5 @@ If registry index operations fail:
 ## See Also
 
 - [Package Command](/cli-reference/package-command)
-- [Publish Command](/cli-reference/publish-command)
+- [Publish Command](/cli-reference/publish-command) - optional `registry-publish` builds only
 - [Blob Storage Guide](/integration/blob-storage)
-

@@ -324,7 +324,7 @@ impl CratesRegistryClient {
 
         // Build the API endpoint URL
         let base_url = self.index_url.trim_end_matches('/');
-        let mut url = format!("{}/api/registry/index/skills", base_url);
+        let mut url = format!("{}/api/v1/registry/index/skills", base_url);
 
         // Add query parameters
         let mut query_params = Vec::new();
