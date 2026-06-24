@@ -5,7 +5,8 @@ use crate::core::service::ServiceError;
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use tracing::{info, warn};
@@ -27,6 +28,35 @@ struct IndexFileMetadata {
     mtime: SystemTime,
     /// File size in bytes
     size: u64,
+}
+
+/// Append a suffix to a path's full file name — e.g. `org/web.scraper` + `lock`
+/// → `org/web.scraper.lock`.
+///
+/// Unlike [`Path::with_extension`], this does NOT replace the last dotted segment.
+/// Skill index files are named by the bare package (no fixed extension) and package
+/// names may contain dots, so `with_extension("lock")` mapped both `org/web.scraper`
+/// and `org/web.crawler` onto the same `org/web.lock`, making unrelated publishes
+/// share a sidecar lock. Appending keeps each skill's sidecar path distinct.
+fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".");
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+/// Derive a per-call unique temp path next to the index file (same directory, so the
+/// final rename stays atomic on one filesystem).
+///
+/// A deterministic `index_path.with_extension("tmp")` could equal another skill's real
+/// index file (e.g. writing `org/data` produced temp `org/data.tmp`, which is the index
+/// of skill `org/data.tmp`), so the rename would destroy that skill's index. Tagging the
+/// temp name with the process id and a monotonic counter makes such a collision
+/// impossible in practice.
+fn unique_temp_path(index_path: &Path) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    append_suffix(index_path, &format!("{}.{}.tmp", std::process::id(), seq))
 }
 
 impl IndexManager {
@@ -107,7 +137,7 @@ impl IndexManager {
 
         // Step 4: Acquire exclusive lock with timeout. Use a sidecar lock file
         // because the index file is replaced by atomic rename during update.
-        let lock_path = index_path.with_extension("lock");
+        let lock_path = append_suffix(&index_path, "lock");
         let lock_start = Instant::now();
         let file = loop {
             let file = OpenOptions::new()
@@ -265,7 +295,7 @@ impl IndexManager {
         existing_entries.push(entry.clone());
 
         // Step 7: Write to temporary file
-        let temp_path = index_path.with_extension("tmp");
+        let temp_path = unique_temp_path(&index_path);
         let mut temp_file = match File::create(&temp_path) {
             Ok(file) => file,
             Err(e) => {
@@ -399,9 +429,9 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn entry(version: &str) -> VersionEntry {
+    fn entry_named(name: &str, version: &str) -> VersionEntry {
         VersionEntry {
-            name: "testorg/test-skill".to_string(),
+            name: name.to_string(),
             vers: version.to_string(),
             deps: Vec::new(),
             cksum: format!("checksum-{version}"),
@@ -413,6 +443,10 @@ mod tests {
             metadata: None,
             scoped_name: None,
         }
+    }
+
+    fn entry(version: &str) -> VersionEntry {
+        entry_named("testorg/test-skill", version)
     }
 
     fn read_entries(registry_path: PathBuf) -> Vec<VersionEntry> {
@@ -467,5 +501,71 @@ mod tests {
 
         let entries = read_entries(registry_path);
         assert_eq!(entries.len(), 10);
+    }
+
+    /// Regression: two skills whose package names differ only after a dot must NOT
+    /// share a sidecar lock file. Before the fix, `with_extension("lock")` mapped both
+    /// `org/web.scraper` and `org/web.crawler` onto `org/web.lock`.
+    #[test]
+    fn atomic_update_uses_distinct_lock_files_for_dotted_names() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = IndexManager::new(registry_path.clone());
+
+        manager
+            .atomic_update(
+                "org/web.scraper",
+                "1.0.0",
+                &entry_named("org/web.scraper", "1.0.0"),
+            )
+            .unwrap();
+        manager
+            .atomic_update(
+                "org/web.crawler",
+                "1.0.0",
+                &entry_named("org/web.crawler", "1.0.0"),
+            )
+            .unwrap();
+
+        // Each skill keeps its own sidecar lock (append, not replace-extension).
+        assert!(
+            registry_path.join("org/web.scraper.lock").exists(),
+            "expected distinct lock for web.scraper"
+        );
+        assert!(
+            registry_path.join("org/web.crawler.lock").exists(),
+            "expected distinct lock for web.crawler"
+        );
+    }
+
+    /// Regression: publishing a skill must not clobber another skill whose index file
+    /// happens to match the first skill's temp path. Before the fix, writing `org/data`
+    /// used temp `org/data.tmp` — the literal index file of skill `org/data.tmp` — and
+    /// the atomic rename destroyed it.
+    #[test]
+    fn atomic_update_does_not_clobber_skill_named_like_temp_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = IndexManager::new(registry_path.clone());
+
+        manager
+            .atomic_update(
+                "org/data.tmp",
+                "1.0.0",
+                &entry_named("org/data.tmp", "1.0.0"),
+            )
+            .unwrap();
+        manager
+            .atomic_update("org/data", "1.0.0", &entry_named("org/data", "1.0.0"))
+            .unwrap();
+
+        let victim_index = get_skill_index_path(&registry_path, "org/data.tmp").unwrap();
+        let victim = IndexManager::read_entries_from_path(&victim_index).unwrap();
+        assert_eq!(
+            victim.len(),
+            1,
+            "publishing org/data must not destroy the org/data.tmp index"
+        );
+        assert_eq!(victim[0].name, "org/data.tmp");
     }
 }
