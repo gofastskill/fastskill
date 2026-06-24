@@ -2,9 +2,11 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::manifest::ProjectContext;
-use fastskill::core::manifest::SkillProjectToml;
-use fastskill::core::project::{detect_context, detect_context_from_content, resolve_project_file};
+use fastskill_core::core::manifest::ProjectContext;
+use fastskill_core::core::manifest::SkillProjectToml;
+use fastskill_core::core::project::{
+    detect_context, detect_context_from_content, resolve_project_file,
+};
 use std::fs;
 use tempfile::TempDir;
 
@@ -178,8 +180,8 @@ version = "1.0.0"
 /// T065: Test edge cases for empty/missing files
 #[test]
 fn test_edge_case_empty_missing_files() {
-    use fastskill::core::manifest::SkillProjectToml;
-    use fastskill::core::project::resolve_project_file;
+    use fastskill_core::core::manifest::SkillProjectToml;
+    use fastskill_core::core::project::resolve_project_file;
     use std::fs;
     use tempfile::TempDir;
 
@@ -231,8 +233,8 @@ fn test_edge_case_empty_missing_files() {
 /// T064: Integration test for all CLI commands with unified format
 #[test]
 fn test_all_cli_commands_with_unified_format() {
-    use fastskill::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
-    use fastskill::core::project::resolve_project_file;
+    use fastskill_core::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+    use fastskill_core::core::project::resolve_project_file;
     use std::collections::HashMap;
     use std::fs;
     use tempfile::TempDir;
@@ -271,7 +273,7 @@ test-skill = "1.0.0"
 
     // Test 5: Verify skill-project.toml with all sections
     let full_project = SkillProjectToml {
-        metadata: Some(fastskill::core::manifest::MetadataSection {
+        metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: None,
             version: None,
             description: Some("Test project".to_string()),

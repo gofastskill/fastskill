@@ -2,9 +2,9 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::registry::index_manager::IndexManager;
-use fastskill::core::registry_index::{ScopedSkillName, VersionEntry};
-use fastskill::core::service::ServiceError;
+use fastskill_core::core::registry::index_manager::IndexManager;
+use fastskill_core::core::registry_index::{ScopedSkillName, VersionEntry};
+use fastskill_core::core::service::ServiceError;
 use std::collections::HashMap;
 use tempfile::TempDir;
 

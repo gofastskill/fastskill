@@ -13,17 +13,17 @@
     clippy::assertions_on_constants
 )]
 
-use fastskill::core::manifest::SkillProjectToml;
-use fastskill::core::service::HttpServerConfig;
+use fastskill_core::core::manifest::SkillProjectToml;
+use fastskill_core::core::service::HttpServerConfig;
 use std::fs;
 use tempfile::TempDir;
 
 #[test]
 fn test_build_cors_layer_no_config() {
     // When no server config is present, should deny all origins
-    let config = fastskill::ServiceConfig::default();
+    let config = fastskill_core::ServiceConfig::default();
 
-    let _cors_layer = fastskill::http::server::build_cors_layer(&config);
+    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
 
     // We can't easily test the CORS layer internals, but we verified it compiles
     // and logs a warning about no config found
@@ -33,7 +33,7 @@ fn test_build_cors_layer_no_config() {
 #[test]
 fn test_build_cors_layer_empty_origins() {
     // When allowed_origins is empty, should deny all origins
-    let config = fastskill::ServiceConfig {
+    let config = fastskill_core::ServiceConfig {
         http_server: Some(HttpServerConfig {
             allowed_origins: vec![],
             allowed_headers: vec!["Content-Type".to_string(), "Authorization".to_string()],
@@ -41,7 +41,7 @@ fn test_build_cors_layer_empty_origins() {
         ..Default::default()
     };
 
-    let _cors_layer = fastskill::http::server::build_cors_layer(&config);
+    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
 
     // Verified it compiles
     assert!(true);
@@ -50,7 +50,7 @@ fn test_build_cors_layer_empty_origins() {
 #[test]
 fn test_build_cors_layer_with_origins() {
     // When allowed_origins is set, should allow those origins
-    let config = fastskill::ServiceConfig {
+    let config = fastskill_core::ServiceConfig {
         http_server: Some(HttpServerConfig {
             allowed_origins: vec![
                 "https://example.com".to_string(),
@@ -61,7 +61,7 @@ fn test_build_cors_layer_with_origins() {
         ..Default::default()
     };
 
-    let _cors_layer = fastskill::http::server::build_cors_layer(&config);
+    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
 
     // Verified it compiles
     assert!(true);
@@ -86,7 +86,7 @@ allowed_headers = ["Content-Type", "Authorization", "X-API-Key"]
 
     fs::write(&project_file, content).unwrap();
 
-    let config_result = fastskill::core::load_project_config(temp_dir.path());
+    let config_result = fastskill_core::core::load_project_config(temp_dir.path());
     assert!(config_result.is_ok());
 
     // Load project TOML and verify server config

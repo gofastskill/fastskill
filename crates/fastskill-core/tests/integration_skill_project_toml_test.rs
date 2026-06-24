@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::manifest::{
+use fastskill_core::core::manifest::{
     DependenciesSection, DependencySpec, MetadataSection, SkillProjectToml,
 };
 use std::collections::HashMap;
