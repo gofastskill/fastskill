@@ -3,14 +3,29 @@
 use fs2::FileExt;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Append a suffix to a path's full file name — e.g. `org/web.scraper` + `tmp`
+/// → `org/web.scraper.tmp`.
+///
+/// Unlike [`Path::with_extension`], this does NOT replace the last dotted segment.
+/// When a file name is derived from user input that may contain dots (e.g. a scoped
+/// skill package), `with_extension("tmp")` is not injective — `org/web.scraper` and
+/// `org/web.crawler` both collapse onto `org/web.tmp`. Appending keeps each derived
+/// sidecar path distinct.
+pub(crate) fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".");
+    name.push(suffix);
+    PathBuf::from(name)
+}
 
 /// Write `bytes` to `path` atomically: write to `.tmp` sibling → sync → rename.
 /// Advisory-locks the tmp file via `fs2` to prevent concurrent writers.
 ///
 /// Returns `LockError::FileLocked` if another process holds the advisory lock.
 pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp_path = path.with_extension("tmp");
+    let tmp_path = append_suffix(path, "tmp");
 
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
@@ -84,7 +99,7 @@ mod tests {
     fn test_atomic_write_no_tmp_file_remains_on_success() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.toml");
-        let tmp_path = path.with_extension("tmp");
+        let tmp_path = append_suffix(&path, "tmp");
 
         atomic_write(&path, b"data").unwrap();
 
@@ -104,7 +119,7 @@ mod tests {
         fs::write(&path, b"original content").unwrap();
 
         // Simulate an interrupted write: write to .tmp, then leave it without renaming
-        let tmp_path = path.with_extension("tmp");
+        let tmp_path = append_suffix(&path, "tmp");
         fs::write(&tmp_path, b"incomplete write").unwrap();
 
         // The original file should still have its original content
@@ -127,7 +142,7 @@ mod tests {
 
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("skills.lock");
-        let tmp_path = path.with_extension("tmp");
+        let tmp_path = append_suffix(&path, "tmp");
 
         // Acquire exclusive lock on the tmp file from this thread
         let holder = OpenOptions::new()

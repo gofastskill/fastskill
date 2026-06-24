@@ -1,11 +1,14 @@
 //! Atomic index update manager with file locking
 
-use crate::core::registry_index::{get_skill_index_path, ScopedSkillName, VersionEntry};
+use crate::core::registry_index::{
+    get_skill_index_lock_path, get_skill_index_path, ScopedSkillName, VersionEntry,
+};
 use crate::core::service::ServiceError;
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use tracing::{info, warn};
@@ -27,6 +30,30 @@ struct IndexFileMetadata {
     mtime: SystemTime,
     /// File size in bytes
     size: u64,
+}
+
+/// Derive a per-call unique temp path next to the index file (same directory, so the
+/// final rename stays atomic on one filesystem).
+///
+/// Unlike `utils::atomic_write`, whose temp name doubles as its advisory lock token and
+/// so must be deterministic, the index writer holds its own sidecar lock across the whole
+/// read-modify-write — so its temp file need not lock, and it MUST be unique: a
+/// deterministic `org/data.tmp` could equal the real index file of skill `org/data.tmp`
+/// and be renamed away. Tagging the name with the process id and a monotonic counter
+/// makes that collision impossible in practice.
+fn unique_temp_path(index_path: &Path) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    crate::utils::append_suffix(index_path, &format!("{}.{}.tmp", std::process::id(), seq))
+}
+
+/// Returns true if `e` is an out-of-disk-space error (ENOSPC).
+fn is_disk_full(e: &std::io::Error) -> bool {
+    if e.raw_os_error() == Some(28) {
+        return true;
+    }
+    let msg = e.to_string().to_lowercase();
+    msg.contains("no space") || msg.contains("filesystem full")
 }
 
 impl IndexManager {
@@ -107,7 +134,7 @@ impl IndexManager {
 
         // Step 4: Acquire exclusive lock with timeout. Use a sidecar lock file
         // because the index file is replaced by atomic rename during update.
-        let lock_path = index_path.with_extension("lock");
+        let lock_path = get_skill_index_lock_path(&self.registry_path, &normalized_id)?;
         let lock_start = Instant::now();
         let file = loop {
             let file = OpenOptions::new()
@@ -261,89 +288,44 @@ impl IndexManager {
             existing_entries.len()
         );
 
-        // Step 6: Append new entry
+        // Step 6: Append the new entry and serialize the whole index as
+        // newline-delimited JSON.
         existing_entries.push(entry.clone());
-
-        // Step 7: Write to temporary file
-        let temp_path = index_path.with_extension("tmp");
-        let mut temp_file = match File::create(&temp_path) {
-            Ok(file) => file,
-            Err(e) => {
-                // Check if error is due to filesystem being full
-                let error_msg = e.to_string().to_lowercase();
-                if error_msg.contains("no space")
-                    || error_msg.contains("filesystem full")
-                    || e.raw_os_error() == Some(28)
-                {
-                    warn!(
-                        "Filesystem full: cannot write index file for {} v{}",
-                        normalized_id, version
-                    );
-                    return Err(ServiceError::Custom(format!(
-                        "Filesystem full: cannot update index for {} v{}. Existing index preserved.",
-                        normalized_id, version
-                    )));
-                }
-                return Err(ServiceError::Io(e));
-            }
-        };
-
-        // Write all entries as newline-delimited JSON
+        let mut buffer = String::new();
         for entry in &existing_entries {
             let line = serde_json::to_string(entry).map_err(|e| {
                 ServiceError::Custom(format!("Failed to serialize index entry: {}", e))
             })?;
-            if let Err(e) = writeln!(temp_file, "{}", line) {
-                // Check if error is due to filesystem being full
-                let error_msg = e.to_string().to_lowercase();
-                if error_msg.contains("no space")
-                    || error_msg.contains("filesystem full")
-                    || e.raw_os_error() == Some(28)
-                {
-                    warn!(
-                        "Filesystem full: cannot write index entry for {} v{}",
-                        normalized_id, version
-                    );
-                    // Clean up temp file
-                    let _ = std::fs::remove_file(&temp_path);
-                    return Err(ServiceError::Custom(format!(
-                        "Filesystem full: cannot update index for {} v{}. Existing index preserved.",
-                        normalized_id, version
-                    )));
-                }
-                return Err(ServiceError::Io(e));
-            }
+            buffer.push_str(&line);
+            buffer.push('\n');
         }
 
-        if let Err(e) = temp_file.sync_all() {
-            // Check if error is due to filesystem being full
-            let error_msg = e.to_string().to_lowercase();
-            if error_msg.contains("no space")
-                || error_msg.contains("filesystem full")
-                || e.raw_os_error() == Some(28)
-            {
-                warn!(
-                    "Filesystem full: cannot sync index file for {} v{}",
-                    normalized_id, version
-                );
-                // Clean up temp file
-                let _ = std::fs::remove_file(&temp_path);
-                return Err(ServiceError::Custom(format!(
-                    "Filesystem full: cannot update index for {} v{}. Existing index preserved.",
-                    normalized_id, version
-                )));
+        // Step 7: Durably replace the index file — write to a unique temp, fsync, then
+        // atomically rename. A full filesystem only ever truncates the temp file, so the
+        // existing index is preserved on ENOSPC.
+        let temp_path = unique_temp_path(&index_path);
+        let on_write_err = |e: std::io::Error| {
+            let _ = std::fs::remove_file(&temp_path);
+            if is_disk_full(&e) {
+                warn!("Filesystem full: cannot update index for {normalized_id} v{version}");
+                ServiceError::Custom(format!(
+                    "Filesystem full: cannot update index for {normalized_id} v{version}. Existing index preserved."
+                ))
+            } else {
+                ServiceError::Io(e)
             }
-            return Err(ServiceError::Io(e));
-        }
+        };
+
+        let mut temp_file = File::create(&temp_path).map_err(&on_write_err)?;
+        temp_file
+            .write_all(buffer.as_bytes())
+            .map_err(&on_write_err)?;
+        temp_file.sync_all().map_err(&on_write_err)?;
         drop(temp_file);
 
-        // Step 8: Atomically rename temporary file to target
+        // Step 8: Atomically rename the temp file into place.
         std::fs::rename(&temp_path, &index_path).map_err(|e| {
-            warn!(
-                "Failed to atomically rename temp file {:?} to {:?}: {}",
-                temp_path, index_path, e
-            );
-            // If rename fails, try to clean up temp file
+            warn!("Failed to rename temp file {temp_path:?} to {index_path:?}: {e}");
             let _ = std::fs::remove_file(&temp_path);
             ServiceError::Io(e)
         })?;
@@ -399,9 +381,9 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn entry(version: &str) -> VersionEntry {
+    fn entry_named(name: &str, version: &str) -> VersionEntry {
         VersionEntry {
-            name: "testorg/test-skill".to_string(),
+            name: name.to_string(),
             vers: version.to_string(),
             deps: Vec::new(),
             cksum: format!("checksum-{version}"),
@@ -413,6 +395,10 @@ mod tests {
             metadata: None,
             scoped_name: None,
         }
+    }
+
+    fn entry(version: &str) -> VersionEntry {
+        entry_named("testorg/test-skill", version)
     }
 
     fn read_entries(registry_path: PathBuf) -> Vec<VersionEntry> {
@@ -467,5 +453,71 @@ mod tests {
 
         let entries = read_entries(registry_path);
         assert_eq!(entries.len(), 10);
+    }
+
+    /// Regression: two skills whose package names differ only after a dot must NOT
+    /// share a sidecar lock file. Before the fix, `with_extension("lock")` mapped both
+    /// `org/web.scraper` and `org/web.crawler` onto `org/web.lock`.
+    #[test]
+    fn atomic_update_uses_distinct_lock_files_for_dotted_names() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = IndexManager::new(registry_path.clone());
+
+        manager
+            .atomic_update(
+                "org/web.scraper",
+                "1.0.0",
+                &entry_named("org/web.scraper", "1.0.0"),
+            )
+            .unwrap();
+        manager
+            .atomic_update(
+                "org/web.crawler",
+                "1.0.0",
+                &entry_named("org/web.crawler", "1.0.0"),
+            )
+            .unwrap();
+
+        // Each skill keeps its own sidecar lock (append, not replace-extension).
+        assert!(
+            registry_path.join("org/web.scraper.lock").exists(),
+            "expected distinct lock for web.scraper"
+        );
+        assert!(
+            registry_path.join("org/web.crawler.lock").exists(),
+            "expected distinct lock for web.crawler"
+        );
+    }
+
+    /// Regression: publishing a skill must not clobber another skill whose index file
+    /// happens to match the first skill's temp path. Before the fix, writing `org/data`
+    /// used temp `org/data.tmp` — the literal index file of skill `org/data.tmp` — and
+    /// the atomic rename destroyed it.
+    #[test]
+    fn atomic_update_does_not_clobber_skill_named_like_temp_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let registry_path = temp_dir.path().to_path_buf();
+        let manager = IndexManager::new(registry_path.clone());
+
+        manager
+            .atomic_update(
+                "org/data.tmp",
+                "1.0.0",
+                &entry_named("org/data.tmp", "1.0.0"),
+            )
+            .unwrap();
+        manager
+            .atomic_update("org/data", "1.0.0", &entry_named("org/data", "1.0.0"))
+            .unwrap();
+
+        let victim_index = get_skill_index_path(&registry_path, "org/data.tmp").unwrap();
+        let victim = IndexManager::read_entries_from_path(&victim_index).unwrap();
+        assert_eq!(
+            victim.len(),
+            1,
+            "publishing org/data must not destroy the org/data.tmp index"
+        );
+        assert_eq!(victim[0].name, "org/data.tmp");
     }
 }

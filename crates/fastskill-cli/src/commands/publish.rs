@@ -296,11 +296,17 @@ pub async fn execute_publish(args: PublishArgs) -> CliResult<()> {
 /// Publish to API with authentication
 async fn publish_to_api_with_auth(context: &PublishContext) -> CliResult<()> {
     let token = crate::auth_config::get_token_with_refresh(&context.target).await?;
+    let token_str = token.ok_or_else(|| {
+        CliError::Validation(format!(
+            "No authentication token found for registry: {}. Run `fastskill auth login` to authenticate.",
+            context.target
+        ))
+    })?;
 
     publish_to_api(
         &context.target,
         &context.packages,
-        token.as_deref(),
+        Some(&token_str),
         context.wait,
         context.max_wait,
     )
