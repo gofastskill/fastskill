@@ -691,7 +691,7 @@ depth = 0
 
         let tmp = TempDir::new().unwrap();
         let lock_path = tmp.path().join("skills.lock");
-        let tmp_path = lock_path.with_extension("tmp");
+        let tmp_path = crate::utils::append_suffix(&lock_path, "tmp");
 
         // Acquire exclusive lock on the .tmp file before calling save_to_file
         let holder = std::fs::OpenOptions::new()

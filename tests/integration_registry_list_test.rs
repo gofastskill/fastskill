@@ -109,7 +109,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
 
     // Mock the endpoint
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -136,7 +136,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server2)
@@ -162,7 +162,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     };
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -178,7 +178,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     };
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("include_pre_release", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -202,7 +202,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -219,7 +219,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&mock_server_401)
         .await;
@@ -236,7 +236,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(403))
         .mount(&mock_server_403)
         .await;
@@ -261,7 +261,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(wiremock::matchers::header(
             "Authorization",
             "token test-token-123",
@@ -354,7 +354,7 @@ async fn test_performance_benchmark_http_listing_1000_skills() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -431,7 +431,7 @@ async fn test_list_skills_scope_flag() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -631,7 +631,7 @@ async fn test_list_skills_json_flag() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -676,7 +676,7 @@ async fn test_list_skills_json_scope_flag() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -767,7 +767,7 @@ async fn test_list_skills_all_versions_flag() {
     let response_body = serde_json::to_string(&all_versions_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
@@ -833,7 +833,7 @@ async fn test_list_skills_all_versions_include_pre_release_json() {
     let response_body = serde_json::to_string(&summaries_with_prerelease).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .and(query_param("include_pre_release", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
@@ -890,7 +890,7 @@ async fn test_list_skills_all_versions_without_pre_release() {
     let response_body = serde_json::to_string(&summaries_without_prerelease).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)

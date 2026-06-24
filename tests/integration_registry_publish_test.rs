@@ -266,7 +266,7 @@ async fn test_verify_skill_in_registry() {
 
     // Check if skill is in registry via API
     let client = reqwest::Client::new();
-    let url = format!("{}/api/v1/registry/skills", PRODUCTION_REGISTRY_URL);
+    let url = format!("{}/api/registry/skills", PRODUCTION_REGISTRY_URL);
 
     let response = client
         .get(&url)
@@ -447,7 +447,7 @@ async fn test_complete_publish_workflow() {
     // Step 4: Verify via API
     println!("[4/4] Verifying skill in registry...");
     let client = reqwest::Client::new();
-    let url = format!("{}/api/v1/registry/skills", PRODUCTION_REGISTRY_URL);
+    let url = format!("{}/api/registry/skills", PRODUCTION_REGISTRY_URL);
 
     let response = client
         .get(&url)

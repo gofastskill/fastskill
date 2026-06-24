@@ -15,4 +15,4 @@ FastSkill [VERSION]
    - 'sources refresh' → 'repos refresh'
    - 'sources create' → 'marketplace create'
 
-Error: Configuration error: Repository 'unreachable-repo' test failed: Client error: HTTP request failed: error sending request for url (http://localhost:9999/api/v1/registry/index/skills): error trying to connect: tcp connect error: [NETWORK_ERROR]
+Error: Configuration error: Repository 'unreachable-repo' test failed: Client error: HTTP request failed: error sending request for url (http://localhost:9999/api/registry/index/skills): error trying to connect: tcp connect error: [NETWORK_ERROR]

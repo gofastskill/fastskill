@@ -458,7 +458,7 @@ async fn test_sources_test_connectivity() {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/v1/registry/index/skills"))
+        .and(path("/api/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
         .mount(&mock_server)
         .await;

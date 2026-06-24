@@ -65,6 +65,22 @@ pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> Result<Path
     Ok(registry_path.join(&org).join(&package))
 }
 
+/// Path to the sidecar lock file guarding a skill's index file.
+///
+/// Derived by appending `.lock` to the index path (not [`Path::with_extension`], which
+/// would collapse dotted package names like `org/web.scraper` and `org/web.crawler`
+/// onto a single `org/web.lock`). Kept next to [`get_skill_index_path`] so all of a
+/// skill's on-disk paths are derived in one place.
+pub fn get_skill_index_lock_path(
+    registry_path: &Path,
+    skill_id: &str,
+) -> Result<PathBuf, ServiceError> {
+    Ok(crate::utils::append_suffix(
+        &get_skill_index_path(registry_path, skill_id)?,
+        "lock",
+    ))
+}
+
 /// Update registry index with a new skill version
 /// Appends newline-delimited JSON to single file per skill (crates.io format)
 pub fn update_skill_version(
