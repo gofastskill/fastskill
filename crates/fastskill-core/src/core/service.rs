@@ -40,9 +40,6 @@ pub struct ServiceConfig {
     /// Registry index path
     pub registry_index_path: Option<PathBuf>,
 
-    /// Registry blob base URL
-    pub registry_blob_base_url: Option<String>,
-
     /// HTTP server configuration
     pub http_server: Option<HttpServerConfig>,
 }
@@ -57,7 +54,6 @@ impl Default for ServiceConfig {
             embedding: None,
             security: SecurityConfig::default(),
             registry_index_path: None,
-            registry_blob_base_url: None,
             http_server: None,
         }
     }
