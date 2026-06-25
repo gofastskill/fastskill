@@ -1,8 +1,8 @@
 //! Unit tests for file resolution priority
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use fastskill::core::manifest::ProjectContext;
-use fastskill::core::project::{detect_context, resolve_project_file};
+use fastskill_core::core::manifest::ProjectContext;
+use fastskill_core::core::project::{detect_context, resolve_project_file};
 use std::fs;
 use tempfile::TempDir;
 

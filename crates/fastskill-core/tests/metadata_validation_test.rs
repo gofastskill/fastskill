@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::validation::{validate_identifier, validate_semver};
+use fastskill_core::core::validation::{validate_identifier, validate_semver};
 
 #[test]
 fn test_validate_semver_valid() {
@@ -38,7 +38,7 @@ fn test_validate_identifier_invalid() {
 
 #[test]
 fn test_validate_project_structure() {
-    use fastskill::core::validation::validate_project_structure;
+    use fastskill_core::core::validation::validate_project_structure;
 
     // Valid: has metadata
     assert!(validate_project_structure(true, false).is_ok());

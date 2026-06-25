@@ -7,8 +7,8 @@
     clippy::needless_borrows_for_generic_args
 )]
 
-use fastskill::core::registry::index_manager::IndexManager;
-use fastskill::core::registry_index::{read_skill_versions, ScopedSkillName, VersionEntry};
+use fastskill_core::core::registry::index_manager::IndexManager;
+use fastskill_core::core::registry_index::{read_skill_versions, ScopedSkillName, VersionEntry};
 use std::collections::HashMap;
 use tempfile::TempDir;
 
@@ -56,7 +56,7 @@ async fn test_index_served_from_filesystem() {
     let registry_path = temp_dir.path().to_path_buf();
 
     // Create a test index file directly in filesystem
-    use fastskill::core::registry_index::get_skill_index_path;
+    use fastskill_core::core::registry_index::get_skill_index_path;
     use std::fs;
     use std::io::Write;
 
@@ -132,7 +132,7 @@ async fn test_server_restart_no_git_clone() {
     let registry_path = temp_dir.path().to_path_buf();
 
     // Create index files directly (simulating filesystem-based index)
-    use fastskill::core::registry_index::get_skill_index_path;
+    use fastskill_core::core::registry_index::get_skill_index_path;
     use std::fs;
     use std::io::Write;
 
@@ -174,7 +174,7 @@ async fn test_server_restart_no_git_clone() {
 async fn test_all_versions_aggregation_logic() {
     // Test T044: Unit test for all-versions aggregation logic in server-side scan (list_index_skills)
 
-    use fastskill::core::registry_index::{
+    use fastskill_core::core::registry_index::{
         scan_registry_index, update_skill_version, ListSkillsOptions, VersionMetadata,
     };
     use std::collections::HashMap;
@@ -205,7 +205,7 @@ async fn test_all_versions_aggregation_logic() {
                 "2024-01-{:02}T00:00:00Z",
                 version.replace(".", "").parse::<u32>().unwrap_or(1) % 30
             ),
-            metadata: Some(fastskill::core::registry_index::IndexMetadata {
+            metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
                 description: Some(format!("Version {} of multi-version skill", version)),
                 author: None,
                 license: None,
@@ -245,7 +245,7 @@ async fn test_all_versions_aggregation_logic() {
 async fn test_duplicate_version_deduplication() {
     // Test T045: Unit test for duplicate version deduplication
 
-    use fastskill::core::registry_index::{
+    use fastskill_core::core::registry_index::{
         scan_registry_index, update_skill_version, ListSkillsOptions, VersionMetadata,
     };
     use std::collections::HashMap;
@@ -267,7 +267,7 @@ async fn test_duplicate_version_deduplication() {
         links: None,
         download_url: "https://example.com/first.zip".to_string(),
         published_at: "2024-01-01T00:00:00Z".to_string(),
-        metadata: Some(fastskill::core::registry_index::IndexMetadata {
+        metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
             description: Some("First entry".to_string()),
             author: None,
             license: None,
@@ -285,7 +285,7 @@ async fn test_duplicate_version_deduplication() {
         links: None,
         download_url: "https://example.com/second.zip".to_string(),
         published_at: "2024-01-02T00:00:00Z".to_string(),
-        metadata: Some(fastskill::core::registry_index::IndexMetadata {
+        metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
             description: Some("Second entry (duplicate)".to_string()),
             author: None,
             license: None,
@@ -309,7 +309,7 @@ async fn test_duplicate_version_deduplication() {
 
     // Should deduplicate: only one entry per version string
     // The first valid entry should be used
-    let version_entries: Vec<&fastskill::core::registry_index::SkillSummary> = summaries
+    let version_entries: Vec<&fastskill_core::core::registry_index::SkillSummary> = summaries
         .iter()
         .filter(|s| s.id == skill_id && s.latest_version == version)
         .collect();
@@ -329,7 +329,7 @@ async fn test_duplicate_version_deduplication() {
 #[tokio::test]
 async fn test_concurrent_reads_no_locking() {
     // Test that concurrent reads of index files are safe without locking
-    use fastskill::core::registry_index::{update_skill_version, VersionMetadata};
+    use fastskill_core::core::registry_index::{update_skill_version, VersionMetadata};
     use std::sync::Arc;
     use tokio::task;
 

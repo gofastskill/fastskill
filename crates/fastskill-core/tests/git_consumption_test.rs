@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use fastskill::core::repository::{
+use fastskill_core::core::repository::{
     RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
 };
 use tempfile::TempDir;
