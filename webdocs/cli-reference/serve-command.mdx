@@ -40,7 +40,6 @@ fastskill serve --host 0.0.0.0 --port 3000
 
 - No token endpoint is exposed
 - API routes do not require `Authorization` or `x-api-key` headers
-- Registry publish routes, when compiled with the `registry-publish` feature, use anonymous identity (`anonymous/<id>`)
 
 If you expose the server on a shared or untrusted network, use network controls or a reverse proxy.
 
@@ -73,8 +72,7 @@ Sending `SIGINT` (Ctrl-C) or `SIGTERM` causes the server to:
 
 1. Flip `/readyz` to HTTP 503 so load balancers stop routing new traffic.
 2. Drain in-flight requests to completion.
-3. Stop the background `ValidationWorker` when the server is built with `registry-publish` and registry publishing is configured.
-4. Exit cleanly with exit code 0.
+3. Exit cleanly with exit code 0.
 
 ## Core Endpoints
 
@@ -95,15 +93,6 @@ Sending `SIGINT` (Ctrl-C) or `SIGTERM` causes the server to:
 | `/healthz` | GET | Liveness probe |
 | `/readyz` | GET | Readiness probe |
 
-## Optional Registry Publish Endpoints
-
-These endpoints exist only when FastSkill is built with the `registry-publish` feature:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/registry/publish` | POST | Publish package with anonymous local identity |
-| `/api/v1/registry/publish/status/{job_id}` | GET | Publish job status |
-
 ## Redirect Behavior
 
 `GET /api/skills` → HTTP 308 → `GET /api/v1/skills` (and similarly for all `/api/…` paths).
@@ -111,4 +100,3 @@ These endpoints exist only when FastSkill is built with the `registry-publish` f
 ## See Also
 
 - [CLI Reference Overview](/cli-reference/overview)
-- [publish Command](/cli-reference/publish-command)

@@ -540,7 +540,7 @@ error: Failed to connect to registry
 
 hint: Check your internet connection
 hint: Verify FASTSKILL_API_URL is set correctly
-hint: Run 'fastskill auth login' to refresh authentication
+hint: Set FASTSKILL_API_TOKEN to refresh authentication
 ```
 
 **Integration with error template:**
@@ -697,7 +697,7 @@ match (is_tty(), is_piped()) {
 
 ### FS101: Authentication Required
 **Description:** Registry access requires authentication.
-**Recovery:** Run `fastskill auth login` to authenticate.
+**Recovery:** Set the `FASTSKILL_API_TOKEN` environment variable to authenticate.
 
 ### FS201: Skill Not Found
 **Description:** Requested skill does not exist in registry.
@@ -733,7 +733,7 @@ error: Failed to authenticate with registry [FS101]
 
 The registry at https://registry.example.com requires authentication, but no valid token was found.
 
-hint: Run 'fastskill auth login' to authenticate
+hint: Set FASTSKILL_API_TOKEN environment variable to authenticate
 hint: Set FASTSKILL_API_TOKEN environment variable
 hint: Check that your token hasn't expired
 ```

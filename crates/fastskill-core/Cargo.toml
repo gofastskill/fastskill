@@ -48,9 +48,6 @@ zip.workspace = true
 # HTTP client for embedding API (rustls for musl compatibility)
 reqwest.workspace = true
 
-# Multipart form data handling for skill uploads
-multer.workspace = true
-
 # HTTP server
 axum.workspace = true
 tower.workspace = true
@@ -65,9 +62,6 @@ rusqlite.workspace = true
 
 # SHA256 hashing for file integrity
 sha2.workspace = true
-
-# Base64 encoding/decoding for JWT parsing
-base64.workspace = true
 
 # Logging
 tracing.workspace = true
@@ -91,10 +85,6 @@ include_dir.workspace = true
 # Semantic versioning
 semver.workspace = true
 
-# AWS S3 storage (optional - only for registry publishing)
-aws-sdk-s3 = { workspace = true, optional = true }
-aws-config = { workspace = true, optional = true }
-
 [dev-dependencies]
 tempfile.workspace = true
 wiremock = "0.5"
@@ -108,9 +98,6 @@ default = ["filesystem-storage"]
 # Storage backends
 filesystem-storage = []
 hot-reload = ["notify"]
-
-# Registry publishing (requires AWS SDK)
-registry-publish = ["aws-sdk-s3", "aws-config"]
 
 [lints]
 workspace = true

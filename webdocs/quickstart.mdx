@@ -107,11 +107,6 @@ The HTTP API is available under `/api/v1/…`, e.g.:
   - Extract version from SKILL.md (`metadata.version` or `version`, defaulting to `1.0.0`)
   - Display a warning suggesting `fastskill init` to add `skill-project.toml`
 
-- **Package skills**
-  ```bash
-  fastskill package --skills my-skill --output ./artifacts --bump patch
-  ```
-
 ## Troubleshooting
 
 - **No skills found**: ensure `skill-project.toml` exists at project root and rerun `fastskill install`.

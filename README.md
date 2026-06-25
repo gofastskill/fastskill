@@ -87,7 +87,6 @@ fastskill install --lock
 | `fastskill search "<query>" --local` | Search installed skills |
 | `fastskill eval validate` | Validate eval configuration and checks |
 | `fastskill doctor` | Diagnose configuration and environment (e.g. whether semantic search is available) |
-| `fastskill package` | Package skills for distribution |
 
 ## Documentation
 

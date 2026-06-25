@@ -5,7 +5,6 @@
 pub mod add_e2e_tests;
 pub mod add_tests;
 pub mod analyze_cluster_tests;
-pub mod auth_e2e_tests;
 pub mod config_tests;
 pub mod doctor_tests;
 pub mod eval_tests;
@@ -19,7 +18,6 @@ pub mod install_tests;
 pub mod integration_tests;
 pub mod legacy_migration_tests;
 pub mod list_e2e_tests;
-pub mod package_tests;
 pub mod read_e2e_tests;
 pub mod read_tests;
 pub mod registry_e2e_tests;

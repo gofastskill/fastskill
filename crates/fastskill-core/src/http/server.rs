@@ -1,12 +1,6 @@
 //! Axum HTTP server implementation
 
-#[cfg(feature = "registry-publish")]
-use crate::core::registry::{StagingManager, ValidationWorker, ValidationWorkerConfig};
 use crate::core::service::FastSkillService;
-#[cfg(feature = "registry-publish")]
-use crate::core::service::ServiceConfig;
-#[cfg(feature = "registry-publish")]
-use crate::http::handlers::registry_publish;
 use crate::http::handlers::{
     manifest, registry, reindex, resolve, search, skills, status, AppState,
 };
@@ -22,8 +16,6 @@ use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVe
 use include_dir::{include_dir, Dir};
 use std::env;
 use std::net::SocketAddr;
-#[cfg(feature = "registry-publish")]
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tower_http::compression::CompressionLayer;
@@ -58,86 +50,6 @@ async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
         .header(header::CONTENT_TYPE, content_type)
         .body(Body::from(body))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
-
-/// Validate blob storage configuration fields
-#[cfg(feature = "registry-publish")]
-fn validate_blob_storage_fields(blob_config: &crate::core::BlobStorageConfig) -> Vec<&'static str> {
-    let mut missing = Vec::new();
-
-    if blob_config.storage_type.is_empty() {
-        missing.push("storage_type");
-    }
-    if blob_config.bucket.is_empty() {
-        missing.push("bucket");
-    }
-    if blob_config.region.is_empty() {
-        missing.push("region");
-    }
-    if blob_config.access_key.is_empty() {
-        missing.push("access_key");
-    }
-    if blob_config.secret_key.is_empty() {
-        missing.push("secret_key");
-    }
-
-    missing
-}
-
-/// Build error message for validation failures
-#[cfg(feature = "registry-publish")]
-fn build_validation_error_message(
-    missing: &[&str],
-    incomplete_fields: &[(&str, Vec<&str>)],
-) -> String {
-    let mut error_msg =
-        String::from("Registry enabled but required configuration is missing or incomplete:\n");
-
-    if !missing.is_empty() {
-        error_msg.push_str("  Missing configuration:\n");
-        for item in missing {
-            error_msg.push_str(&format!("    - {}\n", item));
-        }
-    }
-
-    if !incomplete_fields.is_empty() {
-        error_msg.push_str("  Incomplete configuration:\n");
-        for (config_name, fields) in incomplete_fields {
-            error_msg.push_str(&format!("    {} is missing fields:\n", config_name));
-            for field in fields {
-                error_msg.push_str(&format!("      - {}\n", field));
-            }
-        }
-    }
-
-    error_msg.push_str("\nS3 configuration is required for operational registry publishing.");
-    error_msg
-}
-
-/// Validate registry configuration and return detailed error message if invalid
-#[cfg(feature = "registry-publish")]
-fn validate_registry_config(config: &ServiceConfig) -> Result<(), String> {
-    let mut missing = Vec::new();
-    let mut incomplete_fields = Vec::new();
-
-    // Check registry_blob_storage
-    match &config.registry_blob_storage {
-        None => {
-            missing.push("registry_blob_storage");
-        }
-        Some(blob_config) => {
-            let blob_missing = validate_blob_storage_fields(blob_config);
-            if !blob_missing.is_empty() {
-                incomplete_fields.push(("registry_blob_storage", blob_missing));
-            }
-        }
-    }
-
-    if missing.is_empty() && incomplete_fields.is_empty() {
-        return Ok(());
-    }
-
-    Err(build_validation_error_message(&missing, &incomplete_fields))
 }
 
 /// Get allowed methods for CORS
@@ -340,7 +252,7 @@ impl FastSkillServer {
 
     /// Registry API routes under /api/v1/ (prefix stripped, axum 0.8 params)
     fn create_registry_api_routes_v1() -> Router<AppState> {
-        let router = Router::new()
+        Router::new()
             .route("/registry/index/skills", get(registry::list_index_skills))
             .route("/registry/sources", get(registry::list_sources))
             .route("/registry/skills", get(registry::list_all_skills))
@@ -352,17 +264,7 @@ impl FastSkillServer {
                 "/registry/sources/{name}/marketplace",
                 get(registry::get_marketplace),
             )
-            .route("/registry/refresh", post(registry::refresh_sources));
-
-        #[cfg(feature = "registry-publish")]
-        let router = router
-            .route("/registry/publish", post(registry_publish::publish_package))
-            .route(
-                "/registry/publish/status/{job_id}",
-                get(registry_publish::get_publish_status),
-            );
-
-        router
+            .route("/registry/refresh", post(registry::refresh_sources))
     }
 
     /// Raw index routes for mount("/index") — paths relative to the mount point
@@ -451,33 +353,6 @@ impl FastSkillServer {
             .root_fallback(ui_router)
             .health_version(env!("CARGO_PKG_VERSION"))
             .build();
-
-        #[cfg(feature = "registry-publish")]
-        let shutdown = server.shutdown_token();
-
-        // Start validation worker bound to the server shutdown token.
-        #[cfg(feature = "registry-publish")]
-        {
-            let config = self.service.config();
-            if validate_registry_config(config).is_ok() {
-                let staging_dir = config
-                    .staging_dir
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from(".staging"));
-
-                let staging_manager = StagingManager::new(staging_dir);
-                if staging_manager.initialize().is_ok() {
-                    let worker_config = ValidationWorkerConfig {
-                        poll_interval_secs: 5,
-                        blob_storage_config: config.registry_blob_storage.clone(),
-                        registry_index_path: config.registry_index_path.clone(),
-                        blob_base_url: config.registry_blob_base_url.clone(),
-                    };
-                    let worker = ValidationWorker::new(staging_manager, worker_config);
-                    worker.start_with_shutdown(shutdown.clone());
-                }
-            }
-        }
 
         info!("Starting FastSkill HTTP server on {}", self.addr);
 

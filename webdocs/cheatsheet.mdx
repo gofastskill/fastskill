@@ -62,9 +62,6 @@ Modern agents (Claude Code, Cursor, …) read skills directly from the skills di
 | Initialize project | `fastskill init` | Reads `SKILL.md` frontmatter, prompts for gaps, writes `skill-project.toml` |
 | Init with version | `fastskill init --version 1.2.3` | Sets version without prompting |
 | Init non-interactive | `fastskill init --yes` | Defaults from `SKILL.md`, no prompts |
-| Package | `fastskill package --output ./artifacts` | Builds ZIP from `skill-project.toml` version with checksums and metadata |
-| Package changed only | `fastskill package --detect-changes --auto-bump` | Hash-based change detection, version bump, package only what changed |
-| Package subset | `fastskill package --skills web-scraper data-processor` | Packages only listed skills |
 
 ## Repositories and catalog
 

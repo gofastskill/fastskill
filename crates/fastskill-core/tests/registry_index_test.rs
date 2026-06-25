@@ -7,7 +7,6 @@
     clippy::needless_borrows_for_generic_args
 )]
 
-use fastskill_core::core::registry::index_manager::IndexManager;
 use fastskill_core::core::registry_index::{read_skill_versions, ScopedSkillName, VersionEntry};
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -17,36 +16,6 @@ fn test_scoped_name_integration() {
     // Test that scoped names work in integration context
     let normalized = ScopedSkillName::normalize("@acme/web-scraper");
     assert_eq!(normalized, "acme/web-scraper");
-}
-
-#[test]
-fn test_index_manager_basic_operations() {
-    let temp_dir = TempDir::new().unwrap();
-    let registry_path = temp_dir.path().to_path_buf();
-    let manager = IndexManager::new(registry_path.clone());
-
-    // Create a test entry
-    let entry = VersionEntry {
-        name: "testorg/test-skill".to_string(),
-        vers: "1.0.0".to_string(),
-        deps: vec![],
-        cksum: "abc123".to_string(),
-        features: HashMap::new(),
-        yanked: false,
-        links: None,
-        download_url: "https://example.com/test-skill-1.0.0.zip".to_string(),
-        published_at: "2024-01-01T00:00:00Z".to_string(),
-        metadata: None,
-        scoped_name: Some("@acme/test-skill".to_string()),
-    };
-
-    // Test that atomic_update can be called
-    // The actual implementation will be tested once it's complete
-    let result = manager.atomic_update("@acme/test-skill", "1.0.0", &entry);
-
-    // For now, just verify the method exists and can be called
-    // Full functionality will be tested once implementation is complete
-    assert!(result.is_err() || result.is_ok());
 }
 
 #[tokio::test]
@@ -91,38 +60,6 @@ async fn test_index_served_from_filesystem() {
     let entries = read_skill_versions(&registry_path, "testorg/test-skill").unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].vers, "1.0.0");
-}
-
-#[tokio::test]
-async fn test_publish_no_git_operations() {
-    // Test that publish operation (via IndexManager) completes without Git commit or push
-    let temp_dir = TempDir::new().unwrap();
-    let registry_path = temp_dir.path().to_path_buf();
-    let manager = IndexManager::new(registry_path.clone());
-
-    let entry = VersionEntry {
-        name: "testorg/no-git-skill".to_string(),
-        vers: "1.0.0".to_string(),
-        deps: vec![],
-        cksum: "abc123".to_string(),
-        features: HashMap::new(),
-        yanked: false,
-        links: None,
-        download_url: "https://example.com/skill-1.0.0.zip".to_string(),
-        published_at: "2024-01-01T00:00:00Z".to_string(),
-        metadata: None,
-        scoped_name: None,
-    };
-
-    // Publish using IndexManager (no Git operations)
-    let result = manager.atomic_update("testorg/no-git-skill", "1.0.0", &entry);
-
-    // Should succeed without any Git operations
-    // Verify no .git directory was created
-    assert!(!registry_path.join(".git").exists());
-
-    // Result may succeed or fail depending on implementation completeness
-    assert!(result.is_ok() || result.is_err());
 }
 
 #[tokio::test]

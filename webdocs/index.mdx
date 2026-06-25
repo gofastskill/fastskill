@@ -13,7 +13,7 @@ New here? Read the [Welcome](/welcome) page for the full story, then [Quick star
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, **search**, and **publish** flows when you ship skills to others. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
 
@@ -40,8 +40,8 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
     `fastskill doctor` reports configuration and environment readiness, including whether semantic search is available. See [tooling commands](/cli-reference/tooling-commands).
   </Card>
 
-  <Card title="Publish & catalogs" icon="upload">
-    `package` and `publish` when you distribute; `repos` for remote sources. See [Registry overview](/registry/overview).
+  <Card title="Catalogs & sources" icon="book">
+    `repos` for remote sources and registry browsing. See [Registry overview](/registry/overview).
   </Card>
 </CardGroup>
 
@@ -60,15 +60,15 @@ Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill
 ## How it fits together
 
 - **You**: edit `SKILL.md` and manifests; agents **read** skill content. FastSkill does not execute skill logic as a runtime sandbox.
-- **CLI**: single entry point for installs, checks, search, evals, and packaging.
+- **CLI**: single entry point for installs, checks, search, and evals.
 - **Optional `serve`**: HTTP API and UI on your machine for browsing and integrations.
 
 ## Use cases (summary)
 
-- **Authors**: init, validate, eval, and package when ready; publish requires an operator build with `registry-publish`.
+- **Authors**: init, validate, eval, and ship skills via the platform.
 - **Developers**: install, list, read, search for what agents load.
 - **Teams**: shared manifest + lock; groups for optional stacks.
-- **Automation**: `install --lock`, package, and optional publish in CI (patterns in [CI/CD](/integration/cicd-pipelines)).
+- **Automation**: `install --lock` and reproducible installs in CI.
 
 ## Next steps
 
@@ -83,7 +83,7 @@ Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill
   [Skill validation](/skill-management/validation), [Evals and quality](/evals-quality/overview), [CLI reference](/cli-reference/overview).
 </Step>
 <Step title="Integrate">
-  [Cursor integration](/integration/cursor-integration) or [CI/CD](/integration/cicd-pipelines).
+  [Cursor integration](/integration/cursor-integration) or [Claude Code integration](/integration/claude-code-integration).
 </Step>
 </Steps>
 

@@ -11,7 +11,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod arg_helpers;
-mod auth_config;
 mod commands;
 mod config;
 mod config_file;
@@ -61,11 +60,9 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
         })
 }
 
-#[cfg(feature = "registry-publish")]
-use commands::publish;
 use commands::{
-    add, analyze, auth, doctor, eval, init, install, list, marketplace, package, read, reindex,
-    remove, repos, search, serve, skillopt, update,
+    add, analyze, doctor, eval, init, install, list, marketplace, read, reindex, remove, repos,
+    search, serve, skillopt, update,
 };
 
 #[tokio::main]
@@ -97,7 +94,7 @@ async fn main() {
     let raw = {
         // The set of recognized first path segments: every registered command
         // (including built-ins like `spec`/`completion`/`mcp`) and every group
-        // node (`analyze`, `auth`, `repos`, ...). `help` is clap-provided.
+        // node (`analyze`, `repos`, ...). `help` is clap-provided.
         let registry = app.command_registry();
         let mut known: std::collections::HashSet<&str> = std::collections::HashSet::new();
         known.insert("help");
@@ -202,25 +199,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .await
                     .map_err(anyhow::Error::from)
             }
-        })?
-        .register(
-            path!["package"],
-            |_ctx, args: package::PackageArgs| async move {
-                package::execute_package(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
-        )?;
-
-    #[cfg(feature = "registry-publish")]
-    let builder = builder.register(
-        path!["publish"],
-        |_ctx, args: publish::PublishArgs| async move {
-            publish::execute_publish(args)
-                .await
-                .map_err(anyhow::Error::from)
-        },
-    )?;
+        })?;
 
     // ── Typed commands that need FsState (service injection) ─────────────────
     let builder = {
@@ -361,37 +340,6 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     marketplace::execute_marketplace_create(args)
                         .await
                         .map_err(anyhow::Error::from)
-                },
-            )?
-    };
-
-    // ── auth: fully migrated to typed API ────────────────────────────────────
-    let builder = {
-        use cli_framework::spec::command_tree::GroupMetadata;
-        builder
-            .register_group(
-                &path!["auth"],
-                GroupMetadata {
-                    summary: "Manage authentication for registries",
-                    hidden: false,
-                },
-            )?
-            .register(
-                path!["auth", "login"],
-                |_ctx, args: auth::LoginArgs| async move {
-                    auth::execute_login(args).await.map_err(anyhow::Error::from)
-                },
-            )?
-            .register(
-                path!["auth", "logout"],
-                |_ctx, args: auth::LogoutArgs| async move {
-                    auth::execute_logout(args).map_err(anyhow::Error::from)
-                },
-            )?
-            .register(
-                path!["auth", "whoami"],
-                |_ctx, args: auth::WhoamiArgs| async move {
-                    auth::execute_whoami(args).map_err(anyhow::Error::from)
                 },
             )?
     };

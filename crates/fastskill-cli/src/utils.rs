@@ -1,7 +1,5 @@
 //! Utility functions for CLI operations
 
-#[cfg(feature = "registry-publish")]
-pub mod api_client;
 pub mod install_utils;
 pub mod manifest_utils;
 pub mod messages;
@@ -10,6 +8,7 @@ pub mod reindex_utils;
 use crate::config::get_skill_search_locations_for_display;
 use crate::error::{CliError, CliResult, SkillNotFoundMessage};
 use std::path::{Path, PathBuf};
+use url::Url;
 
 /// Convert ServiceError to CliError, mapping SkillNotFound to the rich message with searched paths and Try suggestions.
 pub fn service_error_to_cli(
@@ -28,7 +27,6 @@ pub fn service_error_to_cli(
     }
     CliError::Service(e)
 }
-use url::Url;
 
 /// Git repository information parsed from URL
 #[derive(Debug, Clone)]

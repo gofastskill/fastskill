@@ -5,7 +5,7 @@ use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::project;
 use fastskill_core::core::repository::RepositoryDefinition;
 use fastskill_core::core::service::HttpServerConfig;
-use fastskill_core::{core::BlobStorageConfig, ServiceConfig};
+use fastskill_core::ServiceConfig;
 use std::env;
 use std::path::PathBuf;
 use tracing::debug;
@@ -202,45 +202,14 @@ pub fn create_service_config(
     // Load server configuration from skill-project.toml
     let http_server_config = load_server_config()?;
 
-    // Read registry configuration from environment variables
-    let registry_blob_storage =
-        if let (Ok(bucket), Ok(region)) = (env::var("S3_BUCKET"), env::var("S3_REGION")) {
-            let access_key = env::var("AWS_ACCESS_KEY_ID").unwrap_or_default();
-            let secret_key = env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_default();
-            let endpoint = env::var("S3_ENDPOINT").ok();
-            let base_url = env::var("BLOB_BASE_URL").ok();
-
-            if !bucket.is_empty() && !region.is_empty() {
-                Some(BlobStorageConfig {
-                    storage_type: "s3".to_string(),
-                    base_path: String::new(),
-                    bucket,
-                    region,
-                    endpoint,
-                    access_key,
-                    secret_key,
-                    base_url,
-                })
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
     // Read registry index path from environment
     let registry_index_path = env::var("REGISTRY_INDEX_PATH").ok().map(PathBuf::from);
-
-    // Read staging directory from environment or use default
-    let staging_dir = env::var("REGISTRY_STAGING_DIR").ok().map(PathBuf::from);
 
     Ok(ServiceConfig {
         skill_storage_path: resolved_dir,
         embedding: embedding_config,
         http_server: http_server_config,
-        registry_blob_storage,
         registry_index_path,
-        staging_dir,
         ..Default::default()
     })
 }

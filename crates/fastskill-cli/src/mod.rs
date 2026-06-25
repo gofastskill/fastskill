@@ -1,8 +1,6 @@
 //! CLI module - re-export all submodules
 
 #[allow(clippy::module_inception)]
-pub mod auth_config;
-#[allow(clippy::module_inception)]
 pub mod cli;
 pub mod commands;
 pub mod config;

@@ -218,11 +218,8 @@ fastskill serve --port 8080
 
 **2. Authentication Setup**
 ```bash
-# Login to registry
-fastskill auth login
-
-# Or set token directly
-export FASTSKILL_API_TOKEN="your-jwt-token"
+# Set token directly for authenticated downloads
+export FASTSKILL_API_TOKEN="your-token"
 ```
 
 **3. Configure Repository**
@@ -256,35 +253,6 @@ fastskill repos versions engineering/data-analyzer --repository company-registry
 
 # Install skill
 fastskill add engineering/data-analyzer
-```
-
-#### Publishing to HTTP Registry
-
-**Package Skills:**
-```bash
-# Package changed skills
-fastskill package --detect-changes --output ./artifacts
-
-# Or package specific skills
-fastskill package --skills data-analyzer web-scraper --output ./artifacts
-```
-
-**Publish to Registry:**
-Requires a FastSkill build compiled with the `registry-publish` feature.
-
-```bash
-# Authenticate
-fastskill auth login
-
-# Publish packages
-fastskill publish \
-  --artifacts ./artifacts \
-  --api-url https://registry.yourcompany.com \
-  --wait true
-
-# Check publish status
-curl -H "Authorization: Bearer $FASTSKILL_API_TOKEN" \
-  https://registry.yourcompany.com/api/v1/registry/publish/status/{job_id}
 ```
 
 #### Configuration Options
@@ -377,14 +345,12 @@ ZIP URL sources provide skills through static hosting with pre-packaged ZIP arch
 
 **1. Prepare Skill Packages**
 ```bash
-# Create skills directory
+# Create skills directory and place packaged skill ZIPs
 mkdir skills-packs
 cd skills-packs
 
-# Package individual skills
-fastskill package --force --output ./packages
-
-# This creates: web-scraper-1.0.0.zip, data-analyzer-1.0.0.zip, etc.
+# Each skill must be packaged as a ZIP artifact
+# (e.g. web-scraper-1.0.0.zip, data-analyzer-1.0.0.zip)
 ```
 
 **2. Create Marketplace.json**
@@ -520,22 +486,19 @@ The marketplace.json file must include `download_url` fields pointing to ZIP fil
 
 #### CI/CD Pipeline Example
 
-**GitHub Actions for Automated Publishing:**
+**GitHub Actions for Automated Deployment:**
 ```yaml
-name: Publish Skills
+name: Deploy Skills
 on:
   push:
     branches: [main]
     paths: ['skills/**']
 
 jobs:
-  package-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
-      - name: Package skills
-        run: fastskill package --detect-changes --output ./packages
 
       - name: Generate marketplace.json
         run: fastskill marketplace create ./skills --output ./marketplace.json
@@ -743,7 +706,7 @@ vim ~/local-skills/experimental/test-skill/scripts/test.js
 # Test changes immediately
 fastskill add local-dev/test-skill --force
 
-# No need to package or publish for local development
+# No build step needed for local development
 ```
 
 **Version Control Integration:**
