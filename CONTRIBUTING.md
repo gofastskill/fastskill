@@ -166,7 +166,6 @@ fn test_command_output() {
 fastskill supports several feature flags that affect available functionality:
 
 - `filesystem-storage` (default): Enables local filesystem storage for skills
-- `registry-publish` (default): Enables publishing skills to registries
 - `hot-reload` (optional): Enables file watching for automatic skill reloading during development
 
 #### Test matrix

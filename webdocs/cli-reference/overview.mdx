@@ -1,11 +1,11 @@
 ---
 title: "CLI Reference Overview"
-description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, package, and serve."
+description: "CLI for the FastSkill package manager: installs, manifests, validation, evals, search, and serve."
 ---
 
 ## Overview
 
-The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, packaging, plus `serve` when you want a local HTTP surface.
+The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, plus `serve` when you want a local HTTP surface.
 
 <Info>
 The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
@@ -102,20 +102,6 @@ fastskill list --help         # Help for list command
   <Card title="fastskill repos" icon="book">
     Manage repositories (list/add/remove/info/update/test/refresh) and browse remote skill catalog with authentication and priority. See [repos Command](/cli-reference/repository-command).
   </Card>
-  <Card title="fastskill auth" icon="key">
-    Manage authentication (login/logout/whoami) with JWT tokens and RBAC. See [auth Command](/cli-reference/auth-command).
-  </Card>
-</CardGroup>
-
-### Packaging
-
-<CardGroup cols={2}>
-  <Card title="fastskill package" icon="archive">
-    Package skills into ZIP artifacts with change detection and version bumps. See [package Command](/cli-reference/package-command).
-  </Card>
-  <Card title="fastskill publish" icon="upload">
-    Optional operator command for registry publishing. It is available only in builds compiled with `registry-publish`. See [publish Command](/cli-reference/publish-command).
-  </Card>
 </CardGroup>
 
 ### Diagnostics and tooling
@@ -189,20 +175,7 @@ index_url = "https://api.fastskill.io/index"
 priority = 0
 ```
 
-For opt-in registry publishing builds, create `.fastskill/publish.toml`:
-
-```toml .fastskill/publish.toml
-[blob_storage]
-type = "s3"
-endpoint = "https://s3.example.com"
-bucket = "skills-registry"
-region = "us-east-1"
-
-[registry]
-git_url = "https://github.com/org/skill-registry.git"
-branch = "main"
-blob_base_url = "https://blob.example.com/skills"
-```
+For opt-in registry publishing builds, see the platform-managed deploy workflow. Skill distribution is handled by the platform operator rather than a self-hosted CLI publish path.
 
 ### Environment Variables
 
@@ -286,7 +259,7 @@ fastskill reindex
 fastskill serve --port 8080
 ```
 
-For running `fastskill` in automation (build machines, sandboxes), install the CLI in the job image, check out your repo, then run the same commands with secrets injected for registry tokens and `OPENAI_API_KEY` when needed. See [CI/CD integration](/integration/cicd-pipelines) for patterns without repository-specific paths.
+For running `fastskill` in automation (build machines, sandboxes), install the CLI in the job image, check out your repo, then run the same commands with secrets injected for registry tokens and `OPENAI_API_KEY` when needed.
 
 ## Troubleshooting
 

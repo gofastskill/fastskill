@@ -30,26 +30,6 @@ fn add_help_shows_examples() {
 }
 
 #[test]
-fn auth_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["auth", "--help"]);
-}
-
-#[test]
-fn auth_login_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["auth", "login", "--help"]);
-}
-
-#[test]
-fn auth_logout_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["auth", "logout", "--help"]);
-}
-
-#[test]
-fn auth_whoami_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["auth", "whoami", "--help"]);
-}
-
-#[test]
 fn disable_help_shows_examples() {
     help_succeeds_and_contains_examples(&["disable", "--help"]);
 }
@@ -67,16 +47,6 @@ fn install_help_shows_examples() {
 #[test]
 fn list_help_shows_examples() {
     help_succeeds_and_contains_examples(&["list", "--help"]);
-}
-
-#[test]
-fn package_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["package", "--help"]);
-}
-
-#[test]
-fn publish_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["publish", "--help"]);
 }
 
 #[test]

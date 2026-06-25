@@ -2,8 +2,6 @@
 
 pub mod manifest;
 pub mod registry;
-#[cfg(feature = "registry-publish")]
-pub mod registry_publish;
 pub mod reindex;
 pub mod resolve;
 pub mod search;

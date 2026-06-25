@@ -5,10 +5,9 @@ use crate::security::validate_path_component;
 use chrono::{DateTime, Utc};
 use semver;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -34,17 +33,11 @@ impl ScopedSkillName {
     }
 }
 
-/// Create registry index structure
-pub fn create_registry_structure(base_path: &Path) -> Result<(), ServiceError> {
-    fs::create_dir_all(base_path).map_err(ServiceError::Io)?;
-    Ok(())
-}
-
 /// Get the index file path for a skill using org/package directory structure
 /// Format: {org}/{package}
-/// skill_id must always be in "org/package" format (enforced at publish time)
+/// skill_id must always be in "org/package" format (enforced at write time)
 pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> Result<PathBuf, ServiceError> {
-    // skill_id is always in org/package format (enforced at publish time)
+    // skill_id is always in org/package format
     // Organization is the authenticated user's username (lowercase, filesystem-safe)
     let parts: Vec<&str> = skill_id.split('/').collect();
 
@@ -63,22 +56,6 @@ pub fn get_skill_index_path(registry_path: &Path, skill_id: &str) -> Result<Path
         .map_err(|e| ServiceError::Validation(format!("Invalid package: {}", e)))?;
 
     Ok(registry_path.join(&org).join(&package))
-}
-
-/// Path to the sidecar lock file guarding a skill's index file.
-///
-/// Derived by appending `.lock` to the index path (not [`Path::with_extension`], which
-/// would collapse dotted package names like `org/web.scraper` and `org/web.crawler`
-/// onto a single `org/web.lock`). Kept next to [`get_skill_index_path`] so all of a
-/// skill's on-disk paths are derived in one place.
-pub fn get_skill_index_lock_path(
-    registry_path: &Path,
-    skill_id: &str,
-) -> Result<PathBuf, ServiceError> {
-    Ok(crate::utils::append_suffix(
-        &get_skill_index_path(registry_path, skill_id)?,
-        "lock",
-    ))
 }
 
 /// Update registry index with a new skill version
@@ -178,29 +155,6 @@ pub fn read_skill_versions(
     }
 
     Ok(entries)
-}
-
-/// Get version metadata from ZIP file
-pub fn get_version_metadata(
-    skill_id: &str,
-    zip_path: &Path,
-    download_url: &str,
-) -> Result<VersionMetadata, ServiceError> {
-    // Calculate checksum
-    let cksum = calculate_file_checksum(zip_path)?;
-
-    Ok(VersionMetadata {
-        name: skill_id.to_string(),
-        vers: String::new(), // Will be set by caller
-        deps: Vec::new(),
-        cksum,
-        features: HashMap::new(),
-        yanked: false,
-        links: None,
-        download_url: download_url.to_string(),
-        published_at: Utc::now().to_rfc3339(),
-        metadata: None, // Will be populated from skill package
-    })
 }
 
 /// Version metadata entry
@@ -312,106 +266,6 @@ where
             .map(|dt| Some(dt.with_timezone(&Utc)))
             .map_err(serde::de::Error::custom),
         None => Ok(None),
-    }
-}
-
-/// Calculate SHA256 checksum of a file
-fn calculate_file_checksum(file_path: &Path) -> Result<String, ServiceError> {
-    let mut file = fs::File::open(file_path).map_err(ServiceError::Io)?;
-
-    let mut hasher = Sha256::new();
-    let mut buffer = [0; 8192];
-
-    loop {
-        let bytes_read = file.read(&mut buffer).map_err(ServiceError::Io)?;
-
-        if bytes_read == 0 {
-            break;
-        }
-
-        hasher.update(&buffer[..bytes_read]);
-    }
-
-    let hash = format!("sha256:{:x}", hasher.finalize());
-    Ok(hash)
-}
-
-/// Migrate old index format to new crates.io format
-/// Old format: index/{first2}/{next2}/{skill-id}-{version}.json
-/// New format: {first2}/{next2}/{skill-id} (or 1/{name}, 2/{name}, 3/{first}/{name})
-pub fn migrate_index_format(
-    old_registry_path: &Path,
-    new_registry_path: &Path,
-) -> Result<usize, ServiceError> {
-    use walkdir::WalkDir;
-
-    let mut migrated_count = 0;
-
-    // Walk through old index structure
-    let index_dir = old_registry_path.join("index");
-    if !index_dir.exists() {
-        return Ok(0);
-    }
-
-    // Group files by skill ID
-    let mut skill_versions: std::collections::HashMap<String, Vec<(String, VersionEntry)>> =
-        std::collections::HashMap::new();
-
-    for entry in WalkDir::new(&index_dir) {
-        let entry = entry.map_err(|e| ServiceError::Io(e.into()))?;
-        let path = entry.path();
-
-        if path.is_file() {
-            // Parse old filename format: {skill-id}-{version}.json
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                if let Some((skill_id, version)) = parse_old_index_filename(file_name) {
-                    // Read old format file
-                    let content = fs::read_to_string(path).map_err(ServiceError::Io)?;
-
-                    if let Ok(entry) = serde_json::from_str::<VersionEntry>(&content) {
-                        skill_versions
-                            .entry(skill_id)
-                            .or_default()
-                            .push((version, entry));
-                    }
-                }
-            }
-        }
-    }
-
-    // Write new format files
-    for (skill_id, versions) in skill_versions {
-        let new_index_path = get_skill_index_path(new_registry_path, &skill_id)?;
-
-        // Create parent directories
-        if let Some(parent) = new_index_path.parent() {
-            fs::create_dir_all(parent).map_err(ServiceError::Io)?;
-        }
-
-        // Write all versions to single file
-        let mut file = fs::File::create(&new_index_path).map_err(ServiceError::Io)?;
-
-        for (_, entry) in versions {
-            let line = serde_json::to_string(&entry)
-                .map_err(|e| ServiceError::Custom(format!("Failed to serialize entry: {}", e)))?;
-            writeln!(file, "{}", line).map_err(ServiceError::Io)?;
-        }
-
-        migrated_count += 1;
-    }
-
-    Ok(migrated_count)
-}
-
-/// Parse old index filename format: {skill-id}-{version}.json
-fn parse_old_index_filename(filename: &str) -> Option<(String, String)> {
-    let without_ext = filename.strip_suffix(".json")?;
-    if let Some(last_dash) = without_ext.rfind('-') {
-        let skill_id = without_ext[..last_dash].to_string();
-        let version = without_ext[last_dash + 1..].to_string();
-        Some((skill_id, version))
-    } else {
-        None
     }
 }
 

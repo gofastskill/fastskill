@@ -1,7 +1,6 @@
 //! Core service layer modules
 
 pub mod analysis;
-pub mod blob_storage;
 pub mod build_cache;
 pub mod change_detection;
 pub mod context_resolver;
@@ -12,7 +11,6 @@ pub mod frontmatter;
 pub mod lock;
 pub mod manifest;
 pub mod metadata;
-pub mod packaging;
 pub mod project;
 pub mod project_config;
 pub mod reconciliation;
@@ -33,7 +31,6 @@ pub mod version_bump;
 
 // Re-export main types for convenience
 // Note: Selective re-exports to avoid conflicts
-pub use blob_storage::{create_blob_storage, BlobStorage, BlobStorageConfig, LocalBlobStorage};
 pub use build_cache::{BuildCache, SkillCacheEntry};
 pub use change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
@@ -66,12 +63,6 @@ pub use metadata::{
     parse_yaml_frontmatter, MetadataService, MetadataServiceImpl, SkillFrontmatter, SkillMetadata,
 };
 
-// packaging
-pub use packaging::{
-    calculate_checksum, create_build_metadata, package_skill, package_skill_with_id,
-    BuildEnvironment, BuildMetadata,
-};
-
 // project_config
 pub use project_config::{load_project_config, ProjectConfig};
 
@@ -82,10 +73,7 @@ pub use registry::{
 };
 
 // registry_index
-pub use registry_index::{
-    create_registry_structure, get_skill_index_path, get_version_metadata, migrate_index_format,
-    read_skill_versions, IndexMetadata, VersionEntry, VersionMetadata,
-};
+pub use registry_index::{read_skill_versions, IndexMetadata, VersionEntry, VersionMetadata};
 
 // repository
 pub use repository::{

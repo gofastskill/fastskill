@@ -1,6 +1,5 @@
 //! Main FastSkill service implementation
 
-use crate::core::blob_storage::BlobStorageConfig;
 use crate::execution::ExecutionConfig;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,12 +37,6 @@ pub struct ServiceConfig {
     /// Security configuration
     pub security: SecurityConfig,
 
-    /// Staging directory for registry publishing
-    pub staging_dir: Option<PathBuf>,
-
-    /// Registry blob storage configuration
-    pub registry_blob_storage: Option<BlobStorageConfig>,
-
     /// Registry index path
     pub registry_index_path: Option<PathBuf>,
 
@@ -63,8 +56,6 @@ impl Default for ServiceConfig {
             cache: CacheConfig::default(),
             embedding: None,
             security: SecurityConfig::default(),
-            staging_dir: None,
-            registry_blob_storage: None,
             registry_index_path: None,
             registry_blob_base_url: None,
             http_server: None,

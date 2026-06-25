@@ -101,7 +101,6 @@ pub async fn retrieve_skills_for_turn(
 ## Feature flags
 
 - `filesystem-storage` (default): local storage backend.
-- `registry-publish`: opt-in registry publishing support.
 - `hot-reload`: filesystem watch support for skill changes.
 
 ## Core capabilities

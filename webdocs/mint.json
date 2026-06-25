@@ -77,12 +77,9 @@
                 "cli-reference/overview",
                 "cli-reference/skill-commands",
                 "cli-reference/discovery-commands",
-                "cli-reference/auth-command",
                 "cli-reference/init-command",
                 "cli-reference/install-command",
                 "cli-reference/update-command",
-                "cli-reference/package-command",
-                "cli-reference/publish-command",
                 "cli-reference/reindex-command",
                 "cli-reference/search-command",
                 "cli-reference/serve-command",
@@ -113,9 +110,7 @@
             "group": "Integration",
             "pages": [
                 "integration/cursor-integration",
-                "integration/claude-code-integration",
-                "integration/cicd-pipelines",
-                "integration/blob-storage"
+                "integration/claude-code-integration"
             ]
         }
     ],

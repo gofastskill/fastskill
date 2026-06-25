@@ -173,7 +173,7 @@ Commands are divided into two categories:
    - Initialize `FastSkillService` first
    - Use shared service layer for operations
 
-2. **Standalone commands** (init, install, publish, auth, registry)
+2. **Standalone commands** (init, install, registry)
    - Execute without full service initialization
    - Avoid circular dependencies and overhead
    - Registry command has its own modular structure in `src/cli/commands/registry/`
@@ -222,7 +222,6 @@ FastSkill resolves configuration in priority order:
 Defined in `Cargo.toml`:
 
 - `filesystem-storage` (default) - Local filesystem storage for skills
-- `registry-publish` (default) - Publishing to registries with AWS S3
 - `hot-reload` (optional) - File watching for automatic skill reloading
 
 Tests requiring optional features are skipped if features not enabled.
