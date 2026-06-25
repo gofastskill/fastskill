@@ -61,7 +61,7 @@ multer = "3.1"
 # HTTP server
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["util", "timeout", "limit"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # CLI framework for versioned API server hosting
 cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "76a83e0d57e88b55e5f8c44fd3dffe1444443924", default-features = false, features = ["api-server"] }
