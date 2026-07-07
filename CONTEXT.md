@@ -23,6 +23,10 @@ A skill physically present in the **skills directory** (`.claude/skills/` by def
 **Reconciliation**:
 The comparison of the three states — Manifest (desired), Lock (pinned), skills directory (actual) — producing a status per skill: `ok`, `missing`, `extraneous`, `mismatch`. Owned by `list`.
 
+**Version constraint**:
+The *allowed range* a Manifest dependency accepts, used only to filter candidate versions during resolution — distinct from the Lock, which pins the one chosen version. A **bare version (`1.2.3`) means exactly that version**, not a compatible range; ranges are opt-in via explicit `^`/`~`/`>=`/`<=`/comma operators. See [ADR-0004](./docs/adr/0004-bare-version-is-exact.md).
+_Avoid_: version requirement, semver range (a bare version is *not* a range here).
+
 ### Discovery axes
 
 These two axes — not the verb names — are what actually distinguish the read-side commands. The verbs should expose them, not hide them.
