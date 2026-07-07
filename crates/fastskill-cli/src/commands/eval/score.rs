@@ -1,6 +1,6 @@
 //! Eval score subcommand - offline re-scoring from saved artifacts
 
-use crate::commands::common::validate_format_args;
+use crate::commands::common::validate_eval_format_args;
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
@@ -18,7 +18,7 @@ pub struct ScoreArgs {
     /// Path to the run directory to re-score
     pub run_dir: PathBuf,
 
-    /// Output format: table, json, grid, xml (default: table)
+    /// Output format: table, json (default: table)
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
@@ -60,7 +60,7 @@ impl IntoCommandSpec for ScoreArgs {
                     long: Some("format"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Output format: table, json, grid, xml",
+                    help: "Output format: table, json",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -118,7 +118,7 @@ impl FromArgValueMap for ScoreArgs {
 
 /// Execute the `eval score` command
 pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
-    let format = validate_format_args(&args.format, args.json)?;
+    let format = validate_eval_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
     if !args.run_dir.exists() {

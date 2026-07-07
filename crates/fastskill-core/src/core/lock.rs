@@ -424,7 +424,7 @@ fn build_skill_source(skill: &SkillDefinition) -> SkillSource {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::core::service::SkillId;
@@ -686,38 +686,25 @@ depth = 0
     }
 
     #[test]
-    fn test_save_to_file_returns_file_locked_when_tmp_locked() {
-        use fs2::FileExt;
-
+    fn test_save_to_file_is_last_writer_wins() {
+        // BUG-8: atomic_write now uses a unique temp file + atomic rename (no advisory
+        // lock on a shared `.tmp`), so concurrent/sequential writers no longer error —
+        // the file is always a complete copy of some writer's content (last-writer-wins).
         let tmp = TempDir::new().unwrap();
         let lock_path = tmp.path().join("skills.lock");
-        let tmp_path = crate::utils::append_suffix(&lock_path, "tmp");
 
-        // Acquire exclusive lock on the .tmp file before calling save_to_file
-        let holder = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&tmp_path)
-            .unwrap();
-        holder.lock_exclusive().unwrap();
+        let mut first = ProjectSkillsLock::new_empty();
+        first.update_skill(&make_skill("first-skill"));
+        first.save_to_file(&lock_path).expect("first save succeeds");
 
-        let mut skills_lock = ProjectSkillsLock::new_empty();
-        skills_lock.update_skill(&make_skill("test-skill"));
+        let mut second = ProjectSkillsLock::new_empty();
+        second.update_skill(&make_skill("second-skill"));
+        second
+            .save_to_file(&lock_path)
+            .expect("second save overwrites without error");
 
-        let result = skills_lock.save_to_file(&lock_path);
-
-        // Should return FileLocked error since .tmp is already locked
-        assert!(
-            result.is_err(),
-            "save_to_file must fail when .tmp file is locked"
-        );
-        assert!(
-            matches!(result, Err(LockError::FileLocked(_))),
-            "error must be LockError::FileLocked, got: {:?}",
-            result
-        );
-
-        holder.unlock().unwrap();
+        // Last write wins: the file is a complete copy of the second writer's content.
+        let reloaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+        assert_eq!(reloaded.skills.len(), 1);
     }
 }

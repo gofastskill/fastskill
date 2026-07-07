@@ -48,9 +48,13 @@ pub enum RuntimeSelectionError {
     EmptyRuntimeSet { hint: String },
 }
 
-const RUNNABLE_AGENTS: &[&str] = &["codex", "claude", "gemini", "opencode", "agent", "aikit"];
-
 /// Resolve runtime targets from CLI flags.
+///
+/// Discovery is delegated to aikit-sdk's [`aikit_sdk::get_installed_agents`],
+/// which probes each runnable agent binary (via `is_agent_available`) and
+/// returns only those actually installed. This means `--all` reflects the
+/// runtimes present on the machine, and an environment with no installed
+/// runtime resolves to the [`RuntimeSelectionError::EmptyRuntimeSet`] error.
 ///
 /// Returns `Ok(Some(_))` when flags are provided and valid.
 /// Returns `Ok(None)` when neither `--agent` nor `--all` was provided.
@@ -58,9 +62,7 @@ const RUNNABLE_AGENTS: &[&str] = &["codex", "claude", "gemini", "opencode", "age
 pub fn resolve_runtime_selection(
     input: &RuntimeSelectionInput,
 ) -> Result<Option<RuntimeSelection>, RuntimeSelectionError> {
-    resolve_with_discovery(input, &|| {
-        RUNNABLE_AGENTS.iter().map(|s| s.to_string()).collect()
-    })
+    resolve_with_discovery(input, &aikit_sdk::get_installed_agents)
 }
 
 fn resolve_with_discovery(

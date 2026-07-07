@@ -121,11 +121,12 @@ impl StandardValidator {
             warnings.push("No compatibility field specified".to_string());
         }
 
-        // Validate file references
+        // Validate file references. This checks the paths actually referenced
+        // by frontmatter fields; we deliberately do NOT require scripts/ or
+        // references/ directories just because those words appear in the free
+        // text description (that produced spurious InvalidDirectoryStructure
+        // errors).
         Self::validate_file_references(skill_path, &frontmatter, &mut errors);
-
-        // Check directory structure
-        Self::validate_directory_structure(skill_path, &frontmatter, &mut errors);
 
         Ok(ValidationResult {
             is_valid: errors.is_empty(),
@@ -195,33 +196,6 @@ impl StandardValidator {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /// Validate directory structure meets requirements
-    fn validate_directory_structure(
-        skill_path: &Path,
-        frontmatter: &SkillFrontmatter,
-        errors: &mut Vec<ValidationError>,
-    ) {
-        // Check if scripts directory exists if referenced
-        if frontmatter.description.contains("scripts") {
-            let scripts_path = skill_path.join("scripts");
-            if !scripts_path.exists() {
-                errors.push(ValidationError::InvalidDirectoryStructure(
-                    "scripts/ directory referenced but not found".to_string(),
-                ));
-            }
-        }
-
-        // Check if references directory exists if referenced
-        if frontmatter.description.contains("references") {
-            let references_path = skill_path.join("references");
-            if !references_path.exists() {
-                errors.push(ValidationError::InvalidDirectoryStructure(
-                    "references/ directory referenced but not found".to_string(),
-                ));
             }
         }
     }
@@ -319,20 +293,55 @@ Content here
     }
 
     #[test]
-    fn test_validate_file_references_missing() {
+    fn test_description_mentioning_scripts_word_does_not_require_dir() {
+        // Regression (PARTIAL-9): a description that merely uses the words
+        // "scripts" and "references" as free text (no file path) must not
+        // force scripts/ or references/ directories to exist.
         let temp_dir = TempDir::new().unwrap();
         let skill_path = temp_dir.path();
 
         let skill_md_content = r#"---
 name: test-skill
 version: "1.0.0"
-description: See ./scripts/test.sh for details
+description: Helper for writing test scripts and citing references in prose
+---
+"#;
+        std::fs::write(skill_path.join("SKILL.md"), skill_md_content).unwrap();
+
+        // No scripts/ or references/ directories created on purpose.
+        let result = StandardValidator::validate_skill_directory(skill_path).unwrap();
+        assert!(
+            result.is_valid,
+            "expected valid, got errors: {:?}",
+            result.errors
+        );
+        assert!(!result
+            .errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::InvalidDirectoryStructure(_))));
+    }
+
+    #[test]
+    fn test_validate_file_references_missing() {
+        // A path-shaped reference to a non-existent file must fail validation
+        // via InvalidFileReference (NOT via the removed directory-structure
+        // heuristic). The reference regex matches backslash-style paths.
+        let temp_dir = TempDir::new().unwrap();
+        let skill_path = temp_dir.path();
+
+        let skill_md_content = r#"---
+name: test-skill
+version: "1.0.0"
+description: See \\scripts\\test.sh for details
 ---
 "#;
         std::fs::write(skill_path.join("SKILL.md"), skill_md_content).unwrap();
 
         let result = StandardValidator::validate_skill_directory(skill_path).unwrap();
-        assert!(!result.is_valid);
-        assert!(!result.errors.is_empty());
+        assert!(!result.is_valid, "errors: {:?}", result.errors);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::InvalidFileReference(_))));
     }
 }

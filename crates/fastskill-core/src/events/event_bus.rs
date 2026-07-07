@@ -4,7 +4,7 @@ use crate::core::service::ServiceError;
 use crate::core::skill_manager::SkillDefinition;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, info, warn};
@@ -87,8 +87,8 @@ pub struct EventBus {
     /// Event handlers registry
     handlers: Arc<RwLock<EventHandlersMap>>,
 
-    /// Event history for debugging
-    event_history: Arc<RwLock<Vec<(SkillEvent, std::time::Instant)>>>,
+    /// Event history for debugging (ring buffer: newest kept, oldest evicted)
+    event_history: Arc<RwLock<VecDeque<(SkillEvent, std::time::Instant)>>>,
 
     /// Maximum history size
     max_history_size: usize,
@@ -108,7 +108,7 @@ impl EventBus {
         Self {
             sender,
             handlers: Arc::new(RwLock::new(HashMap::new())),
-            event_history: Arc::new(RwLock::new(Vec::new())),
+            event_history: Arc::new(RwLock::new(VecDeque::new())),
             max_history_size: 100,
         }
     }
@@ -158,15 +158,15 @@ impl EventBus {
 
     /// Publish an event
     pub async fn publish_event(&self, event: SkillEvent) -> Result<usize, ServiceError> {
-        // Add to history
+        // Add to history (ring buffer: keep the NEWEST `max_history_size`
+        // events, evicting the oldest from the front when over capacity).
         {
             let mut history = self.event_history.write().await;
 
-            history.push((event.clone(), std::time::Instant::now()));
+            history.push_back((event.clone(), std::time::Instant::now()));
 
-            // Trim history if too large
-            if history.len() > self.max_history_size {
-                history.truncate(self.max_history_size);
+            while history.len() > self.max_history_size {
+                history.pop_front();
             }
         }
 
@@ -184,10 +184,15 @@ impl EventBus {
         Ok(subscriber_count)
     }
 
-    /// Notify registered handlers about an event
+    /// Notify registered handlers about an event.
+    ///
+    /// The handler `Arc`s are cloned under a short read-lock, which is then
+    /// dropped *before* any handler is awaited. Awaiting handlers while holding
+    /// the lock would deadlock the bus if a handler (re)registers or unregisters
+    /// a handler (those take a write-lock, and tokio's `RwLock` is
+    /// write-preferring / non-reentrant), and would serialize all handler
+    /// execution under a lock held across arbitrary user async code.
     async fn notify_handlers(&self, event: &SkillEvent) {
-        let handlers = self.handlers.read().await;
-
         // Determine event type for handler lookup
         let event_type = match event {
             SkillEvent::SkillRegistered { .. } => "skill:registered",
@@ -201,23 +206,32 @@ impl EventBus {
         }
         .to_string();
 
-        if let Some(event_handlers) = handlers.get(&event_type) {
-            for handler in event_handlers {
-                match handler.handle_event(event.clone()).await {
-                    Ok(_) => {
-                        debug!("Event handler processed event successfully");
-                    }
-                    Err(e) => {
-                        warn!("Event handler failed to process event: {}", e);
-                    }
+        // Clone the handler Arcs under a short read-lock, then release it.
+        let handlers_for_event: Vec<Arc<dyn EventHandler>> = {
+            let handlers = self.handlers.read().await;
+            match handlers.get(&event_type) {
+                Some(list) => list.clone(),
+                None => Vec::new(),
+            }
+        };
+
+        // Await handlers OUTSIDE the lock so a handler that (un)registers can't
+        // deadlock, and handlers aren't serialized under the lock.
+        for handler in handlers_for_event {
+            match handler.handle_event(event.clone()).await {
+                Ok(_) => {
+                    debug!("Event handler processed event successfully");
+                }
+                Err(e) => {
+                    warn!("Event handler failed to process event: {}", e);
                 }
             }
         }
     }
 
-    /// Get event history
+    /// Get event history (oldest first, newest last)
     pub async fn get_event_history(&self) -> Vec<(SkillEvent, std::time::Instant)> {
-        self.event_history.read().await.clone()
+        self.event_history.read().await.iter().cloned().collect()
     }
 
     /// Clear event history
@@ -416,5 +430,102 @@ impl EventBus {
     /// Publish hot reload disabled event
     pub async fn publish_hot_reload_disabled(&self) -> Result<usize, ServiceError> {
         self.publish_event(SkillEvent::HotReloadDisabled).await
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn custom_index(event: &SkillEvent) -> u64 {
+        match event {
+            SkillEvent::Custom { data, .. } => data["i"].as_u64().expect("index should be present"),
+            other => panic!("expected Custom event, got {:?}", other),
+        }
+    }
+
+    /// BUG-13: after overflow, history must keep the NEWEST `max_history_size`
+    /// events (drop the oldest), not freeze on the first N ever published.
+    #[tokio::test]
+    async fn test_event_history_keeps_newest_after_overflow() {
+        let bus = EventBus::new();
+
+        // Publish 150 events into a 100-entry ring buffer.
+        for i in 0..150u64 {
+            bus.publish_event(SkillEvent::Custom {
+                event_type: "test".to_string(),
+                data: serde_json::json!({ "i": i }),
+            })
+            .await
+            .unwrap();
+        }
+
+        let history = bus.get_event_history().await;
+        assert_eq!(history.len(), 100, "history is capped at max_history_size");
+
+        // Oldest retained is i=50, newest is i=149.
+        assert_eq!(custom_index(&history.first().unwrap().0), 50);
+        assert_eq!(custom_index(&history.last().unwrap().0), 149);
+    }
+
+    #[tokio::test]
+    async fn test_event_history_under_capacity_keeps_all() {
+        let bus = EventBus::new();
+        for i in 0..5u64 {
+            bus.publish_event(SkillEvent::Custom {
+                event_type: "test".to_string(),
+                data: serde_json::json!({ "i": i }),
+            })
+            .await
+            .unwrap();
+        }
+        let history = bus.get_event_history().await;
+        assert_eq!(history.len(), 5);
+        assert_eq!(custom_index(&history.first().unwrap().0), 0);
+        assert_eq!(custom_index(&history.last().unwrap().0), 4);
+    }
+
+    /// A handler that (re)registers a handler while an event is being dispatched.
+    /// This takes the handlers write-lock; if dispatch held a read-lock across
+    /// the await it would deadlock (BUG-14).
+    struct ReRegisteringHandler {
+        bus: Arc<EventBus>,
+    }
+
+    #[async_trait]
+    impl EventHandler for ReRegisteringHandler {
+        async fn handle_event(&self, _event: SkillEvent) -> Result<(), ServiceError> {
+            self.bus
+                .register_handler("skill:updated", LoggingEventHandler::new())
+                .await?;
+            Ok(())
+        }
+    }
+
+    /// BUG-14: dispatch must not hold the handlers read-lock across handler
+    /// awaits, so a handler that registers another handler cannot deadlock.
+    #[tokio::test]
+    async fn test_handler_registering_during_dispatch_does_not_deadlock() {
+        let bus = Arc::new(EventBus::new());
+        bus.register_handler(
+            "skill:unregistered",
+            ReRegisteringHandler { bus: bus.clone() },
+        )
+        .await
+        .unwrap();
+
+        let fut = bus.publish_skill_unregistered("skill-1".to_string());
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), fut).await;
+
+        assert!(
+            result.is_ok(),
+            "publish_event deadlocked while a handler re-registered"
+        );
+        result.unwrap().unwrap();
+
+        // The nested registration actually took effect.
+        let registered = bus.get_registered_handlers().await;
+        assert_eq!(registered.get("skill:updated").copied(), Some(1));
     }
 }

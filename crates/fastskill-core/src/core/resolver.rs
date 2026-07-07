@@ -249,7 +249,7 @@ impl PackageResolver {
         let mut visited = HashSet::new();
         let mut resolution_map = HashMap::new();
 
-        self.resolve_dependencies_recursive(
+        self.resolve_dependency_list(
             skill_id,
             dependencies,
             &mut resolved,
@@ -261,8 +261,13 @@ impl PackageResolver {
         Ok(resolved)
     }
 
-    /// Recursively resolve dependencies
-    fn resolve_dependencies_recursive(
+    /// Resolve a single (non-transitive) list of dependencies across sources.
+    ///
+    /// Renamed from `resolve_dependencies_recursive` (PARTIAL-8): this method
+    /// resolves only the directly supplied `dependencies` — it does not fetch
+    /// resolved skills' transitive dependencies. Real transitive traversal lives
+    /// in `DependencyResolver` (see `dependency_resolver.rs`).
+    fn resolve_dependency_list(
         &self,
         _skill_id: &str,
         dependencies: &[Dependency],

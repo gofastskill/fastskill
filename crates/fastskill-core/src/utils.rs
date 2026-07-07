@@ -1,6 +1,5 @@
 //! Utility functions for the fastskill-core crate
 
-use fs2::FileExt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,6 +12,11 @@ use std::path::{Path, PathBuf};
 /// skill package), `with_extension("tmp")` is not injective — `org/web.scraper` and
 /// `org/web.crawler` both collapse onto `org/web.tmp`. Appending keeps each derived
 /// sidecar path distinct.
+///
+/// Retained as a small path utility; `atomic_write` no longer uses a
+/// deterministic `.tmp` sidecar (it uses a unique per-writer temp file), so this
+/// is currently exercised only by tests.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
     name.push(".");
@@ -20,48 +24,45 @@ pub(crate) fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Write `bytes` to `path` atomically: write to `.tmp` sibling → sync → rename.
-/// Advisory-locks the tmp file via `fs2` to prevent concurrent writers.
+/// Write `bytes` to `path` atomically: write to a **per-writer unique** temp file
+/// in the same directory → sync → atomic rename over `path`.
 ///
-/// Returns `LockError::FileLocked` if another process holds the advisory lock.
+/// Each call owns its own temp file (random suffix, via `tempfile`), so a second
+/// concurrent writer can never truncate or overwrite the first writer's temp
+/// before it is renamed. `fs::rename` is atomic on POSIX, so a reader always sees
+/// either the old or a fully-written new file — never a truncated/partial one.
+/// The semantics are **last-writer-wins**, which is correct for a byte-level
+/// writer: the published file is always some writer's complete content.
+///
+/// (Previously this used an `fs2` advisory lock on a shared, deterministic
+/// `.tmp` path. That raced: the tmp file was truncated at open time *before* the
+/// lock was checked, so a second writer could blow away the first writer's synced
+/// tmp between its `sync_all` and its `rename`, publishing an empty file — BUG-8.)
 pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp_path = append_suffix(path, "tmp");
-
-    // Ensure parent directory exists
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Open (or create) the tmp file
-    let file = fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&tmp_path)?;
-
-    // Acquire advisory lock — fail fast if another writer is active
-    file.try_lock_exclusive().map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::WouldBlock,
-            format!(
-                "Lock file is held by another process: {}",
-                tmp_path.display()
-            ),
-        )
-    })?;
-
-    // Write all bytes and flush to storage
     use io::Write;
-    let mut writer = io::BufWriter::new(&file);
-    writer.write_all(bytes)?;
-    writer.flush()?;
-    file.sync_all()?;
 
-    // Release the advisory lock before rename
-    file.unlock()?;
+    // Ensure parent directory exists; the temp file must live in the same
+    // directory as the target so the final rename is on one filesystem (atomic).
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => {
+            fs::create_dir_all(p)?;
+            p.to_path_buf()
+        }
+        _ => PathBuf::from("."),
+    };
 
-    // Atomic replace
-    fs::rename(&tmp_path, path)?;
+    // Unique temp file owned by this writer.
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".fastskill-tmp-")
+        .tempfile_in(&parent)?;
+
+    tmp.write_all(bytes)?;
+    tmp.flush()?;
+    // Sync file contents to storage before the rename publishes them.
+    tmp.as_file().sync_all()?;
+
+    // Atomically move the completed temp file over the target.
+    tmp.persist(path).map_err(|e| e.error)?;
 
     Ok(())
 }
@@ -96,18 +97,54 @@ mod tests {
     }
 
     #[test]
-    fn test_atomic_write_no_tmp_file_remains_on_success() {
+    fn test_atomic_write_produces_complete_file() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.toml");
-        let tmp_path = append_suffix(&path, "tmp");
+
+        // A larger payload to make a partial/truncated write observable.
+        let payload = "x".repeat(100_000);
+        atomic_write(&path, payload.as_bytes()).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content.len(), 100_000, "file must be written completely");
+        assert_eq!(content, payload);
+    }
+
+    #[test]
+    fn test_atomic_write_no_temp_files_remain_on_success() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("test.toml");
 
         atomic_write(&path, b"data").unwrap();
 
         assert!(path.exists(), "target file should exist");
+
+        // No stray temp files (the unique per-writer temp is renamed/consumed).
+        let leftovers: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".fastskill-tmp-")
+            })
+            .collect();
         assert!(
-            !tmp_path.exists(),
-            ".tmp file must not remain after success"
+            leftovers.is_empty(),
+            "no temp files must remain after success"
         );
+    }
+
+    #[test]
+    fn test_atomic_write_two_sequential_writes_both_succeed() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("skills.lock");
+
+        atomic_write(&path, b"first writer content").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "first writer content");
+
+        atomic_write(&path, b"second writer content").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "second writer content");
     }
 
     #[test]
@@ -133,33 +170,5 @@ mod tests {
         atomic_write(&path, b"new content").unwrap();
         let new_content = fs::read_to_string(&path).unwrap();
         assert_eq!(new_content, "new content");
-    }
-
-    #[test]
-    fn test_atomic_write_file_locked_returns_error() {
-        use fs2::FileExt;
-        use std::fs::OpenOptions;
-
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("skills.lock");
-        let tmp_path = append_suffix(&path, "tmp");
-
-        // Acquire exclusive lock on the tmp file from this thread
-        let holder = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&tmp_path)
-            .unwrap();
-        holder.lock_exclusive().unwrap();
-
-        // atomic_write should fail because the .tmp file is already locked
-        let result = atomic_write(&path, b"data");
-        assert!(
-            result.is_err(),
-            "atomic_write must fail when .tmp is already locked"
-        );
-
-        holder.unlock().unwrap();
     }
 }

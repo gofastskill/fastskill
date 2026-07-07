@@ -176,6 +176,69 @@ pub(crate) fn parse_git_version(version_str: &str) -> Result<GitVersion, Service
     Ok(GitVersion::new(major, minor, patch))
 }
 
+/// Redact embedded credentials (`user:token@host`) from a URL before logging.
+///
+/// Converts e.g. `https://user:token@host/path` into `https://***@host/path`.
+/// Leaves URLs without userinfo untouched.
+pub(crate) fn redact_url_credentials(url: &str) -> String {
+    if let Some(scheme_pos) = url.find("://") {
+        let after = scheme_pos + 3;
+        let rest = &url[after..];
+        let authority_end = rest.find('/').map(|i| after + i).unwrap_or(url.len());
+        let authority = &url[after..authority_end];
+        if let Some(at) = authority.find('@') {
+            let host = &authority[at + 1..];
+            return format!("{}***@{}{}", &url[..after], host, &url[authority_end..]);
+        }
+    }
+    url.to_string()
+}
+
+/// Build the argument vector for `git clone`.
+///
+/// Hardening (SEC-11):
+/// - `-c protocol.ext.allow=never -c protocol.file.allow=never` disables the
+///   `ext::` transport (arbitrary command execution) and `file://` local reads.
+/// - `--` terminates options before the positional `url`/`dest`, so neither can
+///   be interpreted as a flag even if it begins with `-`.
+pub(crate) fn build_clone_args<'a>(
+    url: &'a str,
+    dest: &'a str,
+    branch: Option<&'a str>,
+    tag: Option<&'a str>,
+) -> Vec<&'a str> {
+    let mut args = vec![
+        "-c",
+        "protocol.ext.allow=never",
+        "-c",
+        "protocol.file.allow=never",
+        "clone",
+        "--depth=1",
+        "--quiet",
+    ];
+
+    if let Some(branch) = branch {
+        args.extend(["--branch", branch]);
+    } else if let Some(tag) = tag {
+        args.extend(["--branch", tag]);
+    }
+
+    args.push("--single-branch");
+    args.push("--no-tags");
+    // End-of-options separator before positional arguments.
+    args.push("--");
+    args.push(url);
+    args.push(dest);
+    args
+}
+
+/// Build the argument vector for `git checkout` (SEC-12).
+///
+/// `--` terminates options so a ref beginning with `-` cannot be read as a flag.
+pub(crate) fn build_checkout_args(ref_name: &str) -> Vec<&str> {
+    vec!["checkout", "--", ref_name]
+}
+
 /// Command output structure
 #[allow(dead_code)] // stdout may be used for future progress parsing
 pub(crate) struct CommandOutput {
@@ -361,40 +424,32 @@ pub async fn clone_repository(
         ServiceError::Custom(format!("Failed to create temporary directory: {}", e))
     })?;
 
-    info!("Cloning repository: {}", url);
+    // Never log embedded credentials.
+    let safe_url = redact_url_credentials(url);
+    info!("Cloning repository: {}", safe_url);
 
-    // Build clone command arguments
-    let mut clone_args = vec!["clone", "--depth=1", "--quiet"];
-
-    // Add branch or tag if specified
-    if let Some(branch) = branch {
-        clone_args.extend(&["--branch", branch]);
-    } else if let Some(tag) = tag {
-        clone_args.extend(&["--branch", tag]);
-    }
-
-    // Add single-branch and no-tags for optimization
-    clone_args.push("--single-branch");
-    clone_args.push("--no-tags");
-
-    // Add URL and destination
-    clone_args.push(url);
-    clone_args.push(temp_dir.path().to_str().ok_or_else(|| {
+    let dest = temp_dir.path().to_str().ok_or_else(|| {
         ServiceError::Custom("Failed to convert temp directory path to string".to_string())
-    })?);
+    })?;
 
-    // Execute clone with retry (5 minute timeout, max 3 attempts)
+    // Build clone command arguments (protocol allowlist + `--` end-of-options, SEC-11).
+    let clone_args = build_clone_args(url, dest, branch, tag);
+
+    // Execute clone with retry (5 minute timeout, max 3 attempts).
+    // `execute_git_command_with_retry` already returns Err on any non-zero exit,
+    // so map that Err into the structured CloneFailed with URL context (BUG-12).
     let clone_timeout = Duration::from_secs(300); // 5 minutes
-    let output = execute_git_command_with_retry(&clone_args, clone_timeout, None, 3).await?;
-
-    if output.exit_code != 0 {
-        // Clean up on failure
-        drop(temp_dir);
-        return Err(GitError::CloneFailed {
-            url: url.to_string(),
-            stderr: output.stderr,
+    match execute_git_command_with_retry(&clone_args, clone_timeout, None, 3).await {
+        Ok(_) => {}
+        Err(e) => {
+            // Clean up on failure
+            drop(temp_dir);
+            return Err(GitError::CloneFailed {
+                url: safe_url,
+                stderr: e.to_string(),
+            }
+            .into());
         }
-        .into());
     }
 
     // Checkout branch or tag if specified (already handled by --branch flag, but verify)
@@ -440,8 +495,8 @@ pub async fn checkout_branch_or_tag(
     ref_name: &str,
     _is_branch: bool,
 ) -> Result<(), ServiceError> {
-    // Build checkout command
-    let args = vec!["checkout", ref_name];
+    // Build checkout command (`--` end-of-options separator, SEC-12)
+    let args = build_checkout_args(ref_name);
 
     // Execute checkout (1 minute timeout)
     let checkout_timeout = Duration::from_secs(60); // 1 minute
@@ -517,4 +572,88 @@ pub fn validate_cloned_skill(cloned_path: &Path) -> Result<PathBuf, ServiceError
         "Cloned repository does not contain a valid skill structure (SKILL.md not found)"
             .to_string(),
     ))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_clone_args_includes_protocol_flags_and_end_of_options() {
+        let args = build_clone_args("https://example.com/repo.git", "/tmp/dest", None, None);
+
+        // Protocol allowlist (SEC-11): ext:: and file:// transports disabled.
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c", "protocol.ext.allow=never"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c", "protocol.file.allow=never"]));
+
+        // The protocol -c flags precede the `clone` subcommand.
+        let clone_pos = args.iter().position(|a| *a == "clone").unwrap();
+        let ext_pos = args
+            .iter()
+            .position(|a| *a == "protocol.ext.allow=never")
+            .unwrap();
+        assert!(ext_pos < clone_pos);
+
+        // `--` end-of-options separator immediately precedes the positional url/dest.
+        let dd = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(args[dd + 1], "https://example.com/repo.git");
+        assert_eq!(args[dd + 2], "/tmp/dest");
+        assert_eq!(dd + 3, args.len(), "url and dest must be the final args");
+    }
+
+    #[test]
+    fn test_build_clone_args_url_cannot_be_read_as_flag() {
+        // A url that begins with '-' must sit after `--` so git can't parse it as an option.
+        let args = build_clone_args("--upload-pack=evil", "/tmp/dest", None, None);
+        let dd = args.iter().position(|a| *a == "--").unwrap();
+        assert!(args[dd + 1].starts_with('-'));
+        assert_eq!(args[dd + 1], "--upload-pack=evil");
+    }
+
+    #[test]
+    fn test_build_clone_args_with_branch() {
+        let args = build_clone_args("https://h/r.git", "/d", Some("main"), None);
+        assert!(args.windows(2).any(|w| w == ["--branch", "main"]));
+    }
+
+    #[test]
+    fn test_build_clone_args_with_tag() {
+        let args = build_clone_args("https://h/r.git", "/d", None, Some("v1.0.0"));
+        assert!(args.windows(2).any(|w| w == ["--branch", "v1.0.0"]));
+    }
+
+    #[test]
+    fn test_build_checkout_args_has_end_of_options() {
+        // SEC-12: `--` before ref_name so a "--foo" ref is a positional, not a flag.
+        assert_eq!(build_checkout_args("main"), vec!["checkout", "--", "main"]);
+        let args = build_checkout_args("--evil-flag");
+        assert_eq!(args, vec!["checkout", "--", "--evil-flag"]);
+        // ref sits strictly after the separator.
+        let dd = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(args[dd + 1], "--evil-flag");
+    }
+
+    #[test]
+    fn test_redact_url_credentials() {
+        assert_eq!(
+            redact_url_credentials("https://user:token@github.com/o/r.git"),
+            "https://***@github.com/o/r.git"
+        );
+        assert_eq!(
+            redact_url_credentials("https://x-access-token:ghp_secret@host/path"),
+            "https://***@host/path"
+        );
+        // No credentials -> unchanged.
+        assert_eq!(
+            redact_url_credentials("https://github.com/o/r.git"),
+            "https://github.com/o/r.git"
+        );
+        // Non-URL -> unchanged.
+        assert_eq!(redact_url_credentials("not-a-url"), "not-a-url");
+    }
 }

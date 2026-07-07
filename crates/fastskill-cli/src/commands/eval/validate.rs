@@ -1,6 +1,6 @@
 //! Eval validate subcommand - configuration and file validation
 
-use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
+use crate::commands::common::{runtime_selection_error_to_cli, validate_eval_format_args};
 use crate::error::{CliError, CliResult};
 use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
@@ -25,7 +25,7 @@ pub struct ValidateArgs {
     /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
     pub all: bool,
 
-    /// Output format: table, json, grid, xml (default: table)
+    /// Output format: table, json (default: table)
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
@@ -74,7 +74,7 @@ impl IntoCommandSpec for ValidateArgs {
                     long: Some("format"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Output format: table, json, grid, xml",
+                    help: "Output format: table, json",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -135,7 +135,7 @@ impl From<&ValidateArgs> for RuntimeSelectionInput {
 
 /// Execute the `eval validate` command
 pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
-    let format = validate_format_args(&args.format, args.json)?;
+    let format = validate_eval_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
     let current_dir = env::current_dir()

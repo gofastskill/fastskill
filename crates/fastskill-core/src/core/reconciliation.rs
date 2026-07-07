@@ -90,18 +90,44 @@ pub fn build_reconciliation_report(
         let skill_id = skill.id.to_string();
         let is_in_project = project_deps.contains_key(&skill_id);
         let locked_version = lock_deps.get(&skill_id);
+        // The declared project version constraint, if any (Some(Some(constraint))).
+        let project_constraint = project_deps.get(&skill_id).and_then(|c| c.as_ref());
 
-        // Determine status
+        // Determine status. Both the project version constraint (BUG-9) and the
+        // lock-equality check can drive a Mismatch; `expected` records what the
+        // installed version was compared against so it can be reported.
+        let mut expected: Option<String> = None;
         let status = if !is_in_project {
             ReconciliationStatus::Extraneous
-        } else if let Some(locked_ver) = locked_version {
-            if skill.version != *locked_ver {
+        } else {
+            // First: does the installed version satisfy the declared constraint?
+            let violates_constraint = match project_constraint {
+                Some(constraint_str) => {
+                    match crate::core::version::VersionConstraint::parse(constraint_str) {
+                        // An installed version outside its declared constraint is a Mismatch.
+                        Ok(constraint) => !constraint.satisfies(&skill.version).unwrap_or(true),
+                        // Unparseable constraint: don't spuriously flag as mismatch.
+                        Err(_) => false,
+                    }
+                }
+                None => false,
+            };
+
+            if violates_constraint {
+                // Report the constraint the installed version failed to satisfy.
+                expected = project_constraint.cloned();
                 ReconciliationStatus::Mismatch
+            } else if let Some(locked_ver) = locked_version {
+                // Additional signal: lock-file version equality.
+                if skill.version != *locked_ver {
+                    expected = Some(locked_ver.clone());
+                    ReconciliationStatus::Mismatch
+                } else {
+                    ReconciliationStatus::Ok
+                }
             } else {
                 ReconciliationStatus::Ok
             }
-        } else {
-            ReconciliationStatus::Ok
         };
 
         // Collect extraneous and mismatches
@@ -119,13 +145,15 @@ pub fn build_reconciliation_report(
                 });
             }
             ReconciliationStatus::Mismatch => {
-                if let Some(locked_ver) = locked_version {
-                    version_mismatches.push(VersionMismatch {
-                        id: skill_id.clone(),
-                        installed_version: skill.version.clone(),
-                        locked_version: locked_ver.clone(),
-                    });
-                }
+                version_mismatches.push(VersionMismatch {
+                    id: skill_id.clone(),
+                    installed_version: skill.version.clone(),
+                    // Either the violated constraint or the locked version.
+                    locked_version: expected
+                        .clone()
+                        .or_else(|| locked_version.cloned())
+                        .unwrap_or_default(),
+                });
             }
             _ => {}
         }
@@ -149,4 +177,163 @@ pub fn build_reconciliation_report(
         extraneous,
         version_mismatches,
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::core::service::SkillId;
+    use crate::core::skill_manager::SkillDefinition;
+
+    fn skill(id: &str, version: &str) -> SkillDefinition {
+        SkillDefinition::new(
+            SkillId::new(id.to_string()).unwrap(),
+            id.to_string(),
+            "desc".to_string(),
+            version.to_string(),
+        )
+    }
+
+    fn status_of<'a>(report: &'a ReconciliationReport, id: &str) -> &'a ReconciliationStatus {
+        &report
+            .installed
+            .iter()
+            .find(|s| s.id == id)
+            .expect("skill present in report")
+            .status
+    }
+
+    #[test]
+    fn test_constraint_satisfied_is_ok() {
+        let installed = vec![skill("a", "1.2.3")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), Some(">=1.0.0,<2.0.0".to_string()));
+        let lock = HashMap::new();
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(status_of(&report, "a"), ReconciliationStatus::Ok));
+        assert!(report.version_mismatches.is_empty());
+    }
+
+    #[test]
+    fn test_constraint_violated_is_mismatch() {
+        // BUG-9: installed 2.0.0 violates <2.0.0 and must be flagged.
+        let installed = vec![skill("a", "2.0.0")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), Some(">=1.0.0,<2.0.0".to_string()));
+        let lock = HashMap::new();
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(
+            status_of(&report, "a"),
+            ReconciliationStatus::Mismatch
+        ));
+        assert_eq!(report.version_mismatches.len(), 1);
+        let mm = &report.version_mismatches[0];
+        assert_eq!(mm.id, "a");
+        assert_eq!(mm.installed_version, "2.0.0");
+        // The reported "expected" is the violated constraint.
+        assert_eq!(mm.locked_version, ">=1.0.0,<2.0.0");
+    }
+
+    #[test]
+    fn test_bare_constraint_exact_pin_violation() {
+        // ADR-0004: a bare pin "1.2.3" means exact — 1.2.4 violates it.
+        let installed = vec![skill("a", "1.2.4")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), Some("1.2.3".to_string()));
+        let lock = HashMap::new();
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(
+            status_of(&report, "a"),
+            ReconciliationStatus::Mismatch
+        ));
+    }
+
+    #[test]
+    fn test_no_constraint_lock_equal_is_ok() {
+        let installed = vec![skill("a", "1.0.0")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), None);
+        let mut lock = HashMap::new();
+        lock.insert("a".to_string(), "1.0.0".to_string());
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(status_of(&report, "a"), ReconciliationStatus::Ok));
+    }
+
+    #[test]
+    fn test_no_constraint_lock_differs_is_mismatch() {
+        // Existing lock-equality behavior is preserved when no constraint is present.
+        let installed = vec![skill("a", "1.0.1")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), None);
+        let mut lock = HashMap::new();
+        lock.insert("a".to_string(), "1.0.0".to_string());
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(
+            status_of(&report, "a"),
+            ReconciliationStatus::Mismatch
+        ));
+        assert_eq!(report.version_mismatches[0].locked_version, "1.0.0");
+    }
+
+    #[test]
+    fn test_extraneous_when_not_in_project() {
+        let installed = vec![skill("a", "1.0.0")];
+        let project = HashMap::new(); // empty → a is extraneous
+        let lock = HashMap::new();
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(
+            status_of(&report, "a"),
+            ReconciliationStatus::Extraneous
+        ));
+        assert_eq!(report.extraneous.len(), 1);
+    }
+
+    #[test]
+    fn test_missing_when_in_project_not_installed() {
+        let installed: Vec<SkillDefinition> = vec![];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), Some("1.0.0".to_string()));
+        let lock = HashMap::new();
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert_eq!(report.missing.len(), 1);
+        assert_eq!(report.missing[0].id, "a");
+    }
+
+    #[test]
+    fn test_unparseable_constraint_does_not_flag_mismatch() {
+        // A garbage constraint must not spuriously mark the skill as mismatched;
+        // fall through to the lock check (here Ok since lock matches).
+        let installed = vec![skill("a", "1.0.0")];
+        let mut project = HashMap::new();
+        project.insert("a".to_string(), Some("not-a-constraint".to_string()));
+        let mut lock = HashMap::new();
+        lock.insert("a".to_string(), "1.0.0".to_string());
+
+        let report =
+            build_reconciliation_report(&installed, &project, &lock, Path::new(".")).unwrap();
+
+        assert!(matches!(status_of(&report, "a"), ReconciliationStatus::Ok));
+    }
 }

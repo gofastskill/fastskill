@@ -7,8 +7,23 @@
 //! - Returns skills in topological (dependency-first) order
 
 use crate::core::manifest::{ManifestError, SkillEntry, SkillProjectToml};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
+
+/// Walk the parent chain from `start` upward and report whether `target` is an
+/// ancestor of `start` (i.e. `target` lies on the path from `start` back to a
+/// root). Used to distinguish a genuine back-edge (cycle) from a shared/diamond
+/// dependency that merely re-references an already-visited node (PARTIAL-8).
+fn is_ancestor(parents: &HashMap<String, Option<String>>, start: &str, target: &str) -> bool {
+    let mut current = parents.get(start).and_then(|p| p.clone());
+    while let Some(node) = current {
+        if node == target {
+            return true;
+        }
+        current = parents.get(&node).and_then(|p| p.clone());
+    }
+    false
+}
 
 /// Error types specific to dependency resolution
 #[derive(Debug, thiserror::Error)]
@@ -65,10 +80,15 @@ impl DependencyResolver {
         initial_entries: Vec<SkillEntry>,
         skills_dir: &Path,
     ) -> Result<Vec<SkillInstallItem>, DependencyResolutionError> {
+        // Track each visited skill's parent so we can distinguish a real cycle
+        // (back-edge to an ancestor) from a diamond (shared dependency).
+        let mut parents: HashMap<String, Option<String>> = HashMap::new();
+
         // Seed the queue with the direct (depth-0) dependencies
         for entry in initial_entries {
             let id = entry.id.clone();
             if self.visited_skills.insert(id.clone()) {
+                parents.insert(id, None);
                 self.install_queue.push_back(SkillInstallItem {
                     entry,
                     depth: 0,
@@ -125,20 +145,32 @@ impl DependencyResolver {
             for trans_entry in transitive_entries {
                 let trans_id = trans_entry.id.clone();
 
-                // Deduplication: first-encountered wins
-                // Also detect circular dependencies (when same skill appears at different depths)
+                // Deduplication: first-encountered wins.
                 if !self.visited_skills.insert(trans_id.clone()) {
-                    // Check if this is a circular dependency (skill already in the graph)
-                    // Emit warning per spec §4.6 "cycles are broken with warning message"
-                    tracing::warn!(
-                        "Circular dependency detected: {} -> {}; \
-                         skipping duplicate to break cycle",
-                        skill_id,
-                        trans_id
-                    );
+                    // Already visited. Only warn when this is a genuine back-edge —
+                    // i.e. the dependency points at an ancestor of the current skill
+                    // (a real cycle), or at the current skill itself (self-cycle).
+                    // A shared/diamond dependency (A→B, A→C, B→D, C→D) re-references
+                    // an already-visited node that is NOT an ancestor, so it must
+                    // NOT emit a spurious "circular dependency" warning (PARTIAL-8).
+                    if trans_id == skill_id || is_ancestor(&parents, &skill_id, &trans_id) {
+                        tracing::warn!(
+                            "Circular dependency detected: {} -> {}; \
+                             skipping duplicate to break cycle",
+                            skill_id,
+                            trans_id
+                        );
+                    } else {
+                        tracing::debug!(
+                            "Shared dependency '{}' already resolved (via a different \
+                             path); reusing existing resolution",
+                            trans_id
+                        );
+                    }
                     continue;
                 }
 
+                parents.insert(trans_id.clone(), Some(skill_id.clone()));
                 self.install_queue.push_back(SkillInstallItem {
                     entry: trans_entry,
                     depth: current_depth + 1,
@@ -164,12 +196,20 @@ impl DependencyResolver {
 
     /// Return the skills in dependency-first (topological) order.
     ///
-    /// The BFS traversal already yields parents before children, so this is
-    /// a no-op structurally; the method exists as the public API surface
-    /// specified in §5.1 and can be extended later if needed.
+    /// # This is intentionally an identity pass-through — do not "optimize it away".
+    ///
+    /// `resolve_dependencies` performs a breadth-first traversal seeded from the
+    /// root (depth-0) entries, so the `Vec` it returns is **already** in a valid
+    /// dependency-first order: every skill appears after the skill that declared
+    /// it as a dependency (a parent is always dequeued, and thus pushed to the
+    /// output, before any of its children are enqueued). This method exists as the
+    /// public API surface specified in §5.1 and to make that ordering guarantee an
+    /// explicit, named contract for callers that consume `resolve_dependencies`
+    /// output. It deliberately relies on that BFS ordering rather than re-sorting;
+    /// if the traversal in `resolve_dependencies` ever changes to something that
+    /// does not preserve parent-before-child order, this method must be given a
+    /// real Kahn/DFS topological sort here.
     pub fn topological_sort(&self, items: Vec<SkillInstallItem>) -> Vec<SkillInstallItem> {
-        // BFS order from resolve_dependencies is already topological:
-        // each skill appears after the skill that declared it as a dependency.
         items
     }
 }
@@ -325,6 +365,91 @@ skill-c = { source = "local", path = "local/skill-c" }
         // Skill without manifest still appears – it just has no children
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].entry.id, "no-manifest-skill");
+    }
+
+    fn write_manifest(dir: &Path, skill_id: &str, deps: &[&str]) {
+        let skill_dir = dir.join(skill_id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let mut body = String::from("[dependencies]\n");
+        for dep in deps {
+            body.push_str(&format!(
+                "{dep} = {{ source = \"local\", path = \"local/{dep}\" }}\n"
+            ));
+        }
+        std::fs::write(skill_dir.join("skill-project.toml"), body).unwrap();
+    }
+
+    #[test]
+    fn test_is_ancestor_helper() {
+        // a -> b -> c
+        let mut parents: HashMap<String, Option<String>> = HashMap::new();
+        parents.insert("a".to_string(), None);
+        parents.insert("b".to_string(), Some("a".to_string()));
+        parents.insert("c".to_string(), Some("b".to_string()));
+
+        assert!(is_ancestor(&parents, "c", "a"));
+        assert!(is_ancestor(&parents, "c", "b"));
+        assert!(is_ancestor(&parents, "b", "a"));
+        // Not ancestors:
+        assert!(!is_ancestor(&parents, "a", "b"));
+        assert!(!is_ancestor(&parents, "b", "c"));
+        assert!(!is_ancestor(&parents, "c", "unknown"));
+    }
+
+    /// PARTIAL-8: a diamond (A→B, A→C, B→D, C→D) must resolve cleanly, with the
+    /// shared dependency D appearing exactly once and NO cycle error.
+    #[tokio::test]
+    async fn test_diamond_dependency_resolves_once() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(dir.path(), "skill-a", &["skill-b", "skill-c"]);
+        write_manifest(dir.path(), "skill-b", &["skill-d"]);
+        write_manifest(dir.path(), "skill-c", &["skill-d"]);
+        write_manifest(dir.path(), "skill-d", &[]);
+
+        let mut resolver = DependencyResolver::new(10);
+        let entries = vec![make_local_entry("skill-a", "local/skill-a")];
+        let result = resolver
+            .resolve_dependencies(entries, dir.path())
+            .await
+            .unwrap();
+
+        let ids: Vec<&str> = result.iter().map(|i| i.entry.id.as_str()).collect();
+        assert!(ids.contains(&"skill-a"));
+        assert!(ids.contains(&"skill-b"));
+        assert!(ids.contains(&"skill-c"));
+        assert!(ids.contains(&"skill-d"));
+        // D must appear exactly once (deduped), not error out.
+        assert_eq!(
+            ids.iter().filter(|id| **id == "skill-d").count(),
+            1,
+            "shared diamond dep must be deduped to one entry"
+        );
+        // D must come after both B and C in dependency-first order.
+        let d_pos = ids.iter().position(|id| *id == "skill-d").unwrap();
+        let b_pos = ids.iter().position(|id| *id == "skill-b").unwrap();
+        let c_pos = ids.iter().position(|id| *id == "skill-c").unwrap();
+        assert!(d_pos > b_pos && d_pos > c_pos);
+    }
+
+    /// A genuine cycle (A→B→A) must terminate and dedup, not loop forever.
+    #[tokio::test]
+    async fn test_real_cycle_terminates() {
+        let dir = TempDir::new().unwrap();
+        write_manifest(dir.path(), "skill-a", &["skill-b"]);
+        write_manifest(dir.path(), "skill-b", &["skill-a"]); // back-edge
+
+        let mut resolver = DependencyResolver::new(10);
+        let entries = vec![make_local_entry("skill-a", "local/skill-a")];
+        let result = resolver
+            .resolve_dependencies(entries, dir.path())
+            .await
+            .unwrap();
+
+        let ids: Vec<&str> = result.iter().map(|i| i.entry.id.as_str()).collect();
+        // Both present exactly once; traversal terminated.
+        assert_eq!(ids.iter().filter(|id| **id == "skill-a").count(), 1);
+        assert_eq!(ids.iter().filter(|id| **id == "skill-b").count(), 1);
+        assert_eq!(result.len(), 2);
     }
 
     #[tokio::test]

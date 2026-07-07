@@ -224,6 +224,18 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
+        // `read_dir`'s file_type does not follow symlinks, so a symlink entry is
+        // neither a dir nor a regular file. Reject it (SEC-4) rather than letting
+        // it fall into `tokio::fs::copy`, which *follows* the link and copies the
+        // target's contents (e.g. `creds -> /etc/passwd` would exfiltrate secrets).
+        // This matches the zip extractor's symlink-rejection stance.
+        if ty.is_symlink() {
+            return Err(CliError::Validation(format!(
+                "refusing to copy symlink: {}",
+                src_path.display()
+            )));
+        }
+
         if ty.is_dir() {
             // Recursively copy subdirectory (boxed to handle async recursion)
             Box::pin(copy_dir_recursive(&src_path, &dst_path)).await?;
@@ -300,6 +312,57 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("SKILL.md"), "# Test Skill\n").unwrap();
         dir
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_copy_dir_recursive_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("SKILL.md"), "# skill\n").unwrap();
+
+        // A secret file outside the skill, and a symlink pointing at it.
+        let secret = tmp.path().join("secret.txt");
+        fs::write(&secret, "TOP SECRET").unwrap();
+        symlink(&secret, src.join("creds")).unwrap();
+
+        let dst = tmp.path().join("dst");
+        let result = copy_dir_recursive(&src, &dst).await;
+
+        match result {
+            Err(CliError::Validation(msg)) => {
+                assert!(
+                    msg.contains("symlink"),
+                    "expected symlink rejection, got: {msg}"
+                );
+            }
+            other => unreachable!("expected Validation error, got {other:?}"),
+        }
+
+        // The dereferenced secret must NOT have been copied into the destination.
+        assert!(
+            !dst.join("creds").exists(),
+            "symlinked file must not be copied (no content exfiltration)"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_copy_dir_recursive_copies_regular_tree() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(src.join("nested")).unwrap();
+        fs::write(src.join("SKILL.md"), "# skill\n").unwrap();
+        fs::write(src.join("nested/file.txt"), "data").unwrap();
+
+        let dst = tmp.path().join("dst");
+        copy_dir_recursive(&src, &dst).await.unwrap();
+
+        assert!(dst.join("SKILL.md").exists());
+        assert!(dst.join("nested/file.txt").exists());
     }
 
     #[tokio::test]
