@@ -415,10 +415,11 @@ handlers behind it in `skills.rs`, `manifest.rs`, `reindex.rs`, `registry.rs`.
 - Default (`fastskill serve`): mount **read** routes only — list/get skills, `POST /search`,
   `POST /resolve`, `/status`, dashboard, registry browse, manifest reads.
 - `--enable-write`: additionally mount **all** state-changing routes in one switch —
-  `POST /skills` (create), `PUT`/`DELETE /skills/{id}` (update/delete), `/skills/upgrade`, manifest
-  writes (`POST/PUT/DELETE`), `/reindex`, `/registry/refresh`. Rule: "not a pure read → gated"
-  (reindex/refresh included because they are side-effecting: disk, network, embedding-API cost).
-  `create`/`update` are gated here per PARTIAL-1 (now implement, not remove).
+  `POST /skills/install` (install-from-source), `POST /skills/update` (re-fetch; was `/skills/upgrade`),
+  `DELETE /skills/{id}` (remove), manifest writes (`POST/PUT/DELETE`), `/reindex`, `/registry/refresh`.
+  Rule: "not a pure read → gated" (reindex/refresh included because they are side-effecting: disk,
+  network, embedding-API cost). (`POST /skills` create + `PUT /skills/{id}` field-edit are removed per
+  PARTIAL-1 / spec 003, not gated.)
 - Gated routes when write is disabled return **403** with a plain message pointing at
   `--enable-write` (discoverable, not a mystery 404).
 - Default bind stays `localhost`; binding non-loopback needs no special flag (it is the correct
@@ -430,10 +431,10 @@ handlers behind it in `skills.rs`, `manifest.rs`, `reindex.rs`, `registry.rs`.
 route builders into read vs write sets; in `serve()` only `.merge()` the write set when the flag is
 on. Concretely the **read** set is `list_skills`/`get_skill`, `manifest::get_project`,
 `list_manifest_skills`, `search`, `resolve`, `status`, the GET registry + index routes, and the
-dashboard/UI fallback; the **write** set is `POST /skills` (create), `PUT`/`DELETE /skills/{id}`,
-`/skills/upgrade`, `/reindex` + `/reindex/{id}`, `/registry/refresh`, and the manifest
-`add`/`update`/`remove` mutators (`create`/`update` implemented + gated per PARTIAL-1). **Always**
-register the write paths and wrap them in an
+dashboard/UI fallback; the **write** set is `POST /skills/install`, `POST /skills/update` (was
+`/skills/upgrade`), `DELETE /skills/{id}`, `/reindex` + `/reindex/{id}`, `/registry/refresh`, and the
+manifest `add`/`update`/`remove` mutators (`POST /skills` create + `PUT /skills/{id}` field-edit
+removed per PARTIAL-1 / spec 003). **Always** register the write paths and wrap them in an
 `axum::middleware::from_fn` (or `from_fn_with_state`) that, when the flag is off, short-circuits with
 `(StatusCode::FORBIDDEN, Json(ApiResponse::error("write operations disabled; start server with --enable-write")))`.
 Do **not** use conditional `.merge()` to drop the routes — that yields a bare 404/405 and defeats the
@@ -780,29 +781,23 @@ value, then always return `HttpError::InternalServerError("… not yet implement
 advertised REST endpoints are non-functional, and they return **500** rather than **501** for an
 unimplemented operation. `delete_skill` on the same resource IS fully implemented (see SEC-1).
 
-**Decision: IMPLEMENT — as the write half of a browser-based local skill manager, write-gated.**
-(Reversed from an earlier "remove" call after a product decision.) Create/edit skills from the web UI
-is a genuinely useful, low-friction way for a local user to manage their own skills, and it fits
-serve's local-first identity (ADR-0003). Design constraints so it doesn't repeat the stub's mistakes:
+**Decision: REMOVE (delete the handlers + routes).** Settled after grilling
+[spec 003](./003-browser-skill-management.md): these form-based handlers were never the intended
+shape. A Skill is a **multi-file** directory, so a JSON `POST /skills` (create) / `PUT /skills/{id}`
+(field-edit) can't author or edit one meaningfully — content authoring belongs in an editor on the
+filesystem, not a web form. The browser manages skills as **install-units**, and the operations it
+actually needs are *source-oriented*:
 
-- Scope `create_skill` to authoring a **`SKILL.md`-based** skill (frontmatter + body) — the common
-  case, since most skills are just a `SKILL.md`. Multi-file/resource skills come via the
-  *add-from-source* (install) flow, not a JSON create; do **not** block create on resource upload.
-- `update_skill` edits an existing skill's `SKILL.md`. **Only allow create/edit for `editable`/local
-  skills** (the existing `editable` manifest flag) — editing a skill installed from a git/registry
-  source drifts from its source-of-truth and the next `install`/reconcile would clobber it, so the UI
-  must block or warn for non-editable skills.
-- Both sit behind **WRITE-GATE** (`--enable-write`), alongside delete/upgrade — a local user managing
-  skills runs `serve --enable-write`; an exposed instance stays read-only.
-- Return proper status codes (201/200, 403 when write is disabled), not the current 500.
+- "Install a skill" → a **new** `POST /skills/install` with a *source* body (spec 003 §1), backed by a
+  lifted-to-core `install_from_source` — **not** `create_skill`.
+- "Update a skill" → **re-fetch from source** (`fastskill update` semantics), the refactored
+  `POST /skills/update` (was `/skills/upgrade`) — **not** `update_skill` field-editing.
+- "Remove" → `DELETE /skills/{id}` (already implemented).
 
-**Note — this is a feature, not just a bug-fix.** "Expose create/edit + add-from-any-source in the
-browser" is real new work (UI + the constraints above) that deserves **its own short spec**, not just
-un-stubbing two handlers. The *add-from-source* part ("same source types in the browser":
-local/git/zip-url/registry) maps to the **install** path — a separate UI action from
-create-from-scratch. Recorded here as the decision to build; the design lives in that spec.
+So `create_skill` and `update_skill` are dead surface: delete both handlers and their routes (`POST
+/skills`, `PUT /skills/{id}`). The real install/update/remove design lives in spec 003.
 
-**Interim workaround:** manage skills via the CLI (`fastskill add`/`update`) until the UI ships.
+**Interim workaround:** manage skills via the CLI (`fastskill add`/`update`/`remove`).
 
 ---
 
@@ -1034,11 +1029,14 @@ content/logic issues the exposure model does nothing for.
 6. **BUG-13/BUG-14** (event bus: frozen history, lock-across-await deadlock) if the event bus is on a
    live path for you. **PARTIAL-10** (hot-reload) until its watcher is built must at least fail loudly
    instead of silently returning `Ok(())`.
-7. **Feature work** decided during triage (own specs, not bug-fixes): **PARTIAL-1** (browser skill
-   create/edit, `editable`-only, write-gated), **PARTIAL-3** (install from remote zip-url),
-   **PARTIAL-10** (hot-reload watcher → reindex). **Remove** decided: **PARTIAL-4** (`tool_calling`
-   stub) and **BUG-6**'s unused `DependencyGraph`. **PARTIAL-6** (reindex endpoints) → implement
-   (write-gated) or honest `501`. Remaining Low bugs as capacity allows.
+7. **Feature work** ([spec 003](./003-browser-skill-management.md) — browser skill management:
+   install-from-source / update / remove): lift add/install into `fastskill-core`
+   (`install_from_source`), add `POST /skills/install`, refactor `/skills/upgrade` → `/skills/update`
+   off the shell-out (via the already-core `UpdateService`). Depends on **PARTIAL-3** (zip-url install)
+   and the install-path hardening. **PARTIAL-10** (hot-reload watcher → reindex) is a separate
+   implement. **Remove** decided: **PARTIAL-1** (`create_skill`/`update_skill` stubs), **PARTIAL-4**
+   (`tool_calling` stub), **BUG-6**'s unused `DependencyGraph`. **PARTIAL-6** (reindex endpoints) →
+   implement (write-gated) or honest `501`. Remaining Low bugs as capacity allows.
 
 Out of scope by decision (ADR-0003): in-app authentication, API tokens, and bind-address policing.
 Shared-deployment request auth is an external sidecar/proxy concern, not fastskill's.
