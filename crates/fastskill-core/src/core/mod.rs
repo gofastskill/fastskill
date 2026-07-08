@@ -22,7 +22,6 @@ pub mod routing;
 pub mod service;
 pub mod skill_manager;
 pub mod sources;
-pub mod tool_calling;
 pub mod update;
 pub mod validation;
 pub mod vector_index;
@@ -105,9 +104,6 @@ pub use sources::{
     MarketplaceJson, MarketplaceSkill, SkillInfo, SourceAuth, SourceConfig, SourceDefinition,
     SourcesConfig, SourcesError, SourcesManager,
 };
-
-// tool_calling
-pub use tool_calling::{AvailableTool, ToolCallingService, ToolCallingServiceImpl, ToolResult};
 
 // update
 pub use update::{UpdateError, UpdateInfo, UpdateService, UpdateStrategy};

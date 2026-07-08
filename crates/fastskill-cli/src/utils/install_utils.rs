@@ -10,6 +10,62 @@ use fastskill_core::core::{
 use fastskill_core::{FastSkillService, SkillDefinition};
 use std::path::{Path, PathBuf};
 
+/// Safely join an untrusted `subdir` (from a shareable manifest / git tree URL)
+/// onto a trusted clone `root`, rejecting path traversal.
+///
+/// Each path component is validated via `fastskill_core::security::path::validate_path_component`
+/// (rejecting `..`, `/`, `\`, and absolute components). After joining, if the target exists it is
+/// canonicalized and asserted to stay within the canonicalized `root`, so a `subdir` escaping the
+/// clone (via `..` or a symlink) is rejected with `CliError::InvalidSource`.
+fn safe_subdir_join(root: &Path, subdir: &Path) -> CliResult<PathBuf> {
+    use fastskill_core::security::path::validate_path_component;
+    use std::path::Component;
+
+    let mut joined = root.to_path_buf();
+    for component in subdir.components() {
+        match component {
+            Component::Normal(part) => {
+                let part = part.to_str().ok_or_else(|| {
+                    CliError::InvalidSource(format!(
+                        "Subdirectory '{}' contains a non-UTF-8 path component",
+                        subdir.display()
+                    ))
+                })?;
+                validate_path_component(part).map_err(|e| {
+                    CliError::InvalidSource(format!(
+                        "Invalid subdirectory '{}': {}",
+                        subdir.display(),
+                        e
+                    ))
+                })?;
+                joined.push(part);
+            }
+            // `..`, root (`/`), prefix (`C:`), etc. are all traversal / absolute markers.
+            _ => {
+                return Err(CliError::InvalidSource(format!(
+                    "Subdirectory '{}' must be a relative path without '..' components",
+                    subdir.display()
+                )));
+            }
+        }
+    }
+
+    // If the join resolves to an existing path, canonicalize both sides and assert containment
+    // (defends against symlinks inside the clone pointing outside it).
+    if joined.exists() {
+        let canonical_root = root.canonicalize().map_err(CliError::Io)?;
+        let canonical_joined = joined.canonicalize().map_err(CliError::Io)?;
+        if !canonical_joined.starts_with(&canonical_root) {
+            return Err(CliError::InvalidSource(format!(
+                "Subdirectory '{}' escapes the cloned repository",
+                subdir.display()
+            )));
+        }
+    }
+
+    Ok(joined)
+}
+
 /// Create a symlink for editable installs
 /// This is platform-specific: Unix uses tokio::fs::symlink, Windows uses std::os::windows::fs::symlink_dir
 /// On unsupported platforms, returns EditableNotSupported error
@@ -106,7 +162,7 @@ async fn clone_and_find_skill(
         .map_err(|e| CliError::GitCloneFailed(e.to_string()))?;
 
     let skill_base_path = if let Some(subdir) = config.subdir.or(git_info.subdir.as_ref()) {
-        let subdir_path = temp_dir.path().join(subdir);
+        let subdir_path = safe_subdir_join(temp_dir.path(), subdir)?;
         if !subdir_path.exists() {
             return Err(CliError::InvalidSource(format!(
                 "Specified subdirectory '{}' does not exist",
@@ -290,16 +346,83 @@ async fn install_from_local(
     Ok(skill_def)
 }
 
+/// Download an archive from `url` into a fresh temp dir and extract it with the
+/// SEC-3-capped `ZipHandler`, returning the temp dir (kept alive by the caller) and
+/// the directory that contains `SKILL.md`.
+async fn download_and_extract_zip(url: &str) -> CliResult<(tempfile::TempDir, PathBuf)> {
+    use fastskill_core::storage::git::validate_cloned_skill;
+    use fastskill_core::storage::zip::ZipHandler;
+
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| CliError::InvalidSource(format!("Failed to download '{}': {}", url, e)))?
+        .error_for_status()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to download '{}': {}", url, e)))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| CliError::InvalidSource(format!("Failed to read '{}': {}", url, e)))?;
+
+    let temp_dir = tempfile::Builder::new()
+        .prefix("fastskill-zip-")
+        .tempdir()
+        .map_err(CliError::Io)?;
+    let zip_path = temp_dir.path().join("package.zip");
+    let extract_path = temp_dir.path().join("extracted");
+    tokio::fs::write(&zip_path, &bytes)
+        .await
+        .map_err(CliError::Io)?;
+    tokio::fs::create_dir_all(&extract_path)
+        .await
+        .map_err(CliError::Io)?;
+
+    let zip_handler = ZipHandler::new()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+    zip_handler
+        .extract_to_dir(&zip_path, &extract_path)
+        .map_err(|e| match e {
+            fastskill_core::core::service::ServiceError::Validation(msg) => {
+                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
+            }
+            fastskill_core::core::service::ServiceError::Io(err) => CliError::Io(err),
+            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+        })?;
+
+    let skill_path = validate_cloned_skill(&extract_path)
+        .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
+
+    Ok((temp_dir, skill_path))
+}
+
 async fn install_from_zip_url(
-    _service: &FastSkillService,
-    _base_url: &str,
-    _version: Option<&str>,
+    service: &FastSkillService,
+    base_url: &str,
+    version: Option<&str>,
 ) -> CliResult<SkillDefinition> {
-    // TODO: Implement ZIP URL installation
-    // This would download the ZIP file and extract it
-    Err(CliError::Config(
-        "ZIP URL installation not yet implemented".to_string(),
-    ))
+    use crate::commands::add::create_skill_from_path;
+
+    let (_temp_dir, skill_path) = download_and_extract_zip(base_url).await?;
+
+    let mut skill_def = create_skill_from_path(&skill_path, "zip", false)?;
+    copy_skill_to_storage(service, &skill_path, &mut skill_def).await?;
+
+    skill_def.source_url = Some(base_url.to_string());
+    skill_def.source_type = Some(SourceType::ZipFile);
+    skill_def.source_tag = version.map(|s| s.to_string());
+    skill_def.fetched_at = Some(Utc::now());
+    skill_def.editable = false;
+
+    register_skill(
+        service,
+        &skill_def,
+        fastskill_core::core::skill_manager::SkillUpdate {
+            source_tag: skill_def.source_tag.clone(),
+            ..base_skill_update(&skill_def)
+        },
+    )
+    .await?;
+
+    Ok(skill_def)
 }
 
 /// Create and initialize package resolver
@@ -390,4 +513,44 @@ pub fn create_sources_manager_from_repositories(
 ) -> CliResult<Option<SourcesManager>> {
     SourcesManager::from_repositories(repo_manager)
         .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_safe_subdir_join_rejects_dotdot() {
+        // SEC-5: an untrusted manifest `subdir` with `..` must be rejected.
+        let root = tempfile::tempdir().unwrap();
+        let result = safe_subdir_join(root.path(), Path::new("../../../etc"));
+        assert!(result.is_err(), "'..' subdir must be rejected");
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[test]
+    fn test_safe_subdir_join_rejects_absolute() {
+        let root = tempfile::tempdir().unwrap();
+        let result = safe_subdir_join(root.path(), Path::new("/etc/passwd"));
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[test]
+    fn test_safe_subdir_join_accepts_nested_relative() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("skills/inner")).unwrap();
+        let joined = safe_subdir_join(root.path(), Path::new("skills/inner")).unwrap();
+        assert_eq!(joined, root.path().join("skills").join("inner"));
+        // Canonicalized containment check must pass for a legitimate nested dir.
+        assert!(joined.starts_with(root.path()));
+    }
+
+    #[tokio::test]
+    async fn test_download_and_extract_zip_download_failure() {
+        // PARTIAL-3: an unreachable URL surfaces as a clean InvalidSource error,
+        // not a panic. Port 1 reliably refuses connections offline.
+        let result = download_and_extract_zip("http://127.0.0.1:1/nope.zip").await;
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
 }

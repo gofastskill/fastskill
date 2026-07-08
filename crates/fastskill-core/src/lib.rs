@@ -40,10 +40,6 @@
 //!
 //!     println!("Found {} relevant skills", relevant_skills.len());
 //!
-//!     // Get available tools
-//!     let tools = service.tool_service().get_available_tools().await?;
-//!     println!("Available tools: {:?}", tools);
-//!
 //!     Ok(())
 //! }
 //! ```
@@ -72,7 +68,6 @@ pub use core::routing::{RoutedSkill, RoutingService};
 pub use core::service::SkillId;
 pub use core::service::{EmbeddingConfig, FastSkillService, ServiceConfig, ServiceError};
 pub use core::skill_manager::{SkillDefinition, SkillManagementService};
-pub use core::tool_calling::{AvailableTool, ToolCallingService, ToolResult};
 pub use core::vector_index::{
     IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl,
 };

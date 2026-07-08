@@ -64,6 +64,59 @@ pub fn is_local_path(source: &str) -> bool {
     path.exists() || source.starts_with('.') || source.starts_with('/')
 }
 
+/// Safely join an untrusted `subdir` (from a shareable manifest / git tree URL)
+/// onto a trusted clone `root`, rejecting path traversal.
+///
+/// Each component is validated via `fastskill_core::security::path::validate_path_component`
+/// (rejecting `..`, `/`, `\`, and absolute components). After joining, if the target exists it
+/// is canonicalized and asserted to stay within the canonicalized `root`, so a `subdir` escaping
+/// the clone (via `..` or a symlink) is rejected with `CliError::InvalidSource`.
+fn safe_subdir_join(root: &Path, subdir: &Path) -> CliResult<PathBuf> {
+    use fastskill_core::security::path::validate_path_component;
+    use std::path::Component;
+
+    let mut joined = root.to_path_buf();
+    for component in subdir.components() {
+        match component {
+            Component::Normal(part) => {
+                let part = part.to_str().ok_or_else(|| {
+                    CliError::InvalidSource(format!(
+                        "Subdirectory '{}' contains a non-UTF-8 path component",
+                        subdir.display()
+                    ))
+                })?;
+                validate_path_component(part).map_err(|e| {
+                    CliError::InvalidSource(format!(
+                        "Invalid subdirectory '{}': {}",
+                        subdir.display(),
+                        e
+                    ))
+                })?;
+                joined.push(part);
+            }
+            _ => {
+                return Err(CliError::InvalidSource(format!(
+                    "Subdirectory '{}' must be a relative path without '..' components",
+                    subdir.display()
+                )));
+            }
+        }
+    }
+
+    if joined.exists() {
+        let canonical_root = root.canonicalize().map_err(CliError::Io)?;
+        let canonical_joined = joined.canonicalize().map_err(CliError::Io)?;
+        if !canonical_joined.starts_with(&canonical_root) {
+            return Err(CliError::InvalidSource(format!(
+                "Subdirectory '{}' escapes the cloned repository",
+                subdir.display()
+            )));
+        }
+    }
+
+    Ok(joined)
+}
+
 // ── Source installation handlers ──────────────────────────────────────────────
 
 /// Find SKILL.md in a directory (root first, then one level of subdirectories).
@@ -195,7 +248,7 @@ async fn clone_and_validate_skill(
         .map_err(|e| CliError::GitCloneFailed(e.to_string()))?;
     let skill_base_path = match &git_info.subdir {
         Some(subdir) => {
-            let subdir_path = temp_dir.path().join(subdir);
+            let subdir_path = safe_subdir_join(temp_dir.path(), subdir)?;
             if !subdir_path.exists() {
                 return Err(CliError::InvalidSource(format!(
                     "Specified subdirectory '{}' does not exist in cloned repository",
@@ -252,6 +305,7 @@ pub(super) fn parse_registry_scope_id(
     skill_id_input: &str,
 ) -> CliResult<(String, String, String, Option<String>)> {
     use crate::utils::parse_skill_id;
+    use fastskill_core::security::path::validate_path_component;
     let (skill_id_full, version_opt) = parse_skill_id(skill_id_input);
     let (scope, expected_id) = match skill_id_full.find('/') {
         Some(slash_pos) => (
@@ -265,7 +319,33 @@ pub(super) fn parse_registry_scope_id(
             )));
         }
     };
+    // `scope` (and `id`) are joined into the storage path, so reject traversal
+    // (`..`, `/`, `\`, absolute) before use — a crafted scope like `..` would
+    // otherwise redirect the install one directory above the storage root.
+    validate_path_component(&scope)
+        .map_err(|e| CliError::Config(format!("Invalid registry scope '{}': {}", scope, e)))?;
+    validate_path_component(&expected_id).map_err(|e| {
+        CliError::Config(format!(
+            "Invalid registry skill id '{}': {}",
+            expected_id, e
+        ))
+    })?;
     Ok((skill_id_full, scope, expected_id, version_opt))
+}
+
+/// Select the newest version by semver, not lexical string order.
+///
+/// A plain string sort ranks `"1.9.0"` above `"1.10.0"`, which would install the
+/// wrong version. Unparseable versions rank lowest, mirroring the registry's
+/// `get_latest_version`. Returns `None` for an empty input.
+fn select_newest_version(versions: &[String]) -> Option<String> {
+    let mut sorted = versions.to_vec();
+    sorted.sort_by(|a, b| {
+        semver::Version::parse(a)
+            .ok()
+            .cmp(&semver::Version::parse(b).ok())
+    });
+    sorted.last().cloned()
 }
 
 pub(super) async fn resolve_registry_version(
@@ -286,11 +366,7 @@ pub(super) async fn resolve_registry_version(
             skill_id_full
         )));
     }
-    let mut sorted = versions;
-    sorted.sort();
-    sorted
-        .last()
-        .cloned()
+    select_newest_version(&versions)
         .ok_or_else(|| CliError::Config("No versions available".to_string()))
 }
 
@@ -405,9 +481,77 @@ pub(super) async fn add_from_registry(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_registry_scope_id_rejects_dotdot_scope() {
+        // SEC-6: a `..` scope would redirect the install above the storage root.
+        let result = parse_registry_scope_id("../evilskill");
+        assert!(result.is_err(), "'..' scope must be rejected");
+        if let Err(CliError::Config(msg)) = result {
+            assert!(
+                msg.contains("scope"),
+                "error should mention the invalid scope, got: {}",
+                msg
+            );
+        } else {
+            panic!("Expected CliError::Config for traversal scope");
+        }
+    }
+
+    #[test]
+    fn test_parse_registry_scope_id_rejects_backslash_scope() {
+        // A backslash is a traversal character on Windows-style paths.
+        assert!(parse_registry_scope_id("bad\\scope/id").is_err());
+    }
+
+    #[test]
+    fn test_select_newest_version_semver_ordering() {
+        // BUG-10: string sort would pick "1.9.0"; semver must pick "1.10.0".
+        let versions = vec![
+            "1.9.0".to_string(),
+            "1.10.0".to_string(),
+            "1.2.0".to_string(),
+        ];
+        assert_eq!(select_newest_version(&versions), Some("1.10.0".to_string()));
+    }
+
+    #[test]
+    fn test_select_newest_version_prefers_parseable() {
+        let versions = vec!["not-semver".to_string(), "0.1.0".to_string()];
+        assert_eq!(select_newest_version(&versions), Some("0.1.0".to_string()));
+    }
+
+    #[test]
+    fn test_select_newest_version_empty() {
+        assert_eq!(select_newest_version(&[]), None);
+    }
+
+    #[test]
+    fn test_safe_subdir_join_rejects_dotdot() {
+        // SEC-5: a `..`-laden subdir must be rejected before any filesystem use.
+        let root = tempfile::tempdir().unwrap();
+        let result = safe_subdir_join(root.path(), Path::new("../../etc"));
+        assert!(result.is_err(), "'..' subdir must be rejected");
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[test]
+    fn test_safe_subdir_join_rejects_absolute() {
+        let root = tempfile::tempdir().unwrap();
+        let result = safe_subdir_join(root.path(), Path::new("/etc/passwd"));
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[test]
+    fn test_safe_subdir_join_accepts_nested_relative() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("a/b")).unwrap();
+        let joined = safe_subdir_join(root.path(), Path::new("a/b")).unwrap();
+        assert_eq!(joined, root.path().join("a").join("b"));
+    }
 
     #[test]
     fn test_resolve_invalid_source_type_returns_error() {

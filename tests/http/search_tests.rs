@@ -53,6 +53,7 @@ async fn create_test_app_state(
         project_file_path: std::path::PathBuf::from("skill-project.toml"),
         project_root: skills_dir.to_path_buf(),
         skills_directory: skills_dir.to_path_buf(),
+        enable_write: false,
     }
 }
 

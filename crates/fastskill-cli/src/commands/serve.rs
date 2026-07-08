@@ -16,6 +16,9 @@ pub struct ServeArgs {
 
     /// Port to bind the server to
     port: u16,
+
+    /// Enable mutating (write) endpoints. Read-only by default (ADR-0003).
+    enable_write: bool,
 }
 
 impl IntoCommandSpec for ServeArgs {
@@ -47,6 +50,17 @@ impl IntoCommandSpec for ServeArgs {
                     default: Some(ArgValue::Int(8080)),
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "enable-write",
+                    long: Some("enable-write"),
+                    short: None,
+                    help: "Enable mutating (write) endpoints (read-only by default)",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -76,6 +90,10 @@ impl FromArgValueMap for ServeArgs {
                     }
                 })
                 .unwrap_or(8080),
+            enable_write: map
+                .get("enable-write")
+                .map(|v| matches!(v, ArgValue::Bool(true)))
+                .unwrap_or(false),
         }
     }
 }
@@ -85,14 +103,29 @@ pub async fn execute_serve(
     args: ServeArgs,
 ) -> CliResult<()> {
     info!(
-        "Starting FastSkill HTTP server on {}:{}",
-        args.host, args.port
+        "Starting FastSkill HTTP server on {}:{} (write endpoints {})",
+        args.host,
+        args.port,
+        if args.enable_write {
+            "enabled"
+        } else {
+            "disabled"
+        }
     );
 
     println!("FastSkill HTTP server starting...");
+    if args.enable_write {
+        println!("  Write endpoints: ENABLED (--enable-write)");
+    } else {
+        println!("  Write endpoints: disabled (read-only); pass --enable-write to enable");
+    }
 
-    let server =
-        fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, args.port);
+    let server = fastskill_core::http::server::FastSkillServer::from_ref_with_write(
+        &service,
+        &args.host,
+        args.port,
+        args.enable_write,
+    );
 
     // Start the server (this will block until shutdown)
     server
@@ -124,6 +157,7 @@ mod tests {
         let _args = ServeArgs {
             host: "localhost".to_string(),
             port: 0,
+            enable_write: false,
         };
 
         // Note: This test doesn't actually start the server since it would block
@@ -147,6 +181,7 @@ mod tests {
         let _args = ServeArgs {
             host: "127.0.0.1".to_string(),
             port: 0,
+            enable_write: false,
         };
     }
 
@@ -164,6 +199,7 @@ mod tests {
         let _args = ServeArgs {
             host: "localhost".to_string(),
             port: 9999,
+            enable_write: false,
         };
 
         // Verify args are accepted

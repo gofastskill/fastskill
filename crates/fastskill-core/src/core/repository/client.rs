@@ -59,6 +59,9 @@ pub async fn create_client(
 pub struct MarketplaceRepositoryClient {
     sources_manager: SourcesManager,
     source_name: String,
+    /// Unique per-client temp dir backing `sources_manager`. Held so it is not
+    /// cleaned up while the client is alive; dropped (and removed) with the client.
+    _temp_dir: tempfile::TempDir,
 }
 
 impl MarketplaceRepositoryClient {
@@ -125,8 +128,17 @@ impl MarketplaceRepositoryClient {
             }
         };
 
-        // Create a temporary sources manager with just this source
-        let temp_path = std::env::temp_dir().join(format!("fastskill-repo-{}", repo.name));
+        // Create a temporary sources manager with just this source.
+        // Use a unique per-operation temp dir (kept alive for this client's
+        // lifetime) instead of a predictable, world-readable shared path, so a
+        // local user cannot pre-create/symlink it to influence source resolution.
+        let temp_dir = tempfile::Builder::new()
+            .prefix("fastskill-repo-")
+            .tempdir()
+            .map_err(|e| {
+                ServiceError::Custom(format!("Failed to create temp dir for repository: {}", e))
+            })?;
+        let temp_path = temp_dir.path().join("sources.toml");
         let mut sources_manager = SourcesManager::new(temp_path);
         sources_manager
             .load()
@@ -145,6 +157,7 @@ impl MarketplaceRepositoryClient {
         Ok(Self {
             sources_manager,
             source_name: repo.name.clone(),
+            _temp_dir: temp_dir,
         })
     }
 }
