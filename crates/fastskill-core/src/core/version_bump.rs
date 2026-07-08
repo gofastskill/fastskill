@@ -61,36 +61,19 @@ pub fn update_skill_version(skill_path: &Path, new_version: &str) -> Result<(), 
 
     let skill_project_path = skill_path.join("skill-project.toml");
 
-    if !skill_project_path.exists() {
-        // Create a fresh skill-project.toml with just [metadata].version.
-        let mut doc = DocumentMut::new();
-        let mut metadata = Table::new();
-        metadata["version"] = value(new_version.to_string());
-        doc["metadata"] = Item::Table(metadata);
-        std::fs::write(&skill_project_path, doc.to_string()).map_err(ServiceError::Io)?;
-        return Ok(());
-    }
-
-    let content = std::fs::read_to_string(&skill_project_path).map_err(ServiceError::Io)?;
-
-    // Parse format-preserving. If parsing fails (malformed file), fall back to
-    // writing a fresh minimal document rather than propagating a hard error —
-    // this mirrors the previous behavior of recovering unparseable input.
-    let mut doc = match content.parse::<DocumentMut>() {
-        Ok(doc) => doc,
-        Err(_) => {
-            let mut doc = DocumentMut::new();
-            let mut metadata = Table::new();
-            metadata["version"] = value(new_version.to_string());
-            doc["metadata"] = Item::Table(metadata);
-            std::fs::write(&skill_project_path, doc.to_string()).map_err(ServiceError::Io)?;
-            return Ok(());
-        }
+    // Read the existing document, if any. A missing file starts from an empty
+    // document; a malformed file recovers to an empty document rather than
+    // propagating a hard error (mirrors the previous recovery behavior).
+    let mut doc = match std::fs::read_to_string(&skill_project_path) {
+        Ok(content) => content
+            .parse::<DocumentMut>()
+            .unwrap_or_else(|_| DocumentMut::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => DocumentMut::new(),
+        Err(e) => return Err(ServiceError::Io(e)),
     };
 
-    // Create the [metadata] table if it is absent, then set only `version`.
-    // Everything else in the document (id, [tool], comments, unknown fields) is
-    // left untouched.
+    // Ensure a [metadata] table exists, then set only `version`. Everything else
+    // in the document (id, [tool], comments, unknown fields) is left untouched.
     if doc.get("metadata").and_then(Item::as_table).is_none() {
         doc["metadata"] = Item::Table(Table::new());
     }

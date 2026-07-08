@@ -31,10 +31,10 @@ pub(crate) const MAX_RATIO: u64 = 100;
 /// Pre-flight ZIP checks: reject archives that exceed the entry-count cap or that
 /// declare an oversized/over-compressed entry, *before* extracting anything.
 ///
-/// This is a cheap header-only scan (it reads no entry data) and is shared with
-/// `ZipValidator::validate_zip_package`. The real cumulative-byte budget is still
-/// enforced during extraction in [`ZipHandler::extract_to_dir`], because the
-/// declared `size()` can lie.
+/// This is a cheap header-only scan (it reads no entry data) and is shared by
+/// [`ZipHandler::validate_package`] and [`ZipHandler::extract_to_dir`]. The real
+/// cumulative-byte budget is still enforced during extraction in `extract_to_dir`,
+/// because the declared `size()` can lie.
 pub(crate) fn preflight_zip_archive<R: Read + io::Seek>(
     archive: &mut zip::ZipArchive<R>,
 ) -> Result<(), ServiceError> {
@@ -137,8 +137,9 @@ impl ZipHandler {
             let entry_name = file.name().to_string();
 
             // Determine directory-ness from the raw zip entry (BUG-11), not the
-            // normalized PathBuf which never retains a trailing slash.
-            let entry_is_directory = file.is_dir() || entry_name.ends_with('/');
+            // normalized PathBuf which never retains a trailing slash. In zip 0.6.x
+            // `is_dir()` already means the name ends with '/' or '\\'.
+            let is_directory = file.is_dir();
 
             // Reject symlink entries
             #[cfg(unix)]
@@ -171,12 +172,8 @@ impl ZipHandler {
                 )));
             }
 
-            // For directories, we need to check if they exist or can be created
+            // For directories, we need to check if they exist or can be created.
             // For files, we need to validate after creation.
-            // Directory-ness comes from the raw zip entry (BUG-11), because the
-            // normalized PathBuf never ends with "/".
-            let path_is_directory = entry_is_directory;
-
             // Canonicalize the output path to resolve any .. components
             // Note: canonicalize() requires the path to exist, so we only canonicalize after creation for directories
             let outpath_canonical = if outpath.exists() {
@@ -186,7 +183,7 @@ impl ZipHandler {
                         format!("Failed to resolve path for ZIP entry: {}", entry_name),
                     ))
                 })?
-            } else if path_is_directory {
+            } else if is_directory {
                 // Create directory first, then canonicalize to validate
                 std::fs::create_dir_all(&outpath).map_err(ServiceError::Io)?;
                 outpath.canonicalize().map_err(|e| {

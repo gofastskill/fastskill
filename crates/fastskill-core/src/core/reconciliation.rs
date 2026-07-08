@@ -54,6 +54,7 @@ pub struct VersionMismatch {
 }
 
 use crate::core::skill_manager::SkillDefinition;
+use crate::core::version::VersionConstraint;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -94,39 +95,36 @@ pub fn build_reconciliation_report(
         let project_constraint = project_deps.get(&skill_id).and_then(|c| c.as_ref());
 
         // Determine status. Both the project version constraint (BUG-9) and the
-        // lock-equality check can drive a Mismatch; `expected` records what the
-        // installed version was compared against so it can be reported.
-        let mut expected: Option<String> = None;
-        let status = if !is_in_project {
-            ReconciliationStatus::Extraneous
+        // lock-equality check can drive a Mismatch. The decision carries the
+        // expected-version string alongside the status so the reporting branch
+        // doesn't have to re-derive it — `expected` is always `Some` whenever the
+        // status is `Mismatch`.
+        let (status, expected): (ReconciliationStatus, Option<String>) = if !is_in_project {
+            (ReconciliationStatus::Extraneous, None)
         } else {
             // First: does the installed version satisfy the declared constraint?
             let violates_constraint = match project_constraint {
-                Some(constraint_str) => {
-                    match crate::core::version::VersionConstraint::parse(constraint_str) {
-                        // An installed version outside its declared constraint is a Mismatch.
-                        Ok(constraint) => !constraint.satisfies(&skill.version).unwrap_or(true),
-                        // Unparseable constraint: don't spuriously flag as mismatch.
-                        Err(_) => false,
-                    }
-                }
+                Some(constraint_str) => match VersionConstraint::parse(constraint_str) {
+                    // An installed version outside its declared constraint is a Mismatch.
+                    Ok(constraint) => !constraint.satisfies(&skill.version).unwrap_or(true),
+                    // Unparseable constraint: don't spuriously flag as mismatch.
+                    Err(_) => false,
+                },
                 None => false,
             };
 
             if violates_constraint {
                 // Report the constraint the installed version failed to satisfy.
-                expected = project_constraint.cloned();
-                ReconciliationStatus::Mismatch
+                (ReconciliationStatus::Mismatch, project_constraint.cloned())
             } else if let Some(locked_ver) = locked_version {
                 // Additional signal: lock-file version equality.
                 if skill.version != *locked_ver {
-                    expected = Some(locked_ver.clone());
-                    ReconciliationStatus::Mismatch
+                    (ReconciliationStatus::Mismatch, Some(locked_ver.clone()))
                 } else {
-                    ReconciliationStatus::Ok
+                    (ReconciliationStatus::Ok, None)
                 }
             } else {
-                ReconciliationStatus::Ok
+                (ReconciliationStatus::Ok, None)
             }
         };
 
@@ -148,11 +146,9 @@ pub fn build_reconciliation_report(
                 version_mismatches.push(VersionMismatch {
                     id: skill_id.clone(),
                     installed_version: skill.version.clone(),
-                    // Either the violated constraint or the locked version.
-                    locked_version: expected
-                        .clone()
-                        .or_else(|| locked_version.cloned())
-                        .unwrap_or_default(),
+                    // The violated constraint or the differing locked version;
+                    // always populated on the Mismatch paths above.
+                    locked_version: expected.clone().unwrap_or_default(),
                 });
             }
             _ => {}

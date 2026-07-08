@@ -89,13 +89,7 @@ impl ProjectSkillsLock {
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::WouldBlock {
-                LockError::FileLocked(path.to_path_buf())
-            } else {
-                LockError::Io(e)
-            }
-        })?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(LockError::Io)?;
         Ok(())
     }
 
@@ -276,13 +270,7 @@ impl GlobalSkillsLock {
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::WouldBlock {
-                LockError::FileLocked(path.to_path_buf())
-            } else {
-                LockError::Io(e)
-            }
-        })?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(LockError::Io)?;
         Ok(())
     }
 
@@ -649,40 +637,6 @@ depth = 0
             lock_path,
             std::path::PathBuf::from("/home/user/project/skills.lock")
         );
-    }
-
-    #[test]
-    fn test_file_lock_contention_returns_error() {
-        use fs2::FileExt;
-
-        let tmp = TempDir::new().unwrap();
-        let sidecar = tmp.path().join("skills.lock.lock");
-
-        // Acquire the advisory lock from this thread
-        let holder = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&sidecar)
-            .unwrap();
-        holder.lock_exclusive().unwrap();
-
-        // Attempting to acquire again (try_lock) should fail
-        let contender = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&sidecar)
-            .unwrap();
-
-        // try_lock_exclusive should return an error when the lock is already held
-        let result = contender.try_lock_exclusive();
-        assert!(
-            result.is_err(),
-            "try_lock_exclusive must fail when lock is held"
-        );
-
-        holder.unlock().unwrap();
     }
 
     #[test]

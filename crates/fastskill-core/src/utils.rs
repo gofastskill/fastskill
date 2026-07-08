@@ -4,26 +4,6 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Append a suffix to a path's full file name — e.g. `org/web.scraper` + `tmp`
-/// → `org/web.scraper.tmp`.
-///
-/// Unlike [`Path::with_extension`], this does NOT replace the last dotted segment.
-/// When a file name is derived from user input that may contain dots (e.g. a scoped
-/// skill package), `with_extension("tmp")` is not injective — `org/web.scraper` and
-/// `org/web.crawler` both collapse onto `org/web.tmp`. Appending keeps each derived
-/// sidecar path distinct.
-///
-/// Retained as a small path utility; `atomic_write` no longer uses a
-/// deterministic `.tmp` sidecar (it uses a unique per-writer temp file), so this
-/// is currently exercised only by tests.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name = path.as_os_str().to_os_string();
-    name.push(".");
-    name.push(suffix);
-    PathBuf::from(name)
-}
-
 /// Write `bytes` to `path` atomically: write to a **per-writer unique** temp file
 /// in the same directory → sync → atomic rename over `path`.
 ///
@@ -155,8 +135,9 @@ mod tests {
         // Write initial content
         fs::write(&path, b"original content").unwrap();
 
-        // Simulate an interrupted write: write to .tmp, then leave it without renaming
-        let tmp_path = append_suffix(&path, "tmp");
+        // Simulate an interrupted write: write to a sibling .tmp, then leave it
+        // without renaming
+        let tmp_path = path.with_extension("tmp");
         fs::write(&tmp_path, b"incomplete write").unwrap();
 
         // The original file should still have its original content

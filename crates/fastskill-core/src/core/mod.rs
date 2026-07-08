@@ -118,7 +118,9 @@ pub use validation::{
 pub use vector_index::{IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl};
 
 // version
-pub use version::{compare_versions, is_newer, VersionConstraint, VersionError};
+pub use version::{
+    compare_versions, is_newer, newest_version, sort_versions_desc, VersionConstraint, VersionError,
+};
 
 // version_bump
 pub use version_bump::{

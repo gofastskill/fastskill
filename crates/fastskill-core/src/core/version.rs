@@ -84,11 +84,6 @@ impl VersionConstraint {
         })?;
         Ok(self.req.matches(&ver))
     }
-
-    /// The underlying `semver::VersionReq`.
-    pub fn as_req(&self) -> &VersionReq {
-        &self.req
-    }
 }
 
 /// Compare two version strings
@@ -105,6 +100,24 @@ pub fn compare_versions(v1: &str, v2: &str) -> Result<std::cmp::Ordering, Versio
 /// Check if version1 is newer than version2
 pub fn is_newer(v1: &str, v2: &str) -> Result<bool, VersionError> {
     Ok(compare_versions(v1, v2)? == std::cmp::Ordering::Greater)
+}
+
+/// Sort a list of version strings in descending (newest-first) order by semver.
+///
+/// Unparseable versions sort lowest. A plain string sort is incorrect for
+/// multi-digit components (e.g. `"1.9.0"` would sort above `"1.10.0"`), which is a
+/// real resolution bug when the result is used to pick a version to install.
+pub fn sort_versions_desc(versions: &mut [String]) {
+    versions.sort_by(|a, b| Version::parse(b).ok().cmp(&Version::parse(a).ok()));
+}
+
+/// Return the newest version string by semver, or `None` for an empty input.
+///
+/// Unparseable versions rank lowest. Implemented in terms of [`sort_versions_desc`].
+pub fn newest_version(versions: &[String]) -> Option<String> {
+    let mut sorted = versions.to_vec();
+    sort_versions_desc(&mut sorted);
+    sorted.first().cloned()
 }
 
 #[cfg(test)]
@@ -305,9 +318,59 @@ mod tests {
     }
 
     #[test]
-    fn test_as_req_exposes_underlying() {
-        let constraint = VersionConstraint::parse("^1.2.3").unwrap();
-        // Round-trips as a caret requirement.
-        assert_eq!(constraint.as_req().to_string(), "^1.2.3");
+    fn test_sort_versions_desc_semver_multidigit() {
+        // String sort would place "1.9.0" above "1.10.0"; semver must not.
+        let mut versions = vec![
+            "1.9.0".to_string(),
+            "1.10.0".to_string(),
+            "1.2.0".to_string(),
+            "2.0.0".to_string(),
+        ];
+        sort_versions_desc(&mut versions);
+        assert_eq!(
+            versions,
+            vec![
+                "2.0.0".to_string(),
+                "1.10.0".to_string(),
+                "1.9.0".to_string(),
+                "1.2.0".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_sort_versions_desc_unparseable_sorts_lowest() {
+        let mut versions = vec![
+            "not-a-version".to_string(),
+            "1.10.0".to_string(),
+            "1.9.0".to_string(),
+        ];
+        sort_versions_desc(&mut versions);
+        // Valid semver first (newest→oldest), unparseable last.
+        assert_eq!(versions[0], "1.10.0");
+        assert_eq!(versions[1], "1.9.0");
+        assert_eq!(versions[2], "not-a-version");
+    }
+
+    #[test]
+    fn test_newest_version_semver_multidigit() {
+        // String sort would pick "1.9.0"; semver must pick "1.10.0".
+        let versions = vec![
+            "1.9.0".to_string(),
+            "1.10.0".to_string(),
+            "1.2.0".to_string(),
+        ];
+        assert_eq!(newest_version(&versions), Some("1.10.0".to_string()));
+    }
+
+    #[test]
+    fn test_newest_version_prefers_parseable() {
+        let versions = vec!["not-semver".to_string(), "0.1.0".to_string()];
+        assert_eq!(newest_version(&versions), Some("0.1.0".to_string()));
+    }
+
+    #[test]
+    fn test_newest_version_empty() {
+        assert_eq!(newest_version(&[]), None);
     }
 }

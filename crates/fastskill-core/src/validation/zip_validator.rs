@@ -1,7 +1,7 @@
 //! ZIP package validation implementation
 
 use crate::core::service::ServiceError;
-use crate::storage::zip::preflight_zip_archive;
+use crate::storage::zip::ZipHandler;
 use std::path::Path;
 
 pub struct ZipValidator;
@@ -21,11 +21,11 @@ impl ZipValidator {
     ///
     /// Runs the entry-count / declared-size / compression-ratio pre-flight checks
     /// (SEC-3) so an oversized or bomb-shaped archive is rejected before extraction.
+    ///
+    /// Delegates to [`ZipHandler::validate_package`], which owns the single
+    /// open + construct + preflight implementation.
     pub async fn validate_zip_package(&self, zip_path: &Path) -> Result<(), ServiceError> {
-        let file = std::fs::File::open(zip_path).map_err(ServiceError::Io)?;
-        let mut archive = zip::ZipArchive::new(file)
-            .map_err(|e| ServiceError::Validation(format!("Invalid ZIP file: {}", e)))?;
-        preflight_zip_archive(&mut archive)
+        ZipHandler::new()?.validate_package(zip_path).await
     }
 }
 

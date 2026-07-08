@@ -1,6 +1,7 @@
 //! Source type resolution and installation for the add command.
 
 use crate::error::{CliError, CliResult};
+use crate::utils::install_utils::{extract_zip, safe_subdir_join};
 use crate::utils::{detect_skill_source, parse_git_url, validate_skill_structure, SkillSource};
 use fastskill_core::core::skill_manager::SourceType;
 use std::fs;
@@ -64,59 +65,6 @@ pub fn is_local_path(source: &str) -> bool {
     path.exists() || source.starts_with('.') || source.starts_with('/')
 }
 
-/// Safely join an untrusted `subdir` (from a shareable manifest / git tree URL)
-/// onto a trusted clone `root`, rejecting path traversal.
-///
-/// Each component is validated via `fastskill_core::security::path::validate_path_component`
-/// (rejecting `..`, `/`, `\`, and absolute components). After joining, if the target exists it
-/// is canonicalized and asserted to stay within the canonicalized `root`, so a `subdir` escaping
-/// the clone (via `..` or a symlink) is rejected with `CliError::InvalidSource`.
-fn safe_subdir_join(root: &Path, subdir: &Path) -> CliResult<PathBuf> {
-    use fastskill_core::security::path::validate_path_component;
-    use std::path::Component;
-
-    let mut joined = root.to_path_buf();
-    for component in subdir.components() {
-        match component {
-            Component::Normal(part) => {
-                let part = part.to_str().ok_or_else(|| {
-                    CliError::InvalidSource(format!(
-                        "Subdirectory '{}' contains a non-UTF-8 path component",
-                        subdir.display()
-                    ))
-                })?;
-                validate_path_component(part).map_err(|e| {
-                    CliError::InvalidSource(format!(
-                        "Invalid subdirectory '{}': {}",
-                        subdir.display(),
-                        e
-                    ))
-                })?;
-                joined.push(part);
-            }
-            _ => {
-                return Err(CliError::InvalidSource(format!(
-                    "Subdirectory '{}' must be a relative path without '..' components",
-                    subdir.display()
-                )));
-            }
-        }
-    }
-
-    if joined.exists() {
-        let canonical_root = root.canonicalize().map_err(CliError::Io)?;
-        let canonical_joined = joined.canonicalize().map_err(CliError::Io)?;
-        if !canonical_joined.starts_with(&canonical_root) {
-            return Err(CliError::InvalidSource(format!(
-                "Subdirectory '{}' escapes the cloned repository",
-                subdir.display()
-            )));
-        }
-    }
-
-    Ok(joined)
-}
-
 // ── Source installation handlers ──────────────────────────────────────────────
 
 /// Find SKILL.md in a directory (root first, then one level of subdirectories).
@@ -141,18 +89,7 @@ pub(super) fn find_skill_in_directory(dir: &Path) -> CliResult<PathBuf> {
 fn extract_zip_to_temp(zip_path: &Path) -> CliResult<TempDir> {
     let temp_dir = TempDir::new().map_err(CliError::Io)?;
     let extract_path = temp_dir.path();
-    use fastskill_core::storage::zip::ZipHandler;
-    let zip_handler = ZipHandler::new()
-        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
-    zip_handler
-        .extract_to_dir(zip_path, extract_path)
-        .map_err(|e| match e {
-            fastskill_core::core::service::ServiceError::Validation(msg) => {
-                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
-            }
-            fastskill_core::core::service::ServiceError::Io(err) => CliError::Io(err),
-            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
-        })?;
+    extract_zip(zip_path, extract_path)?;
     Ok(temp_dir)
 }
 
@@ -333,21 +270,6 @@ pub(super) fn parse_registry_scope_id(
     Ok((skill_id_full, scope, expected_id, version_opt))
 }
 
-/// Select the newest version by semver, not lexical string order.
-///
-/// A plain string sort ranks `"1.9.0"` above `"1.10.0"`, which would install the
-/// wrong version. Unparseable versions rank lowest, mirroring the registry's
-/// `get_latest_version`. Returns `None` for an empty input.
-fn select_newest_version(versions: &[String]) -> Option<String> {
-    let mut sorted = versions.to_vec();
-    sorted.sort_by(|a, b| {
-        semver::Version::parse(a)
-            .ok()
-            .cmp(&semver::Version::parse(b).ok())
-    });
-    sorted.last().cloned()
-}
-
 pub(super) async fn resolve_registry_version(
     repo_client: &(dyn fastskill_core::core::repository::RepositoryClient + Send + Sync),
     skill_id_full: &str,
@@ -366,7 +288,7 @@ pub(super) async fn resolve_registry_version(
             skill_id_full
         )));
     }
-    select_newest_version(&versions)
+    fastskill_core::core::newest_version(&versions)
         .ok_or_else(|| CliError::Config("No versions available".to_string()))
 }
 
@@ -384,18 +306,7 @@ async fn download_registry_package(
     fs::create_dir_all(&extract_path).map_err(CliError::Io)?;
     let temp_zip = temp_dir.path().join(format!("package-{}.zip", version));
     std::fs::write(&temp_zip, zip_data).map_err(CliError::Io)?;
-    use fastskill_core::storage::zip::ZipHandler;
-    let zip_handler = ZipHandler::new()
-        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
-    zip_handler
-        .extract_to_dir(&temp_zip, &extract_path)
-        .map_err(|e| match e {
-            fastskill_core::core::service::ServiceError::Validation(msg) => {
-                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
-            }
-            fastskill_core::core::service::ServiceError::Io(err) => CliError::Io(err),
-            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
-        })?;
+    extract_zip(&temp_zip, &extract_path)?;
     let skill_path = find_skill_in_directory(&extract_path)?;
     validate_skill_structure(&skill_path)?;
     let skill_def = super::skill_def::create_skill_from_path(&skill_path, "registry", false)?;
@@ -505,52 +416,6 @@ mod tests {
     fn test_parse_registry_scope_id_rejects_backslash_scope() {
         // A backslash is a traversal character on Windows-style paths.
         assert!(parse_registry_scope_id("bad\\scope/id").is_err());
-    }
-
-    #[test]
-    fn test_select_newest_version_semver_ordering() {
-        // BUG-10: string sort would pick "1.9.0"; semver must pick "1.10.0".
-        let versions = vec![
-            "1.9.0".to_string(),
-            "1.10.0".to_string(),
-            "1.2.0".to_string(),
-        ];
-        assert_eq!(select_newest_version(&versions), Some("1.10.0".to_string()));
-    }
-
-    #[test]
-    fn test_select_newest_version_prefers_parseable() {
-        let versions = vec!["not-semver".to_string(), "0.1.0".to_string()];
-        assert_eq!(select_newest_version(&versions), Some("0.1.0".to_string()));
-    }
-
-    #[test]
-    fn test_select_newest_version_empty() {
-        assert_eq!(select_newest_version(&[]), None);
-    }
-
-    #[test]
-    fn test_safe_subdir_join_rejects_dotdot() {
-        // SEC-5: a `..`-laden subdir must be rejected before any filesystem use.
-        let root = tempfile::tempdir().unwrap();
-        let result = safe_subdir_join(root.path(), Path::new("../../etc"));
-        assert!(result.is_err(), "'..' subdir must be rejected");
-        assert!(matches!(result, Err(CliError::InvalidSource(_))));
-    }
-
-    #[test]
-    fn test_safe_subdir_join_rejects_absolute() {
-        let root = tempfile::tempdir().unwrap();
-        let result = safe_subdir_join(root.path(), Path::new("/etc/passwd"));
-        assert!(matches!(result, Err(CliError::InvalidSource(_))));
-    }
-
-    #[test]
-    fn test_safe_subdir_join_accepts_nested_relative() {
-        let root = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(root.path().join("a/b")).unwrap();
-        let joined = safe_subdir_join(root.path(), Path::new("a/b")).unwrap();
-        assert_eq!(joined, root.path().join("a").join("b"));
     }
 
     #[test]

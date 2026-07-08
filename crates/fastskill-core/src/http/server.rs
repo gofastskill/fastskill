@@ -193,18 +193,11 @@ pub struct FastSkillServer {
 }
 
 impl FastSkillServer {
-    /// Create a new read-only server instance
+    /// Create a new read-only server instance.
+    ///
+    /// Mutating routes are gated off by default; call [`Self::enable_write`] to
+    /// turn them on.
     pub fn new(service: Arc<FastSkillService>, host: &str, port: u16) -> Self {
-        Self::new_with_write(service, host, port, false)
-    }
-
-    /// Create a new server instance, choosing whether mutating routes are enabled.
-    pub fn new_with_write(
-        service: Arc<FastSkillService>,
-        host: &str,
-        port: u16,
-        enable_write: bool,
-    ) -> Self {
         let addr = match Self::parse_address(host, port) {
             Ok(addr) => addr,
             Err(e) => {
@@ -216,8 +209,16 @@ impl FastSkillServer {
         Self {
             service,
             addr,
-            enable_write,
+            enable_write: false,
         }
+    }
+
+    /// Choose whether mutating routes are enabled (ADR-0003 / WRITE-GATE).
+    ///
+    /// Mirrors `AppState::with_enable_write`.
+    pub fn enable_write(mut self, enable_write: bool) -> Self {
+        self.enable_write = enable_write;
+        self
     }
 
     /// Parse and normalize host:port into a SocketAddr
@@ -256,19 +257,11 @@ impl FastSkillServer {
         }
     }
 
-    /// Create a new read-only server instance from an Arc-wrapped service reference
+    /// Create a new read-only server instance from an Arc-wrapped service reference.
+    ///
+    /// Mutating routes are gated off by default; call [`Self::enable_write`] to
+    /// turn them on.
     pub fn from_ref(service: &Arc<FastSkillService>, host: &str, port: u16) -> Self {
-        Self::from_ref_with_write(service, host, port, false)
-    }
-
-    /// Create a server instance from an Arc-wrapped service reference, choosing
-    /// whether mutating routes are enabled.
-    pub fn from_ref_with_write(
-        service: &Arc<FastSkillService>,
-        host: &str,
-        port: u16,
-        enable_write: bool,
-    ) -> Self {
         let service_arc = Arc::clone(service);
 
         let addr = match Self::parse_address(host, port) {
@@ -282,7 +275,7 @@ impl FastSkillServer {
         Self {
             service: service_arc,
             addr,
-            enable_write,
+            enable_write: false,
         }
     }
 
@@ -426,16 +419,4 @@ impl FastSkillServer {
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }
-}
-
-/// Convenience function to create and start a server (read-only unless
-/// `enable_write` is true — see ADR-0003 / WRITE-GATE).
-pub async fn serve(
-    service: Arc<FastSkillService>,
-    host: &str,
-    port: u16,
-    enable_write: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let server = FastSkillServer::new_with_write(service, host, port, enable_write);
-    server.serve().await
 }

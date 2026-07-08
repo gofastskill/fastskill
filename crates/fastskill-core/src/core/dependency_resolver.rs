@@ -193,25 +193,6 @@ impl DependencyResolver {
         let project = SkillProjectToml::load_from_file(manifest_path)?;
         project.to_skill_entries().map_err(ManifestError::Parse)
     }
-
-    /// Return the skills in dependency-first (topological) order.
-    ///
-    /// # This is intentionally an identity pass-through — do not "optimize it away".
-    ///
-    /// `resolve_dependencies` performs a breadth-first traversal seeded from the
-    /// root (depth-0) entries, so the `Vec` it returns is **already** in a valid
-    /// dependency-first order: every skill appears after the skill that declared
-    /// it as a dependency (a parent is always dequeued, and thus pushed to the
-    /// output, before any of its children are enqueued). This method exists as the
-    /// public API surface specified in §5.1 and to make that ordering guarantee an
-    /// explicit, named contract for callers that consume `resolve_dependencies`
-    /// output. It deliberately relies on that BFS ordering rather than re-sorting;
-    /// if the traversal in `resolve_dependencies` ever changes to something that
-    /// does not preserve parent-before-child order, this method must be given a
-    /// real Kahn/DFS topological sort here.
-    pub fn topological_sort(&self, items: Vec<SkillInstallItem>) -> Vec<SkillInstallItem> {
-        items
-    }
 }
 
 #[cfg(test)]
@@ -450,25 +431,5 @@ skill-c = { source = "local", path = "local/skill-c" }
         assert_eq!(ids.iter().filter(|id| **id == "skill-a").count(), 1);
         assert_eq!(ids.iter().filter(|id| **id == "skill-b").count(), 1);
         assert_eq!(result.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_topological_sort_preserves_order() {
-        let resolver = DependencyResolver::new(5);
-        let items = vec![
-            SkillInstallItem {
-                entry: make_local_entry("a", "local/a"),
-                depth: 0,
-                parent_skill: None,
-            },
-            SkillInstallItem {
-                entry: make_local_entry("b", "local/b"),
-                depth: 1,
-                parent_skill: Some("a".to_string()),
-            },
-        ];
-        let sorted = resolver.topological_sort(items.clone());
-        assert_eq!(sorted[0].entry.id, items[0].entry.id);
-        assert_eq!(sorted[1].entry.id, items[1].entry.id);
     }
 }

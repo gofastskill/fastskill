@@ -52,7 +52,7 @@ async fn write_route_returns_403_when_write_disabled() {
         return;
     };
     let service = make_service(&dir).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, false);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(false);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });
@@ -86,7 +86,7 @@ async fn write_route_not_forbidden_when_write_enabled() {
         return;
     };
     let service = make_service(&dir).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, true);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(true);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });
@@ -114,7 +114,7 @@ async fn read_route_available_when_write_disabled() {
         return;
     };
     let service = make_service(&dir).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, false);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(false);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });
@@ -145,7 +145,7 @@ async fn upgrade_rejects_unknown_skill_id() {
         return;
     };
     let service = make_service(&dir).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, true);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(true);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });
@@ -176,7 +176,7 @@ async fn removed_create_and_update_routes_are_not_mounted() {
     };
     // Even with writes enabled, these routes must not exist at all.
     let service = make_service(&dir).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, true);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(true);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });

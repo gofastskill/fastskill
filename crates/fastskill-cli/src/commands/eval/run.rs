@@ -56,8 +56,12 @@ pub struct RunArgs {
     /// Do not fail with non-zero exit code on suite failure
     pub no_fail: bool,
 
-    /// Override trials per case from config
-    pub trials: Option<u32>,
+    /// Override trials per case from config.
+    ///
+    /// Stored as the raw parsed integer (not clamped to `u32`) so the
+    /// execute-time range check can echo exactly what the user typed — e.g. a
+    /// negative `-3` is reported as `-3`, not a wrapped `u32::MAX`.
+    pub trials: Option<i64>,
 
     /// Enable CI mode: exit non-zero if suite pass rate below threshold
     pub ci: bool,
@@ -260,10 +264,10 @@ impl FromArgValueMap for RunArgs {
             no_fail: matches!(map.get("no-fail"), Some(ArgValue::Bool(true))),
             trials: map.get("trials").and_then(|v| {
                 if let ArgValue::Int(i) = v {
-                    // Out-of-range/negative values map to u32::MAX so the
-                    // execute-time range check surfaces a clear error rather
-                    // than silently wrapping or being ignored.
-                    Some(u32::try_from(*i).unwrap_or(u32::MAX))
+                    // Carry the raw value through unchanged; the execute-time
+                    // range check validates [1, 1000] and echoes the honest
+                    // value the user typed on failure.
+                    Some(*i)
                 } else {
                     None
                 }
@@ -357,13 +361,14 @@ mod tests {
     }
 
     #[test]
-    fn test_negative_trials_maps_to_max_for_range_error() {
+    fn test_negative_trials_preserved_for_honest_range_error() {
         let mut m = base_map();
         m.insert("trials".to_string(), ArgValue::Int(-3));
         let args = RunArgs::from_arg_value_map(&m);
-        // Negative values become u32::MAX so the execute-time [1,1000] range
-        // check surfaces an explicit error rather than silently wrapping.
-        assert_eq!(args.trials, Some(u32::MAX));
+        // The raw value is carried through unchanged so the execute-time
+        // [1, 1000] range check can echo the honest value the user typed
+        // (`-3`) rather than a wrapped `u32::MAX`.
+        assert_eq!(args.trials, Some(-3));
     }
 }
 
@@ -416,13 +421,19 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     let eval_config = resolve_eval_config(&resolution.path, &project_root)
         .map_err(|e| CliError::Config(e.to_string()))?;
 
-    let trials_per_case = args.trials.unwrap_or(eval_config.trials_per_case);
-    if !(1..=1000).contains(&trials_per_case) {
+    // Validate against the raw parsed value so the error echoes exactly what the
+    // user typed (e.g. a negative `-3`), not a wrapped/clamped integer.
+    let trials_raw = args
+        .trials
+        .unwrap_or(i64::from(eval_config.trials_per_case));
+    if !(1..=1000).contains(&trials_raw) {
         return Err(CliError::Config(format!(
             "EVAL_INVALID_TRIALS_CONFIG: trials must be in range [1, 1000], got {}",
-            trials_per_case
+            trials_raw
         )));
     }
+    // Safe: validated to be within [1, 1000] above.
+    let trials_per_case = trials_raw as u32;
 
     let pass_threshold = args.threshold.unwrap_or(eval_config.pass_threshold);
     if !(0.0..=1.0).contains(&pass_threshold) {

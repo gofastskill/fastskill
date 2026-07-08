@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 /// (rejecting `..`, `/`, `\`, and absolute components). After joining, if the target exists it is
 /// canonicalized and asserted to stay within the canonicalized `root`, so a `subdir` escaping the
 /// clone (via `..` or a symlink) is rejected with `CliError::InvalidSource`.
-fn safe_subdir_join(root: &Path, subdir: &Path) -> CliResult<PathBuf> {
+pub(crate) fn safe_subdir_join(root: &Path, subdir: &Path) -> CliResult<PathBuf> {
     use fastskill_core::security::path::validate_path_component;
     use std::path::Component;
 
@@ -346,12 +346,28 @@ async fn install_from_local(
     Ok(skill_def)
 }
 
+/// Extract a ZIP archive at `zip_path` into `dst` with the SEC-3-capped `ZipHandler`,
+/// mapping `ServiceError` onto the appropriate `CliError`.
+pub(crate) fn extract_zip(zip_path: &std::path::Path, dst: &std::path::Path) -> CliResult<()> {
+    use fastskill_core::storage::zip::ZipHandler;
+    let zip_handler = ZipHandler::new()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
+    zip_handler
+        .extract_to_dir(zip_path, dst)
+        .map_err(|e| match e {
+            fastskill_core::core::service::ServiceError::Validation(msg) => {
+                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
+            }
+            fastskill_core::core::service::ServiceError::Io(err) => CliError::Io(err),
+            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
+        })
+}
+
 /// Download an archive from `url` into a fresh temp dir and extract it with the
 /// SEC-3-capped `ZipHandler`, returning the temp dir (kept alive by the caller) and
 /// the directory that contains `SKILL.md`.
 async fn download_and_extract_zip(url: &str) -> CliResult<(tempfile::TempDir, PathBuf)> {
     use fastskill_core::storage::git::validate_cloned_skill;
-    use fastskill_core::storage::zip::ZipHandler;
 
     let response = reqwest::get(url)
         .await
@@ -376,17 +392,7 @@ async fn download_and_extract_zip(url: &str) -> CliResult<(tempfile::TempDir, Pa
         .await
         .map_err(CliError::Io)?;
 
-    let zip_handler = ZipHandler::new()
-        .map_err(|e| CliError::InvalidSource(format!("Failed to create ZIP handler: {}", e)))?;
-    zip_handler
-        .extract_to_dir(&zip_path, &extract_path)
-        .map_err(|e| match e {
-            fastskill_core::core::service::ServiceError::Validation(msg) => {
-                CliError::InvalidSource(format!("ZIP extraction validation failed: {}", msg))
-            }
-            fastskill_core::core::service::ServiceError::Io(err) => CliError::Io(err),
-            _ => CliError::InvalidSource(format!("ZIP extraction failed: {}", e)),
-        })?;
+    extract_zip(&zip_path, &extract_path)?;
 
     let skill_path = validate_cloned_skill(&extract_path)
         .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;

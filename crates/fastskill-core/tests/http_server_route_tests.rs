@@ -84,7 +84,7 @@ async fn static_assets_and_dashboard_and_index_mount() {
         return;
     };
     let service = make_service(store, Some(registry.path().to_path_buf())).await;
-    let server = FastSkillServer::new_with_write(service, "127.0.0.1", port, false);
+    let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(false);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
     });
@@ -220,7 +220,7 @@ async fn address_normalization_ipv4_and_localhost() {
     let s = FastSkillServer::new(Arc::clone(&svc), "localhost", 8080);
     assert_eq!(s.addr().to_string(), "127.0.0.1:8080");
 
-    let s2 = FastSkillServer::new_with_write(Arc::clone(&svc), "0.0.0.0", 9090, true);
+    let s2 = FastSkillServer::new(Arc::clone(&svc), "0.0.0.0", 9090).enable_write(true);
     assert_eq!(s2.addr().to_string(), "0.0.0.0:9090");
 }
 
@@ -233,7 +233,7 @@ async fn address_normalization_ipv6_variants() {
     assert_eq!(s.addr().to_string(), "[::1]:8081");
 
     // "::" all interfaces.
-    let s2 = FastSkillServer::from_ref_with_write(&svc, "::", 8082, false);
+    let s2 = FastSkillServer::from_ref(&svc, "::", 8082).enable_write(false);
     assert_eq!(s2.addr().to_string(), "[::]:8082");
 
     // Bracketed forms normalize the same way.

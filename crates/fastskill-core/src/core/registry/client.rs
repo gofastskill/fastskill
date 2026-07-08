@@ -154,7 +154,7 @@ impl RegistryClient {
     pub async fn get_versions(&self, name: &str) -> Result<Vec<String>, ServiceError> {
         let entries = self.get_skill(name).await?;
         let mut versions: Vec<String> = entries.iter().map(|e| e.vers.clone()).collect();
-        sort_versions_desc(&mut versions);
+        crate::core::version::sort_versions_desc(&mut versions);
         Ok(versions)
     }
 
@@ -280,56 +280,10 @@ impl RegistryClient {
     }
 }
 
-/// Sort a list of version strings in descending (newest-first) order by semver.
-///
-/// Unparseable versions sort lowest, mirroring `get_latest_version`. A plain
-/// string sort is incorrect for multi-digit components (e.g. `"1.9.0"` would sort
-/// above `"1.10.0"`), which is a real resolution bug when the result is used to
-/// pick a version to install.
-fn sort_versions_desc(versions: &mut [String]) {
-    use semver::Version;
-    versions.sort_by(|a, b| Version::parse(b).ok().cmp(&Version::parse(a).ok()));
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_sort_versions_desc_semver_multidigit() {
-        // String sort would place "1.9.0" above "1.10.0"; semver must not.
-        let mut versions = vec![
-            "1.9.0".to_string(),
-            "1.10.0".to_string(),
-            "1.2.0".to_string(),
-            "2.0.0".to_string(),
-        ];
-        sort_versions_desc(&mut versions);
-        assert_eq!(
-            versions,
-            vec![
-                "2.0.0".to_string(),
-                "1.10.0".to_string(),
-                "1.9.0".to_string(),
-                "1.2.0".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_sort_versions_desc_unparseable_sorts_lowest() {
-        let mut versions = vec![
-            "not-a-version".to_string(),
-            "1.10.0".to_string(),
-            "1.9.0".to_string(),
-        ];
-        sort_versions_desc(&mut versions);
-        // Valid semver first (newest→oldest), unparseable last.
-        assert_eq!(versions[0], "1.10.0");
-        assert_eq!(versions[1], "1.9.0");
-        assert_eq!(versions[2], "not-a-version");
-    }
 
     // ── HTTP-backed tests (mock server) ───────────────────────────────────────
 

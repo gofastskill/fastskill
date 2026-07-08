@@ -41,7 +41,6 @@ num_cpus.workspace = true
 tokio-util.workspace = true
 notify = { workspace = true, optional = true }
 walkdir.workspace = true
-fs2.workspace = true
 
 # Archive handling
 zip.workspace = true

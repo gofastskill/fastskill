@@ -120,12 +120,9 @@ pub async fn execute_serve(
         println!("  Write endpoints: disabled (read-only); pass --enable-write to enable");
     }
 
-    let server = fastskill_core::http::server::FastSkillServer::from_ref_with_write(
-        &service,
-        &args.host,
-        args.port,
-        args.enable_write,
-    );
+    let server =
+        fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, args.port)
+            .enable_write(args.enable_write);
 
     // Start the server (this will block until shutdown)
     server
