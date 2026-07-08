@@ -36,9 +36,16 @@ fn get_repository_manager(_service: &crate::core::service::FastSkillService) -> 
     RepositoryManager::from_definitions(Vec::new())
 }
 
+/// Builds a `SourcesManager` backed by a unique per-call temp directory.
+///
+/// SEC-9: the sources config file must live at a unique, unpredictable path
+/// (not a fixed shared `temp_dir()/fastskill-sources-temp.toml`) to avoid a
+/// local symlink/pre-create race. The returned `TempDir` owns that directory
+/// and MUST be kept alive by the caller for as long as the `SourcesManager` is
+/// used — dropping it deletes the backing file.
 async fn get_sources_manager_from_repos(
     repo_manager: &RepositoryManager,
-) -> Result<SourcesManager, String> {
+) -> Result<(SourcesManager, tempfile::TempDir), String> {
     use crate::core::repository::{RepositoryConfig, RepositoryType};
     use crate::core::sources::{SourceAuth, SourceConfig, SourceDefinition};
 
@@ -123,7 +130,11 @@ async fn get_sources_manager_from_repos(
         }
     }
 
-    let temp_path = std::env::temp_dir().join("fastskill-sources-temp.toml");
+    let temp_dir = tempfile::Builder::new()
+        .prefix("fastskill-sources-")
+        .tempdir()
+        .map_err(|e| format!("Failed to create temp dir for sources: {}", e))?;
+    let temp_path = temp_dir.path().join("sources.toml");
     let mut sources_manager = SourcesManager::new(temp_path);
 
     for source_def in marketplace_sources {
@@ -136,7 +147,7 @@ async fn get_sources_manager_from_repos(
             .map_err(|e| format!("Failed to add source: {}", e))?;
     }
 
-    Ok(sources_manager)
+    Ok((sources_manager, temp_dir))
 }
 
 /// GET /api/v1/registry/sources - List all configured sources/repositories
@@ -190,7 +201,7 @@ pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
             HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
@@ -277,7 +288,7 @@ pub async fn list_source_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SourceSkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
             HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
@@ -343,7 +354,7 @@ pub async fn get_marketplace(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<MarketplaceJson>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
             HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
@@ -377,7 +388,7 @@ pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
     let repo_manager = get_repository_manager(&state.service);
-    let sources_manager = get_sources_manager_from_repos(&repo_manager)
+    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
             HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))

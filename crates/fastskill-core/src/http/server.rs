@@ -4,13 +4,15 @@ use crate::core::service::FastSkillService;
 use crate::http::handlers::{
     manifest, registry, reindex, resolve, search, skills, status, AppState,
 };
+use crate::http::models::{ApiResponse, ErrorResponse};
 use axum::{
     body::Body,
-    extract::Request,
+    extract::{Request, State},
     http::{header, HeaderName, HeaderValue, Method, StatusCode},
-    response::Response,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Router,
+    Json, Router,
 };
 use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVersion, Stability};
 use include_dir::{include_dir, Dir};
@@ -25,6 +27,26 @@ use tracing::info;
 
 /// Static assets embedded at compile time
 static EMBEDDED_STATIC: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/http/static");
+
+/// Write-gate middleware (ADR-0003 / WRITE-GATE).
+///
+/// Applied only to mutating routes. When `AppState::enable_write` is false, it
+/// short-circuits with `403 Forbidden` and a plain message pointing the operator
+/// at `--enable-write`. When writes are enabled it passes the request through.
+async fn write_gate(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    if !state.enable_write {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ApiResponse::<()>::error(ErrorResponse {
+                code: "FORBIDDEN".to_string(),
+                message: "write operations disabled; start server with --enable-write".to_string(),
+                details: None,
+            })),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
 
 /// Serves embedded static files for the registry UI.
 async fn serve_embedded_static(req: Request) -> Result<Response, StatusCode> {
@@ -102,6 +124,18 @@ fn build_configured_cors_layer(
         allowed_origins.join(", ")
     );
 
+    // SEC-10: never combine a wildcard origin with credentialed CORS. A literal
+    // "*" in the origin list is inert for browsers when credentials are on
+    // (they reject `*` + credentials), so this configuration is a foot-gun that
+    // silently doesn't work. Fail loudly and fall back to deny-all instead.
+    if allowed_origins.iter().any(|o| o == "*") {
+        tracing::error!(
+            "CORS allowed_origins contains \"*\" which cannot be combined with credentials; \
+             denying all origins. Configure explicit origins instead of \"*\"."
+        );
+        return build_default_cors_layer();
+    }
+
     let header_names = match parse_headers(allowed_headers) {
         Ok(values) => values,
         Err(e) => {
@@ -154,10 +188,15 @@ pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLay
 pub struct FastSkillServer {
     service: Arc<FastSkillService>,
     addr: SocketAddr,
+    /// When false (default), mutating routes are gated and return 403 (ADR-0003).
+    enable_write: bool,
 }
 
 impl FastSkillServer {
-    /// Create a new server instance
+    /// Create a new read-only server instance.
+    ///
+    /// Mutating routes are gated off by default; call [`Self::enable_write`] to
+    /// turn them on.
     pub fn new(service: Arc<FastSkillService>, host: &str, port: u16) -> Self {
         let addr = match Self::parse_address(host, port) {
             Ok(addr) => addr,
@@ -167,7 +206,19 @@ impl FastSkillServer {
             }
         };
 
-        Self { service, addr }
+        Self {
+            service,
+            addr,
+            enable_write: false,
+        }
+    }
+
+    /// Choose whether mutating routes are enabled (ADR-0003 / WRITE-GATE).
+    ///
+    /// Mirrors `AppState::with_enable_write`.
+    pub fn enable_write(mut self, enable_write: bool) -> Self {
+        self.enable_write = enable_write;
+        self
     }
 
     /// Parse and normalize host:port into a SocketAddr
@@ -206,7 +257,10 @@ impl FastSkillServer {
         }
     }
 
-    /// Create a new server instance from an Arc-wrapped service reference
+    /// Create a new read-only server instance from an Arc-wrapped service reference.
+    ///
+    /// Mutating routes are gated off by default; call [`Self::enable_write`] to
+    /// turn them on.
     pub fn from_ref(service: &Arc<FastSkillService>, host: &str, port: u16) -> Self {
         let service_arc = Arc::clone(service);
 
@@ -221,38 +275,22 @@ impl FastSkillServer {
         Self {
             service: service_arc,
             addr,
+            enable_write: false,
         }
     }
 
-    /// Skill CRUD routes under /api/v1/ (prefix stripped for version host)
-    fn create_skill_routes_v1() -> Router<AppState> {
+    /// READ routes under /api/v1/ — pure reads, always mounted (ADR-0003).
+    ///
+    /// list/get skills, project view, search, resolve, status, the registry
+    /// browse (GET) routes, and the manifest read. Never mutate state.
+    fn create_read_routes_v1() -> Router<AppState> {
         Router::new()
             .route("/skills", get(skills::list_skills))
-            .route("/skills", post(skills::create_skill))
             .route("/skills/{id}", get(skills::get_skill))
-            .route("/skills/{id}", put(skills::update_skill))
-            .route("/skills/{id}", delete(skills::delete_skill))
-            .route("/skills/upgrade", post(skills::upgrade_skills))
             .route("/project", get(manifest::get_project))
-    }
-
-    /// Search and reindex routes under /api/v1/ (prefix stripped)
-    fn create_search_routes_v1() -> Router<AppState> {
-        Router::new()
             .route("/search", post(search::search_skills))
             .route("/resolve", post(resolve::resolve_context))
-            .route("/reindex", post(reindex::reindex_all))
-            .route("/reindex/{id}", post(reindex::reindex_skill))
-    }
-
-    /// Status route under /api/v1/ (prefix stripped)
-    fn create_status_routes_v1() -> Router<AppState> {
-        Router::new().route("/status", get(status::status))
-    }
-
-    /// Registry API routes under /api/v1/ (prefix stripped, axum 0.8 params)
-    fn create_registry_api_routes_v1() -> Router<AppState> {
-        Router::new()
+            .route("/status", get(status::status))
             .route("/registry/index/skills", get(registry::list_index_skills))
             .route("/registry/sources", get(registry::list_sources))
             .route("/registry/skills", get(registry::list_all_skills))
@@ -264,18 +302,23 @@ impl FastSkillServer {
                 "/registry/sources/{name}/marketplace",
                 get(registry::get_marketplace),
             )
-            .route("/registry/refresh", post(registry::refresh_sources))
-    }
-
-    /// Raw index routes for mount("/index") — paths relative to the mount point
-    fn create_registry_index_routes_v1() -> Router<AppState> {
-        Router::new().route("/{*skill_id}", get(registry::serve_index_file))
-    }
-
-    /// Manifest routes under /api/v1/ (prefix stripped, axum 0.8 params)
-    fn create_manifest_routes_v1() -> Router<AppState> {
-        Router::new()
             .route("/manifest/skills", get(manifest::list_manifest_skills))
+    }
+
+    /// WRITE routes under /api/v1/ — anything that is not a pure read (ADR-0003).
+    ///
+    /// These paths are ALWAYS registered but wrapped in the write-gate middleware
+    /// so they return 403 (not 404) when `--enable-write` is off. Includes:
+    /// delete/upgrade skills, reindex, registry refresh, and manifest mutators.
+    /// (`POST /skills` create + `PUT /skills/{id}` field-edit removed per
+    /// PARTIAL-1 / spec 003.)
+    fn create_write_routes_v1() -> Router<AppState> {
+        Router::new()
+            .route("/skills/{id}", delete(skills::delete_skill))
+            .route("/skills/upgrade", post(skills::upgrade_skills))
+            .route("/reindex", post(reindex::reindex_all))
+            .route("/reindex/{id}", post(reindex::reindex_skill))
+            .route("/registry/refresh", post(registry::refresh_sources))
             .route("/manifest/skills", post(manifest::add_skill_to_manifest))
             .route(
                 "/manifest/skills/{id}",
@@ -285,6 +328,11 @@ impl FastSkillServer {
                 "/manifest/skills/{id}",
                 delete(manifest::remove_skill_from_manifest),
             )
+    }
+
+    /// Raw index routes for mount("/index") — paths relative to the mount point
+    fn create_registry_index_routes_v1() -> Router<AppState> {
+        Router::new().route("/{*skill_id}", get(registry::serve_index_file))
     }
 
     /// UI static file routes (unchanged paths, used as root_fallback)
@@ -320,14 +368,18 @@ impl FastSkillServer {
                 cfg.skills_directory,
             );
         }
+        state = state.with_enable_write(self.enable_write);
+
+        // WRITE routes are always registered, but wrapped in the write-gate
+        // middleware so they return 403 (discoverable) rather than 404 when
+        // writes are disabled (ADR-0003 / WRITE-GATE).
+        let write_router = Self::create_write_routes_v1()
+            .route_layer(middleware::from_fn_with_state(state.clone(), write_gate));
 
         // Build versioned v1 router with compression (applied to fastskill routes only)
         let v1_router = Router::new()
-            .merge(Self::create_skill_routes_v1())
-            .merge(Self::create_search_routes_v1())
-            .merge(Self::create_status_routes_v1())
-            .merge(Self::create_manifest_routes_v1())
-            .merge(Self::create_registry_api_routes_v1())
+            .merge(Self::create_read_routes_v1())
+            .merge(write_router)
             .layer(TraceLayer::new_for_http())
             .layer(CompressionLayer::new())
             .with_state(state.clone());
@@ -367,14 +419,4 @@ impl FastSkillServer {
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }
-}
-
-/// Convenience function to create and start a server
-pub async fn serve(
-    service: Arc<FastSkillService>,
-    host: &str,
-    port: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let server = FastSkillServer::new(service, host, port);
-    server.serve().await
 }

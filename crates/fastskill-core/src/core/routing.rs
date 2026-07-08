@@ -10,7 +10,6 @@ use std::sync::Arc;
 pub struct RoutedSkill {
     pub skill_id: String,
     pub relevance_score: f32,
-    // Add other fields as needed
 }
 
 #[async_trait]
@@ -20,7 +19,6 @@ pub trait RoutingService: Send + Sync {
         query: &str,
         context: Option<QueryContext>,
     ) -> Result<Vec<RoutedSkill>, ServiceError>;
-    // Add other methods as needed
 }
 
 #[derive(Debug, Clone)]

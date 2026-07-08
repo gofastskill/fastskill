@@ -19,6 +19,7 @@ fastskill serve [OPTIONS]
 |--------|-------------|---------|
 | `--host <HOST>` | Host to bind the server to | `localhost` |
 | `--port <PORT>` | Port to bind the server to | `8080` |
+| `--enable-write` | Enable state-changing (write) endpoints. Off by default — the server is **read-only** unless this flag is passed. | `false` |
 
 ## Examples
 
@@ -34,14 +35,39 @@ fastskill serve
 fastskill serve --host 0.0.0.0 --port 3000
 ```
 
-## Authentication Model
+### Manage skills from the browser (enable writes)
 
-`fastskill serve` binds an HTTP server on your machine and does not enforce built-in JWT authentication.
+```bash
+fastskill serve --enable-write
+```
 
-- No token endpoint is exposed
-- API routes do not require `Authorization` or `x-api-key` headers
+## Read-only by default
 
-If you expose the server on a shared or untrusted network, use network controls or a reverse proxy.
+**Breaking change:** `fastskill serve` is **read-only by default**. Read endpoints (list/get skills,
+project, search, resolve, status, registry browse, the dashboard) are always available; every
+state-changing endpoint (see the *write* rows in [Core Endpoints](#core-endpoints)) is **disabled
+unless you start the server with `--enable-write`**.
+
+When writes are disabled, a request to a write endpoint returns:
+
+```
+HTTP 403 Forbidden
+{ "error": "write operations disabled; start server with --enable-write" }
+```
+
+Run `fastskill serve --enable-write` when you want to manage skills (install / update / remove) from
+the web UI or API on your own machine.
+
+## Security model
+
+`fastskill serve` is **not a security boundary**: it enforces no authentication of its own (no token
+endpoint; API routes require no `Authorization`/`x-api-key` header). It is designed to run
+**local-first** on your machine.
+
+If you expose the server on a shared or untrusted network, put an **authenticating reverse proxy or
+sidecar** in front of it and ensure the app port is not directly reachable — the proxy owns request
+authentication. Combined with the read-only default, this means an exposed instance without
+`--enable-write` cannot be used to mutate state even before the proxy is considered.
 
 ## API Base Path
 
@@ -76,22 +102,31 @@ Sending `SIGINT` (Ctrl-C) or `SIGTERM` causes the server to:
 
 ## Core Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/status` | GET | Service status and uptime |
-| `/api/v1/project` | GET | Project view from `skill-project.toml` |
-| `/api/v1/skills` | GET | List installed skills |
-| `/api/v1/skills` | POST | Install a skill |
-| `/api/v1/skills/{id}` | GET/PUT/DELETE | Get, update, or remove a skill |
-| `/api/v1/skills/upgrade` | POST | Upgrade skills |
-| `/api/v1/search` | POST | Search skills |
-| `/api/v1/reindex` | POST | Reindex all skills |
-| `/api/v1/reindex/{id}` | POST | Reindex a specific skill |
-| `/api/v1/registry/sources` | GET | List registry sources |
-| `/api/v1/manifest/skills` | GET/POST | Manifest skill management |
-| `/index/{*skill_id}` | GET | Raw skill index (unchanged) |
-| `/healthz` | GET | Liveness probe |
-| `/readyz` | GET | Readiness probe |
+Write endpoints (marked **write**) require `--enable-write`; without it they return HTTP 403.
+
+| Endpoint | Method | Access | Description |
+|----------|--------|--------|-------------|
+| `/api/v1/status` | GET | read | Service status and uptime |
+| `/api/v1/project` | GET | read | Project view from `skill-project.toml` |
+| `/api/v1/skills` | GET | read | List installed skills |
+| `/api/v1/skills/{id}` | GET | read | Get a skill |
+| `/api/v1/skills/{id}` | DELETE | **write** | Remove a skill |
+| `/api/v1/skills/upgrade` | POST | **write** | Update skills from their source |
+| `/api/v1/search` | POST | read | Search skills |
+| `/api/v1/resolve` | POST | read | Resolve context for a prompt |
+| `/api/v1/reindex` | POST | **write** | Reindex (returns 501 — run `fastskill reindex` from the CLI) |
+| `/api/v1/reindex/{id}` | POST | **write** | Reindex a skill (returns 501) |
+| `/api/v1/registry/sources` | GET | read | List registry sources |
+| `/api/v1/registry/refresh` | POST | **write** | Refresh registry sources |
+| `/api/v1/manifest/skills` | GET | read | List manifest skills |
+| `/api/v1/manifest/skills` | POST/PUT/DELETE | **write** | Manifest skill management |
+| `/index/{*skill_id}` | GET | read | Raw skill index (unchanged) |
+| `/healthz` | GET | read | Liveness probe |
+| `/readyz` | GET | read | Readiness probe |
+
+> **Removed:** `POST /api/v1/skills` (create) and `PUT /api/v1/skills/{id}` (edit) — a skill is a
+> multi-file directory, so it is installed from a source rather than authored via the API. Use the
+> install/update/remove flow (and the CLI `fastskill add`/`update`/`remove`).
 
 ## Redirect Behavior
 

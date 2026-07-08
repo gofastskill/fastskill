@@ -423,11 +423,6 @@ impl FastSkillService {
         self.vector_index_service.clone()
     }
 
-    /// Get tool calling service
-    pub fn tool_service(&self) -> Arc<dyn crate::core::tool_calling::ToolCallingService> {
-        Arc::new(crate::core::tool_calling::ToolCallingServiceImpl::new())
-    }
-
     /// Get routing service
     pub fn routing_service(&self) -> Arc<dyn crate::core::routing::RoutingService> {
         Arc::new(crate::core::routing::RoutingServiceImpl::new(

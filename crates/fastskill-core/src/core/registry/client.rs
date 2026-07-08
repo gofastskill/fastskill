@@ -154,12 +154,7 @@ impl RegistryClient {
     pub async fn get_versions(&self, name: &str) -> Result<Vec<String>, ServiceError> {
         let entries = self.get_skill(name).await?;
         let mut versions: Vec<String> = entries.iter().map(|e| e.vers.clone()).collect();
-        // Sort by semantic version (newest first)
-        versions.sort_by(|a, b| {
-            // Simple reverse string comparison for now
-            // TODO: Use semver crate for proper version comparison
-            b.cmp(a)
-        });
+        crate::core::version::sort_versions_desc(&mut versions);
         Ok(versions)
     }
 
@@ -282,5 +277,346 @@ impl RegistryClient {
         // This would be implemented by fetching a search endpoint or scanning index
         // For GitHub-based registries, we'd need to use GitHub API or clone the repo
         Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    // ── HTTP-backed tests (mock server) ───────────────────────────────────────
+
+    use crate::core::registry::config::{AuthConfig, RegistryConfig};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn config_for(index_url: &str, auth: Option<AuthConfig>) -> RegistryConfig {
+        RegistryConfig {
+            name: "test-registry".to_string(),
+            registry_type: "git".to_string(),
+            index_url: index_url.to_string(),
+            auth,
+            storage: None,
+        }
+    }
+
+    fn make_entry(name: &str, vers: &str, download_url: &str, cksum: &str) -> IndexEntry {
+        IndexEntry {
+            name: name.to_string(),
+            vers: vers.to_string(),
+            deps: Vec::new(),
+            cksum: cksum.to_string(),
+            features: HashMap::new(),
+            yanked: false,
+            links: None,
+            download_url: download_url.to_string(),
+            metadata: None,
+        }
+    }
+
+    /// Newline-delimited JSON index body from a slice of entries.
+    fn index_body(entries: &[IndexEntry]) -> String {
+        entries
+            .iter()
+            .map(|e| serde_json::to_string(e).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn test_new_without_auth() {
+        assert!(RegistryClient::new(config_for("http://example.com/index", None)).is_ok());
+    }
+
+    #[test]
+    fn test_new_with_each_auth_variant() {
+        for auth in [
+            AuthConfig::Pat {
+                env_var: "GITHUB_TOKEN".to_string(),
+            },
+            AuthConfig::Ssh {
+                key_path: "/tmp/key".into(),
+            },
+            AuthConfig::ApiKey {
+                env_var: "API_KEY".to_string(),
+            },
+        ] {
+            assert!(
+                RegistryClient::new(config_for("http://example.com/index", Some(auth))).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_index_url_trims_trailing_slash() {
+        let client = RegistryClient::new(config_for("http://example.com/index/", None)).unwrap();
+        assert_eq!(
+            client.get_index_url("scope/skill"),
+            "http://example.com/index/scope/skill"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_skill_success_multiple_versions() {
+        let server = MockServer::start().await;
+        let entries = vec![
+            make_entry("myskill", "1.0.0", "http://x/dl", "sha256:aa"),
+            make_entry("myskill", "1.2.0", "http://x/dl", "sha256:bb"),
+        ];
+        Mock::given(method("GET"))
+            .and(path("/myskill"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(index_body(&entries)))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let result = client.get_skill("myskill").await.unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_skill_404_returns_empty() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/missing"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let result = client.get_skill("missing").await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_skill_server_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/boom"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert!(client.get_skill("boom").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_skill_skips_malformed_lines() {
+        let server = MockServer::start().await;
+        let good =
+            serde_json::to_string(&make_entry("s", "1.0.0", "http://x/dl", "sha256:aa")).unwrap();
+        let body = format!("{}\n\nthis is not json\n{}", good, good);
+        Mock::given(method("GET"))
+            .and(path("/s"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let result = client.get_skill("s").await.unwrap();
+        // Two good lines parse; the blank and malformed lines are skipped.
+        assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_versions_sorted_desc() {
+        let server = MockServer::start().await;
+        let entries = vec![
+            make_entry("v", "1.9.0", "http://x/dl", "sha256:aa"),
+            make_entry("v", "1.10.0", "http://x/dl", "sha256:bb"),
+            make_entry("v", "1.2.0", "http://x/dl", "sha256:cc"),
+        ];
+        Mock::given(method("GET"))
+            .and(path("/v"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(index_body(&entries)))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let versions = client.get_versions("v").await.unwrap();
+        assert_eq!(versions, vec!["1.10.0", "1.9.0", "1.2.0"]);
+    }
+
+    async fn mount_index(server: &MockServer, name: &str, entries: &[IndexEntry]) {
+        Mock::given(method("GET"))
+            .and(path(format!("/{}", name)))
+            .respond_with(ResponseTemplate::new(200).set_body_string(index_body(entries)))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_version_excludes_prerelease() {
+        let server = MockServer::start().await;
+        let entries = vec![
+            make_entry("p", "1.0.0", "http://x/dl", "sha256:aa"),
+            make_entry("p", "2.0.0-rc1", "http://x/dl", "sha256:bb"),
+        ];
+        mount_index(&server, "p", &entries).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let latest = client.get_latest_version("p", false).await.unwrap();
+        assert_eq!(latest, Some("1.0.0".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_version_includes_prerelease() {
+        let server = MockServer::start().await;
+        let entries = vec![
+            make_entry("p", "1.0.0", "http://x/dl", "sha256:aa"),
+            make_entry("p", "2.0.0-rc1", "http://x/dl", "sha256:bb"),
+        ];
+        mount_index(&server, "p", &entries).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let latest = client.get_latest_version("p", true).await.unwrap();
+        assert_eq!(latest, Some("2.0.0-rc1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_version_empty_is_none() {
+        let server = MockServer::start().await;
+        mount_index(&server, "none", &[]).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert_eq!(
+            client.get_latest_version("none", false).await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_version_all_prerelease_is_none() {
+        let server = MockServer::start().await;
+        let entries = vec![make_entry("p", "1.0.0-alpha", "http://x/dl", "sha256:aa")];
+        mount_index(&server, "p", &entries).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert_eq!(client.get_latest_version("p", false).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_version_unparseable_fallback() {
+        let server = MockServer::start().await;
+        // Not a dash-containing string (so it passes the pre-release filter) but
+        // not valid semver either: exercises the "no semver parsed" fallback.
+        let entries = vec![make_entry("p", "notsemver", "http://x/dl", "sha256:aa")];
+        mount_index(&server, "p", &entries).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert_eq!(
+            client.get_latest_version("p", false).await.unwrap(),
+            Some("notsemver".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_version_found_and_not_found() {
+        let server = MockServer::start().await;
+        let entries = vec![make_entry("g", "1.0.0", "http://x/dl", "sha256:aa")];
+        mount_index(&server, "g", &entries).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert!(client.get_version("g", "1.0.0").await.unwrap().is_some());
+        assert!(client.get_version("g", "9.9.9").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_download_success_verifies_checksum() {
+        let server = MockServer::start().await;
+        let payload = b"skill-package-bytes";
+        let cksum = format!("sha256:{:x}", sha2::Sha256::digest(payload));
+        let dl_url = format!("{}/dl", server.uri());
+        let entries = vec![make_entry("d", "1.0.0", &dl_url, &cksum)];
+        mount_index(&server, "d", &entries).await;
+        Mock::given(method("GET"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let bytes = client.download("d", "1.0.0").await.unwrap();
+        assert_eq!(bytes, payload);
+    }
+
+    #[tokio::test]
+    async fn test_download_checksum_mismatch() {
+        let server = MockServer::start().await;
+        let dl_url = format!("{}/dl", server.uri());
+        let entries = vec![make_entry("d", "1.0.0", &dl_url, "sha256:deadbeef")];
+        mount_index(&server, "d", &entries).await;
+        Mock::given(method("GET"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"actual".to_vec()))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let result = client.download("d", "1.0.0").await;
+        assert!(matches!(result, Err(ServiceError::Custom(m)) if m.contains("Checksum mismatch")));
+    }
+
+    #[tokio::test]
+    async fn test_download_yanked_rejected() {
+        let server = MockServer::start().await;
+        let mut entry = make_entry("y", "1.0.0", "http://x/dl", "sha256:aa");
+        entry.yanked = true;
+        mount_index(&server, "y", &[entry]).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        let result = client.download("y", "1.0.0").await;
+        assert!(matches!(result, Err(ServiceError::Custom(m)) if m.contains("yanked")));
+    }
+
+    #[tokio::test]
+    async fn test_download_version_not_found() {
+        let server = MockServer::start().await;
+        mount_index(&server, "n", &[]).await;
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert!(client.download("n", "1.0.0").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_download_http_error() {
+        let server = MockServer::start().await;
+        let dl_url = format!("{}/dl", server.uri());
+        let entries = vec![make_entry("e", "1.0.0", &dl_url, "sha256:aa")];
+        mount_index(&server, "e", &entries).await;
+        Mock::given(method("GET"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
+        assert!(client.download("e", "1.0.0").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_returns_empty() {
+        let client = RegistryClient::new(config_for("http://example.com/index", None)).unwrap();
+        assert!(client.search("anything").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_skill_sends_auth_header_when_configured() {
+        use wiremock::matchers::header_exists;
+        // Set env so the PAT auth reports configured and emits an Authorization header.
+        std::env::set_var("FASTSKILL_TEST_PAT", "secret-token");
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/auth-skill"))
+            .and(header_exists("Authorization"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let client = RegistryClient::new(config_for(
+            &server.uri(),
+            Some(AuthConfig::Pat {
+                env_var: "FASTSKILL_TEST_PAT".to_string(),
+            }),
+        ))
+        .unwrap();
+        // Succeeds only if the Authorization header matcher matched.
+        let result = client.get_skill("auth-skill").await.unwrap();
+        assert!(result.is_empty());
+        std::env::remove_var("FASTSKILL_TEST_PAT");
     }
 }

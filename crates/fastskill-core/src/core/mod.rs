@@ -22,7 +22,6 @@ pub mod routing;
 pub mod service;
 pub mod skill_manager;
 pub mod sources;
-pub mod tool_calling;
 pub mod update;
 pub mod validation;
 pub mod vector_index;
@@ -106,9 +105,6 @@ pub use sources::{
     SourcesConfig, SourcesError, SourcesManager,
 };
 
-// tool_calling
-pub use tool_calling::{AvailableTool, ToolCallingService, ToolCallingServiceImpl, ToolResult};
-
 // update
 pub use update::{UpdateError, UpdateInfo, UpdateService, UpdateStrategy};
 
@@ -122,7 +118,9 @@ pub use validation::{
 pub use vector_index::{IndexedSkill, SkillMatch, VectorIndexService, VectorIndexServiceImpl};
 
 // version
-pub use version::{compare_versions, is_newer, VersionConstraint, VersionError};
+pub use version::{
+    compare_versions, is_newer, newest_version, sort_versions_desc, VersionConstraint, VersionError,
+};
 
 // version_bump
 pub use version_bump::{

@@ -59,6 +59,9 @@ pub async fn create_client(
 pub struct MarketplaceRepositoryClient {
     sources_manager: SourcesManager,
     source_name: String,
+    /// Unique per-client temp dir backing `sources_manager`. Held so it is not
+    /// cleaned up while the client is alive; dropped (and removed) with the client.
+    _temp_dir: tempfile::TempDir,
 }
 
 impl MarketplaceRepositoryClient {
@@ -125,8 +128,17 @@ impl MarketplaceRepositoryClient {
             }
         };
 
-        // Create a temporary sources manager with just this source
-        let temp_path = std::env::temp_dir().join(format!("fastskill-repo-{}", repo.name));
+        // Create a temporary sources manager with just this source.
+        // Use a unique per-operation temp dir (kept alive for this client's
+        // lifetime) instead of a predictable, world-readable shared path, so a
+        // local user cannot pre-create/symlink it to influence source resolution.
+        let temp_dir = tempfile::Builder::new()
+            .prefix("fastskill-repo-")
+            .tempdir()
+            .map_err(|e| {
+                ServiceError::Custom(format!("Failed to create temp dir for repository: {}", e))
+            })?;
+        let temp_path = temp_dir.path().join("sources.toml");
         let mut sources_manager = SourcesManager::new(temp_path);
         sources_manager
             .load()
@@ -145,6 +157,7 @@ impl MarketplaceRepositoryClient {
         Ok(Self {
             sources_manager,
             source_name: repo.name.clone(),
+            _temp_dir: temp_dir,
         })
     }
 }
@@ -519,5 +532,427 @@ impl RepositoryClient for CratesRegistryClient {
             .await
             .map_err(RepositoryClientError::Service)?;
         Ok(versions)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::core::registry_index::SkillSummary;
+    use crate::core::repository::{
+        RepositoryAuth, RepositoryConfig, RepositoryDefinition, RepositoryType,
+    };
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn http_registry(index_url: &str, auth: Option<RepositoryAuth>) -> RepositoryDefinition {
+        RepositoryDefinition {
+            name: "reg".to_string(),
+            repo_type: RepositoryType::HttpRegistry,
+            priority: 0,
+            config: RepositoryConfig::HttpRegistry {
+                index_url: index_url.to_string(),
+            },
+            auth,
+            storage: None,
+        }
+    }
+
+    fn marketplace(config: RepositoryConfig, auth: Option<RepositoryAuth>) -> RepositoryDefinition {
+        RepositoryDefinition {
+            name: "mp".to_string(),
+            repo_type: match &config {
+                RepositoryConfig::ZipUrl { .. } => RepositoryType::ZipUrl,
+                RepositoryConfig::Local { .. } => RepositoryType::Local,
+                _ => RepositoryType::GitMarketplace,
+            },
+            priority: 0,
+            config,
+            auth,
+            storage: None,
+        }
+    }
+
+    // ── RepositoryClientError ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_repository_client_error_display() {
+        let e = RepositoryClientError::Client("boom".to_string());
+        assert_eq!(e.to_string(), "Client error: boom");
+        assert_eq!(
+            RepositoryClientError::NotImplemented.to_string(),
+            "Not implemented for this repository type"
+        );
+        let from_service: RepositoryClientError = ServiceError::Custom("svc".to_string()).into();
+        assert!(from_service.to_string().contains("Repository error"));
+    }
+
+    // ── create_client ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_create_client_http_registry() {
+        let client = create_client(&http_registry("http://example.com/index", None))
+            .await
+            .unwrap();
+        // A default fetch against a non-existent host errors (not a panic).
+        assert!(client.download("a", "1.0.0").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_client_marketplace_variants() {
+        let tmp = tempfile::tempdir().unwrap();
+        for cfg in [
+            RepositoryConfig::GitMarketplace {
+                url: "https://github.com/org/mp".to_string(),
+                branch: None,
+                tag: None,
+            },
+            RepositoryConfig::ZipUrl {
+                base_url: "https://example.com/base".to_string(),
+            },
+            RepositoryConfig::Local {
+                path: tmp.path().to_path_buf(),
+            },
+        ] {
+            assert!(create_client(&marketplace(cfg, None)).await.is_ok());
+        }
+    }
+
+    // ── MarketplaceRepositoryClient::new ──────────────────────────────────────
+
+    #[test]
+    fn test_marketplace_new_with_auth_variants() {
+        // Git marketplace + PAT auth.
+        assert!(MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::GitMarketplace {
+                url: "https://github.com/org/mp".to_string(),
+                branch: Some("main".to_string()),
+                tag: None,
+            },
+            Some(RepositoryAuth::Pat {
+                env_var: "TOK".to_string(),
+            }),
+        ))
+        .is_ok());
+
+        // ZIP URL + Basic auth.
+        assert!(MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::ZipUrl {
+                base_url: "https://example.com/base".to_string(),
+            },
+            Some(RepositoryAuth::Basic {
+                username: "u".to_string(),
+                password_env: "P".to_string(),
+            }),
+        ))
+        .is_ok());
+
+        // Git marketplace + SshKey auth.
+        assert!(MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::GitMarketplace {
+                url: "https://github.com/org/mp".to_string(),
+                branch: None,
+                tag: None,
+            },
+            Some(RepositoryAuth::SshKey {
+                path: "/tmp/key".into(),
+            }),
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn test_marketplace_new_rejects_http_registry_config() {
+        let repo = RepositoryDefinition {
+            name: "x".to_string(),
+            repo_type: RepositoryType::GitMarketplace,
+            priority: 0,
+            config: RepositoryConfig::HttpRegistry {
+                index_url: "http://example.com/index".to_string(),
+            },
+            auth: None,
+            storage: None,
+        };
+        assert!(MarketplaceRepositoryClient::new(&repo).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_download_not_implemented() {
+        let tmp = tempfile::tempdir().unwrap();
+        let client = MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::Local {
+                path: tmp.path().to_path_buf(),
+            },
+            None,
+        ))
+        .unwrap();
+        assert!(matches!(
+            client.download("a", "1.0.0").await,
+            Err(RepositoryClientError::NotImplemented)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_get_skill_invalid_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let client = MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::Local {
+                path: tmp.path().to_path_buf(),
+            },
+            None,
+        ))
+        .unwrap();
+        // Empty id fails SkillId validation before any I/O.
+        assert!(client.get_skill("", None).await.is_err());
+        assert!(client.get_versions("").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_local_list_get_search_versions() {
+        // A Local source scans a directory tree for SKILL.md files.
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\nversion: \"1.0.0\"\ndescription: A local marketplace skill\n---\n",
+        )
+        .unwrap();
+
+        let client = MarketplaceRepositoryClient::new(&marketplace(
+            RepositoryConfig::Local {
+                path: tmp.path().to_path_buf(),
+            },
+            None,
+        ))
+        .unwrap();
+
+        let skills = client.list_skills().await.unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].id.to_string(), "my-skill");
+
+        let got = client.get_skill("my-skill", None).await.unwrap();
+        assert!(got.is_some());
+        // A non-matching version filters it out.
+        assert!(client
+            .get_skill("my-skill", Some("9.9.9"))
+            .await
+            .unwrap()
+            .is_none());
+
+        let found = client.search("local").await.unwrap();
+        assert_eq!(found.len(), 1);
+        let none = client.search("zzzz-nomatch").await.unwrap();
+        assert!(none.is_empty());
+
+        let versions = client.get_versions("my-skill").await.unwrap();
+        assert_eq!(versions, vec!["1.0.0"]);
+    }
+
+    // ── CratesRegistryClient::new ─────────────────────────────────────────────
+
+    #[test]
+    fn test_crates_new_success_and_auth_variants() {
+        for auth in [
+            None,
+            Some(RepositoryAuth::Pat {
+                env_var: "T".to_string(),
+            }),
+            Some(RepositoryAuth::Ssh {
+                key_path: "/tmp/k".into(),
+            }),
+            Some(RepositoryAuth::ApiKey {
+                env_var: "K".to_string(),
+            }),
+            // Basic is unsupported here → falls back to a PAT default.
+            Some(RepositoryAuth::Basic {
+                username: "u".to_string(),
+                password_env: "P".to_string(),
+            }),
+        ] {
+            assert!(
+                CratesRegistryClient::new(&http_registry("http://example.com/index", auth)).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn test_crates_new_empty_index_url() {
+        assert!(CratesRegistryClient::new(&http_registry("   ", None)).is_err());
+    }
+
+    #[test]
+    fn test_crates_new_invalid_index_url() {
+        assert!(CratesRegistryClient::new(&http_registry("not a url", None)).is_err());
+    }
+
+    #[test]
+    fn test_crates_new_requires_http_registry_config() {
+        let repo = marketplace(
+            RepositoryConfig::ZipUrl {
+                base_url: "https://example.com".to_string(),
+            },
+            None,
+        );
+        assert!(CratesRegistryClient::new(&repo).is_err());
+    }
+
+    // ── CratesRegistryClient::fetch_skills ────────────────────────────────────
+
+    const SKILLS_PATH: &str = "/api/v1/registry/index/skills";
+
+    fn summary(id: &str) -> SkillSummary {
+        SkillSummary {
+            id: id.to_string(),
+            scope: "scope".to_string(),
+            name: id.to_string(),
+            description: "a skill".to_string(),
+            latest_version: "1.0.0".to_string(),
+            published_at: None,
+            versions: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_skills_success_and_list_skills() {
+        let server = MockServer::start().await;
+        let body = serde_json::to_string(&vec![summary("alpha"), summary("beta")]).unwrap();
+        Mock::given(method("GET"))
+            .and(path(SKILLS_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = CratesRegistryClient::new(&http_registry(&server.uri(), None)).unwrap();
+        let summaries = client
+            .fetch_skills(&ListSkillsOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), 2);
+
+        // list_skills converts summaries to SkillMetadata.
+        let metadata = client.list_skills().await.unwrap();
+        assert_eq!(metadata.len(), 2);
+        assert_eq!(metadata[0].version, "1.0.0");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_skills_with_query_params() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(SKILLS_PATH))
+            .and(query_param("scope", "myscope"))
+            .and(query_param("all_versions", "true"))
+            .and(query_param("include_pre_release", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
+            .mount(&server)
+            .await;
+
+        let client = CratesRegistryClient::new(&http_registry(&server.uri(), None)).unwrap();
+        let options = ListSkillsOptions {
+            scope: Some("myscope".to_string()),
+            all_versions: true,
+            include_pre_release: true,
+        };
+        let result = client.fetch_skills(&options).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    async fn assert_status_maps_to_err(status: u16) {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(SKILLS_PATH))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&server)
+            .await;
+        let client = CratesRegistryClient::new(&http_registry(&server.uri(), None)).unwrap();
+        assert!(
+            client
+                .fetch_skills(&ListSkillsOptions::default())
+                .await
+                .is_err(),
+            "status {} should map to an error",
+            status
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_skills_error_statuses() {
+        for status in [400u16, 401, 403, 404, 500, 503, 418] {
+            assert_status_maps_to_err(status).await;
+        }
+    }
+
+    // ── CratesRegistryClient delegation (get_skill/get_versions/download) ──────
+
+    #[tokio::test]
+    async fn test_crates_get_skill_and_versions_and_download() {
+        use crate::core::registry::client::IndexEntry;
+        use sha2::Digest;
+
+        let server = MockServer::start().await;
+        let payload = b"pkg-bytes";
+        let cksum = format!("sha256:{:x}", sha2::Sha256::digest(payload));
+        let dl_url = format!("{}/dl", server.uri());
+
+        let entry = IndexEntry {
+            name: "myskill".to_string(),
+            vers: "1.0.0".to_string(),
+            deps: Vec::new(),
+            cksum,
+            features: std::collections::HashMap::new(),
+            yanked: false,
+            links: None,
+            download_url: dl_url,
+            metadata: None,
+        };
+        let body = serde_json::to_string(&entry).unwrap();
+
+        Mock::given(method("GET"))
+            .and(path("/myskill"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&server)
+            .await;
+
+        let client = CratesRegistryClient::new(&http_registry(&server.uri(), None)).unwrap();
+
+        let skill = client.get_skill("myskill", Some("1.0.0")).await.unwrap();
+        assert!(skill.is_some());
+        assert_eq!(skill.unwrap().version, "1.0.0");
+
+        // Latest-version path (version = None).
+        assert!(client.get_skill("myskill", None).await.unwrap().is_some());
+
+        let versions = client.get_versions("myskill").await.unwrap();
+        assert_eq!(versions, vec!["1.0.0"]);
+
+        let bytes = client.download("myskill", "1.0.0").await.unwrap();
+        assert_eq!(bytes, payload);
+    }
+
+    #[tokio::test]
+    async fn test_crates_get_skill_not_found_is_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/nope"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client = CratesRegistryClient::new(&http_registry(&server.uri(), None)).unwrap();
+        assert!(client.get_skill("nope", None).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_crates_search_delegates_empty() {
+        // RegistryClient::search currently returns empty without HTTP.
+        let client =
+            CratesRegistryClient::new(&http_registry("http://example.com/index", None)).unwrap();
+        assert!(client.search("q").await.unwrap().is_empty());
     }
 }

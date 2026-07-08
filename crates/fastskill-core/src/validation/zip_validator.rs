@@ -1,6 +1,7 @@
 //! ZIP package validation implementation
 
 use crate::core::service::ServiceError;
+use crate::storage::zip::ZipHandler;
 use std::path::Path;
 
 pub struct ZipValidator;
@@ -16,9 +17,15 @@ impl ZipValidator {
         Self
     }
 
-    /// Validate ZIP package
-    pub async fn validate_zip_package(&self, _zip_path: &Path) -> Result<(), ServiceError> {
-        Ok(())
+    /// Validate ZIP package.
+    ///
+    /// Runs the entry-count / declared-size / compression-ratio pre-flight checks
+    /// (SEC-3) so an oversized or bomb-shaped archive is rejected before extraction.
+    ///
+    /// Delegates to [`ZipHandler::validate_package`], which owns the single
+    /// open + construct + preflight implementation.
+    pub async fn validate_zip_package(&self, zip_path: &Path) -> Result<(), ServiceError> {
+        ZipHandler::new()?.validate_package(zip_path).await
     }
 }
 
@@ -26,9 +33,35 @@ impl ZipValidator {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::fs;
+    use crate::storage::zip::{MAX_ENTRIES, MAX_ENTRY_UNCOMPRESSED};
+    use std::fs::File;
+    use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+
+    fn write_zip(entries: &[(&str, &[u8])]) -> (TempDir, PathBuf) {
+        let temp_dir = TempDir::new().unwrap();
+        let zip_path = temp_dir.path().join("test.zip");
+        let file = File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, content) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(content).unwrap();
+        }
+        zip.finish().unwrap();
+        (temp_dir, zip_path)
+    }
+
+    #[tokio::test]
+    async fn test_validate_zip_package_valid() {
+        let (_t, zip_path) = write_zip(&[("SKILL.md", b"content")]);
+        let validator = ZipValidator::new();
+        let result = validator.validate_zip_package(&zip_path).await;
+        assert!(result.is_ok(), "valid small zip should pass: {result:?}");
+    }
 
     #[tokio::test]
     async fn test_validate_zip_package_nonexistent_file() {
@@ -36,50 +69,60 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let zip_path = temp_dir.path().join("nonexistent.zip");
 
-        // Current implementation returns Ok even for nonexistent files
+        // Now surfaces an I/O error for a missing file.
         let result = validator.validate_zip_package(&zip_path).await;
-        assert!(result.is_ok());
+        assert!(matches!(result, Err(ServiceError::Io(_))));
     }
 
     #[tokio::test]
-    async fn test_validate_zip_package_existing_file() {
+    async fn test_validate_zip_package_not_a_zip() {
         let validator = ZipValidator::new();
         let temp_dir = TempDir::new().unwrap();
         let zip_path = temp_dir.path().join("test.zip");
-
-        // Create a dummy file (not a real ZIP, but tests current stub behavior)
-        fs::write(&zip_path, b"dummy content").unwrap();
+        std::fs::write(&zip_path, b"dummy content").unwrap();
 
         let result = validator.validate_zip_package(&zip_path).await;
-        assert!(result.is_ok());
+        assert!(matches!(result, Err(ServiceError::Validation(_))));
     }
 
     #[tokio::test]
-    async fn test_validate_zip_package_empty_path() {
+    async fn test_validate_zip_package_rejects_oversized_entry() {
+        let big = vec![b'x'; (MAX_ENTRY_UNCOMPRESSED as usize) + 4096];
+        let (_t, zip_path) = write_zip(&[("big.bin", &big)]);
         let validator = ZipValidator::new();
-        let zip_path = PathBuf::from("");
-
         let result = validator.validate_zip_package(&zip_path).await;
-        assert!(result.is_ok());
+        match result {
+            Err(ServiceError::Validation(msg)) => assert!(msg.contains("per-entry")),
+            other => unreachable!("expected Validation error, got {other:?}"),
+        }
     }
 
     #[tokio::test]
-    async fn test_zip_validator_new() {
-        let validator = ZipValidator::new();
+    async fn test_validate_zip_package_rejects_too_many_entries() {
         let temp_dir = TempDir::new().unwrap();
-        let zip_path = temp_dir.path().join("test.zip");
+        let zip_path = temp_dir.path().join("many.zip");
+        let file = File::create(&zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for i in 0..(MAX_ENTRIES + 1) {
+            zip.start_file(format!("f{i}.txt"), options).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        zip.finish().unwrap();
 
+        let validator = ZipValidator::new();
         let result = validator.validate_zip_package(&zip_path).await;
-        assert!(result.is_ok());
+        match result {
+            Err(ServiceError::Validation(msg)) => assert!(msg.contains("too many entries")),
+            other => unreachable!("expected Validation error, got {other:?}"),
+        }
     }
 
     #[tokio::test]
     async fn test_zip_validator_default() {
         #[allow(clippy::default_constructed_unit_structs)]
         let validator = ZipValidator::default();
-        let temp_dir = TempDir::new().unwrap();
-        let zip_path = temp_dir.path().join("test.zip");
-
+        let (_t, zip_path) = write_zip(&[("SKILL.md", b"x")]);
         let result = validator.validate_zip_package(&zip_path).await;
         assert!(result.is_ok());
     }

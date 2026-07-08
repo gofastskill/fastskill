@@ -89,13 +89,7 @@ impl ProjectSkillsLock {
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::WouldBlock {
-                LockError::FileLocked(path.to_path_buf())
-            } else {
-                LockError::Io(e)
-            }
-        })?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(LockError::Io)?;
         Ok(())
     }
 
@@ -276,13 +270,7 @@ impl GlobalSkillsLock {
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
             toml::to_string_pretty(&lock).map_err(|e| LockError::Serialize(e.to_string()))?;
-        crate::utils::atomic_write(path, content.as_bytes()).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::WouldBlock {
-                LockError::FileLocked(path.to_path_buf())
-            } else {
-                LockError::Io(e)
-            }
-        })?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(LockError::Io)?;
         Ok(())
     }
 
@@ -424,7 +412,7 @@ fn build_skill_source(skill: &SkillDefinition) -> SkillSource {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::core::service::SkillId;
@@ -652,72 +640,25 @@ depth = 0
     }
 
     #[test]
-    fn test_file_lock_contention_returns_error() {
-        use fs2::FileExt;
-
-        let tmp = TempDir::new().unwrap();
-        let sidecar = tmp.path().join("skills.lock.lock");
-
-        // Acquire the advisory lock from this thread
-        let holder = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&sidecar)
-            .unwrap();
-        holder.lock_exclusive().unwrap();
-
-        // Attempting to acquire again (try_lock) should fail
-        let contender = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&sidecar)
-            .unwrap();
-
-        // try_lock_exclusive should return an error when the lock is already held
-        let result = contender.try_lock_exclusive();
-        assert!(
-            result.is_err(),
-            "try_lock_exclusive must fail when lock is held"
-        );
-
-        holder.unlock().unwrap();
-    }
-
-    #[test]
-    fn test_save_to_file_returns_file_locked_when_tmp_locked() {
-        use fs2::FileExt;
-
+    fn test_save_to_file_is_last_writer_wins() {
+        // BUG-8: atomic_write now uses a unique temp file + atomic rename (no advisory
+        // lock on a shared `.tmp`), so concurrent/sequential writers no longer error —
+        // the file is always a complete copy of some writer's content (last-writer-wins).
         let tmp = TempDir::new().unwrap();
         let lock_path = tmp.path().join("skills.lock");
-        let tmp_path = crate::utils::append_suffix(&lock_path, "tmp");
 
-        // Acquire exclusive lock on the .tmp file before calling save_to_file
-        let holder = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&tmp_path)
-            .unwrap();
-        holder.lock_exclusive().unwrap();
+        let mut first = ProjectSkillsLock::new_empty();
+        first.update_skill(&make_skill("first-skill"));
+        first.save_to_file(&lock_path).expect("first save succeeds");
 
-        let mut skills_lock = ProjectSkillsLock::new_empty();
-        skills_lock.update_skill(&make_skill("test-skill"));
+        let mut second = ProjectSkillsLock::new_empty();
+        second.update_skill(&make_skill("second-skill"));
+        second
+            .save_to_file(&lock_path)
+            .expect("second save overwrites without error");
 
-        let result = skills_lock.save_to_file(&lock_path);
-
-        // Should return FileLocked error since .tmp is already locked
-        assert!(
-            result.is_err(),
-            "save_to_file must fail when .tmp file is locked"
-        );
-        assert!(
-            matches!(result, Err(LockError::FileLocked(_))),
-            "error must be LockError::FileLocked, got: {:?}",
-            result
-        );
-
-        holder.unlock().unwrap();
+        // Last write wins: the file is a complete copy of the second writer's content.
+        let reloaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+        assert_eq!(reloaded.skills.len(), 1);
     }
 }

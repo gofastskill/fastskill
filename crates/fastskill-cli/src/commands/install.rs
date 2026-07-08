@@ -253,7 +253,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
     // Initialize service
     // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(false, None, None)?;
+    let config = create_service_config(false, None)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;

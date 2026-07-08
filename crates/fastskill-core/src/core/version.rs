@@ -1,28 +1,26 @@
 //! Version constraint parsing and evaluation
+//!
+//! Constraints are backed by [`semver::VersionReq`], which correctly handles
+//! caret 0.x semantics, strict `<`/`>` bounds, two-component `^1.2`/`~1.2`,
+//! and comma ranges (BUG-2/3/4/5).
+//!
+//! **CRITICAL — see [ADR-0004](../../../../docs/adr/0004-bare-version-is-exact.md):**
+//! a *bare* `MAJOR.MINOR.PATCH` (no operator, no comma) is an **exact pin**, not a
+//! caret range. `VersionReq::parse("1.2.3")` would apply Cargo caret semantics
+//! (`>=1.2.3,<2.0.0`), so [`normalize_constraint`] rewrites a bare full version to
+//! `=MAJOR.MINOR.PATCH` before parsing. Do **not** remove that normalization —
+//! deleting it silently widens every committed bare pin from "exactly X" to a range.
 
 use semver::{Version, VersionReq};
 use thiserror::Error;
 
-/// Version constraint types
+/// A version constraint, backed by a `semver::VersionReq`.
+///
+/// Parse via [`VersionConstraint::parse`]; test candidates via
+/// [`VersionConstraint::satisfies`]. An empty string or `"*"` matches any version.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VersionConstraint {
-    /// Exact version match (e.g., "1.2.3")
-    Exact(String),
-    /// Caret constraint (e.g., "^1.2.3" matches >=1.2.3 <2.0.0)
-    Caret(String),
-    /// Tilde constraint (e.g., "~1.2.0" matches >=1.2.0 <1.3.0)
-    Tilde(String),
-    /// Greater than or equal (e.g., ">=1.0.0")
-    GreaterEqual(String),
-    /// Less than or equal (e.g., "<=2.0.0")
-    LessEqual(String),
-    /// Range constraint (e.g., ">=1.0.0,<2.0.0")
-    Range {
-        min: Option<String>,
-        max: Option<String>,
-    },
-    /// Any version (no constraint)
-    Any,
+pub struct VersionConstraint {
+    req: VersionReq,
 }
 
 /// Errors related to version constraints
@@ -38,178 +36,53 @@ pub enum VersionError {
     ParseError(String),
 }
 
+/// Normalize a raw constraint string so that a bare `MAJOR.MINOR.PATCH` becomes an
+/// exact pin (`=MAJOR.MINOR.PATCH`).
+///
+/// ⚠ **See [ADR-0004]. Do not remove this normalization.** Without it, a bare
+/// `"1.2.3"` would be parsed by `VersionReq` as Cargo caret (`>=1.2.3,<2.0.0`),
+/// silently widening every committed bare pin. Only a *full* three-component bare
+/// version with no leading operator and no comma is rewritten — operators (`^ ~ > <
+/// = *`), comma ranges, and two-component forms like `1.2` (caret) are left untouched
+/// to preserve their existing meaning.
+///
+/// [ADR-0004]: ../../../../docs/adr/0004-bare-version-is-exact.md
+fn normalize_constraint(constraint: &str) -> String {
+    // Only a bare full version (no operator, no comma) is treated as an exact pin.
+    let has_operator = constraint.starts_with(['^', '~', '>', '<', '=', '*']);
+    if !has_operator && !constraint.contains(',') && Version::parse(constraint).is_ok() {
+        return format!("={}", constraint);
+    }
+    constraint.to_string()
+}
+
 impl VersionConstraint {
-    /// Parse a version constraint string
+    /// Parse a version constraint string.
+    ///
+    /// - empty / `"*"` → matches any version
+    /// - bare `1.2.3` → **exact** pin (`=1.2.3`, per ADR-0004)
+    /// - operators `^ ~ >= <= < >` and comma ranges → native `VersionReq` semantics
     pub fn parse(constraint: &str) -> Result<Self, VersionError> {
         let constraint = constraint.trim();
 
         if constraint.is_empty() || constraint == "*" {
-            return Ok(VersionConstraint::Any);
+            return Ok(VersionConstraint {
+                req: VersionReq::STAR,
+            });
         }
 
-        // Exact version
-        if !constraint.starts_with('^')
-            && !constraint.starts_with('~')
-            && !constraint.starts_with('>')
-            && !constraint.starts_with('<')
-            && !constraint.contains(',')
-        {
-            // Try to parse as exact version
-            if Version::parse(constraint).is_ok() {
-                return Ok(VersionConstraint::Exact(constraint.to_string()));
-            }
-        }
-
-        // Caret constraint (^1.2.3)
-        if constraint.starts_with('^') {
-            let version = constraint.trim_start_matches('^').trim();
-            if Version::parse(version).is_ok() {
-                return Ok(VersionConstraint::Caret(version.to_string()));
-            }
-        }
-
-        // Tilde constraint (~1.2.0)
-        if constraint.starts_with('~') {
-            let version = constraint.trim_start_matches('~').trim();
-            if Version::parse(version).is_ok() {
-                return Ok(VersionConstraint::Tilde(version.to_string()));
-            }
-        }
-
-        // Greater than or equal (>=1.0.0)
-        if constraint.starts_with(">=") {
-            let version = constraint.trim_start_matches(">=").trim();
-            if Version::parse(version).is_ok() {
-                return Ok(VersionConstraint::GreaterEqual(version.to_string()));
-            }
-        }
-
-        // Less than or equal (<=2.0.0)
-        if constraint.starts_with("<=") {
-            let version = constraint.trim_start_matches("<=").trim();
-            if Version::parse(version).is_ok() {
-                return Ok(VersionConstraint::LessEqual(version.to_string()));
-            }
-        }
-
-        // Range constraint (>=1.0.0,<2.0.0)
-        if constraint.contains(',') {
-            let parts: Vec<&str> = constraint.split(',').map(|s| s.trim()).collect();
-            let mut min = None;
-            let mut max = None;
-
-            for part in parts {
-                if part.starts_with(">=") {
-                    let version = part.trim_start_matches(">=").trim();
-                    if Version::parse(version).is_ok() {
-                        min = Some(version.to_string());
-                    }
-                } else if part.starts_with("<=") {
-                    let version = part.trim_start_matches("<=").trim();
-                    if Version::parse(version).is_ok() {
-                        max = Some(version.to_string());
-                    }
-                } else if part.starts_with('<') {
-                    let version = part.trim_start_matches('<').trim();
-                    if Version::parse(version).is_ok() {
-                        max = Some(version.to_string());
-                    }
-                } else if part.starts_with('>') {
-                    let version = part.trim_start_matches('>').trim();
-                    if Version::parse(version).is_ok() {
-                        min = Some(version.to_string());
-                    }
-                }
-            }
-
-            return Ok(VersionConstraint::Range { min, max });
-        }
-
-        // Try to parse as semver requirement
-        if let Ok(req) = VersionReq::parse(constraint) {
-            // Convert to our constraint type
-            let req_str = req.to_string();
-            if req_str.starts_with('^') {
-                return Ok(VersionConstraint::Caret(
-                    req_str.trim_start_matches('^').to_string(),
-                ));
-            } else if req_str.starts_with('~') {
-                return Ok(VersionConstraint::Tilde(
-                    req_str.trim_start_matches('~').to_string(),
-                ));
-            } else if req_str.starts_with(">=") {
-                return Ok(VersionConstraint::GreaterEqual(
-                    req_str.trim_start_matches(">=").to_string(),
-                ));
-            }
-        }
-
-        Err(VersionError::InvalidConstraint(constraint.to_string()))
+        let normalized = normalize_constraint(constraint);
+        let req = VersionReq::parse(&normalized)
+            .map_err(|_| VersionError::InvalidConstraint(constraint.to_string()))?;
+        Ok(VersionConstraint { req })
     }
 
-    /// Check if a version satisfies this constraint
+    /// Check if a version satisfies this constraint.
     pub fn satisfies(&self, version: &str) -> Result<bool, VersionError> {
         let ver = Version::parse(version).map_err(|e| {
             VersionError::ParseError(format!("Failed to parse version '{}': {}", version, e))
         })?;
-
-        match self {
-            VersionConstraint::Exact(exact) => {
-                let exact_ver = Version::parse(exact).map_err(|e| {
-                    VersionError::ParseError(format!("Invalid exact version '{}': {}", exact, e))
-                })?;
-                Ok(ver == exact_ver)
-            }
-            VersionConstraint::Caret(base) => {
-                let base_ver = Version::parse(base).map_err(|e| {
-                    VersionError::ParseError(format!("Invalid caret base '{}': {}", base, e))
-                })?;
-                // ^1.2.3 means >=1.2.3 <2.0.0
-                Ok(ver >= base_ver && ver.major == base_ver.major)
-            }
-            VersionConstraint::Tilde(base) => {
-                let base_ver = Version::parse(base).map_err(|e| {
-                    VersionError::ParseError(format!("Invalid tilde base '{}': {}", base, e))
-                })?;
-                // ~1.2.0 means >=1.2.0 <1.3.0
-                Ok(ver >= base_ver && ver.major == base_ver.major && ver.minor == base_ver.minor)
-            }
-            VersionConstraint::GreaterEqual(min) => {
-                let min_ver = Version::parse(min).map_err(|e| {
-                    VersionError::ParseError(format!("Invalid min version '{}': {}", min, e))
-                })?;
-                Ok(ver >= min_ver)
-            }
-            VersionConstraint::LessEqual(max) => {
-                let max_ver = Version::parse(max).map_err(|e| {
-                    VersionError::ParseError(format!("Invalid max version '{}': {}", max, e))
-                })?;
-                Ok(ver <= max_ver)
-            }
-            VersionConstraint::Range { min, max } => {
-                let mut satisfies = true;
-                if let Some(min_str) = min {
-                    let min_ver = Version::parse(min_str).map_err(|e| {
-                        VersionError::ParseError(format!(
-                            "Invalid min version '{}': {}",
-                            min_str, e
-                        ))
-                    })?;
-                    satisfies = satisfies && ver >= min_ver;
-                }
-                if let Some(max_str) = max {
-                    let max_ver = Version::parse(max_str).map_err(|e| {
-                        VersionError::ParseError(format!(
-                            "Invalid max version '{}': {}",
-                            max_str, e
-                        ))
-                    })?;
-                    satisfies = satisfies && ver <= max_ver;
-                }
-                Ok(satisfies)
-            }
-            VersionConstraint::Any => Ok(true),
-        }
+        Ok(self.req.matches(&ver))
     }
 }
 
@@ -227,6 +100,24 @@ pub fn compare_versions(v1: &str, v2: &str) -> Result<std::cmp::Ordering, Versio
 /// Check if version1 is newer than version2
 pub fn is_newer(v1: &str, v2: &str) -> Result<bool, VersionError> {
     Ok(compare_versions(v1, v2)? == std::cmp::Ordering::Greater)
+}
+
+/// Sort a list of version strings in descending (newest-first) order by semver.
+///
+/// Unparseable versions sort lowest. A plain string sort is incorrect for
+/// multi-digit components (e.g. `"1.9.0"` would sort above `"1.10.0"`), which is a
+/// real resolution bug when the result is used to pick a version to install.
+pub fn sort_versions_desc(versions: &mut [String]) {
+    versions.sort_by(|a, b| Version::parse(b).ok().cmp(&Version::parse(a).ok()));
+}
+
+/// Return the newest version string by semver, or `None` for an empty input.
+///
+/// Unparseable versions rank lowest. Implemented in terms of [`sort_versions_desc`].
+pub fn newest_version(versions: &[String]) -> Option<String> {
+    let mut sorted = versions.to_vec();
+    sort_versions_desc(&mut sorted);
+    sorted.first().cloned()
 }
 
 #[cfg(test)]
@@ -285,5 +176,201 @@ mod tests {
     fn test_is_newer() {
         assert!(is_newer("1.2.4", "1.2.3").unwrap());
         assert!(!is_newer("1.2.3", "1.2.4").unwrap());
+    }
+
+    // --- Regression tests for BUG-2/3/4/5 + ADR-0004 ---
+
+    /// ADR-0004: a bare `1.2.3` is an EXACT pin, never a caret range.
+    #[test]
+    fn test_bare_version_is_exact_pin() {
+        let constraint = VersionConstraint::parse("1.2.3").unwrap();
+        assert!(constraint.satisfies("1.2.3").unwrap());
+        // Must NOT accept any newer compatible version (would be caret behavior).
+        assert!(!constraint.satisfies("1.2.4").unwrap());
+        assert!(!constraint.satisfies("1.3.0").unwrap());
+        assert!(!constraint.satisfies("2.0.0").unwrap());
+        assert!(!constraint.satisfies("1.2.2").unwrap());
+    }
+
+    /// Explicit `=1.2.3` behaves the same as a bare pin.
+    #[test]
+    fn test_explicit_equals_is_exact() {
+        let constraint = VersionConstraint::parse("=1.2.3").unwrap();
+        assert!(constraint.satisfies("1.2.3").unwrap());
+        assert!(!constraint.satisfies("1.2.4").unwrap());
+    }
+
+    /// BUG-2: caret on a 0.x version honors the semver 0.x rule
+    /// (`^0.2.3` == `>=0.2.3, <0.3.0`), so `0.9.0` must be rejected.
+    #[test]
+    fn test_caret_zerox_rejects_incompatible() {
+        let constraint = VersionConstraint::parse("^0.2.3").unwrap();
+        assert!(constraint.satisfies("0.2.3").unwrap());
+        assert!(constraint.satisfies("0.2.9").unwrap());
+        // 0.9.0 is a breaking pre-1.0 change and must NOT satisfy.
+        assert!(!constraint.satisfies("0.9.0").unwrap());
+        assert!(!constraint.satisfies("0.3.0").unwrap());
+    }
+
+    /// BUG-2: `^0.0.3` is exactly `0.0.3` under semver.
+    #[test]
+    fn test_caret_zero_zero_x_is_exact() {
+        let constraint = VersionConstraint::parse("^0.0.3").unwrap();
+        assert!(constraint.satisfies("0.0.3").unwrap());
+        assert!(!constraint.satisfies("0.0.4").unwrap());
+    }
+
+    /// BUG-3: a strict `<` upper bound is exclusive, so `2.0.0` is rejected.
+    #[test]
+    fn test_range_strict_upper_bound_excludes() {
+        let constraint = VersionConstraint::parse(">=1.0.0,<2.0.0").unwrap();
+        assert!(constraint.satisfies("1.0.0").unwrap());
+        assert!(constraint.satisfies("1.9.9").unwrap());
+        // Strict `<` must EXCLUDE the upper bound.
+        assert!(!constraint.satisfies("2.0.0").unwrap());
+        assert!(!constraint.satisfies("0.9.0").unwrap());
+    }
+
+    /// BUG-4: bare single strict `>` and `<` constraints parse and evaluate.
+    #[test]
+    fn test_bare_strict_greater_than() {
+        let constraint = VersionConstraint::parse(">1.0.0").unwrap();
+        assert!(constraint.satisfies("1.0.1").unwrap());
+        assert!(!constraint.satisfies("1.0.0").unwrap());
+        assert!(!constraint.satisfies("0.9.9").unwrap());
+    }
+
+    #[test]
+    fn test_bare_strict_less_than() {
+        let constraint = VersionConstraint::parse("<2.0.0").unwrap();
+        assert!(constraint.satisfies("1.9.9").unwrap());
+        assert!(!constraint.satisfies("2.0.0").unwrap());
+        assert!(!constraint.satisfies("2.0.1").unwrap());
+    }
+
+    /// BUG-5: a two-component `^1.2` parses and matches (does not error at match time).
+    #[test]
+    fn test_two_component_caret() {
+        let constraint = VersionConstraint::parse("^1.2").unwrap();
+        assert!(constraint.satisfies("1.2.0").unwrap());
+        assert!(constraint.satisfies("1.5.0").unwrap());
+        assert!(!constraint.satisfies("2.0.0").unwrap());
+        // Below the 1.2 floor is rejected.
+        assert!(!constraint.satisfies("1.1.0").unwrap());
+    }
+
+    /// BUG-5: two-component `~1.2` parses and matches.
+    #[test]
+    fn test_two_component_tilde() {
+        let constraint = VersionConstraint::parse("~1.2").unwrap();
+        assert!(constraint.satisfies("1.2.0").unwrap());
+        assert!(constraint.satisfies("1.2.9").unwrap());
+        // ~1.2 == >=1.2.0, <1.3.0
+        assert!(!constraint.satisfies("1.3.0").unwrap());
+    }
+
+    #[test]
+    fn test_less_equal_constraint() {
+        let constraint = VersionConstraint::parse("<=2.0.0").unwrap();
+        assert!(constraint.satisfies("2.0.0").unwrap());
+        assert!(constraint.satisfies("1.0.0").unwrap());
+        assert!(!constraint.satisfies("2.0.1").unwrap());
+    }
+
+    #[test]
+    fn test_any_and_star_match_everything() {
+        let empty = VersionConstraint::parse("").unwrap();
+        assert!(empty.satisfies("0.0.1").unwrap());
+        assert!(empty.satisfies("9.9.9").unwrap());
+
+        let star = VersionConstraint::parse("*").unwrap();
+        assert!(star.satisfies("0.0.1").unwrap());
+        assert!(star.satisfies("123.4.5").unwrap());
+    }
+
+    #[test]
+    fn test_whitespace_is_trimmed() {
+        let constraint = VersionConstraint::parse("  1.2.3  ").unwrap();
+        assert!(constraint.satisfies("1.2.3").unwrap());
+        assert!(!constraint.satisfies("1.2.4").unwrap());
+    }
+
+    #[test]
+    fn test_invalid_constraint_errors() {
+        let err = VersionConstraint::parse("not-a-version").unwrap_err();
+        assert!(matches!(err, VersionError::InvalidConstraint(_)));
+    }
+
+    #[test]
+    fn test_satisfies_rejects_unparseable_version() {
+        let constraint = VersionConstraint::parse(">=1.0.0").unwrap();
+        let err = constraint.satisfies("not-a-version").unwrap_err();
+        assert!(matches!(err, VersionError::ParseError(_)));
+    }
+
+    #[test]
+    fn test_comma_range_two_sided_inclusive() {
+        let constraint = VersionConstraint::parse(">=1.0.0,<=1.9.9").unwrap();
+        assert!(constraint.satisfies("1.0.0").unwrap());
+        assert!(constraint.satisfies("1.9.9").unwrap());
+        assert!(!constraint.satisfies("2.0.0").unwrap());
+        assert!(!constraint.satisfies("0.9.0").unwrap());
+    }
+
+    #[test]
+    fn test_sort_versions_desc_semver_multidigit() {
+        // String sort would place "1.9.0" above "1.10.0"; semver must not.
+        let mut versions = vec![
+            "1.9.0".to_string(),
+            "1.10.0".to_string(),
+            "1.2.0".to_string(),
+            "2.0.0".to_string(),
+        ];
+        sort_versions_desc(&mut versions);
+        assert_eq!(
+            versions,
+            vec![
+                "2.0.0".to_string(),
+                "1.10.0".to_string(),
+                "1.9.0".to_string(),
+                "1.2.0".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_sort_versions_desc_unparseable_sorts_lowest() {
+        let mut versions = vec![
+            "not-a-version".to_string(),
+            "1.10.0".to_string(),
+            "1.9.0".to_string(),
+        ];
+        sort_versions_desc(&mut versions);
+        // Valid semver first (newest→oldest), unparseable last.
+        assert_eq!(versions[0], "1.10.0");
+        assert_eq!(versions[1], "1.9.0");
+        assert_eq!(versions[2], "not-a-version");
+    }
+
+    #[test]
+    fn test_newest_version_semver_multidigit() {
+        // String sort would pick "1.9.0"; semver must pick "1.10.0".
+        let versions = vec![
+            "1.9.0".to_string(),
+            "1.10.0".to_string(),
+            "1.2.0".to_string(),
+        ];
+        assert_eq!(newest_version(&versions), Some("1.10.0".to_string()));
+    }
+
+    #[test]
+    fn test_newest_version_prefers_parseable() {
+        let versions = vec!["not-semver".to_string(), "0.1.0".to_string()];
+        assert_eq!(newest_version(&versions), Some("0.1.0".to_string()));
+    }
+
+    #[test]
+    fn test_newest_version_empty() {
+        assert_eq!(newest_version(&[]), None);
     }
 }

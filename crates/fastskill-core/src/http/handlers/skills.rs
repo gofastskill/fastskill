@@ -7,7 +7,6 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use validator::Validate;
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,8 +69,6 @@ pub async fn get_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
-    // Check permissions
-
     let skills = state.service.skill_manager().list_skills().await?;
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
@@ -92,77 +89,6 @@ pub async fn get_skill(
     };
 
     Ok(axum::Json(ApiResponse::success(response)))
-}
-
-/// POST /api/skills - Create new skill
-pub async fn create_skill(
-    State(_state): State<AppState>,
-    Json(_request): Json<SkillRequest>,
-) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
-    // Check permissions (write access required)
-
-    // Validate request
-    _request.validate().map_err(|e| {
-        HttpError::ValidationError(
-            e.field_errors()
-                .into_iter()
-                .map(|(field, errors)| {
-                    (
-                        field.to_string(),
-                        errors
-                            .iter()
-                            .map(|e| e.message.clone().unwrap_or_default().to_string())
-                            .collect(),
-                    )
-                })
-                .collect(),
-        )
-    })?;
-
-    // Create skill definition
-    let _skill_def = serde_json::json!({
-        "id": format!("skill_{}", chrono::Utc::now().timestamp()),
-        "name": _request.name,
-        "description": _request.description,
-    });
-
-    // Register skill (this would need to be implemented in the service)
-    // For now, return not implemented
-    Err(HttpError::InternalServerError(
-        "Skill creation not yet implemented".to_string(),
-    ))
-}
-
-/// PUT /api/skills/{id} - Update skill
-pub async fn update_skill(
-    State(_state): State<AppState>,
-    Path(_skill_id): Path<String>,
-    Json(request): Json<SkillRequest>,
-) -> HttpResult<axum::Json<ApiResponse<SkillResponse>>> {
-    // Check permissions
-
-    // Validate request
-    request.validate().map_err(|e| {
-        HttpError::ValidationError(
-            e.field_errors()
-                .into_iter()
-                .map(|(field, errors)| {
-                    (
-                        field.to_string(),
-                        errors
-                            .iter()
-                            .map(|e| e.message.clone().unwrap_or_default().to_string())
-                            .collect(),
-                    )
-                })
-                .collect(),
-        )
-    })?;
-
-    // Update skill (not implemented yet)
-    Err(HttpError::InternalServerError(
-        "Skill update not yet implemented".to_string(),
-    ))
 }
 
 /// DELETE /api/skills/{id} - Delete skill (remove from manifest and storage, unregister)
@@ -247,13 +173,26 @@ pub async fn upgrade_skills(
         .and_then(|p| p.skill_id)
         .filter(|s| !s.is_empty() && s != "all");
 
+    // SEC-2: validate a requested skill id against known skills before spawning
+    // a subprocess, so an arbitrary/attacker-controlled id can't drive an update.
+    if let Some(ref id) = filter_id {
+        let known = state.service.skill_manager().list_skills().await?;
+        let is_known = known.iter().any(|s| s.id.to_string() == *id);
+        if !is_known {
+            return Err(HttpError::BadRequest(format!("Unknown skill: {}", id)));
+        }
+    }
+
     let output = tokio::task::spawn_blocking(move || {
         let exe = std::env::current_exe().map_err(|e| {
             HttpError::InternalServerError(format!("Failed to get executable path: {}", e))
         })?;
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("update");
+        // SEC-2 (defense in depth): `--` ends option parsing so a validated id
+        // beginning with `-` can never be read as a flag by `fastskill update`.
         if let Some(ref id) = filter_id {
+            cmd.arg("--");
             cmd.arg(id);
         }
         if let Some(parent) = project_path.parent() {

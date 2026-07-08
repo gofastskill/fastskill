@@ -266,11 +266,35 @@ async fn test_validate_skill_with_script_files() {
 
 #[tokio::test]
 async fn test_validate_skill_with_dangerous_patterns() {
+    // SEC-8: dangerous-pattern matches are advisory warnings, NOT blocking
+    // errors. A skill that trips the heuristic still validates successfully;
+    // the matches surface as warnings that inform the user.
     let env = ValidatorTestEnv::new();
     let result = env
         .validate_skill_with_content("# test-skill\n\nimport os\nimport subprocess")
         .await;
-    assert!(!result.errors.is_empty() || !result.is_valid);
+
+    // Validation passes (otherwise-valid skill) and no content error is raised.
+    assert!(
+        result.is_valid,
+        "dangerous patterns must not fail validation"
+    );
+    assert!(
+        !result
+            .errors
+            .iter()
+            .any(|e| e.message.contains("dangerous pattern")),
+        "dangerous patterns must not produce errors"
+    );
+
+    // The matches are reported as warnings instead.
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("dangerous pattern")),
+        "dangerous patterns should surface as advisory warnings"
+    );
 }
 
 #[tokio::test]

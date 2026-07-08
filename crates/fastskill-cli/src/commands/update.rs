@@ -192,7 +192,7 @@ pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
 
     if !check && !dry_run {
         let auto_reindex_config = crate::config_file::load_auto_reindex_config();
-        let config = create_service_config(global, None, None)?;
+        let config = create_service_config(global, None)?;
         if let Ok(mut svc) = fastskill_core::FastSkillService::new(config).await {
             if svc.initialize().await.is_ok() {
                 let _ = crate::utils::reindex_utils::maybe_auto_reindex(
@@ -417,7 +417,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
 
     // Initialize service
     // Note: update command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(false, None, None)?;
+    let config = create_service_config(false, None)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;

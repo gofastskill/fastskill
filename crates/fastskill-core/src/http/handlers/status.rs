@@ -15,6 +15,8 @@ pub struct AppState {
     pub project_file_path: std::path::PathBuf,
     pub project_root: std::path::PathBuf,
     pub skills_directory: std::path::PathBuf,
+    /// When false, mutating (write) endpoints are gated and return 403.
+    pub enable_write: bool,
 }
 
 impl AppState {
@@ -25,7 +27,14 @@ impl AppState {
             project_file_path: std::path::PathBuf::from("skill-project.toml"),
             project_root: std::path::PathBuf::from("."),
             skills_directory: std::path::PathBuf::from(".claude/skills"),
+            enable_write: false,
         })
+    }
+
+    /// Enable or disable mutating (write) endpoints. Off by default (read-only).
+    pub fn with_enable_write(mut self, enable_write: bool) -> Self {
+        self.enable_write = enable_write;
+        self
     }
 
     pub fn with_project_file_path(mut self, path: std::path::PathBuf) -> Self {
@@ -58,6 +67,23 @@ impl AppState {
     }
 }
 
+/// Minimal HTML-escape for text interpolated into the dashboard page.
+/// Escapes the five HTML-significant characters to prevent stored/reflected XSS.
+fn html_escape(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// GET / - Root endpoint with HTML dashboard
 pub async fn root(State(state): State<AppState>) -> Html<String> {
     let skills: Vec<_> = (state.service.skill_manager().list_skills().await).unwrap_or_default();
@@ -72,8 +98,8 @@ pub async fn root(State(state): State<AppState>) -> Html<String> {
             .iter()
             .take(10) // Show first 10 skills
             .map(|skill| {
-                let name = &skill.name;
-                let desc = &skill.description;
+                let name = html_escape(&skill.name);
+                let desc = html_escape(&skill.description);
                 format!("<li><strong>{}</strong> - {}</li>", name, desc)
             })
             .collect::<Vec<_>>()
@@ -252,4 +278,32 @@ pub async fn status(
     };
 
     Ok(axum::Json(ApiResponse::success(response)))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::html_escape;
+
+    #[test]
+    fn html_escape_neutralizes_script_injection() {
+        // SEC-7: skill name/description are interpolated into the dashboard HTML.
+        assert_eq!(
+            html_escape("<script>alert('x')</script>"),
+            "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;"
+        );
+    }
+
+    #[test]
+    fn html_escape_covers_all_five_chars() {
+        assert_eq!(
+            html_escape("a & b \"c\" 'd' <e>"),
+            "a &amp; b &quot;c&quot; &#x27;d&#x27; &lt;e&gt;"
+        );
+    }
+
+    #[test]
+    fn html_escape_passes_plain_text() {
+        assert_eq!(html_escape("plain text 123"), "plain text 123");
+    }
 }

@@ -161,7 +161,6 @@ pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
 pub fn create_service_config(
     global: bool,
     skills_dir_override: Option<PathBuf>,
-    _sources_path_override: Option<PathBuf>,
 ) -> CliResult<ServiceConfig> {
     // Resolve skills storage directory with precedence:
     // 1. skills_dir_override (if provided)

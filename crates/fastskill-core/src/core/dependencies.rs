@@ -78,17 +78,33 @@ impl DependencyGraph {
         }
     }
 
-    /// Add a skill with its dependencies
+    /// Add a skill with its dependencies.
+    ///
+    /// Re-adding an existing skill replaces its forward edges. Any stale reverse
+    /// edges from the previous set of dependencies are removed first, so that
+    /// `reverse_graph` never accumulates duplicate `skill_id` entries — otherwise
+    /// `topological_sort`'s Kahn in-degree bookkeeping could decrement more times
+    /// than the (deduped) forward degree and underflow (BUG-6).
     pub fn add_skill(&mut self, skill_id: String, dependencies: Vec<Dependency>) {
-        // Update forward graph
+        // Remove stale reverse edges from any previous forward edges of this skill.
+        if let Some(old_deps) = self.graph.get(&skill_id) {
+            for old_dep in old_deps {
+                if let Some(dependents) = self.reverse_graph.get_mut(&old_dep.skill_id) {
+                    dependents.retain(|d| d != &skill_id);
+                }
+            }
+        }
+
+        // Update forward graph (overwrites any existing entry).
         self.graph.insert(skill_id.clone(), dependencies.clone());
 
-        // Update reverse graph
+        // Rebuild reverse edges, de-duping per target so a repeated dependency in
+        // this skill's own list can't create duplicate reverse edges either.
         for dep in dependencies {
-            self.reverse_graph
-                .entry(dep.skill_id.clone())
-                .or_default()
-                .push(skill_id.clone());
+            let dependents = self.reverse_graph.entry(dep.skill_id.clone()).or_default();
+            if !dependents.contains(&skill_id) {
+                dependents.push(skill_id.clone());
+            }
         }
     }
 
@@ -209,7 +225,9 @@ impl DependencyGraph {
                     // Only process dependents that are in the graph
                     if self.graph.contains_key(dependent) {
                         if let Some(degree) = in_degree.get_mut(dependent) {
-                            *degree -= 1;
+                            // saturating_sub as defense against a stray duplicate
+                            // reverse edge underflowing usize (BUG-6).
+                            *degree = degree.saturating_sub(1);
                             if *degree == 0 {
                                 queue.push_back(dependent.clone());
                             }
@@ -405,5 +423,207 @@ mod tests {
 
         // c can be anywhere
         assert!(order.contains(&"c".to_string()));
+    }
+
+    /// BUG-6: re-adding an existing skill must not leave stale/duplicate reverse
+    /// edges, which previously caused the Kahn in-degree decrement to underflow.
+    #[test]
+    fn test_add_skill_duplicate_does_not_panic() {
+        let mut graph = DependencyGraph::new();
+
+        // Add "a" depending on "b" twice, plus "c" as a leaf.
+        let a_deps = || {
+            vec![Dependency {
+                skill_id: "b".to_string(),
+                version_constraint: None,
+            }]
+        };
+        graph.add_skill("a".to_string(), a_deps());
+        graph.add_skill("a".to_string(), a_deps()); // duplicate re-add
+        graph.add_skill("b".to_string(), vec![]);
+
+        // Reverse edges for "b" must contain "a" exactly once (deduped).
+        let dependents = graph.get_dependents("b");
+        assert_eq!(
+            dependents.iter().filter(|d| *d == "a").count(),
+            1,
+            "reverse edge a->b must be deduped, got {:?}",
+            dependents
+        );
+
+        // topological_sort must not panic/underflow and must order b before a.
+        let order = graph.topological_sort().unwrap();
+        assert_eq!(order.len(), 2);
+        let b_pos = order.iter().position(|x| x == "b").unwrap();
+        let a_pos = order.iter().position(|x| x == "a").unwrap();
+        assert!(b_pos < a_pos, "b should come before a");
+    }
+
+    /// Re-adding a skill with a *different* dependency set must drop the old
+    /// reverse edges so they don't linger.
+    #[test]
+    fn test_add_skill_replaces_dependencies() {
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "b".to_string(),
+                version_constraint: None,
+            }],
+        );
+        // Now redefine "a" to depend on "c" instead of "b".
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "c".to_string(),
+                version_constraint: None,
+            }],
+        );
+
+        // Stale reverse edge a->b must be gone; a->c must exist.
+        assert!(
+            !graph.get_dependents("b").contains(&"a".to_string()),
+            "stale reverse edge a->b should be removed"
+        );
+        assert!(graph.get_dependents("c").contains(&"a".to_string()));
+    }
+
+    // ---- Dependency::parse edge cases ---------------------------------------
+
+    #[test]
+    fn test_parse_empty_constraint_after_at() {
+        let err = Dependency::parse("my-skill@").unwrap_err();
+        assert!(matches!(err, DependencyError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_parse_invalid_constraint() {
+        let err = Dependency::parse("my-skill@not-a-version!!").unwrap_err();
+        assert!(matches!(err, DependencyError::VersionError(_)));
+    }
+
+    #[test]
+    fn test_parse_trims_whitespace() {
+        let dep = Dependency::parse("  my-skill  ").unwrap();
+        assert_eq!(dep.skill_id, "my-skill");
+        assert_eq!(dep.version_constraint, None);
+
+        let dep = Dependency::parse("  my-skill @ ^1.0.0 ").unwrap();
+        assert_eq!(dep.skill_id, "my-skill");
+        assert!(dep.version_constraint.is_some());
+    }
+
+    #[test]
+    fn test_parse_multiple_ok_and_err() {
+        let ok = Dependency::parse_multiple(&["a".to_string(), "b@^1.0.0".to_string()]).unwrap();
+        assert_eq!(ok.len(), 2);
+
+        let err = Dependency::parse_multiple(&["a@".to_string()]).unwrap_err();
+        assert!(matches!(err, DependencyError::InvalidFormat(_)));
+    }
+
+    // ---- graph construction helpers -----------------------------------------
+
+    #[test]
+    fn test_build_graph_and_get_dependencies() {
+        let graph = DependencyGraph::build_graph(vec![
+            (
+                "a".to_string(),
+                vec![Dependency {
+                    skill_id: "b".to_string(),
+                    version_constraint: None,
+                }],
+            ),
+            ("b".to_string(), vec![]),
+        ]);
+        let deps = graph.get_dependencies("a").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].skill_id, "b");
+        assert!(graph.get_dependencies("missing").is_none());
+        assert!(graph.get_dependents("missing").is_empty());
+    }
+
+    #[test]
+    fn test_default_graph_is_empty() {
+        let graph = DependencyGraph::default();
+        assert!(graph.topological_sort().unwrap().is_empty());
+    }
+
+    // ---- external / dangling dependencies -----------------------------------
+
+    #[test]
+    fn test_cycle_detection_ignores_external_deps() {
+        // "a" depends on "external" which is NOT a node in the graph. The
+        // `continue` branch skips it, so there is no cycle.
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "external".to_string(),
+                version_constraint: None,
+            }],
+        );
+        assert!(graph.detect_cycles().is_ok());
+    }
+
+    #[test]
+    fn test_topological_sort_with_external_dep() {
+        // The external dependency is filtered out of in-degree, so "a" sorts fine.
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "external".to_string(),
+                version_constraint: None,
+            }],
+        );
+        let order = graph.topological_sort().unwrap();
+        assert_eq!(order, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn test_self_cycle_detected() {
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "a".to_string(),
+                version_constraint: None,
+            }],
+        );
+        assert!(graph.detect_cycles().is_err());
+        assert!(graph.topological_sort().is_err());
+    }
+
+    #[test]
+    fn test_three_node_cycle_detected() {
+        let mut graph = DependencyGraph::new();
+        for (from, to) in [("a", "b"), ("b", "c"), ("c", "a")] {
+            graph.add_skill(
+                from.to_string(),
+                vec![Dependency {
+                    skill_id: to.to_string(),
+                    version_constraint: None,
+                }],
+            );
+        }
+        assert!(graph.topological_sort().is_err());
+    }
+
+    // ---- error Display -------------------------------------------------------
+
+    #[test]
+    fn test_dependency_error_display() {
+        assert!(DependencyError::CircularDependency("x".into())
+            .to_string()
+            .contains("Circular"));
+        assert!(DependencyError::NotFound("x".into())
+            .to_string()
+            .contains("not found"));
+        assert!(DependencyError::InvalidFormat("x".into())
+            .to_string()
+            .contains("Invalid dependency format"));
+        let ve: DependencyError = VersionError::InvalidVersion("bad".into()).into();
+        assert!(ve.to_string().contains("Version error"));
     }
 }

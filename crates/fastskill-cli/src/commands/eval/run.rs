@@ -1,6 +1,6 @@
 //! Eval run subcommand - case execution orchestration
 
-use crate::commands::common::{runtime_selection_error_to_cli, validate_format_args};
+use crate::commands::common::{runtime_selection_error_to_cli, validate_eval_format_args};
 use crate::error::{CliError, CliResult};
 use crate::runtime_selector::RuntimeSelectionInput;
 use aikit_sdk::is_agent_available;
@@ -47,7 +47,7 @@ pub struct RunArgs {
     /// Filter: run only cases with this tag
     pub tag: Option<String>,
 
-    /// Output format: table, json, grid, xml (default: table)
+    /// Output format: table, json (default: table)
     pub format: Option<OutputFormat>,
 
     /// Shorthand for --format json
@@ -56,8 +56,12 @@ pub struct RunArgs {
     /// Do not fail with non-zero exit code on suite failure
     pub no_fail: bool,
 
-    /// Override trials per case from config
-    pub trials: Option<u32>,
+    /// Override trials per case from config.
+    ///
+    /// Stored as the raw parsed integer (not clamped to `u32`) so the
+    /// execute-time range check can echo exactly what the user typed — e.g. a
+    /// negative `-3` is reported as `-3`, not a wrapped `u32::MAX`.
+    pub trials: Option<i64>,
 
     /// Enable CI mode: exit non-zero if suite pass rate below threshold
     pub ci: bool,
@@ -144,7 +148,7 @@ impl IntoCommandSpec for RunArgs {
                     long: Some("format"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Output format: table, json, grid, xml",
+                    help: "Output format: table, json",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -154,6 +158,42 @@ impl IntoCommandSpec for RunArgs {
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
                     help: "Shorthand for --format json",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-fail",
+                    kind: ArgKind::Flag,
+                    long: Some("no-fail"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Do not fail with non-zero exit code on suite failure",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "trials",
+                    kind: ArgKind::Option,
+                    long: Some("trials"),
+                    value_type: ArgValueType::Int,
+                    cardinality: Cardinality::Optional,
+                    help: "Override trials per case from config (1-1000)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "ci",
+                    kind: ArgKind::Flag,
+                    long: Some("ci"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "CI mode: pass/fail on suite pass rate vs threshold",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "threshold",
+                    kind: ArgKind::Option,
+                    long: Some("threshold"),
+                    value_type: ArgValueType::Float,
+                    cardinality: Cardinality::Optional,
+                    help: "Override pass threshold (0.0-1.0)",
                     ..Default::default()
                 },
             ],
@@ -221,10 +261,23 @@ impl FromArgValueMap for RunArgs {
                 })
                 .and_then(parse_output_format),
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
-            no_fail: false,
-            trials: None,
-            ci: false,
-            threshold: None,
+            no_fail: matches!(map.get("no-fail"), Some(ArgValue::Bool(true))),
+            trials: map.get("trials").and_then(|v| {
+                if let ArgValue::Int(i) = v {
+                    // Carry the raw value through unchanged; the execute-time
+                    // range check validates [1, 1000] and echoes the honest
+                    // value the user typed on failure.
+                    Some(*i)
+                } else {
+                    None
+                }
+            }),
+            ci: matches!(map.get("ci"), Some(ArgValue::Bool(true))),
+            threshold: map.get("threshold").and_then(|v| match v {
+                ArgValue::Float(f) => Some(*f),
+                ArgValue::Int(i) => Some(*i as f64),
+                _ => None,
+            }),
         }
     }
 }
@@ -238,6 +291,87 @@ impl From<&RunArgs> for RuntimeSelectionInput {
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+    use cli_framework::spec::arg_spec::{ArgKind, ArgValueType};
+
+    fn base_map() -> HashMap<String, ArgValue> {
+        let mut m = HashMap::new();
+        m.insert(
+            "output-dir".to_string(),
+            ArgValue::Str("/tmp/out".to_string()),
+        );
+        m
+    }
+
+    /// The four flags must be registered in the command spec, otherwise the
+    /// dispatcher never populates them and `from_arg_value_map` reads defaults.
+    #[test]
+    fn test_command_spec_registers_ci_flags() {
+        let spec = RunArgs::command_spec();
+        let by_name = |name: &str| spec.args.iter().find(|a| a.name == name).cloned();
+
+        let no_fail = by_name("no-fail").expect("--no-fail registered");
+        assert_eq!(no_fail.kind, ArgKind::Flag);
+
+        let ci = by_name("ci").expect("--ci registered");
+        assert_eq!(ci.kind, ArgKind::Flag);
+
+        let trials = by_name("trials").expect("--trials registered");
+        assert_eq!(trials.kind, ArgKind::Option);
+        assert_eq!(trials.value_type, ArgValueType::Int);
+
+        let threshold = by_name("threshold").expect("--threshold registered");
+        assert_eq!(threshold.kind, ArgKind::Option);
+        assert_eq!(threshold.value_type, ArgValueType::Float);
+    }
+
+    #[test]
+    fn test_flags_default_when_absent() {
+        let args = RunArgs::from_arg_value_map(&base_map());
+        assert!(!args.no_fail);
+        assert!(!args.ci);
+        assert_eq!(args.trials, None);
+        assert_eq!(args.threshold, None);
+    }
+
+    #[test]
+    fn test_flags_parsed_from_map() {
+        let mut m = base_map();
+        m.insert("no-fail".to_string(), ArgValue::Bool(true));
+        m.insert("ci".to_string(), ArgValue::Bool(true));
+        m.insert("trials".to_string(), ArgValue::Int(7));
+        m.insert("threshold".to_string(), ArgValue::Float(0.75));
+
+        let args = RunArgs::from_arg_value_map(&m);
+        assert!(args.no_fail);
+        assert!(args.ci);
+        assert_eq!(args.trials, Some(7));
+        assert_eq!(args.threshold, Some(0.75));
+    }
+
+    #[test]
+    fn test_threshold_accepts_integer_value() {
+        let mut m = base_map();
+        m.insert("threshold".to_string(), ArgValue::Int(1));
+        let args = RunArgs::from_arg_value_map(&m);
+        assert_eq!(args.threshold, Some(1.0));
+    }
+
+    #[test]
+    fn test_negative_trials_preserved_for_honest_range_error() {
+        let mut m = base_map();
+        m.insert("trials".to_string(), ArgValue::Int(-3));
+        let args = RunArgs::from_arg_value_map(&m);
+        // The raw value is carried through unchanged so the execute-time
+        // [1, 1000] range check can echo the honest value the user typed
+        // (`-3`) rather than a wrapped `u32::MAX`.
+        assert_eq!(args.trials, Some(-3));
+    }
+}
+
 /// Execute the `eval run` command using the default aikit-backed runner.
 pub async fn execute_run(args: RunArgs) -> CliResult<()> {
     execute_run_with_runner(args, Arc::new(AikitEvalRunner)).await
@@ -248,7 +382,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     args: RunArgs,
     runner: Arc<R>,
 ) -> CliResult<()> {
-    let format = validate_format_args(&args.format, args.json)?;
+    let format = validate_eval_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
     // Resolve runtime selection first so missing --agent is caught before project-file checks.
@@ -287,13 +421,19 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     let eval_config = resolve_eval_config(&resolution.path, &project_root)
         .map_err(|e| CliError::Config(e.to_string()))?;
 
-    let trials_per_case = args.trials.unwrap_or(eval_config.trials_per_case);
-    if !(1..=1000).contains(&trials_per_case) {
+    // Validate against the raw parsed value so the error echoes exactly what the
+    // user typed (e.g. a negative `-3`), not a wrapped/clamped integer.
+    let trials_raw = args
+        .trials
+        .unwrap_or(i64::from(eval_config.trials_per_case));
+    if !(1..=1000).contains(&trials_raw) {
         return Err(CliError::Config(format!(
             "EVAL_INVALID_TRIALS_CONFIG: trials must be in range [1, 1000], got {}",
-            trials_per_case
+            trials_raw
         )));
     }
+    // Safe: validated to be within [1, 1000] above.
+    let trials_per_case = trials_raw as u32;
 
     let pass_threshold = args.threshold.unwrap_or(eval_config.pass_threshold);
     if !(0.0..=1.0).contains(&pass_threshold) {

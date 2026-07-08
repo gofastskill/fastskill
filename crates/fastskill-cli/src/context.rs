@@ -45,7 +45,7 @@ impl FsState {
         use crate::error::CliError;
         self.service_cell
             .get_or_try_init(|| async move {
-                let cfg = crate::config::create_service_config(global, skills_dir, None)?;
+                let cfg = crate::config::create_service_config(global, skills_dir)?;
                 let mut s = FastSkillService::new(cfg)
                     .await
                     .map_err(CliError::Service)?;

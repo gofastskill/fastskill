@@ -97,6 +97,8 @@ tempfile.workspace = true
 insta = "1.47"
 assert_cmd = "2.2"
 predicates = "3.0"
+wiremock = "0.5"
+zip.workspace = true
 
 [lints]
 workspace = true
