@@ -487,4 +487,143 @@ mod tests {
         );
         assert!(graph.get_dependents("c").contains(&"a".to_string()));
     }
+
+    // ---- Dependency::parse edge cases ---------------------------------------
+
+    #[test]
+    fn test_parse_empty_constraint_after_at() {
+        let err = Dependency::parse("my-skill@").unwrap_err();
+        assert!(matches!(err, DependencyError::InvalidFormat(_)));
+    }
+
+    #[test]
+    fn test_parse_invalid_constraint() {
+        let err = Dependency::parse("my-skill@not-a-version!!").unwrap_err();
+        assert!(matches!(err, DependencyError::VersionError(_)));
+    }
+
+    #[test]
+    fn test_parse_trims_whitespace() {
+        let dep = Dependency::parse("  my-skill  ").unwrap();
+        assert_eq!(dep.skill_id, "my-skill");
+        assert_eq!(dep.version_constraint, None);
+
+        let dep = Dependency::parse("  my-skill @ ^1.0.0 ").unwrap();
+        assert_eq!(dep.skill_id, "my-skill");
+        assert!(dep.version_constraint.is_some());
+    }
+
+    #[test]
+    fn test_parse_multiple_ok_and_err() {
+        let ok = Dependency::parse_multiple(&["a".to_string(), "b@^1.0.0".to_string()]).unwrap();
+        assert_eq!(ok.len(), 2);
+
+        let err = Dependency::parse_multiple(&["a@".to_string()]).unwrap_err();
+        assert!(matches!(err, DependencyError::InvalidFormat(_)));
+    }
+
+    // ---- graph construction helpers -----------------------------------------
+
+    #[test]
+    fn test_build_graph_and_get_dependencies() {
+        let graph = DependencyGraph::build_graph(vec![
+            (
+                "a".to_string(),
+                vec![Dependency {
+                    skill_id: "b".to_string(),
+                    version_constraint: None,
+                }],
+            ),
+            ("b".to_string(), vec![]),
+        ]);
+        let deps = graph.get_dependencies("a").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].skill_id, "b");
+        assert!(graph.get_dependencies("missing").is_none());
+        assert!(graph.get_dependents("missing").is_empty());
+    }
+
+    #[test]
+    fn test_default_graph_is_empty() {
+        let graph = DependencyGraph::default();
+        assert!(graph.topological_sort().unwrap().is_empty());
+    }
+
+    // ---- external / dangling dependencies -----------------------------------
+
+    #[test]
+    fn test_cycle_detection_ignores_external_deps() {
+        // "a" depends on "external" which is NOT a node in the graph. The
+        // `continue` branch skips it, so there is no cycle.
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "external".to_string(),
+                version_constraint: None,
+            }],
+        );
+        assert!(graph.detect_cycles().is_ok());
+    }
+
+    #[test]
+    fn test_topological_sort_with_external_dep() {
+        // The external dependency is filtered out of in-degree, so "a" sorts fine.
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "external".to_string(),
+                version_constraint: None,
+            }],
+        );
+        let order = graph.topological_sort().unwrap();
+        assert_eq!(order, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn test_self_cycle_detected() {
+        let mut graph = DependencyGraph::new();
+        graph.add_skill(
+            "a".to_string(),
+            vec![Dependency {
+                skill_id: "a".to_string(),
+                version_constraint: None,
+            }],
+        );
+        assert!(graph.detect_cycles().is_err());
+        assert!(graph.topological_sort().is_err());
+    }
+
+    #[test]
+    fn test_three_node_cycle_detected() {
+        let mut graph = DependencyGraph::new();
+        for (from, to) in [("a", "b"), ("b", "c"), ("c", "a")] {
+            graph.add_skill(
+                from.to_string(),
+                vec![Dependency {
+                    skill_id: to.to_string(),
+                    version_constraint: None,
+                }],
+            );
+        }
+        assert!(graph.topological_sort().is_err());
+    }
+
+    // ---- error Display -------------------------------------------------------
+
+    #[test]
+    fn test_dependency_error_display() {
+        assert!(DependencyError::CircularDependency("x".into())
+            .to_string()
+            .contains("Circular"));
+        assert!(DependencyError::NotFound("x".into())
+            .to_string()
+            .contains("not found"));
+        assert!(DependencyError::InvalidFormat("x".into())
+            .to_string()
+            .contains("Invalid dependency format"));
+        let ve: DependencyError = VersionError::InvalidVersion("bad".into()).into();
+        assert!(ve.to_string().contains("Version error"));
+    }
 }

@@ -612,4 +612,187 @@ mod tests {
         );
         assert!(extract_dir.path().join("mydir/inner.txt").exists());
     }
+
+    // ---- symlink rejection (unix) -------------------------------------------
+
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_rejects_symlink_entry() {
+        let temp_dir = TempDir::new().unwrap();
+        let zip_path = temp_dir.path().join("sym.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            zip.add_symlink("link", "/etc/passwd", options).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let extract_dir = TempDir::new().unwrap();
+        let handler = ZipHandler::new().unwrap();
+        let result = handler.extract_to_dir(&zip_path, extract_dir.path());
+
+        match result {
+            Err(ServiceError::Validation(msg)) => {
+                assert!(
+                    msg.contains("Symlink"),
+                    "expected symlink rejection, got: {msg}"
+                );
+            }
+            other => unreachable!("expected symlink Validation error, got {other:?}"),
+        }
+        assert!(!extract_dir.path().join("link").exists());
+    }
+
+    // ---- validate_package success -------------------------------------------
+
+    #[test]
+    fn test_validate_package_accepts_normal_archive() {
+        let (_t, zip_path) =
+            create_test_zip(&[("SKILL.md", b"content"), ("src/main.rs", b"fn main(){}")]);
+        let handler = ZipHandler::new().unwrap();
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(handler.validate_package(&zip_path));
+        assert!(
+            result.is_ok(),
+            "a normal archive should validate: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_package_invalid_file_errors() {
+        // A non-zip file should surface a Validation error from ZipArchive::new.
+        let temp_dir = TempDir::new().unwrap();
+        let bogus = temp_dir.path().join("not.zip");
+        std::fs::write(&bogus, b"this is not a zip").unwrap();
+        let handler = ZipHandler::new().unwrap();
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(handler.validate_package(&bogus));
+        assert!(matches!(result, Err(ServiceError::Validation(_))));
+    }
+
+    #[test]
+    fn test_extract_missing_zip_file_is_io_error() {
+        let handler = ZipHandler::new().unwrap();
+        let extract_dir = TempDir::new().unwrap();
+        let result = handler.extract_to_dir(Path::new("/no/such/archive.zip"), extract_dir.path());
+        assert!(matches!(result, Err(ServiceError::Io(_))));
+    }
+
+    #[test]
+    fn test_extract_invalid_zip_is_validation_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let bogus = temp_dir.path().join("not.zip");
+        std::fs::write(&bogus, b"definitely not a zip").unwrap();
+        let handler = ZipHandler::new().unwrap();
+        let extract_dir = TempDir::new().unwrap();
+        let result = handler.extract_to_dir(&bogus, extract_dir.path());
+        assert!(matches!(result, Err(ServiceError::Validation(_))));
+    }
+
+    /// A file entry whose path already exists (duplicate entry) exercises the
+    /// `outpath.exists()` canonicalize-existing branch.
+    #[test]
+    fn test_extract_duplicate_file_entry() {
+        let (_t, zip_path) = create_test_zip(&[("dup.txt", b"first"), ("dup.txt", b"second")]);
+        let extract_dir = TempDir::new().unwrap();
+        let handler = ZipHandler::new().unwrap();
+        handler
+            .extract_to_dir(&zip_path, extract_dir.path())
+            .unwrap();
+        assert!(extract_dir.path().join("dup.txt").exists());
+    }
+
+    /// A directory entry that appears *after* a file already created it exercises
+    /// the `outpath.exists()` branch for a directory.
+    #[test]
+    fn test_extract_dir_entry_after_file_created_it() {
+        let (_t, zip_path) = create_test_zip(&[("d/inner.txt", b"hello"), ("d/", b"")]);
+        let extract_dir = TempDir::new().unwrap();
+        let handler = ZipHandler::new().unwrap();
+        handler
+            .extract_to_dir(&zip_path, extract_dir.path())
+            .unwrap();
+        assert!(extract_dir.path().join("d").is_dir());
+        assert!(extract_dir.path().join("d/inner.txt").exists());
+    }
+
+    /// Extracting into a destination directory that does not exist triggers the
+    /// destination-canonicalize error path.
+    #[test]
+    fn test_extract_nonexistent_dest_is_io_error() {
+        let (_t, zip_path) = create_test_zip(&[("SKILL.md", b"x")]);
+        let base = TempDir::new().unwrap();
+        let missing_dest = base.path().join("does-not-exist");
+        let handler = ZipHandler::new().unwrap();
+        let result = handler.extract_to_dir(&zip_path, &missing_dest);
+        match result {
+            Err(ServiceError::Io(e)) => {
+                assert!(
+                    e.to_string().contains("canonicalize destination"),
+                    "expected dest canonicalize error, got: {e}"
+                );
+            }
+            other => unreachable!("expected Io error for missing dest, got {other:?}"),
+        }
+    }
+
+    /// A file entry whose *parent* resolves (via a pre-existing symlink inside the
+    /// destination) to a directory outside the extraction root must be rejected by
+    /// the parent-directory traversal check.
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_rejects_parent_symlink_escape() {
+        let dest = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        // Plant a symlink "esc" inside dest that points outside the extraction root.
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("esc")).unwrap();
+
+        // Entry "esc/file.txt": textual path is under dest, but the parent "esc"
+        // canonicalizes to `outside`, so the parent-traversal guard must fire.
+        let (_t, zip_path) = create_test_zip(&[("esc/file.txt", b"payload")]);
+        let handler = ZipHandler::new().unwrap();
+        let result = handler.extract_to_dir(&zip_path, dest.path());
+
+        match result {
+            Err(ServiceError::Validation(msg)) => {
+                assert!(
+                    msg.contains("traversal"),
+                    "expected parent-traversal rejection, got: {msg}"
+                );
+            }
+            other => unreachable!("expected Validation error, got {other:?}"),
+        }
+        // The payload must not have been written into the outside directory.
+        assert!(!outside.path().join("file.txt").exists());
+    }
+
+    /// A *directory* entry routed through a pre-existing symlink escapes only as
+    /// far as the post-creation canonicalization check (the directory branch has
+    /// no early parent guard), which must reject it as resolving outside the root.
+    #[cfg(unix)]
+    #[test]
+    fn test_extract_rejects_dir_entry_symlink_escape() {
+        let dest = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("esc")).unwrap();
+
+        // A directory entry "esc/subdir/" whose canonical path resolves under
+        // `outside`, exercising the final resolves-outside traversal guard.
+        let (_t, zip_path) = create_test_zip(&[("esc/subdir/", b"")]);
+        let handler = ZipHandler::new().unwrap();
+        let result = handler.extract_to_dir(&zip_path, dest.path());
+
+        match result {
+            Err(ServiceError::Validation(msg)) => {
+                assert!(
+                    msg.contains("outside extraction directory"),
+                    "expected resolves-outside rejection, got: {msg}"
+                );
+            }
+            other => unreachable!("expected Validation error, got {other:?}"),
+        }
+    }
 }

@@ -346,4 +346,343 @@ mod tests {
         // Note: build_index would need actual skills to test fully
         // This is a basic structure test
     }
+
+    // ---- Helpers -------------------------------------------------------------
+
+    fn empty_manager() -> Arc<SourcesManager> {
+        let temp_file = NamedTempFile::new().unwrap();
+        let mut sm = SourcesManager::new(temp_file.path().to_path_buf());
+        sm.load().unwrap();
+        Arc::new(sm)
+    }
+
+    fn candidate(id: &str, version: &str, source: &str) -> SkillCandidate {
+        SkillCandidate {
+            id: id.to_string(),
+            name: id.to_string(),
+            version: version.to_string(),
+            description: "desc".to_string(),
+            source_name: source.to_string(),
+            source_config: SourceConfig::Local {
+                path: PathBuf::from("./x"),
+            },
+            download_url: None,
+            commit_hash: None,
+        }
+    }
+
+    /// Build a resolver whose index is populated directly (bypassing sources).
+    fn resolver_with(entries: Vec<(&str, Vec<SkillCandidate>)>) -> PackageResolver {
+        let mut r = PackageResolver::new(empty_manager());
+        for (id, cands) in entries {
+            r.skill_index.insert(id.to_string(), cands);
+        }
+        r
+    }
+
+    // ---- resolve_skill -------------------------------------------------------
+
+    #[test]
+    fn test_resolve_skill_not_found() {
+        let r = resolver_with(vec![]);
+        let err = r
+            .resolve_skill("missing", None, None, ConflictStrategy::Priority)
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::NotFound(id) if id == "missing"));
+    }
+
+    #[test]
+    fn test_resolve_skill_single_candidate() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "src1")])]);
+        let res = r
+            .resolve_skill("a", None, None, ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(res.candidate.version, "1.0.0");
+        assert_eq!(res.source_name, "src1");
+    }
+
+    #[test]
+    fn test_resolve_skill_source_filter_matches() {
+        let r = resolver_with(vec![(
+            "a",
+            vec![
+                candidate("a", "1.0.0", "src1"),
+                candidate("a", "2.0.0", "src2"),
+            ],
+        )]);
+        let res = r
+            .resolve_skill("a", None, Some("src2"), ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(res.source_name, "src2");
+        assert_eq!(res.candidate.version, "2.0.0");
+    }
+
+    #[test]
+    fn test_resolve_skill_source_filter_empty_is_not_found() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "src1")])]);
+        let err = r
+            .resolve_skill("a", None, Some("nope"), ConflictStrategy::Priority)
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::NotFound(_)));
+    }
+
+    #[test]
+    fn test_resolve_skill_version_constraint_satisfied() {
+        let r = resolver_with(vec![(
+            "a",
+            vec![
+                candidate("a", "1.0.0", "src1"),
+                candidate("a", "2.0.0", "src2"),
+            ],
+        )]);
+        let constraint = VersionConstraint::parse("2.0.0").unwrap();
+        let res = r
+            .resolve_skill("a", Some(&constraint), None, ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(res.candidate.version, "2.0.0");
+    }
+
+    #[test]
+    fn test_resolve_skill_constraint_not_satisfied() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "src1")])]);
+        let constraint = VersionConstraint::parse(">=2.0.0").unwrap();
+        let err = r
+            .resolve_skill("a", Some(&constraint), None, ConflictStrategy::Priority)
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::ConstraintNotSatisfied(_)));
+    }
+
+    #[test]
+    fn test_resolve_skill_priority_takes_first() {
+        // Index order acts as priority order (build_index sorts ascending).
+        let r = resolver_with(vec![(
+            "a",
+            vec![
+                candidate("a", "1.0.0", "high"),
+                candidate("a", "9.9.9", "low"),
+            ],
+        )]);
+        let res = r
+            .resolve_skill("a", None, None, ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(res.source_name, "high");
+    }
+
+    #[test]
+    fn test_resolve_skill_highest_version() {
+        let r = resolver_with(vec![(
+            "a",
+            vec![
+                candidate("a", "1.0.0", "s1"),
+                candidate("a", "3.2.1", "s2"),
+                candidate("a", "2.0.0", "s3"),
+            ],
+        )]);
+        let res = r
+            .resolve_skill("a", None, None, ConflictStrategy::HighestVersion)
+            .unwrap();
+        assert_eq!(res.candidate.version, "3.2.1");
+    }
+
+    #[test]
+    fn test_resolve_skill_explicit_multiple_errors() {
+        let r = resolver_with(vec![(
+            "a",
+            vec![candidate("a", "1.0.0", "s1"), candidate("a", "2.0.0", "s2")],
+        )]);
+        let err = r
+            .resolve_skill("a", None, None, ConflictStrategy::Explicit)
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::MultipleCandidates));
+    }
+
+    // ---- introspection helpers ----------------------------------------------
+
+    #[test]
+    fn test_get_available_versions() {
+        let r = resolver_with(vec![(
+            "a",
+            vec![candidate("a", "1.0.0", "s1"), candidate("a", "2.0.0", "s2")],
+        )]);
+        assert_eq!(r.get_available_versions("a").len(), 2);
+        assert!(r.get_available_versions("missing").is_empty());
+    }
+
+    #[test]
+    fn test_skill_exists_and_list_skills() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "s1")])]);
+        assert!(r.skill_exists("a"));
+        assert!(!r.skill_exists("b"));
+        assert_eq!(r.list_skills(), vec!["a".to_string()]);
+    }
+
+    // ---- resolve_dependencies -----------------------------------------------
+
+    #[test]
+    fn test_resolve_dependencies_simple() {
+        let r = resolver_with(vec![
+            ("a", vec![candidate("a", "1.0.0", "s1")]),
+            ("b", vec![candidate("b", "1.0.0", "s1")]),
+        ]);
+        let deps = vec![
+            Dependency {
+                skill_id: "a".to_string(),
+                version_constraint: None,
+            },
+            Dependency {
+                skill_id: "b".to_string(),
+                version_constraint: None,
+            },
+        ];
+        let resolved = r
+            .resolve_dependencies("root", &deps, ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(resolved.len(), 2);
+    }
+
+    #[test]
+    fn test_resolve_dependencies_skips_visited_duplicates() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "s1")])]);
+        let deps = vec![
+            Dependency {
+                skill_id: "a".to_string(),
+                version_constraint: None,
+            },
+            Dependency {
+                skill_id: "a".to_string(),
+                version_constraint: None,
+            },
+        ];
+        let resolved = r
+            .resolve_dependencies("root", &deps, ConflictStrategy::Priority)
+            .unwrap();
+        // Second occurrence is skipped via the visited set.
+        assert_eq!(resolved.len(), 1);
+    }
+
+    #[test]
+    fn test_resolve_dependencies_missing_dep_errors() {
+        let r = resolver_with(vec![("a", vec![candidate("a", "1.0.0", "s1")])]);
+        let deps = vec![Dependency {
+            skill_id: "ghost".to_string(),
+            version_constraint: None,
+        }];
+        let err = r
+            .resolve_dependencies("root", &deps, ConflictStrategy::Priority)
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::NotFound(_)));
+    }
+
+    #[test]
+    fn test_resolve_dependency_list_version_conflict() {
+        // Two candidates for "a" from different sources with different versions;
+        // Explicit strategy would error on the first resolve, so use HighestVersion
+        // and manually seed the resolution_map to force the conflict branch.
+        let r = resolver_with(vec![("a", vec![candidate("a", "2.0.0", "s1")])]);
+        let mut resolved = Vec::new();
+        let mut visited = HashSet::new();
+        let mut resolution_map = HashMap::new();
+        // Pre-seed a different resolved version for "a".
+        resolution_map.insert(
+            "a".to_string(),
+            ResolutionResult {
+                candidate: candidate("a", "1.0.0", "s0"),
+                source_name: "s0".to_string(),
+            },
+        );
+        let deps = vec![Dependency {
+            skill_id: "a".to_string(),
+            version_constraint: None,
+        }];
+        let err = r
+            .resolve_dependency_list(
+                "root",
+                &deps,
+                &mut resolved,
+                &mut visited,
+                &mut resolution_map,
+                ConflictStrategy::Priority,
+            )
+            .unwrap_err();
+        assert!(matches!(err, ResolverError::ConstraintNotSatisfied(_)));
+    }
+
+    // ---- build_index (via a real Local source) ------------------------------
+
+    fn write_skill(dir: &std::path::Path, id: &str, version: &str) {
+        let skill_dir = dir.join(id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let content = format!(
+            "---\nname: {id}\ndescription: A test skill\nversion: {version}\n---\n# {id}\n"
+        );
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_build_index_from_local_sources() {
+        let src1 = tempfile::TempDir::new().unwrap();
+        let src2 = tempfile::TempDir::new().unwrap();
+        write_skill(src1.path(), "alpha", "1.0.0");
+        write_skill(src1.path(), "beta", "1.0.0");
+        // "alpha" also exists in the lower-priority source with a different version.
+        write_skill(src2.path(), "alpha", "2.0.0");
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let mut sm = SourcesManager::new(temp_file.path().to_path_buf());
+        sm.load().unwrap();
+        sm.add_source_with_priority(
+            "high".to_string(),
+            SourceConfig::Local {
+                path: src1.path().to_path_buf(),
+            },
+            1,
+        )
+        .unwrap();
+        sm.add_source_with_priority(
+            "low".to_string(),
+            SourceConfig::Local {
+                path: src2.path().to_path_buf(),
+            },
+            5,
+        )
+        .unwrap();
+
+        let mut resolver = PackageResolver::new(Arc::new(sm));
+        resolver.build_index().await.unwrap();
+
+        assert!(resolver.skill_exists("alpha"));
+        assert!(resolver.skill_exists("beta"));
+
+        // "alpha" has two candidates, sorted so the higher-priority source is first.
+        let versions = resolver.get_available_versions("alpha");
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].source_name, "high");
+
+        // Resolving with Priority picks the high-priority source's candidate.
+        let res = resolver
+            .resolve_skill("alpha", None, None, ConflictStrategy::Priority)
+            .unwrap();
+        assert_eq!(res.source_name, "high");
+
+        // Rebuilding clears and repopulates without duplicating.
+        resolver.build_index().await.unwrap();
+        assert_eq!(resolver.get_available_versions("alpha").len(), 2);
+    }
+
+    // ---- error Display -------------------------------------------------------
+
+    #[test]
+    fn test_resolver_error_display() {
+        assert!(ResolverError::NotFound("x".into())
+            .to_string()
+            .contains("Skill not found"));
+        assert!(ResolverError::MultipleCandidates
+            .to_string()
+            .contains("source specification required"));
+        assert!(ResolverError::SourceError("boom".into())
+            .to_string()
+            .contains("boom"));
+        let ve: ResolverError = VersionError::InvalidConstraint("bad".into()).into();
+        assert!(ve.to_string().contains("Version error"));
+    }
 }

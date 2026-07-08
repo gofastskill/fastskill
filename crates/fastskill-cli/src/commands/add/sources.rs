@@ -627,4 +627,313 @@ mod tests {
             panic!("Expected CliError::Config");
         }
     }
+
+    // ── is_local_path ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_local_path_dot_and_slash_prefixes() {
+        assert!(is_local_path("./relative"));
+        assert!(is_local_path("/absolute/path"));
+        assert!(is_local_path("../up"));
+    }
+
+    #[test]
+    fn test_is_local_path_existing_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let p = tmp.path().join("thing");
+        std::fs::write(&p, "x").unwrap();
+        assert!(is_local_path(&p.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_is_local_path_bare_name_is_not_local() {
+        // A bare, non-existent name is treated as a non-local (e.g. registry) ref.
+        assert!(!is_local_path("some-skill-name-that-does-not-exist"));
+    }
+
+    // ── autodetect_source ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_autodetect_source_registry() {
+        assert!(matches!(
+            autodetect_source("scope/skill@1.0.0"),
+            ResolvedSource::Registry(_)
+        ));
+    }
+
+    #[test]
+    fn test_autodetect_source_git() {
+        assert!(matches!(
+            autodetect_source("https://github.com/org/repo.git"),
+            ResolvedSource::Git(_)
+        ));
+    }
+
+    #[test]
+    fn test_autodetect_source_zip() {
+        assert!(matches!(
+            autodetect_source("./bundle.zip"),
+            ResolvedSource::Zip(_)
+        ));
+    }
+
+    #[test]
+    fn test_autodetect_source_folder() {
+        assert!(matches!(
+            autodetect_source("./some/folder"),
+            ResolvedSource::Local(_)
+        ));
+    }
+
+    // ── find_skill_in_directory ───────────────────────────────────────────────
+
+    #[test]
+    fn test_find_skill_in_directory_root() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("SKILL.md"), "# skill\n").unwrap();
+        let found = find_skill_in_directory(tmp.path()).unwrap();
+        assert_eq!(found, tmp.path());
+    }
+
+    #[test]
+    fn test_find_skill_in_directory_subdir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sub = tmp.path().join("my-skill");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("SKILL.md"), "# skill\n").unwrap();
+        let found = find_skill_in_directory(tmp.path()).unwrap();
+        assert_eq!(found, sub);
+    }
+
+    #[test]
+    fn test_find_skill_in_directory_not_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("empty")).unwrap();
+        let result = find_skill_in_directory(tmp.path());
+        assert!(matches!(result, Err(CliError::Validation(_))));
+    }
+
+    // ── extract_zip_to_temp ───────────────────────────────────────────────────
+
+    /// Build an in-memory zip containing the given (path, contents) entries.
+    fn build_zip(entries: &[(&str, &str)]) -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut buf);
+            let mut writer = zip::ZipWriter::new(cursor);
+            let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            for (name, contents) in entries {
+                writer.start_file(*name, opts).unwrap();
+                writer.write_all(contents.as_bytes()).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn test_extract_zip_to_temp_success() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let zip_bytes = build_zip(&[("test-skill/SKILL.md", "# skill\n")]);
+        let zip_path = tmp.path().join("pkg.zip");
+        std::fs::write(&zip_path, &zip_bytes).unwrap();
+
+        let extracted = extract_zip_to_temp(&zip_path).unwrap();
+        assert!(extracted.path().join("test-skill/SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_extract_zip_to_temp_invalid_zip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let zip_path = tmp.path().join("bad.zip");
+        std::fs::write(&zip_path, b"not a real zip file").unwrap();
+        let result = extract_zip_to_temp(&zip_path);
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    // ── resolve_registry_version / download_registry_package (mock client) ─────
+
+    /// Minimal in-memory RepositoryClient for exercising version resolution and
+    /// package download without touching the network.
+    struct MockRepoClient {
+        versions: Vec<String>,
+        zip_data: Vec<u8>,
+    }
+
+    #[async_trait::async_trait]
+    impl fastskill_core::core::repository::RepositoryClient for MockRepoClient {
+        async fn list_skills(
+            &self,
+        ) -> Result<
+            Vec<fastskill_core::core::metadata::SkillMetadata>,
+            fastskill_core::core::repository::RepositoryClientError,
+        > {
+            Ok(Vec::new())
+        }
+
+        async fn get_skill(
+            &self,
+            _id: &str,
+            _version: Option<&str>,
+        ) -> Result<
+            Option<fastskill_core::core::metadata::SkillMetadata>,
+            fastskill_core::core::repository::RepositoryClientError,
+        > {
+            Ok(None)
+        }
+
+        async fn search(
+            &self,
+            _query: &str,
+        ) -> Result<
+            Vec<fastskill_core::core::metadata::SkillMetadata>,
+            fastskill_core::core::repository::RepositoryClientError,
+        > {
+            Ok(Vec::new())
+        }
+
+        async fn download(
+            &self,
+            _id: &str,
+            _version: &str,
+        ) -> Result<Vec<u8>, fastskill_core::core::repository::RepositoryClientError> {
+            Ok(self.zip_data.clone())
+        }
+
+        async fn get_versions(
+            &self,
+            _id: &str,
+        ) -> Result<Vec<String>, fastskill_core::core::repository::RepositoryClientError> {
+            Ok(self.versions.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_registry_version_explicit_version_short_circuits() {
+        let client = MockRepoClient {
+            versions: vec!["9.9.9".to_string()],
+            zip_data: Vec::new(),
+        };
+        let v = resolve_registry_version(&client, "scope/skill", Some("1.2.3".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(v, "1.2.3");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_registry_version_picks_newest_semver() {
+        let client = MockRepoClient {
+            versions: vec![
+                "1.9.0".to_string(),
+                "1.10.0".to_string(),
+                "1.2.0".to_string(),
+            ],
+            zip_data: Vec::new(),
+        };
+        let v = resolve_registry_version(&client, "scope/skill", None)
+            .await
+            .unwrap();
+        assert_eq!(v, "1.10.0");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_registry_version_empty_errors() {
+        let client = MockRepoClient {
+            versions: Vec::new(),
+            zip_data: Vec::new(),
+        };
+        let result = resolve_registry_version(&client, "scope/skill", None).await;
+        assert!(matches!(result, Err(CliError::Config(_))));
+    }
+
+    #[tokio::test]
+    async fn test_download_registry_package_success() {
+        let zip_bytes = build_zip(&[(
+            "test-skill/SKILL.md",
+            "---\nname: test-skill\nversion: \"1.0.0\"\ndescription: A downloaded test skill\n---\n",
+        )]);
+        let client = MockRepoClient {
+            versions: vec!["1.0.0".to_string()],
+            zip_data: zip_bytes,
+        };
+        let (_temp_dir, skill_path, skill_def) =
+            download_registry_package(&client, "scope/test-skill", "1.0.0")
+                .await
+                .unwrap();
+        assert!(skill_path.join("SKILL.md").exists());
+        assert_eq!(skill_def.id.as_str(), "test-skill");
+    }
+
+    #[tokio::test]
+    async fn test_download_registry_package_invalid_zip() {
+        let client = MockRepoClient {
+            versions: vec!["1.0.0".to_string()],
+            zip_data: b"garbage".to_vec(),
+        };
+        let result = download_registry_package(&client, "scope/test-skill", "1.0.0").await;
+        assert!(result.is_err());
+    }
+
+    // ── add_from_zip end-to-end (real service + manifest) ─────────────────────
+
+    const VALID_SKILL_MD: &str =
+        "---\nname: test-skill\nversion: \"1.0.0\"\ndescription: A zip-installed test skill\n---\nBody\n";
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_add_from_zip_end_to_end() {
+        use fastskill_core::{FastSkillService, ServiceConfig};
+
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        struct DirGuard(Option<PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(std::env::current_dir().ok());
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+
+        std::fs::write(
+            tmp.path().join("skill-project.toml"),
+            "[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n[dependencies]\n",
+        )
+        .unwrap();
+        let skills_dir = tmp.path().join(".claude/skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+
+        let zip_path = tmp.path().join("pkg.zip");
+        std::fs::write(
+            &zip_path,
+            build_zip(&[("test-skill/SKILL.md", VALID_SKILL_MD)]),
+        )
+        .unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let ctx = crate::commands::add::AddContext {
+            service: &service,
+            force: false,
+            editable: false,
+            groups: Vec::new(),
+            global: false,
+        };
+        let result = add_from_zip(&ctx, &zip_path).await;
+        assert!(result.is_ok(), "add_from_zip should succeed: {:?}", result);
+        assert!(skills_dir.join("test-skill").join("SKILL.md").exists());
+    }
 }

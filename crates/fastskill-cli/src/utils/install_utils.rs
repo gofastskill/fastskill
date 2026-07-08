@@ -553,4 +553,311 @@ mod tests {
         let result = download_and_extract_zip("http://127.0.0.1:1/nope.zip").await;
         assert!(matches!(result, Err(CliError::InvalidSource(_))));
     }
+
+    // ── shared test helpers ───────────────────────────────────────────────────
+
+    const VALID_SKILL_MD: &str = "---\nname: test-skill\nversion: \"1.0.0\"\ndescription: A test skill for install flows\n---\nBody\n";
+
+    /// Write a minimal, valid skill directory (SKILL.md only) and return it.
+    fn write_valid_skill(parent: &Path, dir_name: &str) -> PathBuf {
+        let dir = parent.join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), VALID_SKILL_MD).unwrap();
+        dir
+    }
+
+    /// Build an in-memory zip containing a single skill under `test-skill/`.
+    fn build_skill_zip() -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut buf);
+            let mut writer = zip::ZipWriter::new(cursor);
+            let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            writer.start_file("test-skill/SKILL.md", opts).unwrap();
+            writer.write_all(VALID_SKILL_MD.as_bytes()).unwrap();
+            writer.finish().unwrap();
+        }
+        buf
+    }
+
+    async fn make_service(storage: &Path) -> FastSkillService {
+        use fastskill_core::ServiceConfig;
+        let config = ServiceConfig {
+            skill_storage_path: storage.to_path_buf(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        service
+    }
+
+    // ── setup_skill_in_storage ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_setup_skill_in_storage_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let dst = tmp.path().join("storage").join("test-skill");
+        setup_skill_in_storage(&src, &dst, false).await.unwrap();
+        assert!(dst.join("SKILL.md").exists());
+        assert!(!dst.is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_setup_skill_in_storage_editable_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let dst = tmp.path().join("storage").join("test-skill");
+        std::fs::create_dir_all(dst.parent().unwrap()).unwrap();
+        setup_skill_in_storage(&src, &dst, true).await.unwrap();
+        assert!(dst.is_symlink(), "editable install must be a symlink");
+    }
+
+    #[tokio::test]
+    async fn test_setup_skill_in_storage_overwrites_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let dst = tmp.path().join("storage").join("test-skill");
+        // Pre-existing directory with stale content.
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(dst.join("stale.txt"), "old").unwrap();
+        setup_skill_in_storage(&src, &dst, false).await.unwrap();
+        assert!(dst.join("SKILL.md").exists());
+        assert!(
+            !dst.join("stale.txt").exists(),
+            "stale content must be removed"
+        );
+    }
+
+    // ── install_skill_from_entry: Local ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_install_skill_from_entry_local_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let storage = tmp.path().join("storage");
+        let service = make_service(&storage).await;
+
+        let entry = SkillEntry {
+            id: "test-skill".to_string(),
+            source: SkillSource::Local {
+                path: src.clone(),
+                editable: false,
+            },
+            version: "1.0.0".to_string(),
+            groups: Vec::new(),
+            editable: false,
+        };
+        let def = install_skill_from_entry(&service, entry, None)
+            .await
+            .unwrap();
+        assert!(matches!(def.source_type, Some(SourceType::LocalPath)));
+        assert!(!def.editable);
+        assert!(def.skill_file.ends_with("SKILL.md"));
+        assert!(def.skill_file.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_install_skill_from_entry_local_editable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let storage = tmp.path().join("storage");
+        let service = make_service(&storage).await;
+
+        let entry = SkillEntry {
+            id: "test-skill".to_string(),
+            source: SkillSource::Local {
+                path: src.clone(),
+                editable: true,
+            },
+            version: "1.0.0".to_string(),
+            groups: Vec::new(),
+            editable: true,
+        };
+        let def = install_skill_from_entry(&service, entry, None)
+            .await
+            .unwrap();
+        assert!(def.editable);
+        let stored = storage.join(def.id.as_str());
+        assert!(stored.is_symlink(), "editable local install must symlink");
+    }
+
+    #[tokio::test]
+    async fn test_install_from_local_nonexistent_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = tmp.path().join("storage");
+        let service = make_service(&storage).await;
+        let entry = SkillEntry {
+            id: "missing".to_string(),
+            source: SkillSource::Local {
+                path: tmp.path().join("does-not-exist"),
+                editable: false,
+            },
+            version: "1.0.0".to_string(),
+            groups: Vec::new(),
+            editable: false,
+        };
+        let result = install_skill_from_entry(&service, entry, None).await;
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    // ── install_skill_from_entry: Source without a sources manager ─────────────
+
+    #[tokio::test]
+    async fn test_install_skill_from_entry_source_requires_manager() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = tmp.path().join("storage");
+        let service = make_service(&storage).await;
+        let entry = SkillEntry {
+            id: "scope/skill".to_string(),
+            source: SkillSource::Source {
+                name: "myrepo".to_string(),
+                skill: "scope/skill".to_string(),
+                version: None,
+            },
+            version: "1.0.0".to_string(),
+            groups: Vec::new(),
+            editable: false,
+        };
+        let result = install_skill_from_entry(&service, entry, None).await;
+        assert!(matches!(result, Err(CliError::Config(_))));
+    }
+
+    // ── install_skill_from_entry: ZipUrl (mock HTTP) ───────────────────────────
+
+    #[tokio::test]
+    async fn test_install_skill_from_entry_zip_url() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let zip_bytes = build_skill_zip();
+        Mock::given(method("GET"))
+            .and(path("/pkg.zip"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(zip_bytes))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = tmp.path().join("storage");
+        let service = make_service(&storage).await;
+
+        let entry = SkillEntry {
+            id: "test-skill".to_string(),
+            source: SkillSource::ZipUrl {
+                base_url: format!("{}/pkg.zip", server.uri()),
+                version: Some("1.0.0".to_string()),
+            },
+            version: "1.0.0".to_string(),
+            groups: Vec::new(),
+            editable: false,
+        };
+        let def = install_skill_from_entry(&service, entry, None)
+            .await
+            .unwrap();
+        assert!(matches!(def.source_type, Some(SourceType::ZipFile)));
+        assert_eq!(def.source_tag, Some("1.0.0".to_string()));
+        assert!(def.skill_file.exists());
+    }
+
+    #[tokio::test]
+    async fn test_download_and_extract_zip_http_404() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/missing.zip"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let result = download_and_extract_zip(&format!("{}/missing.zip", server.uri())).await;
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[tokio::test]
+    async fn test_download_and_extract_zip_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ok.zip"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(build_skill_zip()))
+            .mount(&server)
+            .await;
+
+        let (_temp, skill_path) = download_and_extract_zip(&format!("{}/ok.zip", server.uri()))
+            .await
+            .unwrap();
+        assert!(skill_path.join("SKILL.md").exists());
+    }
+
+    // ── create_sources_manager_from_repositories ──────────────────────────────
+
+    fn git_marketplace_repo(name: &str) -> fastskill_core::core::repository::RepositoryDefinition {
+        use fastskill_core::core::repository::{
+            RepositoryConfig, RepositoryDefinition, RepositoryType,
+        };
+        RepositoryDefinition {
+            name: name.to_string(),
+            repo_type: RepositoryType::GitMarketplace,
+            priority: 0,
+            config: RepositoryConfig::GitMarketplace {
+                url: "https://github.com/org/marketplace".to_string(),
+                branch: None,
+                tag: None,
+            },
+            auth: None,
+            storage: None,
+        }
+    }
+
+    fn http_registry_repo(name: &str) -> fastskill_core::core::repository::RepositoryDefinition {
+        use fastskill_core::core::repository::{
+            RepositoryConfig, RepositoryDefinition, RepositoryType,
+        };
+        RepositoryDefinition {
+            name: name.to_string(),
+            repo_type: RepositoryType::HttpRegistry,
+            priority: 0,
+            config: RepositoryConfig::HttpRegistry {
+                index_url: "https://example.com/index".to_string(),
+            },
+            auth: None,
+            storage: None,
+        }
+    }
+
+    #[test]
+    fn test_create_sources_manager_from_marketplace_repo() {
+        let repo_manager = RepositoryManager::from_definitions(vec![git_marketplace_repo("mp")]);
+        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        assert!(
+            result.is_some(),
+            "a marketplace repo yields a SourcesManager"
+        );
+    }
+
+    #[test]
+    fn test_create_sources_manager_from_http_registry_only_is_none() {
+        let repo_manager = RepositoryManager::from_definitions(vec![http_registry_repo("reg")]);
+        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        assert!(
+            result.is_none(),
+            "http-registry-only repos produce no marketplace sources manager"
+        );
+    }
+
+    #[test]
+    fn test_create_sources_manager_from_empty_is_none() {
+        let repo_manager = RepositoryManager::from_definitions(Vec::new());
+        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        assert!(result.is_none());
+    }
 }

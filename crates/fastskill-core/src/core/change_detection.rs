@@ -168,11 +168,17 @@ pub fn calculate_skill_hash(skill_path: &Path) -> Result<String, ServiceError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::core::build_cache::BuildCache;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    /// Serializes tests that mutate the process-wide current directory (the git
+    /// helper runs `git` in the ambient cwd and has no directory parameter).
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
 
     // --- BUG-7: git-diff path parsing on whole components ---
 
@@ -272,5 +278,153 @@ mod tests {
         let dir = tmp.path().join("s");
         write_single_file_skill(&dir, "SKILL.md", "x");
         assert!(calculate_skill_hash(&dir).unwrap().starts_with("sha256:"));
+    }
+
+    // --- detect_changed_skills_hash ---
+
+    fn make_skill(skills_dir: &Path, id: &str, content: &str) {
+        let dir = skills_dir.join(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("SKILL.md"), content).unwrap();
+    }
+
+    #[test]
+    fn test_hash_detect_missing_skills_dir_is_empty() {
+        let tmp = TempDir::new().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+        let cache = BuildCache::default();
+        let changed = detect_changed_skills_hash(&missing, &cache).unwrap();
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn test_hash_detect_no_cache_reports_changed() {
+        let tmp = TempDir::new().unwrap();
+        let skills = tmp.path().join("skills");
+        make_skill(&skills, "one", "hello");
+        let cache = BuildCache::default();
+
+        let changed = detect_changed_skills_hash(&skills, &cache).unwrap();
+        assert_eq!(changed, vec!["one".to_string()]);
+    }
+
+    #[test]
+    fn test_hash_detect_matching_cache_reports_unchanged() {
+        let tmp = TempDir::new().unwrap();
+        let skills = tmp.path().join("skills");
+        make_skill(&skills, "one", "hello");
+
+        let current = calculate_skill_hash(&skills.join("one")).unwrap();
+        let mut cache = BuildCache::default();
+        cache.update_skill("one", "1.0.0", &current, Path::new("art.zip"), None);
+
+        let changed = detect_changed_skills_hash(&skills, &cache).unwrap();
+        assert!(changed.is_empty(), "matching hash means unchanged");
+    }
+
+    #[test]
+    fn test_hash_detect_stale_cache_reports_changed() {
+        let tmp = TempDir::new().unwrap();
+        let skills = tmp.path().join("skills");
+        make_skill(&skills, "one", "hello");
+
+        let mut cache = BuildCache::default();
+        cache.update_skill("one", "1.0.0", "sha256:stale", Path::new("art.zip"), None);
+
+        let changed = detect_changed_skills_hash(&skills, &cache).unwrap();
+        assert_eq!(changed, vec!["one".to_string()]);
+    }
+
+    #[test]
+    fn test_hash_detect_ignores_dir_without_skill_md() {
+        let tmp = TempDir::new().unwrap();
+        let skills = tmp.path().join("skills");
+        // A directory that is NOT a skill (no SKILL.md).
+        fs::create_dir_all(skills.join("not-a-skill")).unwrap();
+        fs::write(skills.join("not-a-skill").join("other.txt"), "x").unwrap();
+        // A stray file directly under skills_dir (not a dir) is skipped.
+        fs::write(skills.join("loose.txt"), "y").unwrap();
+
+        let cache = BuildCache::default();
+        let changed = detect_changed_skills_hash(&skills, &cache).unwrap();
+        assert!(changed.is_empty());
+    }
+
+    // --- detect_changed_skills_git (real temporary git repo) ---
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .expect("git should run");
+        assert!(status.status.success(), "git {:?} failed", args);
+    }
+
+    #[test]
+    fn test_git_detect_changed_skill() {
+        let _guard = CWD_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        run_git(repo, &["init", "-q"]);
+
+        // First commit: two skills. Use a skills dir relative to the repo root so
+        // the diff paths (which git prints relative to the repo) match.
+        let skills_rel = Path::new("skills");
+        let skills = repo.join(skills_rel);
+        make_skill(&skills, "alpha", "v1");
+        make_skill(&skills, "beta", "v1");
+        run_git(repo, &["add", "-A"]);
+        run_git(repo, &["commit", "-q", "-m", "init"]);
+        let base = String::from_utf8(
+            std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+
+        // Second commit: change only alpha.
+        fs::write(skills.join("alpha").join("SKILL.md"), "v2").unwrap();
+        run_git(repo, &["add", "-A"]);
+        run_git(repo, &["commit", "-q", "-m", "change alpha"]);
+
+        // The git helper runs in the ambient cwd; enter the repo for the call.
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(repo).unwrap();
+        let result = detect_changed_skills_git(&base, "HEAD", skills_rel);
+        std::env::set_current_dir(prev).unwrap();
+
+        let changed = result.expect("git diff should succeed");
+        assert_eq!(changed, vec!["alpha".to_string()]);
+    }
+
+    #[test]
+    fn test_git_detect_bad_ref_errors() {
+        let _guard = CWD_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        run_git(repo, &["init", "-q"]);
+        make_skill(&repo.join("skills"), "alpha", "v1");
+        run_git(repo, &["add", "-A"]);
+        run_git(repo, &["commit", "-q", "-m", "init"]);
+
+        // Run from within the repo so git has a repository to operate on, but use
+        // refs that do not exist -> git exits non-zero -> Err.
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(repo).unwrap();
+        let result =
+            detect_changed_skills_git("no-such-ref-a", "no-such-ref-b", Path::new("skills"));
+        std::env::set_current_dir(prev).unwrap();
+
+        assert!(matches!(result, Err(ServiceError::Custom(_))));
     }
 }

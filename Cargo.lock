@@ -1290,6 +1290,8 @@ dependencies = [
  "url",
  "uuid",
  "walkdir",
+ "wiremock",
+ "zip 0.6.6",
 ]
 
 [[package]]

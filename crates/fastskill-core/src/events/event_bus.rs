@@ -528,4 +528,349 @@ mod tests {
         let registered = bus.get_registered_handlers().await;
         assert_eq!(registered.get("skill:updated").copied(), Some(1));
     }
+
+    // ---- helpers -------------------------------------------------------------
+
+    use crate::core::service::SkillId;
+    use crate::core::skill_manager::SkillDefinition;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn sample_skill() -> SkillDefinition {
+        let id = SkillId::new("sample-skill".to_string()).unwrap();
+        SkillDefinition::new(
+            id,
+            "Sample".to_string(),
+            "A sample skill".to_string(),
+            "1.0.0".to_string(),
+        )
+    }
+
+    /// Handler that counts invocations.
+    struct CountingHandler {
+        count: Arc<AtomicUsize>,
+    }
+    #[async_trait]
+    impl EventHandler for CountingHandler {
+        async fn handle_event(&self, _event: SkillEvent) -> Result<(), ServiceError> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// Handler that always fails (exercises the warn/error path in notify_handlers).
+    struct FailingHandler;
+    #[async_trait]
+    impl EventHandler for FailingHandler {
+        async fn handle_event(&self, _event: SkillEvent) -> Result<(), ServiceError> {
+            Err(ServiceError::Custom("boom".to_string()))
+        }
+    }
+
+    // ---- subscribe -----------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_subscribe_receives_published_event() {
+        let bus = EventBus::new();
+        let mut rx = bus.subscribe();
+        bus.publish_skill_unregistered("s1".to_string())
+            .await
+            .unwrap();
+        let event = rx.recv().await.unwrap();
+        assert!(matches!(event, SkillEvent::SkillUnregistered { skill_id } if skill_id == "s1"));
+    }
+
+    // ---- register / notify / unregister -------------------------------------
+
+    #[tokio::test]
+    async fn test_registered_handler_is_notified() {
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+        bus.register_handler(
+            "skill:unregistered",
+            CountingHandler {
+                count: count.clone(),
+            },
+        )
+        .await
+        .unwrap();
+
+        bus.publish_skill_unregistered("s1".to_string())
+            .await
+            .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+
+        // A handler registered for a different type is not called.
+        bus.publish_skill_reloaded("s2".to_string(), true, None)
+            .await
+            .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_failing_handler_does_not_break_publish() {
+        let bus = EventBus::new();
+        bus.register_handler("skill:unregistered", FailingHandler)
+            .await
+            .unwrap();
+        // Publish still succeeds even though the handler errored.
+        let subs = bus
+            .publish_skill_unregistered("s1".to_string())
+            .await
+            .unwrap();
+        assert_eq!(subs, 0, "no broadcast subscribers");
+    }
+
+    #[tokio::test]
+    async fn test_unregister_clears_handlers() {
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+        bus.register_handler(
+            "skill:updated",
+            CountingHandler {
+                count: count.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            bus.get_registered_handlers().await.get("skill:updated"),
+            Some(&1)
+        );
+
+        bus.unregister_handler("skill:updated", "ignored-id")
+            .await
+            .unwrap();
+        assert_eq!(
+            bus.get_registered_handlers().await.get("skill:updated"),
+            Some(&0)
+        );
+
+        // Publishing now invokes nothing.
+        bus.publish_skill_updated(
+            "s".to_string(),
+            SkillUpdate {
+                name: None,
+                description: None,
+                version: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_unregister_unknown_type_is_noop() {
+        let bus = EventBus::new();
+        // No panic / error when the event type was never registered.
+        bus.unregister_handler("never-registered", "id")
+            .await
+            .unwrap();
+    }
+
+    // ---- every SkillEvent variant flows through notify_handlers --------------
+
+    #[tokio::test]
+    async fn test_publish_all_variants_via_convenience_methods() {
+        let bus = EventBus::new();
+
+        bus.publish_skill_registered("s".to_string(), sample_skill())
+            .await
+            .unwrap();
+        bus.publish_skill_updated(
+            "s".to_string(),
+            SkillUpdate {
+                name: Some("n".to_string()),
+                description: Some("d".to_string()),
+                version: Some("2.0.0".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+        bus.publish_skill_unregistered("s".to_string())
+            .await
+            .unwrap();
+        bus.publish_skill_reloaded("s".to_string(), true, None)
+            .await
+            .unwrap();
+        bus.publish_skill_reloaded("s".to_string(), false, Some("err".to_string()))
+            .await
+            .unwrap();
+        bus.publish_skill_validation_failed("s".to_string(), vec!["e1".to_string()])
+            .await
+            .unwrap();
+        bus.publish_hot_reload_enabled(HotReloadConfig {
+            watch_paths: vec!["p".to_string()],
+            debounce_ms: 10,
+            auto_reload: true,
+            max_concurrent_reloads: 1,
+        })
+        .await
+        .unwrap();
+        bus.publish_hot_reload_disabled().await.unwrap();
+        bus.publish_event(SkillEvent::Custom {
+            event_type: "custom:thing".to_string(),
+            data: serde_json::json!({"k": "v"}),
+        })
+        .await
+        .unwrap();
+
+        // All nine events are in history.
+        assert_eq!(bus.get_event_history().await.len(), 9);
+    }
+
+    // ---- history management --------------------------------------------------
+
+    #[tokio::test]
+    async fn test_clear_event_history() {
+        let bus = EventBus::new();
+        bus.publish_skill_unregistered("s".to_string())
+            .await
+            .unwrap();
+        assert!(!bus.get_event_history().await.is_empty());
+        bus.clear_event_history().await;
+        assert!(bus.get_event_history().await.is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    async fn test_default_constructs() {
+        let _bus = EventBus::default();
+        let _logging = LoggingEventHandler::default();
+        let _metrics = MetricsEventHandler::default();
+    }
+
+    // ---- LoggingEventHandler covers every variant ---------------------------
+
+    #[tokio::test]
+    async fn test_logging_handler_all_variants() {
+        let h = LoggingEventHandler::new();
+        let events = vec![
+            SkillEvent::SkillRegistered {
+                skill_id: "s".to_string(),
+                skill: Box::new(sample_skill()),
+            },
+            SkillEvent::SkillUpdated {
+                skill_id: "s".to_string(),
+                changes: SkillUpdate {
+                    name: None,
+                    description: None,
+                    version: None,
+                },
+            },
+            SkillEvent::SkillUnregistered {
+                skill_id: "s".to_string(),
+            },
+            SkillEvent::SkillReloaded {
+                skill_id: "s".to_string(),
+                success: true,
+                error_message: None,
+            },
+            SkillEvent::SkillReloaded {
+                skill_id: "s".to_string(),
+                success: false,
+                error_message: Some("e".to_string()),
+            },
+            SkillEvent::SkillValidationFailed {
+                skill_id: "s".to_string(),
+                errors: vec!["e".to_string()],
+            },
+            SkillEvent::HotReloadEnabled {
+                config: HotReloadConfig {
+                    watch_paths: vec!["p".to_string()],
+                    debounce_ms: 1,
+                    auto_reload: false,
+                    max_concurrent_reloads: 1,
+                },
+            },
+            SkillEvent::HotReloadDisabled,
+            SkillEvent::Custom {
+                event_type: "c".to_string(),
+                data: serde_json::json!({}),
+            },
+        ];
+        for e in events {
+            h.handle_event(e).await.unwrap();
+        }
+    }
+
+    // ---- MetricsEventHandler tallies event types ----------------------------
+
+    #[tokio::test]
+    async fn test_metrics_handler_counts_event_types() {
+        let metrics = MetricsEventHandler::new();
+        metrics
+            .handle_event(SkillEvent::SkillUnregistered {
+                skill_id: "a".to_string(),
+            })
+            .await
+            .unwrap();
+        metrics
+            .handle_event(SkillEvent::SkillUnregistered {
+                skill_id: "b".to_string(),
+            })
+            .await
+            .unwrap();
+        metrics
+            .handle_event(SkillEvent::HotReloadDisabled)
+            .await
+            .unwrap();
+        metrics
+            .handle_event(SkillEvent::Custom {
+                event_type: "custom:x".to_string(),
+                data: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+
+        let counts = metrics.get_event_counts().await;
+        assert_eq!(counts.get("skill:unregistered"), Some(&2));
+        assert_eq!(counts.get("hot-reload:disabled"), Some(&1));
+        assert_eq!(counts.get("custom:x"), Some(&1));
+    }
+
+    #[tokio::test]
+    async fn test_metrics_handler_all_remaining_variants() {
+        let metrics = MetricsEventHandler::new();
+        let events = vec![
+            SkillEvent::SkillRegistered {
+                skill_id: "s".to_string(),
+                skill: Box::new(sample_skill()),
+            },
+            SkillEvent::SkillUpdated {
+                skill_id: "s".to_string(),
+                changes: SkillUpdate {
+                    name: None,
+                    description: None,
+                    version: None,
+                },
+            },
+            SkillEvent::SkillReloaded {
+                skill_id: "s".to_string(),
+                success: true,
+                error_message: None,
+            },
+            SkillEvent::SkillValidationFailed {
+                skill_id: "s".to_string(),
+                errors: vec![],
+            },
+            SkillEvent::HotReloadEnabled {
+                config: HotReloadConfig {
+                    watch_paths: vec![],
+                    debounce_ms: 0,
+                    auto_reload: false,
+                    max_concurrent_reloads: 0,
+                },
+            },
+        ];
+        for e in events {
+            metrics.handle_event(e).await.unwrap();
+        }
+        let counts = metrics.get_event_counts().await;
+        assert_eq!(counts.get("skill:registered"), Some(&1));
+        assert_eq!(counts.get("skill:updated"), Some(&1));
+        assert_eq!(counts.get("skill:reloaded"), Some(&1));
+        assert_eq!(counts.get("skill:validation:failed"), Some(&1));
+        assert_eq!(counts.get("hot-reload:enabled"), Some(&1));
+    }
 }
