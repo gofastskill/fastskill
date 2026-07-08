@@ -104,7 +104,7 @@ desktop.ini
 /docs/.doctrees
 *.pdf
 *.html
-!src/http/static/index.html
+!crates/fastskill-core/src/http/static/index.html
 *.epub
 *.mobi
 *.azw3
