@@ -218,6 +218,9 @@ temp_skills/
 extracted_skills/
 .fastskill/
 
+# Design specs are local working artifacts, not shipped in the repo
+specs/
+
 # Performance and profiling
 *.prof
 *.profraw
