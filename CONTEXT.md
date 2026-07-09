@@ -69,6 +69,10 @@ A *distinct, first-class* catalog produced by `marketplace create`, consumed by 
 A configured remote (or local) source of skills, managed by `repos`. Types: `git-marketplace`, `http-registry`, `zip-url`, `local`. Conflicts resolved by **priority** (lower number = higher precedence).
 _Avoid_: **source**, **registry** — both are deprecated command aliases now folded into `repos`; do not reintroduce them as concepts.
 
+**Origin**:
+Where a single installed skill came from — both the *input* to an install and the *provenance* recorded on the installed skill (one type, one truth). Variants: `git` (url + ref + subdir), `local` (path, editable), `zip-url`, and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is the single canonical model — it replaces the former `SkillSource` (two colliding types), `SourceType`, and the manifest `"source"` serde tag.
+_Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference) with **Repository** (the configured place itself).
+
 ### Serving surfaces
 
 Two orthogonal, first-class ways to expose skills to a client — distinguished by *protocol/consumer*, not redundant:
