@@ -9,9 +9,9 @@ description: "Search for skills using semantic embeddings or traditional keyword
 
 With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill reindex` and embedding configuration when not using keyword-only mode.
 
-<Info>
+<Callout type="info">
 Run `fastskill search --help` for the authoritative flag list.
-</Info>
+</Callout>
 
 ## Basic Usage
 
@@ -39,7 +39,7 @@ fastskill search "powerpoint" --local --skills-dir ./.claude/skills
 
 ## Command Options
 
-### --limit <NUMBER>
+### --limit `&lt;NUMBER&gt;`
 
 Maximum number of results to return:
 
@@ -74,7 +74,7 @@ fastskill search "query" --remote         # explicit remote (default without --l
 fastskill search "query" --repository r   # remote, single repo
 ```
 
-### --embedding <true|false|auto>
+### --embedding `&lt;true|false|auto&gt;`
 
 **Only applies when `--local` is set**; ignored for remote search.
 

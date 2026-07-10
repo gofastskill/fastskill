@@ -7,9 +7,9 @@ description: "FastSkill CLI commands for skill management including registration
 
 Skill commands provide comprehensive management of FastSkill skills through command line interface. These commands allow you to register, install, update, remove, and manage skills in your FastSkill ecosystem.
 
-<Note>
+<Callout>
 For detailed documentation on specific commands, see the dedicated command pages linked below.
-</Note>
+</Callout>
 
 ## Command Reference
 
@@ -17,9 +17,9 @@ For detailed documentation on specific commands, see the dedicated command pages
 
 Initialize `skill-project.toml` for skill authors in current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
 
-<Info>
+<Callout type="info">
 See [init Command](/cli-reference/init-command) for complete documentation with all flags and examples.
-</Info>
+</Callout>
 
 ```bash
 # Create skill-project.toml interactively
@@ -132,9 +132,9 @@ You can also run `fastskill <skill-id>` with no subcommand; it routes to the sam
 
 Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
 
-<Info>
+<Callout type="info">
 See [install Command](/cli-reference/install-command) for complete documentation with groups, lockfile, and reconciliation features.
-</Info>
+</Callout>
 
 ```bash
 # Install all skills from skill-project.toml
@@ -159,9 +159,9 @@ fastskill install --lock
 
 Update skills in skills storage directory to their latest versions from source. The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
 
-<Info>
+<Callout type="info">
 See [update Command](/cli-reference/update-command) for complete documentation with strategies and version constraints.
-</Info>
+</Callout>
 
 ```bash
 # Update all skills
@@ -209,9 +209,9 @@ fastskill read my-skill-id --meta --json
 fastskill list
 ```
 
-<Note>
+<Callout>
 `fastskill show` has been removed. Use `fastskill read <id> --meta` to view skill metadata or `fastskill list` to enumerate all installed skills.
-</Note>
+</Callout>
 
 ### fastskill add
 
@@ -401,6 +401,6 @@ fastskill doctor
 fastskill list
 ```
 
-<Note>
+<Callout>
 Skill commands support both interactive use and automation. Use appropriate options for your workflow. Reindex runs automatically after `add`/`install`/`update`/`remove` when an embedding provider is configured; use `--no-reindex` to suppress or `fastskill doctor` to check environment readiness.
-</Note>
+</Callout>

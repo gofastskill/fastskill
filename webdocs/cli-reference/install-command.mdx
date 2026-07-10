@@ -45,9 +45,9 @@ Install production skills only, excluding dev group:
 fastskill install --without dev
 ```
 
-<Info>
+<Callout type="info">
 This is useful for CI/CD pipelines where you want lean production deployments without development dependencies.
-</Info>
+</Callout>
 
 ### Install Only Specific Groups
 
@@ -72,9 +72,9 @@ Install exact versions from `skills.lock`:
 fastskill install --lock
 ```
 
-<Check>
+<Callout type="success">
 Use `--lock` for production deployments to ensure you install the exact same versions that were used in development.
-</Check>
+</Callout>
 
 ### Combined Example: Production Deployment
 
@@ -120,9 +120,9 @@ test-helper = { source = "git", url = "https://github.com/user/test-helper.git",
 mock-skill = { source = "registry", id = "mock-skill", groups = ["test"] }
 ```
 
-<Info>
+<Callout type="info">
 If no `groups` are specified, the skill belongs to no groups and will always be installed.
-</Info>
+</Callout>
 
 ### Default Group Behavior
 
@@ -446,27 +446,25 @@ jobs:
 
 ## Best Practices
 
-<Steps>
-<Step title="Commit both skill-project.toml and skills.lock">
-  Always commit both files to version control. This ensures all team members install the same versions.
-</Step>
+### 1. Commit both skill-project.toml and skills.lock
 
-<Step title="Use groups for environment-specific dependencies">
-  Separate dev, test, and production dependencies into groups. Use `--without dev` for production builds.
-</Step>
+Always commit both files to version control. This ensures all team members install the same versions.
 
-<Step title="Run fastskill install before committing">
-  Run `fastskill install` after modifying `skill-project.toml` to update `skills.lock` with new versions.
-</Step>
+### 2. Use groups for environment-specific dependencies
 
-<Step title="Use --lock for production deployments">
-  Always use `--lock` flag in production to ensure exact version matches.
-</Step>
+Separate dev, test, and production dependencies into groups. Use `--without dev` for production builds.
 
-<Step title="Reindex after installation">
-  Run `fastskill reindex` after installation to update the semantic search index.
-</Step>
-</Steps>
+### 3. Run fastskill install before committing
+
+Run `fastskill install` after modifying `skill-project.toml` to update `skills.lock` with new versions.
+
+### 4. Use --lock for production deployments
+
+Always use `--lock` flag in production to ensure exact version matches.
+
+### 5. Reindex after installation
+
+Run `fastskill reindex` after installation to update the semantic search index.
 
 ## See Also
 

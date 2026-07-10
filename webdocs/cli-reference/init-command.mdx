@@ -68,9 +68,9 @@ Overwrite existing `skill-project.toml`:
 fastskill init --force
 ```
 
-<Warning>
+<Callout type="warn">
 Using `--force` will overwrite your existing `skill-project.toml` file. Make sure to backup if you need to preserve any custom configurations.
-</Warning>
+</Callout>
 
 ## Behavior
 
@@ -133,9 +133,9 @@ fastskill init
 # Creates: [metadata] id = "my-skill"
 ```
 
-<Info>
+<Callout type="info">
 If you're in a project directory (no SKILL.md), the `skill-project.toml` can still be used to declare dependencies for installation via `fastskill install`.
-</Info>
+</Callout>
 
 ## Context Detection
 
@@ -191,9 +191,9 @@ license: MIT
 Skill content here...
 ```
 
-<Info>
+<Callout type="info">
 If you provide `--version`, `--description`, or `--author` flags, they will override the values from SKILL.md frontmatter.
-</Info>
+</Callout>
 
 ## Version Validation
 

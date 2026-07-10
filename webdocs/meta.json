@@ -1,0 +1,33 @@
+{
+  "pages": [
+    "---Getting Started---",
+    "welcome",
+    "index",
+    "quickstart",
+    "installation",
+    "cheatsheet",
+    "---Configuration---",
+    "configuration",
+    "---Skill Management---",
+    "skill-management",
+    "---Evals & Quality---",
+    "evals-quality",
+    "---Skill Optimization---",
+    "optimize",
+    "---CLI Reference---",
+    "cli-reference",
+    "---Registry---",
+    "registry",
+    "---Advanced Topics---",
+    "security",
+    "---Integration---",
+    "integration",
+    "---Testing & Examples---",
+    "testing",
+    "tool-calling",
+    "progressive-loading",
+    "examples",
+    "---Troubleshooting---",
+    "troubleshooting"
+  ]
+}

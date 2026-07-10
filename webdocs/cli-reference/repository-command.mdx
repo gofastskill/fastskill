@@ -7,9 +7,9 @@ description: "Manage skill repositories and browse the remote catalog with fasts
 
 Manage skill repositories and browse remote skill catalog.
 
-<Info>
+<Callout type="info">
 The `repos` command is the primary interface for repository management and catalog browsing in FastSkill. Use `fastskill search` for semantic search of installed skills.
-</Info>
+</Callout>
 
 ## Usage
 
@@ -487,18 +487,18 @@ git push -u origin main
 
 ### Troubleshooting
 
-<AccordionGroup>
-<Accordion title="Repository not found">
-  <Warning>
+<Accordions>
+<Accordion id="repository-not-found" title="Repository not found">
+  <Callout type="warn">
   **Check name**: Ensure the repository name matches what you added.
   ```bash
   fastskill repos list
   ```
-  </Warning>
+  </Callout>
 </Accordion>
 
-<Accordion title="Authentication failed">
-  <Warning>
+<Accordion id="authentication-failed" title="Authentication failed">
+  <Callout type="warn">
   **Verify credentials**:
   ```bash
   # Check environment variable
@@ -510,23 +510,23 @@ git push -u origin main
   # Test basic auth credentials
   curl -u username:password https://api.example.com/health
   ```
-  </Warning>
+  </Callout>
 </Accordion>
 
-<Accordion title="Priority not working">
-  <Tip>
+<Accordion id="priority-not-working" title="Priority not working">
+  <Callout>
   **Verify priority values**: Lower numbers have higher priority.
   ```bash
   fastskill repos list
   ```
   Priority 0 is highest, priority 10 is lower.
-  </Tip>
+  </Callout>
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
-<Note>
+<Callout>
 Repositories configuration is stored in `skill-project.toml` and should be committed to version control. Authentication credentials (environment variables) should never be committed.
-</Note>
+</Callout>
 
 ## See Also
 
