@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "overview",
+    "skill-commands",
+    "discovery-commands",
+    "init-command",
+    "install-command",
+    "update-command",
+    "reindex-command",
+    "search-command",
+    "serve-command",
+    "repository-command",
+    "eval-command",
+    "tooling-commands"
+  ]
+}

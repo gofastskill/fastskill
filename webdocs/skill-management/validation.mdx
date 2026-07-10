@@ -7,9 +7,9 @@ description: "Comprehensive guide to validating FastSkill skill definitions incl
 
 Skill validation means checking that each skill installs cleanly, exposes the metadata agents expect, and matches what your `skill-project.toml` declares.
 
-<Info>
+<Callout type="info">
 Validation happens at multiple stages: definition validation, registration validation, and runtime validation.
-</Info>
+</Callout>
 
 ## What FastSkill checks
 
@@ -25,62 +25,71 @@ Run `fastskill install` or `fastskill add …` to surface validation errors befo
 
 ### Required Fields
 
-<ParamField path="id" type="string" required>
+#### `id` (string, required)
+
 - Must be unique within the service
 - Alphanumeric characters, dashes, and underscores only
 - 3-50 characters in length
 - Cannot start or end with dashes/underscores
-</ParamField>
 
-<ParamField path="name" type="string" required>
+
+#### `name` (string, required)
+
 - Human-readable name
 - 1-100 characters in length
 - No special formatting requirements
-</ParamField>
 
-<ParamField path="description" type="string" required>
+
+#### `description` (string, required)
+
 - Detailed description of functionality
 - 10-500 characters in length
 - Should explain what the skill does
-</ParamField>
 
-<ParamField path="version" type="string" required>
+
+#### `version` (string, required)
+
 - Semantic version format (e.g., "1.0.0")
 - Follows MAJOR.MINOR.PATCH convention
 - Should be updated for breaking changes
-</ParamField>
+
 
 ### Optional Fields Validation
 
-<ParamField path="tags" type="string">
+#### `tags` (string, optional)
+
 - Comma-separated list of tags
 - Each tag 2-30 characters
 - Alphanumeric, dashes, and underscores only
 - Maximum 20 tags
-</ParamField>
 
-<ParamField path="capabilities" type="string">
+
+#### `capabilities` (string, optional)
+
 - Comma-separated list of capabilities
 - Each capability 3-50 characters
 - Descriptive of actual functionality
 - Maximum 20 capabilities
-</ParamField>
 
-<ParamField path="skill_file" type="string">
+
+#### `skill_file` (string, optional)
+
 - Path relative to skill storage directory
 - Must exist and be readable
 - Should be a Python file or markdown document
-</ParamField>
 
-<ParamField path="execution_timeout" type="integer">
+
+#### `execution_timeout` (integer, optional)
+
 - 1-300 seconds
 - Must be reasonable for the skill's operations
-</ParamField>
 
-<ParamField path="memory_limit_mb" type="integer">
+
+#### `memory_limit_mb` (integer, optional)
+
 - 32-2048 MB
 - Must be sufficient for skill execution
-</ParamField>
+
 
 ## Automatic Validation
 
@@ -128,62 +137,59 @@ If you use automation, run the same commands after `fastskill install` or `fasts
 
 ## Best Practices
 
-<Steps>
-<Step title="Validate after every manifest change">
-  Run `fastskill install` and `fastskill list` whenever `skill-project.toml` or skills change.
-</Step>
+### 1. Validate after every manifest change
 
-<Step title="Use multiple validation levels">
-  Combine structure, security, and quality validation for comprehensive coverage.
-</Step>
+Run `fastskill install` and `fastskill list` whenever `skill-project.toml` or skills change.
 
-<Step title="Set up automated validation">
-  Integrate validation into your CI/CD pipeline to catch issues before they reach production.
-</Step>
+### 2. Use multiple validation levels
 
-<Step title="Monitor validation metrics">
-  Track validation success rates and common issues to improve skill quality over time.
-</Step>
+Combine structure, security, and quality validation for comprehensive coverage.
 
-<Step title="Write expectations in your team handbook">
-  Capture which registries, groups, and approval steps apply to your org so skill owners know what "valid" means for you.
-</Step>
-</Steps>
+### 3. Set up automated validation
+
+Integrate validation into your CI/CD pipeline to catch issues before they reach production.
+
+### 4. Monitor validation metrics
+
+Track validation success rates and common issues to improve skill quality over time.
+
+### 5. Write expectations in your team handbook
+
+Capture which registries, groups, and approval steps apply to your org so skill owners know what "valid" means for you.
 
 ## Troubleshooting
 
-<AccordionGroup>
-<Accordion title="Validation Errors">
-  <Warning>
+<Accordions>
+<Accordion id="validation-errors" title="Validation Errors">
+  <Callout type="warn">
   **Missing required fields**: Ensure all required fields are present and have valid values.
-  
+
   Required fields:
   - `id`: Must be alphanumeric with dashes/underscores only
   - `name`: Human-readable name
   - `description`: Detailed description
   - `version`: Semantic version (e.g., "1.0.0")
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Invalid field types**: Check that field values match expected types.
-  
+
   - `id`, `name`, `description`, `version`: strings
   - `enabled`: boolean
   - `timeout`: optional integer
-  </Warning>
+  </Callout>
 </Accordion>
 
-<Accordion title="Security Validation Issues">
-  <Info>
-  **Common validation issues**: 
+<Accordion id="security-validation-issues" title="Security Validation Issues">
+  <Callout type="info">
+  **Common validation issues**:
   - Invalid skill ID format (must be alphanumeric, dashes, underscores only)
   - Skill ID too long (max 255 characters)
   - Invalid file paths
-  </Info>
+  </Callout>
 </Accordion>
-</AccordionGroup>
-</AccordionGroup>
+</Accordions>
 
-<Note>
+<Callout>
 Effective validation catches issues early and ensures skills meet quality standards. Invest time in setting up comprehensive validation for your skill ecosystem.
-</Note>
+</Callout>

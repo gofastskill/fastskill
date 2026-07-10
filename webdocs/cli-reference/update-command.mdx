@@ -56,9 +56,9 @@ Check which skills have updates available without installing:
 fastskill update --check
 ```
 
-<Info>
+<Callout type="info">
 Use `--check` to see what's available before updating. Useful for reviewing changes before applying them.
-</Info>
+</Callout>
 
 ### Dry Run
 
@@ -493,30 +493,28 @@ Updating data-processor...
 
 ## Best Practices
 
-<Steps>
-<Step title="Check before updating">
-  Use `fastskill update --check` to see what's available before applying updates. Review changes, especially for major version bumps.
-</Step>
+### 1. Check before updating
 
-<Step title="Use appropriate strategies">
-  - Use `--strategy patch` for bug fixes only
+Use `fastskill update --check` to see what's available before applying updates. Review changes, especially for major version bumps.
+
+### 2. Use appropriate strategies
+
+- Use `--strategy patch` for bug fixes only
   - Use `--strategy minor` for new features without breaking changes
   - Use `--strategy major` when you're ready for breaking changes
   - Use `--strategy latest` for bleeding edge (not recommended for production)
-</Step>
 
-<Step title="Reindex after updates">
-  Always run `fastskill reindex` after updating skills to keep search index current.
-</Step>
+### 3. Reindex after updates
 
-<Step title="Commit lockfile after updates">
-  Commit `skills.lock` after successful updates to track version changes in version control.
-</Step>
+Always run `fastskill reindex` after updating skills to keep search index current.
 
-<Step title="Test updates in development first">
-  Test skill updates in development environment before deploying to production, especially for major version updates.
-</Step>
-</Steps>
+### 4. Commit lockfile after updates
+
+Commit `skills.lock` after successful updates to track version changes in version control.
+
+### 5. Test updates in development first
+
+Test skill updates in development environment before deploying to production, especially for major version updates.
 
 ## See Also
 

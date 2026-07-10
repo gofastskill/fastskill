@@ -7,9 +7,9 @@ description: "Index skills with embeddings for semantic search capabilities."
 
 The `reindex` command scans skill directories, extracts metadata from SKILL.md files, generates embeddings using OpenAI's API, and builds a local vector index for semantic search.
 
-<Info>
+<Callout type="info">
 This command requires OpenAI API configuration and will create a local SQLite database to store embeddings.
-</Info>
+</Callout>
 
 ## Basic Usage
 
@@ -19,7 +19,7 @@ fastskill reindex --skills-dir /path/to/skills/
 
 ## Command Options
 
-### --skills-dir <DIRECTORY>
+### --skills-dir `&lt;DIRECTORY&gt;`
 
 Optional override for the skills root (otherwise the CLI uses the same discovery as other commands, typically from `skill-project.toml`).
 
@@ -45,7 +45,7 @@ fastskill reindex --skills-dir .claude/skills/ --force
 - When embeddings seem outdated
 - To rebuild corrupted index
 
-### --max-concurrent <NUMBER>
+### --max-concurrent `&lt;NUMBER&gt;`
 
 Control the number of concurrent embedding API requests (default: 5).
 

@@ -1,0 +1,10 @@
+{
+  "pages": [
+    "overview",
+    "repository-architecture",
+    "index-system",
+    "sources",
+    "marketplace-json",
+    "web-ui"
+  ]
+}

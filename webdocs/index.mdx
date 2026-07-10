@@ -3,13 +3,11 @@ title: "FastSkill"
 description: "Package manager and operational toolkit for Agent AI Skills. Discovery, installation, versioning, validation, evals, and deployment at scale."
 ---
 
-<Note>
+<Callout>
 New here? Read the [Welcome](/welcome) page for the full story, then [Quick start](/quickstart) and [Installation](/installation).
-</Note>
+</Callout>
 
-<Frame>
 <img src="/images/hero-diagram.svg" alt="FastSkill overview" />
-</Frame>
 
 ## What is FastSkill?
 
@@ -19,31 +17,31 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
 
 ## What you can do
 
-<CardGroup cols={2}>
-  <Card title="Package & lifecycle" icon="package">
+<Cards>
+  <Card title="Package & lifecycle">
     `add`, `install`, `update`, `remove`, `list`, `read` with `skill-project.toml` and `skills.lock`.
   </Card>
 
-  <Card title="Validation" icon="check-circle">
+  <Card title="Validation">
     Structure checks on install and reconciliation across manifest, lock, and disk. See [Skill validation](/skill-management/validation).
   </Card>
 
-  <Card title="Evals" icon="flask">
+  <Card title="Evals">
     `fastskill eval validate | run | report | score` for defined quality suites. See [eval command](/cli-reference/eval-command).
   </Card>
 
-  <Card title="Discovery & search" icon="search">
+  <Card title="Discovery & search">
     Catalog search by default; `--local` for installed skills, embeddings, and keyword fallback.
   </Card>
 
-  <Card title="Diagnostics" icon="stethoscope">
+  <Card title="Diagnostics">
     `fastskill doctor` reports configuration and environment readiness, including whether semantic search is available. See [tooling commands](/cli-reference/tooling-commands).
   </Card>
 
-  <Card title="Catalogs & sources" icon="book">
+  <Card title="Catalogs & sources">
     `repos` for remote sources and registry browsing. See [Registry overview](/registry/overview).
   </Card>
-</CardGroup>
+</Cards>
 
 ## Quick start (CLI)
 
@@ -72,20 +70,21 @@ Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill
 
 ## Next steps
 
-<Steps>
-<Step title="Install">
-  [Installation](/installation) for the `fastskill` binary.
-</Step>
-<Step title="Learn the model">
-  [Welcome](/welcome) and [Manifest system](/skill-management/manifest-system).
-</Step>
-<Step title="Operate skills">
-  [Skill validation](/skill-management/validation), [Evals and quality](/evals-quality/overview), [CLI reference](/cli-reference/overview).
-</Step>
-<Step title="Integrate">
-  [Cursor integration](/integration/cursor-integration) or [Claude Code integration](/integration/claude-code-integration).
-</Step>
-</Steps>
+### 1. Install
+
+[Installation](/installation) for the `fastskill` binary.
+
+### 2. Learn the model
+
+[Welcome](/welcome) and [Manifest system](/skill-management/manifest-system).
+
+### 3. Operate skills
+
+[Skill validation](/skill-management/validation), [Evals and quality](/evals-quality/overview), [CLI reference](/cli-reference/overview).
+
+### 4. Integrate
+
+[Cursor integration](/integration/cursor-integration) or [Claude Code integration](/integration/claude-code-integration).
 
 ## Getting help
 

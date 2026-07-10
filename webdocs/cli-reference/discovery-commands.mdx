@@ -7,15 +7,15 @@ description: "FastSkill CLI commands for skill search, vector indexing, and repo
 
 Discovery commands help you find, index, and manage skills in your FastSkill ecosystem. These commands provide semantic search, vector indexing, and repository management capabilities.
 
-<Info>
+<Callout type="info">
 **Command Architecture**:
 - **Repository Management**: Use `fastskill repos` for all repository operations (add, remove, list, test, refresh) and catalog browsing (skills, show, versions)
 - **Skill Discovery**: Use `fastskill search` (remote catalogs by default; add `--local` for installed skills and embeddings)
-</Info>
+</Callout>
 
-<Note>
+<Callout>
 For detailed documentation on specific commands, see the dedicated command pages linked below.
-</Note>
+</Callout>
 
 ## Command Reference
 
@@ -23,9 +23,9 @@ For detailed documentation on specific commands, see the dedicated command pages
 
 Query skills. **Default scope is remote** (catalog APIs). Use `--local` to search installed skills; local embedding search uses OpenAI when configured and respects `--embedding`.
 
-<Info>
+<Callout type="info">
 See [search Command](/cli-reference/search-command) for complete documentation with output formats.
-</Info>
+</Callout>
 
 ```bash
 # Remote catalog search (default)
@@ -64,9 +64,9 @@ fastskill search "process text" --repository my-repo
 
 Rebuild the vector search index by scanning all installed skills. Updates embeddings and similarity database.
 
-<Info>
+<Callout type="info">
 See [reindex Command](/cli-reference/reindex-command) for complete documentation with concurrency options.
-</Info>
+</Callout>
 
 ```bash
 # Reindex all skills (uses configured skills directory)
@@ -105,9 +105,9 @@ fastskill reindex --skills-dir ./.claude/skills
 
 Manage skill repositories for discovering and installing skills. Supports multiple repository types with authentication and priority-based resolution. This is the **primary command** for repository management and catalog browsing.
 
-<Info>
+<Callout type="info">
 See [repos Command](/cli-reference/repository-command) for complete documentation with subcommands and authentication.
-</Info>
+</Callout>
 
 ```bash
 # List all configured repositories
@@ -196,9 +196,9 @@ When skills are available in multiple repositories, priority determines the orde
 - Default priority: 0
 - Higher priority values are checked later
 
-<Warning>
+<Callout type="warn">
 **Legacy commands**: `sources` (alias `source`) and `registry` are hidden from `fastskill --help` but still exist for compatibility. Prefer `fastskill repos` for repository and catalog operations.
-</Warning>
+</Callout>
 
 ## Search and Reindex Workflow
 
@@ -270,77 +270,75 @@ fastskill search "skill name or description"
 
 ## Troubleshooting
 
-<AccordionGroup>
-<Accordion title="Search returns no results">
-  <Warning>
+<Accordions>
+<Accordion id="search-returns-no-results" title="Search returns no results">
+  <Callout type="warn">
   **Index not built**: Make sure you've run `fastskill reindex` after installing skills.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Query too specific**: Try broader terms or different phrasing.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Skills not installed**: Verify skills are in `.claude/skills/` with `fastskill list`.
-  </Warning>
+  </Callout>
 </Accordion>
 
-<Accordion title="Reindex fails">
-  <Info>
+<Accordion id="reindex-fails" title="Reindex fails">
+  <Callout type="info">
   **OpenAI API key not set**: Set `OPENAI_API_KEY` environment variable.
   ```bash
   export OPENAI_API_KEY="your-key-here"
   fastskill reindex
   ```
-  </Info>
+  </Callout>
 
-  <Info>
+  <Callout type="info">
   **API rate limit errors**: Reduce concurrent requests with `--max-concurrent 3`.
-  </Info>
+  </Callout>
 
-  <Info>
+  <Callout type="info">
   **Network errors**: Check internet connectivity and OpenAI API status.
-  </Info>
+  </Callout>
 </Accordion>
 
-<Accordion title="Repository not found">
-  <Tip>
+<Accordion id="repository-not-found" title="Repository not found">
+  <Callout>
   **Invalid repository name**: Check repository name with `fastskill repos list`.
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Repository URL incorrect**: Verify URL is accessible with `fastskill repos test <name>`.
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Authentication failed**: Verify authentication type and credentials with `fastskill repos info <name>`.
-  </Tip>
+  </Callout>
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
 ## Best Practices
 
-<Steps>
-<Step title="Reindex after changes">
-  Always run `fastskill reindex` after installing, updating, or modifying skills to keep search index current.
-</Step>
+### 1. Reindex after changes
 
-<Step title="Use natural language queries">
-  Search queries work best with natural language that matches skill descriptions in SKILL.md files.
-</Step>
+Always run `fastskill reindex` after installing, updating, or modifying skills to keep search index current.
 
-<Step title="Organize repositories by priority">
-  Set lower priority numbers for primary repositories to ensure preferred skills are discovered first.
-</Step>
+### 2. Use natural language queries
 
-<Step title="Test repositories after configuration">
-  Use `fastskill repos test <name>` to verify repositories are accessible before using them.
-</Step>
+Search queries work best with natural language that matches skill descriptions in SKILL.md files.
 
-<Step title="Control API concurrency for reindexing">
-  Use `--max-concurrent` to balance speed and API rate limits. Start with default and adjust based on rate limit errors.
-</Step>
-</Steps>
+### 3. Organize repositories by priority
+
+Set lower priority numbers for primary repositories to ensure preferred skills are discovered first.
+
+### 4. Test repositories after configuration
+
+Use `fastskill repos test <name>` to verify repositories are accessible before using them.
+
+### 5. Control API concurrency for reindexing
+
+Use `--max-concurrent` to balance speed and API rate limits. Start with default and adjust based on rate limit errors.
 
 ## See Also
 

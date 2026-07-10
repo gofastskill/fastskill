@@ -7,9 +7,9 @@ description: "Understanding FastSkill's multi-source repository system for skill
 
 FastSkill implements a flexible, multi-source repository system that allows you to discover and install skills from various sources including Git repositories, HTTP registries, ZIP files, and local filesystem paths.
 
-<Info>
+<Callout type="info">
 Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml` or in `.claude/repositories.toml` for backward compatibility.
-</Info>
+</Callout>
 
 ## Repository Types
 
@@ -233,9 +233,9 @@ auth_type = "basic"
 auth_value = "username:password"
 ```
 
-<Warning>
+<Callout type="warn">
 Basic auth stores credentials in plain text. Use only for test environments or secure configuration management.
-</Warning>
+</Callout>
 
 **Use cases:**
 - Simple HTTP registries
@@ -547,81 +547,79 @@ Use environment-specific repositories or branch parameters to control which skil
 
 ## Troubleshooting
 
-<AccordionGroup>
-<Accordion title="Skill not found in any repository">
-  <Warning>
+<Accordions>
+<Accordion id="skill-not-found-in-any-repository" title="Skill not found in any repository">
+  <Callout type="warn">
   **Repository priority**: Verify skill ID is spelled correctly and exists in at least one repository.
-  </Warning>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Use `fastskill repos list` to see all repositories and `fastskill repos test <name>` to verify connectivity.
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Check marketplace.json**: For git-marketplace repositories, verify marketplace.json contains the skill ID.
-  </Tip>
+  </Callout>
 </Accordion>
 
-<Accordion title="Authentication failures">
-  <Warning>
+<Accordion id="authentication-failures" title="Authentication failures">
+  <Callout type="warn">
   **Invalid credentials**: Check auth_type and auth_value are correct.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Token expired**: PATs and API keys may expire. Generate new credentials and update configuration.
-  </Warning>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Test authentication with `fastskill repos test <name>`.
-  </Tip>
+  </Callout>
 </Accordion>
 
-<Accordion title="Priority not working as expected">
-  <Warning>
+<Accordion id="priority-not-working-as-expected" title="Priority not working as expected">
+  <Callout type="warn">
   **Wrong priority**: Lower numbers have higher priority. Check your priority values.
-  </Warning>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Use `fastskill repos info <name>` to verify repository priority.
-  </Tip>
+  </Callout>
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
 ## Best Practices
 
-<Steps>
-<Step title="Use skill-project.toml for repository configuration">
-  Prefer `skill-project.toml` [tool.fastskill.repositories] section over `.claude/repositories.toml` for better project organization.
-</Step>
+### 1. Use skill-project.toml for repository configuration
 
-<Step title="Set appropriate priorities">
-  Use priority to control repository search order. Lower numbers are checked first (0, 1, 2, ...).
-</Step>
+Prefer `skill-project.toml` [tool.fastskill.repositories] section over `.claude/repositories.toml` for better project organization.
 
-<Step title="Use authentication for private repositories">
-  Secure private repositories with PAT, SSH keys, or API keys. Never commit credentials to version control.
-</Step>
+### 2. Set appropriate priorities
 
-<Step title="Test repositories before use">
-  Use `fastskill repos test <name>` to verify repository connectivity and authentication before relying on it.
-</Step>
+Use priority to control repository search order. Lower numbers are checked first (0, 1, 2, ...).
 
-<Step title="Keep repositories minimal">
-  Only configure repositories you actively use. Remove or comment out unused repositories to speed up resolution.
-</Step>
+### 3. Use authentication for private repositories
 
-<Step title="Use git-marketplace for team skills">
-  For team skill sharing, use git-marketplace type with marketplace.json for comprehensive skill metadata and search.
-</Step>
+Secure private repositories with PAT, SSH keys, or API keys. Never commit credentials to version control.
 
-<Step title="Version control repository configuration">
-  Commit repository configuration to version control along with skill dependencies for reproducible setups.
-</Step>
+### 4. Test repositories before use
 
-<Step title="Refresh repositories after changes">
-  Use `fastskill repos refresh` to update repository caches after remote changes.
-</Step>
-</Steps>
+Use `fastskill repos test <name>` to verify repository connectivity and authentication before relying on it.
+
+### 5. Keep repositories minimal
+
+Only configure repositories you actively use. Remove or comment out unused repositories to speed up resolution.
+
+### 6. Use git-marketplace for team skills
+
+For team skill sharing, use git-marketplace type with marketplace.json for comprehensive skill metadata and search.
+
+### 7. Version control repository configuration
+
+Commit repository configuration to version control along with skill dependencies for reproducible setups.
+
+### 8. Refresh repositories after changes
+
+Use `fastskill repos refresh` to update repository caches after remote changes.
 
 ## See Also
 

@@ -18,8 +18,8 @@ Before installing FastSkill, ensure your system meets these requirements:
 
 Pick one method. **Homebrew** (macOS and Linux) and **Scoop** (Windows) stay updated with releases; use **GitHub Releases** or the **install script** if you prefer a standalone binary.
 
-<Tabs>
-<Tab title="Homebrew (macOS & Linux)">
+<Tabs items={['Homebrew (macOS & Linux)', 'Scoop (Windows)', 'Install script (Linux & macOS)', 'GitHub Releases']}>
+<Tab value="Homebrew (macOS & Linux)">
 
 [Homebrew](https://brew.sh/) installs a pre-built `fastskill` on both **Apple Silicon** and **Intel** Macs, and on Linux where the tap ships bottles.
 
@@ -30,12 +30,12 @@ fastskill -V
 
 Details and formula updates live in the [gofastskill/homebrew-cli](https://github.com/gofastskill/homebrew-cli) tap repository.
 
-<Tip>
+<Callout>
 If `brew install` fails with a tap error, run `brew update` and try again, or use the **GitHub Releases** or **install script** tab.
-</Tip>
+</Callout>
 </Tab>
 
-<Tab title="Scoop (Windows)">
+<Tab value="Scoop (Windows)">
 
 [Scoop](https://scoop.sh/) installs `fastskill.exe` and keeps it on your PATH.
 
@@ -49,7 +49,7 @@ See [gofastskill/scoop-bucket](https://github.com/gofastskill/scoop-bucket) for 
 
 </Tab>
 
-<Tab title="Install script (Linux & macOS)">
+<Tab value="Install script (Linux & macOS)">
 
 One-liner from the repository (detects OS, downloads a release binary, installs to `/usr/local/bin` or `~/.local/bin` if `sudo` is not available):
 
@@ -61,12 +61,12 @@ Options (run `./install.sh --help` after downloading the script): `--user`, `--p
 
 </Tab>
 
-<Tab title="GitHub Releases">
+<Tab value="GitHub Releases">
 
 Download a pre-built binary from [GitHub Releases](https://github.com/gofastskill/fastskill/releases). Replace `VERSION` with the tag you want (for example `0.9.16`; assets use `v${VERSION}` in the URL).
 
-<Steps>
-<Step title="macOS (Apple Silicon)">
+### 1. macOS (Apple Silicon)
+
 ```bash
 VERSION="0.9.16"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-aarch64-apple-darwin.tar.gz" -o fastskill.tgz
@@ -75,9 +75,9 @@ sudo mv fastskill /usr/local/bin/
 fastskill -V
 ```
 Asset name: `fastskill-aarch64-apple-darwin.tar.gz`.
-</Step>
 
-<Step title="macOS (Intel)">
+### 2. macOS (Intel)
+
 ```bash
 VERSION="0.9.16"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-apple-darwin.tar.gz" -o fastskill.tgz
@@ -86,9 +86,9 @@ sudo mv fastskill /usr/local/bin/
 fastskill -V
 ```
 Asset name: `fastskill-x86_64-apple-darwin.tar.gz`.
-</Step>
 
-<Step title="Linux (x86_64, glibc, with git support)">
+### 3. Linux (x86_64, glibc, with git support)
+
 ```bash
 VERSION="0.9.16"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz" -o fastskill.tgz
@@ -97,20 +97,18 @@ sudo mv fastskill /usr/local/bin/
 fastskill -V
 ```
 Requires a recent glibc (see release notes). For maximum portability (static binary, no bundled `git2`), use **`fastskill-x86_64-unknown-linux-musl.tar.gz`** instead and rely on system `git` for Git URLs.
-</Step>
 
-<Step title="Windows (zip)">
+### 4. Windows (zip)
+
 Download `fastskill-x86_64-pc-windows-msvc.zip` from the release page, extract it, add the folder to **PATH**, then run:
 
 ```powershell
 fastskill.exe -V
 ```
-</Step>
-</Steps>
 
-<Tip>
+<Callout>
 Prefer a user-local path on macOS or Linux? Move `fastskill` to `~/.local/bin/` and ensure that directory is on your `PATH` instead of using `sudo`.
-</Tip>
+</Callout>
 </Tab>
 
 </Tabs>
@@ -183,52 +181,52 @@ If you already have a project with `skill-project.toml`, try `fastskill list` or
 
 ## Troubleshooting
 
-<AccordionGroup>
-<Accordion title="Installation Issues">
-  <Warning>
+<Accordions>
+<Accordion id="installation-issues" title="Installation Issues">
+  <Callout type="warn">
   **Homebrew**: If the tap is missing, install with `brew install gofastskill/cli/fastskill`. See [homebrew-cli](https://github.com/gofastskill/homebrew-cli) for issues.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Scoop**: Ensure the bucket was added (`scoop bucket list` should show `gofastskill`). See [scoop-bucket](https://github.com/gofastskill/scoop-bucket) if `scoop install fastskill` fails.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Binary not found in PATH**: After extracting a release archive, move `fastskill` (or add the folder containing `fastskill.exe`) to a directory on your PATH (`/usr/local/bin`, `~/.local/bin`, or Windows user PATH).
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Permission denied (Linux)**: If you get permission errors, use `sudo` when moving to `/usr/local/bin/`, or install to `~/.local/bin/` instead and ensure it's in your PATH.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Windows security warning**: Windows may show a security warning for unsigned binaries. Click "More info" and then "Run anyway" if you trust the source.
-  </Warning>
+  </Callout>
 
 </Accordion>
 
-<Accordion title="Configuration Issues">
-  <Info>
+<Accordion id="configuration-issues" title="Configuration Issues">
+  <Callout type="info">
   **Embedding configuration required**: Create `.fastskill/config.yaml` with OpenAI API configuration.
-  </Info>
+  </Callout>
 
-  <Info>
+  <Callout type="info">
   **OpenAI API key not found**: Set `OPENAI_API_KEY` environment variable or configure in `.fastskill/config.yaml`.
-  </Info>
+  </Callout>
 </Accordion>
 
-<Accordion title="Platform-Specific Problems">
-  <Tip>
+<Accordion id="platform-specific-problems" title="Platform-Specific Problems">
+  <Callout>
   **macOS security**: If you get security warnings, go to System Settings > Privacy & Security and allow the binary.
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Windows antivirus**: If Windows blocks the downloaded binary, add an exception for the folder where you keep `fastskill.exe`.
-  </Tip>
+  </Callout>
 
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
-<Note>
+<Callout>
 Still having issues? Check the [troubleshooting section](/troubleshooting).
-</Note>
+</Callout>

@@ -96,9 +96,9 @@ web-scraper      1.2.3    git                  ok
 data-processor    2.2.0    registry              mismatch (lock: 2.1.0)
 ```
 
-<Warning>
+<Callout type="warn">
 Version mismatches indicate manual changes or corruption. Resolve to ensure reproducibility.
-</Warning>
+</Callout>
 
 **Resolution:**
 ```bash
@@ -298,33 +298,31 @@ fastskill list
 # dev-tool: missing (expected, excluded by --without dev)
 ```
 
-<Info>
+<Callout type="info">
 Missing status is expected for skills excluded by group filters. Only report as issues if all skills should be installed.
-</Info>
+</Callout>
 
 ## Best Practices
 
-<Steps>
-<Step title="Commit both manifest and lockfile">
-  Always commit `skill-project.toml` and `skills.lock` together to version control. This ensures team members can reproduce exact installations.
-</Step>
+### 1. Commit both manifest and lockfile
 
-<Step title="Run fastskill list after changes">
-  Run `fastskill list` after installing, updating, or removing skills to verify reconciliation status.
-</Step>
+Always commit `skill-project.toml` and `skills.lock` together to version control. This ensures team members can reproduce exact installations.
 
-<Step title="Use --lock for production">
-  Always use `fastskill install --lock` for production deployments to ensure exact version reproducibility.
-</Step>
+### 2. Run fastskill list after changes
 
-<Step title="Investigate mismatches promptly">
-  Version mismatches indicate manual changes or corruption. Investigate and resolve promptly to maintain consistency.
-</Step>
+Run `fastskill list` after installing, updating, or removing skills to verify reconciliation status.
 
-<Step title="Remove extraneous skills">
-  Remove or add extraneous skills to `skill-project.toml` to avoid confusion and ensure clean skill ecosystem.
-</Step>
-</Steps>
+### 3. Use --lock for production
+
+Always use `fastskill install --lock` for production deployments to ensure exact version reproducibility.
+
+### 4. Investigate mismatches promptly
+
+Version mismatches indicate manual changes or corruption. Investigate and resolve promptly to maintain consistency.
+
+### 5. Remove extraneous skills
+
+Remove or add extraneous skills to `skill-project.toml` to avoid confusion and ensure clean skill ecosystem.
 
 ## Common Reconciliation Issues
 
@@ -450,49 +448,49 @@ exit 0
 
 ## Troubleshooting
 
-<AccordionGroup>
-<Accordion title="All skills show as missing">
-  <Warning>
+<Accordions>
+<Accordion id="all-skills-show-as-missing" title="All skills show as missing">
+  <Callout type="warn">
   **Skills directory incorrect**: Check that `skills_directory` in `.fastskill/config.yaml` points to correct location.
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **skill-project.toml missing**: Create `skill-project.toml` or use `fastskill init`.
-  </Warning>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Run `fastskill install` to install skills from manifest.
-  </Tip>
+  </Callout>
 </Accordion>
 
-<Accordion title="Extraneous skills accumulate">
-  <Info>
+<Accordion id="extraneous-skills-accumulate" title="Extraneous skills accumulate">
+  <Callout type="info">
   **Manual installations**: Skills may have been added outside FastSkill management.
-  </Info>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Add to `skill-project.toml` if intentional, or remove with `fastskill remove`.
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Prevention**: Always use `fastskill add` to install skills for proper tracking.
-  </Tip>
+  </Callout>
 </Accordion>
 
-<Accordion title="Persistent version mismatches">
-  <Warning>
+<Accordion id="persistent-version-mismatches" title="Persistent version mismatches">
+  <Callout type="warn">
   **Manual file changes**: Skills may have been updated manually (e.g., git pull).
-  </Warning>
+  </Callout>
 
-  <Warning>
+  <Callout type="warn">
   **Corrupted lockfile**: Lockfile may be out of sync with actual state.
-  </Warning>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Resolution**: Run `fastskill install --lock` to reinstall from lockfile, or `fastskill update` to update lockfile.
-  </Tip>
+  </Callout>
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
 ## See Also
 

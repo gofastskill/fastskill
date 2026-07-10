@@ -7,9 +7,9 @@ description: "CLI for the FastSkill package manager: installs, manifests, valida
 
 The FastSkill CLI is how you **install and operate** skills: manifests and `skills.lock`, validation and `fastskill eval`, search, plus `serve` when you want a local HTTP surface.
 
-<Info>
+<Callout type="info">
 The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
-</Info>
+</Callout>
 
 ## Installation
 
@@ -25,23 +25,21 @@ For Git-based skill sources, use a build that includes Git support if your distr
 
 ### Get Help
 
-<Steps>
-<Step title="General help">
+### 1. General help
+
 ```bash
 fastskill --help
 ```
 
 This shows all available commands and global options.
-</Step>
 
-<Step title="Command-specific help">
+### 2. Command-specific help
+
 ```bash
 fastskill serve --help        # Help for serve command
 fastskill add --help          # Help for add command
 fastskill list --help         # Help for list command
 ```
-</Step>
-</Steps>
 
 ### Global Options
 
@@ -58,68 +56,68 @@ fastskill list --help         # Help for list command
 
 ### Project and lifecycle
 
-<CardGroup cols={2}>
-  <Card title="fastskill init" icon="play">
+<Cards>
+  <Card title="fastskill init">
     Create `skill-project.toml` for a skill (authors). See [init Command](/cli-reference/init-command).
   </Card>
-  <Card title="fastskill install" icon="download">
+  <Card title="fastskill install">
     Install skills from `skill-project.toml` (supports groups and `--lock`). See [install Command](/cli-reference/install-command).
   </Card>
-  <Card title="fastskill update" icon="edit">
+  <Card title="fastskill update">
     Update skills to latest from source with version strategies. See [update Command](/cli-reference/update-command).
   </Card>
-  <Card title="fastskill reindex" icon="refresh-cw">
+  <Card title="fastskill reindex">
     Rebuild the search index for semantic discovery. See [reindex Command](/cli-reference/reindex-command).
   </Card>
-  <Card title="fastskill serve" icon="server">
+  <Card title="fastskill serve">
     Start the HTTP server (`--host`, `--port`). Web UI and API routes are served with the process. See [serve Command](/cli-reference/serve-command).
   </Card>
-</CardGroup>
+</Cards>
 
 ### Skills
 
-<CardGroup cols={2}>
-  <Card title="fastskill add" icon="plus">
+<Cards>
+  <Card title="fastskill add">
     Add skills from registry ID, git, zip, or local folder (supports `-r` for recursive folder add, `--branch`, `--tag`, `-e`, `--group`). See [skill commands](/cli-reference/skill-commands#add).
   </Card>
-  <Card title="fastskill read" icon="book-open">
+  <Card title="fastskill read">
     Retrieve skill documentation and base directory path in agent-optimized format. See [skill commands](/cli-reference/skill-commands#fastskill-read).
   </Card>
-  <Card title="fastskill list" icon="list">
+  <Card title="fastskill list">
     List locally installed skills with reconciliation status (supports `--format table|json|grid|xml`, `--json`). See [skill commands](/cli-reference/skill-commands#list).
   </Card>
-  <Card title="fastskill remove" icon="trash">
+  <Card title="fastskill remove">
     Remove skills by ID. See [skill commands](/cli-reference/skill-commands#fastskill-remove).
   </Card>
-</CardGroup>
+</Cards>
 
 ### Registry & search
 
-<CardGroup cols={2}>
-  <Card title="fastskill search" icon="search">
+<Cards>
+  <Card title="fastskill search">
     Search remote catalogs by default; use `--local` for embedding search on installed skills. See [search Command](/cli-reference/search-command).
   </Card>
-  <Card title="fastskill repos" icon="book">
+  <Card title="fastskill repos">
     Manage repositories (list/add/remove/info/update/test/refresh) and browse remote skill catalog with authentication and priority. See [repos Command](/cli-reference/repository-command).
   </Card>
-</CardGroup>
+</Cards>
 
 ### Diagnostics and tooling
 
-<CardGroup cols={2}>
-  <Card title="fastskill version" icon="info">
+<Cards>
+  <Card title="fastskill version">
     Show CLI version.
   </Card>
-  <Card title="fastskill eval" icon="check">
+  <Card title="fastskill eval">
     Validate and run skill evaluation suites. See [eval Command](/cli-reference/eval-command).
   </Card>
-  <Card title="fastskill analyze" icon="chart-network">
+  <Card title="fastskill analyze">
     Similarity matrix, clusters, duplicates. See [tooling commands](/cli-reference/tooling-commands#fastskill-analyze).
   </Card>
-  <Card title="fastskill doctor" icon="stethoscope">
+  <Card title="fastskill doctor">
     Check environment readiness (skills directory, embedding provider, auth). See [tooling commands](/cli-reference/tooling-commands#fastskill-doctor).
   </Card>
-</CardGroup>
+</Cards>
 
 ## Version Command
 
@@ -265,34 +263,34 @@ For running `fastskill` in automation (build machines, sandboxes), install the C
 
 ### Common Issues
 
-<AccordionGroup>
-<Accordion title="Command Not Found">
-  <Warning>
+<Accordions>
+<Accordion id="command-not-found" title="Command Not Found">
+  <Callout type="warn">
   **Path issue**: Ensure FastSkill is installed and in your PATH.
   ```bash
   which fastskill
   fastskill -V
   ```
-  </Warning>
+  </Callout>
 </Accordion>
 
-<Accordion title="Permission Errors">
-  <Tip>
+<Accordion id="permission-errors" title="Permission Errors">
+  <Callout>
   **File permissions**: Ensure you have read/write permissions for skill directories.
   ```bash
   # Fix permissions
   chmod 755 ./skills/
   chmod 644 ./skills/*.json
   ```
-  </Tip>
+  </Callout>
 
-  <Tip>
+  <Callout>
   **Service permissions**: Run with appropriate privileges for system-wide operations.
-  </Tip>
+  </Callout>
 </Accordion>
 
-<Accordion title="Network Issues">
-  <Info>
+<Accordion id="network-issues" title="Network Issues">
+  <Callout type="info">
   **Port conflicts**: Check if the default port (8080) is available.
   ```bash
   # Check port usage
@@ -301,9 +299,9 @@ For running `fastskill` in automation (build machines, sandboxes), install the C
   # Use different port
   fastskill serve --port 9000
   ```
-  </Info>
+  </Callout>
 </Accordion>
-</AccordionGroup>
+</Accordions>
 
 ### More verbose output
 
@@ -315,28 +313,26 @@ Some distributions document extra logging variables; check your install notes if
 
 ## Best Practices
 
-<Steps>
-<Step title="Commit manifest and lock">
-  Commit `skill-project.toml` and `skills.lock` together for reproducible installs.
-</Step>
+### 1. Commit manifest and lock
 
-<Step title="Reindex after changes">
-  Run `fastskill reindex` after adding or updating skills so search stays fresh.
-</Step>
+Commit `skill-project.toml` and `skills.lock` together for reproducible installs.
 
-<Step title="Use groups for optional skills">
-  Use groups (for example `--group dev`) and install with `--without dev` when you want a smaller production skill set.
-</Step>
+### 2. Reindex after changes
 
-<Step title="Check the server when you use serve">
-  Confirm `http://<host>:<port>/` responds after upgrades or config changes.
-</Step>
+Run `fastskill reindex` after adding or updating skills so search stays fresh.
 
-<Step title="Back up manifests before big changes">
-  Keep copies of `skill-project.toml`, `skills.lock`, and any custom `.fastskill` config before bulk edits.
-</Step>
-</Steps>
+### 3. Use groups for optional skills
 
-<Warning>
+Use groups (for example `--group dev`) and install with `--without dev` when you want a smaller production skill set.
+
+### 4. Check the server when you use serve
+
+Confirm `http://<host>:<port>/` responds after upgrades or config changes.
+
+### 5. Back up manifests before big changes
+
+Keep copies of `skill-project.toml`, `skills.lock`, and any custom `.fastskill` config before bulk edits.
+
+<Callout type="warn">
 Commands can change installed skills and manifest files. Try changes on a copy of the project or a branch first if you are unsure.
-</Warning>
+</Callout>

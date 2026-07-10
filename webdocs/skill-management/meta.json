@@ -1,0 +1,7 @@
+{
+  "pages": [
+    "manifest-system",
+    "validation",
+    "reconciliation"
+  ]
+}

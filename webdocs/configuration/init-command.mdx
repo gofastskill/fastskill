@@ -7,17 +7,17 @@ description: "Create skill-project.toml for skill authors and project configurat
 
 The `fastskill init` command creates a `skill-project.toml` file for skill authors. This command extracts metadata from an existing `SKILL.md` file (if present) and interactively prompts for any missing information to create a properly configured skill project.
 
-<Info>
+<Callout type="info">
 This command is for **skill authors** who want to create a new skill project. It generates the `skill-project.toml` manifest file that defines your skill's metadata, dependencies, and configuration. For general FastSkill setup, see the [Installation Guide](/installation).
-</Info>
+</Callout>
 
-<Info>
+<Callout type="info">
 **Context Detection**: `fastskill init` automatically detects whether you're working in a skill directory or project root:
 - **Skill-level**: If run in a directory containing `SKILL.md`, creates `skill-project.toml` with `[metadata]` section (for skill authors)
 - **Project-level**: If run at project root, can create `skill-project.toml` with `[dependencies]` section (for skill consumers)
 
 See [Skill Commands](/cli-reference/skill-commands) for details on skill-level initialization.
-</Info>
+</Callout>
 
 ## What It Does
 
