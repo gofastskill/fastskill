@@ -289,6 +289,15 @@ pub struct FastSkillService {
     /// Vector index service (optional, for embedding search)
     vector_index_service: Option<Arc<dyn crate::core::vector_index::VectorIndexService>>,
 
+    /// Embedding provider (optional), injected at the CLI/serve edge where the
+    /// API key is loaded. `None` ⇒ reindex skips silently (ADR-0002/0005).
+    embedding_service: Option<Arc<dyn crate::core::embedding::EmbeddingService>>,
+
+    /// Repository access (optional), injected at the edge from the resolved
+    /// `repos` config. Needed to fetch `Origin::Repository` skills; `None` ⇒
+    /// a repository-origin install returns a clear "no repositories configured" error.
+    repository_manager: Option<Arc<crate::core::repository::RepositoryManager>>,
+
     /// Skill storage backend
     storage: Arc<dyn crate::storage::StorageBackend>,
 
@@ -355,10 +364,42 @@ impl FastSkillService {
             skill_manager,
             metadata_service,
             vector_index_service,
+            embedding_service: None,
+            repository_manager: None,
             storage,
             hot_reload_manager,
             initialized: false,
         })
+    }
+
+    /// Inject an embedding provider (edge-constructed, holds the API key). Enables
+    /// the core reindex seam; without it reindex skips silently.
+    pub fn with_embedding_service(
+        mut self,
+        embedding: Arc<dyn crate::core::embedding::EmbeddingService>,
+    ) -> Self {
+        self.embedding_service = Some(embedding);
+        self
+    }
+
+    /// Inject repository access resolved from the edge `repos` config. Enables
+    /// fetching `Origin::Repository` skills.
+    pub fn with_repository_manager(
+        mut self,
+        manager: Arc<crate::core::repository::RepositoryManager>,
+    ) -> Self {
+        self.repository_manager = Some(manager);
+        self
+    }
+
+    /// The injected embedding provider, if any.
+    pub fn embedding_service(&self) -> Option<&Arc<dyn crate::core::embedding::EmbeddingService>> {
+        self.embedding_service.as_ref()
+    }
+
+    /// The injected repository manager, if any.
+    pub fn repository_manager(&self) -> Option<&Arc<crate::core::repository::RepositoryManager>> {
+        self.repository_manager.as_ref()
     }
 
     /// Initialize the service

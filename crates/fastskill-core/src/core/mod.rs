@@ -8,6 +8,7 @@ pub mod dependencies;
 pub mod dependency_resolver;
 pub mod embedding;
 pub mod frontmatter;
+pub mod install;
 pub mod lock;
 pub mod manifest;
 pub mod metadata;
@@ -17,6 +18,7 @@ pub mod project_config;
 pub mod reconciliation;
 pub mod registry;
 pub mod registry_index;
+pub mod reindex;
 pub mod repository;
 pub mod resolver;
 pub mod routing;
@@ -64,6 +66,12 @@ pub use metadata::{
 
 // origin
 pub use origin::{GitRef, Origin, Resolved};
+
+// install seam
+pub use install::{AddMode, AddOutcome, Fetched, UpdatePreflight};
+
+// reindex seam
+pub use reindex::{ReindexOutcome, ReindexProgress};
 
 // project_config
 pub use project_config::{load_project_config, ProjectConfig};
