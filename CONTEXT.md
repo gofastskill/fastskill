@@ -70,8 +70,8 @@ A configured remote (or local) source of skills, managed by `repos`. Types: `git
 _Avoid_: **source**, **registry** — both are deprecated command aliases now folded into `repos`; do not reintroduce them as concepts.
 
 **Origin**:
-Where a single installed skill came from — both the *input* to an install and the *provenance* recorded on the installed skill (one type, one truth). Variants: `git` (url + ref + subdir), `local` (path, editable), `zip-url`, and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is the single canonical model — it replaces the former `SkillSource` (two colliding types), `SourceType`, and the manifest `"source"` serde tag.
-_Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference) with **Repository** (the configured place itself).
+Where a single installed skill came from — the install **intent** (what the user asked for), recorded as provenance on the installed skill. Variants: `git` (url + ref + subdir), `local` (a filesystem path — directory *or* `.zip` — plus `editable`, dir-only), `zip-url` (a remote zip), and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is intent only: the **resolved** facts (exact commit, resolved version, checksum, timestamps) live in the **Lock**, not in `Origin`. It is the single canonical model — replacing the former `SkillSource` (two colliding types), `SourceType`, `SourceSpecificFields`, and the flat `source_*` fields on the manifest/lock/skill records.
+_Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference; always names a concrete Repository) with **Repository** (the configured place itself).
 
 ### Serving surfaces
 
