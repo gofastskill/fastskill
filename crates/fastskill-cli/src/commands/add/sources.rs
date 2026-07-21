@@ -2,68 +2,12 @@
 
 use crate::error::{CliError, CliResult};
 use crate::utils::install_utils::{extract_zip, safe_subdir_join};
-use crate::utils::{detect_skill_source, parse_git_url, validate_skill_structure, SkillSource};
-use fastskill_core::core::skill_manager::SourceType;
+use crate::utils::{parse_git_url, validate_skill_structure};
+use fastskill_core::core::origin::{GitRef, Origin};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tracing::info;
-
-/// Resolved source type for the add operation
-#[allow(dead_code)]
-pub enum ResolvedSource {
-    /// Local directory path
-    Local(PathBuf),
-    /// Git URL
-    Git(String),
-    /// ZIP file path
-    Zip(PathBuf),
-    /// Registry skill ID
-    Registry(String),
-}
-
-/// Resolve source type from an explicit flag value or autodetect from the path/URL.
-#[allow(dead_code)]
-pub fn resolve_source_type(source: &str, source_type: Option<&str>) -> CliResult<ResolvedSource> {
-    let Some(stype) = source_type else {
-        return Ok(autodetect_source(source));
-    };
-
-    match stype {
-        "registry" => Ok(ResolvedSource::Registry(source.to_string())),
-        "github" | "git" => Ok(ResolvedSource::Git(source.to_string())),
-        "local" => {
-            let path = PathBuf::from(source);
-            if path.extension().and_then(|s| s.to_str()) == Some("zip") {
-                Ok(ResolvedSource::Zip(path))
-            } else {
-                Ok(ResolvedSource::Local(path))
-            }
-        }
-        other => Err(CliError::Config(format!(
-            "Unrecognized --source-type value: '{}'. Expected one of: registry, git, github, local",
-            other
-        ))),
-    }
-}
-
-/// Autodetect source type from path/URL.
-#[allow(dead_code)]
-pub fn autodetect_source(source: &str) -> ResolvedSource {
-    match detect_skill_source(source) {
-        SkillSource::GitUrl(url) => ResolvedSource::Git(url),
-        SkillSource::ZipFile(path) => ResolvedSource::Zip(path),
-        SkillSource::Folder(path) => ResolvedSource::Local(path),
-        SkillSource::SkillId(id) => ResolvedSource::Registry(id),
-    }
-}
-
-/// Check if a path is a local path that could be a skill directory.
-#[allow(dead_code)]
-pub fn is_local_path(source: &str) -> bool {
-    let path = Path::new(source);
-    path.exists() || source.starts_with('.') || source.starts_with('/')
-}
 
 // ── Source installation handlers ──────────────────────────────────────────────
 
@@ -112,7 +56,12 @@ pub(super) async fn add_from_zip(ctx: &super::AddContext<'_>, zip_path: &Path) -
     let extract_path = _temp_dir.path();
     let skill_path = find_skill_in_directory(extract_path)?;
     validate_skill_structure(&skill_path)?;
-    let skill_def = super::skill_def::create_skill_from_path(&skill_path, "zip", false)?;
+    let origin = Origin::Local {
+        path: canonical_zip_path.clone(),
+        editable: false,
+    };
+    let skill_def =
+        super::skill_def::create_skill_from_path(&skill_path, origin.clone(), "zip", false)?;
     let version = skill_def.version.clone();
     let target = super::InstallTarget {
         storage_dir: ctx
@@ -120,14 +69,7 @@ pub(super) async fn add_from_zip(ctx: &super::AddContext<'_>, zip_path: &Path) -
             .config()
             .skill_storage_path
             .join(skill_def.id.as_str()),
-        meta: super::SourceMeta {
-            source_url: Some(canonical_zip_path.to_string_lossy().to_string()),
-            source_type: Some(SourceType::ZipFile),
-            source_branch: None,
-            source_tag: None,
-            source_subdir: None,
-            installed_from: None,
-        },
+        meta: super::SourceMeta { origin },
         version_display: version,
     };
     super::install::install_via_download(ctx, &skill_path, skill_def, target).await
@@ -139,7 +81,6 @@ pub(super) async fn add_from_folder(
 ) -> CliResult<()> {
     info!("Adding skill from folder: {}", folder_path.display());
     validate_skill_structure(folder_path)?;
-    let skill_def = super::skill_def::create_skill_from_path(folder_path, "local", ctx.editable)?;
     let canonical_path = folder_path.canonicalize().map_err(|e| {
         CliError::InvalidSource(format!(
             "Failed to resolve absolute path for '{}': {}",
@@ -147,20 +88,23 @@ pub(super) async fn add_from_folder(
             e
         ))
     })?;
+    let origin = Origin::Local {
+        path: canonical_path.clone(),
+        editable: ctx.editable,
+    };
+    let skill_def = super::skill_def::create_skill_from_path(
+        folder_path,
+        origin.clone(),
+        "local",
+        ctx.editable,
+    )?;
     let target = super::InstallTarget {
         storage_dir: ctx
             .service
             .config()
             .skill_storage_path
             .join(skill_def.id.as_str()),
-        meta: super::SourceMeta {
-            source_url: Some(canonical_path.to_string_lossy().to_string()),
-            source_type: Some(SourceType::LocalPath),
-            source_branch: None,
-            source_tag: None,
-            source_subdir: None,
-            installed_from: None,
-        },
+        meta: super::SourceMeta { origin },
         version_display: skill_def.version.clone(),
     };
     super::install::install_via_local_path(ctx, &canonical_path, skill_def, target).await
@@ -170,13 +114,7 @@ async fn clone_and_validate_skill(
     git_url: &str,
     branch: Option<&str>,
     tag: Option<&str>,
-) -> CliResult<(
-    TempDir,
-    PathBuf,
-    fastskill_core::SkillDefinition,
-    Option<String>,
-    Option<String>,
-)> {
+) -> CliResult<(TempDir, PathBuf, fastskill_core::SkillDefinition, Origin)> {
     use fastskill_core::storage::git::{clone_repository, validate_cloned_skill};
     let git_info = parse_git_url(git_url)?;
     let branch = branch.or(git_info.branch.as_deref());
@@ -198,14 +136,20 @@ async fn clone_and_validate_skill(
     };
     let skill_path = validate_cloned_skill(&skill_base_path)
         .map_err(|e| CliError::SkillValidationFailed(e.to_string()))?;
-    let skill_def = super::skill_def::create_skill_from_path(&skill_path, "git", false)?;
-    Ok((
-        temp_dir,
-        skill_path,
-        skill_def,
-        branch.map(String::from),
-        tag.map(String::from),
-    ))
+
+    let r#ref = match (branch, tag) {
+        (Some(b), _) => GitRef::Branch(b.to_string()),
+        (None, Some(t)) => GitRef::Tag(t.to_string()),
+        (None, None) => GitRef::Default,
+    };
+    let origin = Origin::Git {
+        url: git_url.to_string(),
+        r#ref,
+        subdir: git_info.subdir.clone(),
+    };
+    let skill_def =
+        super::skill_def::create_skill_from_path(&skill_path, origin.clone(), "git", false)?;
+    Ok((temp_dir, skill_path, skill_def, origin))
 }
 
 pub(super) async fn add_from_git(
@@ -215,24 +159,16 @@ pub(super) async fn add_from_git(
     tag: Option<&str>,
 ) -> CliResult<()> {
     info!("Adding skill from git URL: {}", git_url);
-    let (_temp_dir, skill_path, skill_def, branch_opt, tag_opt) =
+    let (_temp_dir, skill_path, skill_def, origin) =
         clone_and_validate_skill(git_url, branch, tag).await?;
     validate_skill_structure(&skill_path)?;
-    let git_info = parse_git_url(git_url)?;
     let target = super::InstallTarget {
         storage_dir: ctx
             .service
             .config()
             .skill_storage_path
             .join(skill_def.id.as_str()),
-        meta: super::SourceMeta {
-            source_url: Some(git_url.to_string()),
-            source_type: Some(SourceType::GitUrl),
-            source_branch: branch_opt.or(git_info.branch),
-            source_tag: tag_opt,
-            source_subdir: git_info.subdir,
-            installed_from: None,
-        },
+        meta: super::SourceMeta { origin },
         version_display: skill_def.version.clone(),
     };
     super::install::install_via_download(ctx, &skill_path, skill_def, target).await
@@ -296,6 +232,7 @@ async fn download_registry_package(
     repo_client: &(dyn fastskill_core::core::repository::RepositoryClient + Send + Sync),
     skill_id_full: &str,
     version: &str,
+    origin: Origin,
 ) -> CliResult<(TempDir, PathBuf, fastskill_core::SkillDefinition)> {
     let zip_data = repo_client
         .download(skill_id_full, version)
@@ -309,7 +246,8 @@ async fn download_registry_package(
     extract_zip(&temp_zip, &extract_path)?;
     let skill_path = find_skill_in_directory(&extract_path)?;
     validate_skill_structure(&skill_path)?;
-    let skill_def = super::skill_def::create_skill_from_path(&skill_path, "registry", false)?;
+    let skill_def =
+        super::skill_def::create_skill_from_path(&skill_path, origin, "registry", false)?;
     Ok((temp_dir, skill_path, skill_def))
 }
 
@@ -343,6 +281,21 @@ pub(super) async fn add_from_registry(
         .get_client(&default_repo.name)
         .await
         .map_err(|e| CliError::Config(format!("Failed to get repository client: {}", e)))?;
+
+    // Origin::Repository.version is the *declared* constraint (from `skill@version`,
+    // if any) — `None` means "newest allowed" — not the concrete resolved version,
+    // which stays out of Origin and lives on the lock's `Resolved` instead.
+    let version_constraint = version_opt
+        .as_deref()
+        .map(fastskill_core::core::version::VersionConstraint::parse)
+        .transpose()
+        .map_err(|e| CliError::Config(format!("Invalid version constraint: {}", e)))?;
+    let origin = Origin::Repository {
+        repo: default_repo.name.clone(),
+        skill: skill_id_full.clone(),
+        version: version_constraint,
+    };
+
     let version =
         resolve_registry_version(repo_client.as_ref(), &skill_id_full, version_opt).await?;
 
@@ -362,7 +315,7 @@ pub(super) async fn add_from_registry(
         skill_id_full, version
     );
     let (_temp_dir, skill_path, skill_def) =
-        download_registry_package(repo_client.as_ref(), &skill_id_full, &version).await?;
+        download_registry_package(repo_client.as_ref(), &skill_id_full, &version, origin).await?;
 
     if skill_def.id.as_str() != expected_id {
         return Err(CliError::Config(format!(
@@ -379,12 +332,7 @@ pub(super) async fn add_from_registry(
             .join(&scope)
             .join(skill_def.id.as_str()),
         meta: super::SourceMeta {
-            source_url: None,
-            source_type: Some(SourceType::Source),
-            source_branch: None,
-            source_tag: None,
-            source_subdir: None,
-            installed_from: Some(default_repo.name.clone()),
+            origin: skill_def.origin.clone(),
         },
         version_display: version,
     };
@@ -419,53 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_invalid_source_type_returns_error() {
-        let result = resolve_source_type("/some/path", Some("invalid-type"));
-        assert!(
-            result.is_err(),
-            "invalid source type must return CliError::Config"
-        );
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                msg.contains("invalid-type"),
-                "error message must mention the invalid value"
-            );
-        } else {
-            panic!("Expected CliError::Config");
-        }
-    }
-
-    #[test]
-    fn test_resolve_registry_source_type() {
-        let result = resolve_source_type("my-skill@1.0.0", Some("registry")).unwrap();
-        assert!(matches!(result, ResolvedSource::Registry(_)));
-    }
-
-    #[test]
-    fn test_resolve_git_source_type() {
-        let result = resolve_source_type("https://github.com/org/skill.git", Some("git")).unwrap();
-        assert!(matches!(result, ResolvedSource::Git(_)));
-    }
-
-    #[test]
-    fn test_resolve_local_source_type_directory() {
-        let result = resolve_source_type("/some/local/path", Some("local")).unwrap();
-        assert!(matches!(result, ResolvedSource::Local(_)));
-    }
-
-    #[test]
-    fn test_resolve_local_source_type_zip() {
-        let result = resolve_source_type("/some/skill.zip", Some("local")).unwrap();
-        assert!(matches!(result, ResolvedSource::Zip(_)));
-    }
-
-    #[test]
-    fn test_resolve_no_source_type_autodetects() {
-        let result = resolve_source_type("my-skill@1.0.0", None).unwrap();
-        assert!(matches!(result, ResolvedSource::Registry(_)));
-    }
-
-    #[test]
     fn test_parse_registry_scope_id_valid() {
         let (full, scope, id, version) = parse_registry_scope_id("my-scope/my-skill").unwrap();
         assert_eq!(full, "my-scope/my-skill");
@@ -491,63 +392,6 @@ mod tests {
         } else {
             panic!("Expected CliError::Config");
         }
-    }
-
-    // ── is_local_path ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_is_local_path_dot_and_slash_prefixes() {
-        assert!(is_local_path("./relative"));
-        assert!(is_local_path("/absolute/path"));
-        assert!(is_local_path("../up"));
-    }
-
-    #[test]
-    fn test_is_local_path_existing_path() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let p = tmp.path().join("thing");
-        std::fs::write(&p, "x").unwrap();
-        assert!(is_local_path(&p.to_string_lossy()));
-    }
-
-    #[test]
-    fn test_is_local_path_bare_name_is_not_local() {
-        // A bare, non-existent name is treated as a non-local (e.g. registry) ref.
-        assert!(!is_local_path("some-skill-name-that-does-not-exist"));
-    }
-
-    // ── autodetect_source ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_autodetect_source_registry() {
-        assert!(matches!(
-            autodetect_source("scope/skill@1.0.0"),
-            ResolvedSource::Registry(_)
-        ));
-    }
-
-    #[test]
-    fn test_autodetect_source_git() {
-        assert!(matches!(
-            autodetect_source("https://github.com/org/repo.git"),
-            ResolvedSource::Git(_)
-        ));
-    }
-
-    #[test]
-    fn test_autodetect_source_zip() {
-        assert!(matches!(
-            autodetect_source("./bundle.zip"),
-            ResolvedSource::Zip(_)
-        ));
-    }
-
-    #[test]
-    fn test_autodetect_source_folder() {
-        assert!(matches!(
-            autodetect_source("./some/folder"),
-            ResolvedSource::Local(_)
-        ));
     }
 
     // ── find_skill_in_directory ───────────────────────────────────────────────
@@ -723,8 +567,13 @@ mod tests {
             versions: vec!["1.0.0".to_string()],
             zip_data: zip_bytes,
         };
+        let origin = Origin::Repository {
+            repo: "default".to_string(),
+            skill: "scope/test-skill".to_string(),
+            version: None,
+        };
         let (_temp_dir, skill_path, skill_def) =
-            download_registry_package(&client, "scope/test-skill", "1.0.0")
+            download_registry_package(&client, "scope/test-skill", "1.0.0", origin)
                 .await
                 .unwrap();
         assert!(skill_path.join("SKILL.md").exists());
@@ -737,7 +586,12 @@ mod tests {
             versions: vec!["1.0.0".to_string()],
             zip_data: b"garbage".to_vec(),
         };
-        let result = download_registry_package(&client, "scope/test-skill", "1.0.0").await;
+        let origin = Origin::Repository {
+            repo: "default".to_string(),
+            skill: "scope/test-skill".to_string(),
+            version: None,
+        };
+        let result = download_registry_package(&client, "scope/test-skill", "1.0.0", origin).await;
         assert!(result.is_err());
     }
 

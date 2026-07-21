@@ -10,8 +10,9 @@
 
 use chrono::Utc;
 use fastskill_core::core::lock::ProjectSkillsLock;
+use fastskill_core::core::origin::{GitRef, Origin};
 use fastskill_core::core::service::SkillId;
-use fastskill_core::core::skill_manager::{SkillDefinition, SourceType};
+use fastskill_core::core::skill_manager::SkillDefinition;
 use std::fs;
 use tempfile::TempDir;
 
@@ -31,15 +32,13 @@ fn make_skill(id: &str) -> SkillDefinition {
         execution_environment: None,
         dependencies: None,
         timeout: None,
-        source_url: Some("https://github.com/test/repo.git".to_string()),
-        source_type: Some(SourceType::GitUrl),
-        source_branch: Some("main".to_string()),
-        source_tag: None,
-        source_subdir: None,
-        installed_from: None,
+        origin: Origin::Git {
+            url: "https://github.com/test/repo.git".to_string(),
+            r#ref: GitRef::Branch("main".to_string()),
+            subdir: None,
+        },
         commit_hash: Some("abc123".to_string()),
         fetched_at: Some(Utc::now()),
-        editable: false,
     }
 }
 

@@ -286,7 +286,8 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
                 skill_id,
                 entry.name.clone(),
                 String::new(),
-                entry.version.clone(),
+                entry.resolved.version.clone(),
+                entry.origin.clone(),
             )
         } else {
             resolve_skill(&service, &args.skill_id).await?
@@ -324,7 +325,8 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
                     skill_id,
                     entry.name.clone(),
                     String::new(),
-                    entry.version.clone(),
+                    entry.resolved.version.clone(),
+                    entry.origin.clone(),
                 );
                 if !entry.dependencies.is_empty() {
                     sd.dependencies = Some(entry.dependencies.clone());

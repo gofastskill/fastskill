@@ -246,7 +246,7 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
         println!("\nGlobal skills (check mode):\n");
         for id in &skill_ids {
             if let Some(entry) = lock.skills.iter().find(|s| s.id == *id) {
-                println!("  • {} @ {}", entry.id, entry.version);
+                println!("  • {} @ {}", entry.id, entry.resolved.version);
             }
         }
         if args.check {
@@ -403,7 +403,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         } else {
             println!("\nSkills that would be updated:\n");
             for entry in &entries {
-                println!("  • {} (from {:?})", entry.id, entry.source);
+                println!("  • {} (from {:?})", entry.id, entry.origin);
             }
         }
         if args.check {
@@ -555,7 +555,7 @@ mod tests {
         fs::write(
             &skill_project_toml,
             r#"[dependencies]
-test-skill = { source = "git", url = "https://example.com/repo.git" }
+test-skill = { origin = { type = "git", url = "https://example.com/repo.git" } }
 "#,
         )
         .expect("Failed to write skill-project.toml");

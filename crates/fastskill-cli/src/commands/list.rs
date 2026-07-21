@@ -14,7 +14,8 @@ use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality}
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::lock::ProjectSkillsLock;
-use fastskill_core::core::manifest::{SkillProjectToml, SkillSource};
+use fastskill_core::core::manifest::SkillProjectToml;
+use fastskill_core::core::origin::Origin;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::core::service::FastSkillService;
 use fastskill_core::output::ListRow;
@@ -111,18 +112,34 @@ impl FromArgValueMap for ListArgs {
     }
 }
 
-/// Extract source path and type from SkillSource
-fn format_source_info(source: &SkillSource) -> (Option<String>, Option<String>) {
-    match source {
-        SkillSource::Git { url, .. } => (Some(url.clone()), Some("git".to_string())),
-        SkillSource::Local { path, .. } => {
-            (Some(path.display().to_string()), Some("local".to_string()))
-        }
-        SkillSource::ZipUrl { base_url, .. } => {
-            (Some(base_url.clone()), Some("zip-url".to_string()))
-        }
-        SkillSource::Source { name, .. } => (Some(name.clone()), Some("source".to_string())),
+/// Short origin-type label (git/local/zip-url/repository) for display.
+/// Mirrors `fastskill_core::output::origin_type_label` (private to that crate).
+fn origin_type_label(origin: &Origin) -> &'static str {
+    match origin {
+        Origin::Git { .. } => "git",
+        Origin::Local { .. } => "local",
+        Origin::ZipUrl { .. } => "zip-url",
+        Origin::Repository { .. } => "repository",
     }
+}
+
+/// Location string (URL/path/repo-skill) for display.
+/// Mirrors `fastskill_core::output::origin_location_label` (private to that crate).
+fn origin_location_label(origin: &Origin) -> String {
+    match origin {
+        Origin::Git { url, .. } => url.clone(),
+        Origin::Local { path, .. } => path.display().to_string(),
+        Origin::ZipUrl { url } => url.clone(),
+        Origin::Repository { repo, skill, .. } => format!("{repo}/{skill}"),
+    }
+}
+
+/// Extract source path and type from an `Origin`.
+fn format_source_info(origin: &Origin) -> (Option<String>, Option<String>) {
+    (
+        Some(origin_location_label(origin)),
+        Some(origin_type_label(origin).to_string()),
+    )
 }
 
 /// Execute the list command
@@ -165,13 +182,13 @@ pub async fn execute_list(
     };
 
     // Build lock map with additional metadata
-    let lock_map: HashMap<String, (String, String, SkillSource)> = lock
+    let lock_map: HashMap<String, (String, String, Origin)> = lock
         .skills
         .iter()
         .map(|s| {
             (
                 s.id.clone(),
-                (s.version.clone(), s.name.clone(), s.source.clone()),
+                (s.resolved.version.clone(), s.name.clone(), s.origin.clone()),
             )
         })
         .collect();
@@ -232,22 +249,13 @@ pub async fn execute_list(
 
             // Get source path and type
             let (source_path, source_type) = if let Some(skill) = installed_map.get(&id) {
-                // For installed skills, use skill_file path and source_type
+                // For installed skills, use skill_file path and the origin's type label.
                 let path = Some(skill.skill_file.display().to_string());
-                let stype = skill.source_type.as_ref().map(|st| match st {
-                    fastskill_core::core::skill_manager::SourceType::GitUrl => "git".to_string(),
-                    fastskill_core::core::skill_manager::SourceType::LocalPath => {
-                        "local".to_string()
-                    }
-                    fastskill_core::core::skill_manager::SourceType::ZipFile => {
-                        "zip-url".to_string()
-                    }
-                    fastskill_core::core::skill_manager::SourceType::Source => "source".to_string(),
-                });
+                let stype = Some(origin_type_label(&skill.origin).to_string());
                 (path, stype)
-            } else if let Some((_, _, source)) = lock_map.get(&id) {
-                // For lock-only skills, extract from SkillSource
-                format_source_info(source)
+            } else if let Some((_, _, origin)) = lock_map.get(&id) {
+                // For lock-only skills, extract from Origin
+                format_source_info(origin)
             } else {
                 (None, None)
             };

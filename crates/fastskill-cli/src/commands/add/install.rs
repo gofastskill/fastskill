@@ -88,26 +88,14 @@ pub(super) async fn finish_skill_install(
 ) -> CliResult<()> {
     use chrono::Utc;
     skill_def.skill_file = storage_dir.join("SKILL.md");
-    skill_def.source_url = meta.source_url;
-    skill_def.source_type = meta.source_type;
-    skill_def.source_branch = meta.source_branch;
-    skill_def.source_tag = meta.source_tag;
-    skill_def.source_subdir = meta.source_subdir;
-    skill_def.installed_from = meta.installed_from;
+    skill_def.origin = meta.origin;
     skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = ctx.editable;
 
     super::register_skill_once(ctx, &skill_def).await?;
 
     let update = fastskill_core::core::skill_manager::SkillUpdate {
-        source_url: skill_def.source_url.clone(),
-        source_type: skill_def.source_type.clone(),
-        source_branch: skill_def.source_branch.clone(),
-        source_tag: skill_def.source_tag.clone(),
-        source_subdir: skill_def.source_subdir.clone(),
-        installed_from: skill_def.installed_from.clone(),
+        origin: Some(skill_def.origin.clone()),
         fetched_at: skill_def.fetched_at,
-        editable: Some(skill_def.editable),
         ..Default::default()
     };
     ctx.service
@@ -133,7 +121,7 @@ pub(super) async fn finish_skill_install(
             crate::utils::messages::ok("Updated global-skills.lock")
         );
     } else {
-        super::update_project_files(&skill_def, ctx.groups.clone(), ctx.editable)?;
+        super::update_project_files(&skill_def, ctx.groups.clone())?;
         println!(
             "Successfully added skill: {} (v{})",
             skill_def.name, version_display

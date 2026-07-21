@@ -13,8 +13,8 @@ use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
+use fastskill_core::core::origin::Origin;
 use fastskill_core::core::project::resolve_project_file;
-use fastskill_core::core::skill_manager::SourceType;
 use fastskill_core::{FastSkillService, SkillDefinition};
 pub use install::copy_dir_recursive;
 pub use skill_def::create_skill_from_path;
@@ -31,14 +31,12 @@ struct AddContext<'a> {
     global: bool,
 }
 
-/// Source metadata to record after installing a skill
+/// Source metadata to record after installing a skill.
+///
+/// `Origin` (install intent) is now the single source of truth for provenance,
+/// so this is a thin wrapper rather than a flat bag of source_* fields.
 struct SourceMeta {
-    source_url: Option<String>,
-    source_type: Option<SourceType>,
-    source_branch: Option<String>,
-    source_tag: Option<String>,
-    source_subdir: Option<PathBuf>,
-    installed_from: Option<String>,
+    origin: Origin,
 }
 
 /// Target for install: where to copy and what to record
@@ -48,13 +46,9 @@ struct InstallTarget {
     version_display: String,
 }
 
-fn update_project_files(
-    skill_def: &SkillDefinition,
-    groups: Vec<String>,
-    editable: bool,
-) -> CliResult<()> {
+fn update_project_files(skill_def: &SkillDefinition, groups: Vec<String>) -> CliResult<()> {
     use crate::utils::manifest_utils;
-    manifest_utils::add_skill_to_project_toml(skill_def, groups.clone(), editable)
+    manifest_utils::add_skill_to_project_toml(skill_def, groups.clone())
         .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
 
     let current_dir = env::current_dir()

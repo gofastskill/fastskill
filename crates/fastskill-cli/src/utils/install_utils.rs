@@ -2,11 +2,11 @@
 
 use crate::error::{CliError, CliResult};
 use chrono::Utc;
+use fastskill_core::core::manifest::SkillEntry;
+use fastskill_core::core::origin::{GitRef, Origin};
 use fastskill_core::core::repository::RepositoryManager;
+use fastskill_core::core::skill_manager::SkillUpdate;
 use fastskill_core::core::sources::SourcesManager;
-use fastskill_core::core::{
-    manifest::SkillEntry, manifest::SkillSource, skill_manager::SourceType,
-};
 use fastskill_core::{FastSkillService, SkillDefinition};
 use std::path::{Path, PathBuf};
 
@@ -104,33 +104,35 @@ pub async fn install_skill_from_entry(
     entry: SkillEntry,
     sources_manager: Option<&SourcesManager>,
 ) -> CliResult<SkillDefinition> {
-    match &entry.source {
-        SkillSource::Git {
-            url,
-            branch,
-            tag,
-            subdir,
-        } => {
-            install_from_git(
-                service,
-                url,
-                branch.as_deref(),
-                tag.as_deref(),
-                subdir.as_ref(),
-            )
-            .await
+    match &entry.origin {
+        Origin::Git { url, r#ref, subdir } => {
+            let (branch, tag) = match r#ref {
+                GitRef::Default => (None, None),
+                GitRef::Branch(b) => (Some(b.as_str()), None),
+                GitRef::Tag(t) => (None, Some(t.as_str())),
+                GitRef::Commit(_) => {
+                    // No clone-by-commit primitive exists yet (`clone_repository` only
+                    // takes branch/tag). Nothing in the current CLI ever *produces* a
+                    // `GitRef::Commit` (no --commit flag), so this is unreachable via the
+                    // supported flows; surface a clear error rather than mishandling it.
+                    return Err(CliError::Config(
+                        "Installing a skill pinned to a git commit is not yet supported"
+                            .to_string(),
+                    ));
+                }
+            };
+            install_from_git(service, url, branch, tag, subdir.as_ref()).await
         }
-        SkillSource::Local { path, editable } => install_from_local(service, path, *editable).await,
-        SkillSource::ZipUrl { base_url, version } => {
-            install_from_zip_url(service, base_url, version.as_deref()).await
-        }
-        SkillSource::Source {
-            name,
+        Origin::Local { path, editable } => install_from_local(service, path, *editable).await,
+        Origin::ZipUrl { url } => install_from_zip_url(service, url).await,
+        Origin::Repository {
+            repo,
             skill,
             version,
         } => {
             if let Some(sources_mgr) = sources_manager {
-                install_from_source(service, sources_mgr, name, skill, version.as_deref()).await
+                let version_str = version.as_ref().map(|v| v.to_string());
+                install_from_source(service, sources_mgr, repo, skill, version_str.as_deref()).await
             } else {
                 Err(CliError::Config(
                     "Sources manager required for source-based installation".to_string(),
@@ -205,7 +207,7 @@ async fn copy_skill_to_storage(
 async fn register_skill(
     service: &FastSkillService,
     skill_def: &SkillDefinition,
-    update: fastskill_core::core::skill_manager::SkillUpdate,
+    update: SkillUpdate,
 ) -> CliResult<()> {
     service
         .skill_manager()
@@ -224,12 +226,33 @@ async fn register_skill(
     Ok(())
 }
 
-fn base_skill_update(def: &SkillDefinition) -> fastskill_core::core::skill_manager::SkillUpdate {
-    fastskill_core::core::skill_manager::SkillUpdate {
-        source_url: def.source_url.clone(),
-        source_type: def.source_type.clone(),
+/// The `origin` (install intent) is the single source of truth for provenance now,
+/// so every install path can share one `SkillUpdate` builder.
+fn base_skill_update(def: &SkillDefinition) -> SkillUpdate {
+    SkillUpdate {
+        origin: Some(def.origin.clone()),
         fetched_at: def.fetched_at,
         ..Default::default()
+    }
+}
+
+/// Build the `Origin::Git` for a git-based install, mapping the mutually-exclusive
+/// `--branch`/`--tag` flags onto `GitRef`.
+fn build_git_origin(
+    url: &str,
+    branch: Option<&str>,
+    tag: Option<&str>,
+    subdir: Option<&PathBuf>,
+) -> Origin {
+    let r#ref = match (branch, tag) {
+        (Some(b), _) => GitRef::Branch(b.to_string()),
+        (None, Some(t)) => GitRef::Tag(t.to_string()),
+        (None, None) => GitRef::Default,
+    };
+    Origin::Git {
+        url: url.to_string(),
+        r#ref,
+        subdir: subdir.cloned(),
     }
 }
 
@@ -250,29 +273,14 @@ async fn install_from_git(
     };
 
     let (_temp_dir, skill_path) = clone_and_find_skill(&config).await?;
-    let mut skill_def = create_skill_from_path(&skill_path, "git", false)?;
+    let origin = build_git_origin(url, branch, tag, subdir);
+    let mut skill_def = create_skill_from_path(&skill_path, origin, "git", false)?;
 
     copy_skill_to_storage(service, &skill_path, &mut skill_def).await?;
 
-    skill_def.source_url = Some(url.to_string());
-    skill_def.source_type = Some(SourceType::GitUrl);
-    skill_def.source_branch = branch.map(|s| s.to_string());
-    skill_def.source_tag = tag.map(|s| s.to_string());
-    skill_def.source_subdir = subdir.cloned();
     skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = false;
 
-    register_skill(
-        service,
-        &skill_def,
-        fastskill_core::core::skill_manager::SkillUpdate {
-            source_branch: skill_def.source_branch.clone(),
-            source_tag: skill_def.source_tag.clone(),
-            source_subdir: skill_def.source_subdir.clone(),
-            ..base_skill_update(&skill_def)
-        },
-    )
-    .await?;
+    register_skill(service, &skill_def, base_skill_update(&skill_def)).await?;
 
     Ok(skill_def)
 }
@@ -319,7 +327,11 @@ async fn install_from_local(
         )));
     }
 
-    let mut skill_def = create_skill_from_path(&skill_path, "local", editable)?;
+    let origin = Origin::Local {
+        path: skill_path.clone(),
+        editable,
+    };
+    let mut skill_def = create_skill_from_path(&skill_path, origin, "local", editable)?;
     let skill_storage_dir = service
         .config()
         .skill_storage_path
@@ -328,20 +340,9 @@ async fn install_from_local(
     setup_skill_in_storage(&skill_path, &skill_storage_dir, editable).await?;
 
     skill_def.skill_file = skill_storage_dir.join("SKILL.md");
-    skill_def.source_url = Some(skill_path.to_string_lossy().to_string());
-    skill_def.source_type = Some(SourceType::LocalPath);
     skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = editable;
 
-    register_skill(
-        service,
-        &skill_def,
-        fastskill_core::core::skill_manager::SkillUpdate {
-            editable: Some(skill_def.editable),
-            ..base_skill_update(&skill_def)
-        },
-    )
-    .await?;
+    register_skill(service, &skill_def, base_skill_update(&skill_def)).await?;
 
     Ok(skill_def)
 }
@@ -403,30 +404,20 @@ async fn download_and_extract_zip(url: &str) -> CliResult<(tempfile::TempDir, Pa
 async fn install_from_zip_url(
     service: &FastSkillService,
     base_url: &str,
-    version: Option<&str>,
 ) -> CliResult<SkillDefinition> {
     use crate::commands::add::create_skill_from_path;
 
     let (_temp_dir, skill_path) = download_and_extract_zip(base_url).await?;
 
-    let mut skill_def = create_skill_from_path(&skill_path, "zip", false)?;
+    let origin = Origin::ZipUrl {
+        url: base_url.to_string(),
+    };
+    let mut skill_def = create_skill_from_path(&skill_path, origin, "zip", false)?;
     copy_skill_to_storage(service, &skill_path, &mut skill_def).await?;
 
-    skill_def.source_url = Some(base_url.to_string());
-    skill_def.source_type = Some(SourceType::ZipFile);
-    skill_def.source_tag = version.map(|s| s.to_string());
     skill_def.fetched_at = Some(Utc::now());
-    skill_def.editable = false;
 
-    register_skill(
-        service,
-        &skill_def,
-        fastskill_core::core::skill_manager::SkillUpdate {
-            source_tag: skill_def.source_tag.clone(),
-            ..base_skill_update(&skill_def)
-        },
-    )
-    .await?;
+    register_skill(service, &skill_def, base_skill_update(&skill_def)).await?;
 
     Ok(skill_def)
 }
@@ -460,11 +451,16 @@ async fn create_package_resolver() -> CliResult<fastskill_core::core::resolver::
     Ok(resolver)
 }
 
-/// Install skill based on resolved source configuration
+/// Install skill based on resolved source configuration.
+///
+/// Note: this mirrors the pre-Origin behavior of overwriting the installed skill's
+/// origin with the concrete fetch mechanism (git/local/zip-url), NOT the logical
+/// `Origin::Repository` the entry declared — the resolver only tells us *how* to
+/// fetch the bytes, and `install_from_git`/`install_from_local`/`install_from_zip_url`
+/// already build the origin for the mechanism they use.
 async fn install_from_resolved_source(
     service: &FastSkillService,
     source_config: &fastskill_core::core::sources::SourceConfig,
-    version: Option<&str>,
 ) -> CliResult<SkillDefinition> {
     match source_config {
         fastskill_core::core::sources::SourceConfig::Git {
@@ -477,7 +473,7 @@ async fn install_from_resolved_source(
             install_from_local(service, path, false).await
         }
         fastskill_core::core::sources::SourceConfig::ZipUrl { base_url, .. } => {
-            install_from_zip_url(service, base_url, version).await
+            install_from_zip_url(service, base_url).await
         }
     }
 }
@@ -509,7 +505,7 @@ async fn install_from_source(
             CliError::Config(format!("Failed to resolve skill '{}': {}", skill_name, e))
         })?;
 
-    install_from_resolved_source(service, &resolution.candidate.source_config, version).await
+    install_from_resolved_source(service, &resolution.candidate.source_config).await
 }
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
@@ -649,19 +645,22 @@ mod tests {
 
         let entry = SkillEntry {
             id: "test-skill".to_string(),
-            source: SkillSource::Local {
+            origin: Origin::Local {
                 path: src.clone(),
                 editable: false,
             },
-            version: "1.0.0".to_string(),
             groups: Vec::new(),
-            editable: false,
         };
         let def = install_skill_from_entry(&service, entry, None)
             .await
             .unwrap();
-        assert!(matches!(def.source_type, Some(SourceType::LocalPath)));
-        assert!(!def.editable);
+        assert!(matches!(
+            def.origin,
+            Origin::Local {
+                editable: false,
+                ..
+            }
+        ));
         assert!(def.skill_file.ends_with("SKILL.md"));
         assert!(def.skill_file.exists());
     }
@@ -676,18 +675,16 @@ mod tests {
 
         let entry = SkillEntry {
             id: "test-skill".to_string(),
-            source: SkillSource::Local {
+            origin: Origin::Local {
                 path: src.clone(),
                 editable: true,
             },
-            version: "1.0.0".to_string(),
             groups: Vec::new(),
-            editable: true,
         };
         let def = install_skill_from_entry(&service, entry, None)
             .await
             .unwrap();
-        assert!(def.editable);
+        assert!(matches!(def.origin, Origin::Local { editable: true, .. }));
         let stored = storage.join(def.id.as_str());
         assert!(stored.is_symlink(), "editable local install must symlink");
     }
@@ -699,19 +696,17 @@ mod tests {
         let service = make_service(&storage).await;
         let entry = SkillEntry {
             id: "missing".to_string(),
-            source: SkillSource::Local {
+            origin: Origin::Local {
                 path: tmp.path().join("does-not-exist"),
                 editable: false,
             },
-            version: "1.0.0".to_string(),
             groups: Vec::new(),
-            editable: false,
         };
         let result = install_skill_from_entry(&service, entry, None).await;
         assert!(matches!(result, Err(CliError::InvalidSource(_))));
     }
 
-    // ── install_skill_from_entry: Source without a sources manager ─────────────
+    // ── install_skill_from_entry: Repository without a sources manager ─────────
 
     #[tokio::test]
     async fn test_install_skill_from_entry_source_requires_manager() {
@@ -720,14 +715,12 @@ mod tests {
         let service = make_service(&storage).await;
         let entry = SkillEntry {
             id: "scope/skill".to_string(),
-            source: SkillSource::Source {
-                name: "myrepo".to_string(),
+            origin: Origin::Repository {
+                repo: "myrepo".to_string(),
                 skill: "scope/skill".to_string(),
                 version: None,
             },
-            version: "1.0.0".to_string(),
             groups: Vec::new(),
-            editable: false,
         };
         let result = install_skill_from_entry(&service, entry, None).await;
         assert!(matches!(result, Err(CliError::Config(_))));
@@ -752,21 +745,18 @@ mod tests {
         let storage = tmp.path().join("storage");
         let service = make_service(&storage).await;
 
+        let zip_url = format!("{}/pkg.zip", server.uri());
         let entry = SkillEntry {
             id: "test-skill".to_string(),
-            source: SkillSource::ZipUrl {
-                base_url: format!("{}/pkg.zip", server.uri()),
-                version: Some("1.0.0".to_string()),
+            origin: Origin::ZipUrl {
+                url: zip_url.clone(),
             },
-            version: "1.0.0".to_string(),
             groups: Vec::new(),
-            editable: false,
         };
         let def = install_skill_from_entry(&service, entry, None)
             .await
             .unwrap();
-        assert!(matches!(def.source_type, Some(SourceType::ZipFile)));
-        assert_eq!(def.source_tag, Some("1.0.0".to_string()));
+        assert!(matches!(def.origin, Origin::ZipUrl { url } if url == zip_url));
         assert!(def.skill_file.exists());
     }
 

@@ -1,13 +1,19 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-//! Integration tests for v1.0.0 → v2.0 lock migration (RFC-056).
+//! Integration tests for the lock format version gate (Phase 0 / Origin model).
 //!
-//! Covers acceptance criteria:
+//! Formerly (RFC-056) this file covered v1.0.0 → v2.0 migration:
 //! - AC 11: loading a v1.0.0 lock with `generated_at` / `fetched_at` and immediately
-//!   re-saving it MUST strip those fields.
-//! - AC 18: v1.0.0 format files load without error (backward compat).
+//!   re-saving it stripped those fields.
+//! - AC 18: v1.0.0 format files loaded without error (backward compat).
+//!
+//! The Origin/Resolved reshape (ADR-0005) removed the migrator entirely: any lock
+//! whose `metadata.version` isn't the current `LOCK_FORMAT_VERSION` ("3.0") is now
+//! rejected with an actionable `LockError::UnsupportedVersion` telling the caller to
+//! delete the lock file and re-run `fastskill install`. These tests now assert that
+//! rejection instead of a successful migration.
 
-use fastskill_core::core::lock::ProjectSkillsLock;
+use fastskill_core::core::lock::{LockError, ProjectSkillsLock, LOCK_FORMAT_VERSION};
 use std::fs;
 use tempfile::TempDir;
 
@@ -29,54 +35,38 @@ depth = 0
 "#;
 
 #[test]
-fn migration_strips_volatile_fields_on_resave() {
-    // AC 11: re-saving a v1 lock removes generated_at and fetched_at.
+fn pre_origin_lock_is_rejected_not_migrated() {
+    // Superseded AC 11: there is no migrator anymore. A v1.0.0 lock (predating the
+    // Origin/Resolved reshape) must be rejected with an actionable error rather
+    // than silently loaded, stripped, and re-saved.
     let tmp = TempDir::new().unwrap();
     let lock_path = tmp.path().join("skills.lock");
     fs::write(&lock_path, V1_LOCK_FIXTURE).unwrap();
 
-    let loaded = ProjectSkillsLock::load_from_file(&lock_path)
-        .expect("v1.0.0 lock must load (extra fields ignored via serde defaults)");
-    assert_eq!(loaded.skills.len(), 1);
-    assert_eq!(loaded.skills[0].id, "legacy-skill");
-
-    loaded.save_to_file(&lock_path).unwrap();
-    let migrated = fs::read_to_string(&lock_path).unwrap();
-
-    assert!(
-        !migrated.contains("generated_at"),
-        "generated_at must be stripped"
-    );
-    assert!(
-        !migrated.contains("fetched_at"),
-        "fetched_at must be stripped"
-    );
-    assert!(
-        migrated.contains("legacy-skill"),
-        "skill data must be preserved"
-    );
-    assert!(
-        migrated.contains("fastskill_version"),
-        "fastskill_version must remain"
-    );
+    let err = ProjectSkillsLock::load_from_file(&lock_path).unwrap_err();
+    match err {
+        LockError::UnsupportedVersion { found } => assert_eq!(found, "1.0.0"),
+        other => panic!("expected UnsupportedVersion, got {other:?}"),
+    }
 }
 
 #[test]
-fn v1_lock_loads_without_error() {
-    // AC 18: backward compat — v1.0.0 file loads cleanly.
+fn v1_lock_is_rejected_before_touching_skill_shape() {
+    // Superseded AC 18: backward compat with pre-3.0 formats is intentionally
+    // dropped. The lightweight version pre-check must reject the file before any
+    // attempt to deserialize the (now-incompatible) `[[skills]]` shape.
     let tmp = TempDir::new().unwrap();
     let lock_path = tmp.path().join("skills.lock");
     fs::write(&lock_path, V1_LOCK_FIXTURE).unwrap();
 
-    let lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
-    assert_eq!(lock.skills.len(), 1);
-    assert_eq!(lock.skills[0].id, "legacy-skill");
-    assert_eq!(lock.skills[0].version, "1.0.0");
+    let result = ProjectSkillsLock::load_from_file(&lock_path);
+    assert!(matches!(result, Err(LockError::UnsupportedVersion { .. })));
 }
 
 #[test]
 fn project_skills_lock_round_trips() {
-    // Verify ProjectSkillsLock can be written and reloaded cleanly.
+    // Verify ProjectSkillsLock can be written and reloaded cleanly at the current
+    // format version (the Origin/Resolved reshape bumped this to "3.0").
     let tmp = TempDir::new().unwrap();
     let lock_path = tmp.path().join("skills.lock");
 
@@ -85,5 +75,5 @@ fn project_skills_lock_round_trips() {
     let loaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
 
     assert!(loaded.skills.is_empty());
-    assert_eq!(loaded.metadata.version, "2.0");
+    assert_eq!(loaded.metadata.version, LOCK_FORMAT_VERSION);
 }
