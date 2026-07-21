@@ -109,7 +109,7 @@ impl UpdateService {
             }
             UpdateStrategy::Patch => {
                 // Find highest patch version in same minor
-                let current = Version::parse(&locked_skill.version).map_err(|e| {
+                let current = Version::parse(&locked_skill.resolved.version).map_err(|e| {
                     UpdateError::VersionError(VersionError::ParseError(e.to_string()))
                 })?;
 
@@ -137,7 +137,7 @@ impl UpdateService {
             }
             UpdateStrategy::Minor => {
                 // Find highest version in same major
-                let current = Version::parse(&locked_skill.version).map_err(|e| {
+                let current = Version::parse(&locked_skill.resolved.version).map_err(|e| {
                     UpdateError::VersionError(VersionError::ParseError(e.to_string()))
                 })?;
 
@@ -183,7 +183,7 @@ impl UpdateService {
         };
 
         // Check if update is actually newer
-        if !is_newer(&target_version.version, &locked_skill.version)? {
+        if !is_newer(&target_version.version, &locked_skill.resolved.version)? {
             return Err(UpdateError::NoUpdateAvailable(locked_skill.id.clone()));
         }
 
@@ -200,7 +200,7 @@ impl UpdateService {
 
         Ok(UpdateInfo {
             skill_id: locked_skill.id.clone(),
-            current_version: locked_skill.version.clone(),
+            current_version: locked_skill.resolved.version.clone(),
             available_version: target_version.version.clone(),
             resolution,
         })

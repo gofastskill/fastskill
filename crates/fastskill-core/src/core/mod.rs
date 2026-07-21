@@ -51,11 +51,10 @@ pub use lock::{
 
 // manifest
 pub use manifest::{
-    AuthConfig, AuthType, DependenciesSection, DependencySource, DependencySpec,
-    EmbeddingConfigToml, EvalConfigToml, FastSkillToolConfig, FileResolutionResult,
-    HttpServerConfigToml, ManifestError, ManifestMetadata, MetadataSection, ProjectContext,
-    RepositoryConnection, RepositoryDefinition, RepositoryType, SkillEntry, SkillProjectToml,
-    SkillSource, SkillsManifest, SourceSpecificFields, ToolSection,
+    AuthConfig, AuthType, DependenciesSection, DependencySpec, EmbeddingConfigToml, EvalConfigToml,
+    FastSkillToolConfig, FileResolutionResult, HttpServerConfigToml, ManifestError,
+    ManifestMetadata, MetadataSection, ProjectContext, RepositoryConnection, RepositoryDefinition,
+    RepositoryType, SkillEntry, SkillProjectToml, SkillsManifest, ToolSection,
 };
 
 // metadata
@@ -99,9 +98,7 @@ pub use service::{
 };
 
 // skill_manager
-pub use skill_manager::{
-    SkillDefinition, SkillManagementService, SkillManager, SkillUpdate, SourceType,
-};
+pub use skill_manager::{SkillDefinition, SkillManagementService, SkillManager, SkillUpdate};
 
 // sources
 pub use sources::{

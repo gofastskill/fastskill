@@ -492,10 +492,10 @@ name = "Proj"
 
 [dependencies]
 verdep = "1.2.3"
-gitdep = { source = "git", url = "https://example.com/x.git", branch = "main" }
-localdep = { source = "local", path = "./local/x" }
-zipdep = { source = "zip-url", zip_url = "https://example.com/x.zip" }
-srcdep = { source = "source", name = "acme", skill = "widget" }
+gitdep = { origin = { type = "git", url = "https://example.com/x.git", ref = { branch = "main" } } }
+localdep = { origin = { type = "local", path = "./local/x" } }
+zipdep = { origin = { type = "zip-url", url = "https://example.com/x.zip" } }
+srcdep = { origin = { type = "repository", repo = "acme", skill = "widget" } }
 "#;
     fs::write(&f.project_file_path, toml).unwrap();
     let (status, body) = do_get(f.state, "/project").await;
@@ -523,7 +523,7 @@ async fn manifest_list_with_deps() {
     let toml = r#"
 [dependencies]
 verdep = "1.0.0"
-gitdep = { source = "git", url = "https://example.com/x.git", version = "2.0.0" }
+gitdep = { origin = { type = "git", url = "https://example.com/x.git" } }
 "#;
     fs::write(&f.project_file_path, toml).unwrap();
     let (status, body) = do_get(f.state, "/manifest/skills").await;

@@ -1,6 +1,6 @@
 //! Integration tests for unified format context detection
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use fastskill_core::core::manifest::ProjectContext;
 use fastskill_core::core::manifest::SkillProjectToml;
@@ -269,7 +269,18 @@ test-skill = "1.0.0"
     let entries = project.to_skill_entries().unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].id, "test-skill");
-    assert_eq!(entries[0].version, "1.0.0".to_string());
+    match &entries[0].origin {
+        fastskill_core::core::origin::Origin::Repository {
+            repo,
+            skill,
+            version,
+        } => {
+            assert_eq!(repo, "default");
+            assert_eq!(skill, "test-skill");
+            assert_eq!(version.as_ref().unwrap().to_string(), "=1.0.0");
+        }
+        other => panic!("expected Origin::Repository, got {other:?}"),
+    }
 
     // Test 5: Verify skill-project.toml with all sections
     let full_project = SkillProjectToml {

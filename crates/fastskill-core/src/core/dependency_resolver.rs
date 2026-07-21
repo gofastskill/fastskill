@@ -199,20 +199,19 @@ impl DependencyResolver {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::core::manifest::{SkillEntry, SkillSource};
+    use crate::core::manifest::SkillEntry;
+    use crate::core::origin::Origin;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn make_local_entry(id: &str, path: &str) -> SkillEntry {
         SkillEntry {
             id: id.to_string(),
-            source: SkillSource::Local {
+            origin: Origin::Local {
                 path: PathBuf::from(path),
                 editable: false,
             },
-            version: "*".to_string(),
             groups: vec![],
-            editable: false,
         }
     }
 
@@ -262,7 +261,7 @@ mod tests {
         std::fs::write(
             skill_a_dir.join("skill-project.toml"),
             r#"[dependencies]
-skill-b = { source = "local", path = "local/skill-b" }
+skill-b = { origin = { type = "local", path = "local/skill-b" } }
 "#,
         )
         .unwrap();
@@ -292,7 +291,7 @@ skill-b = { source = "local", path = "local/skill-b" }
         std::fs::write(
             skill_a_dir.join("skill-project.toml"),
             r#"[dependencies]
-skill-b = { source = "local", path = "local/skill-b" }
+skill-b = { origin = { type = "local", path = "local/skill-b" } }
 "#,
         )
         .unwrap();
@@ -302,7 +301,7 @@ skill-b = { source = "local", path = "local/skill-b" }
         std::fs::write(
             skill_b_dir.join("skill-project.toml"),
             r#"[dependencies]
-skill-c = { source = "local", path = "local/skill-c" }
+skill-c = { origin = { type = "local", path = "local/skill-c" } }
 "#,
         )
         .unwrap();
@@ -354,7 +353,7 @@ skill-c = { source = "local", path = "local/skill-c" }
         let mut body = String::from("[dependencies]\n");
         for dep in deps {
             body.push_str(&format!(
-                "{dep} = {{ source = \"local\", path = \"local/{dep}\" }}\n"
+                "{dep} = {{ origin = {{ type = \"local\", path = \"local/{dep}\" }} }}\n"
             ));
         }
         std::fs::write(skill_dir.join("skill-project.toml"), body).unwrap();

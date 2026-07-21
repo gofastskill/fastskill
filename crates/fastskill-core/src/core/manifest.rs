@@ -1,5 +1,7 @@
 //! Skills manifest management for declarative skill control
 
+use crate::core::origin::Origin;
+use crate::core::version::VersionConstraint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -22,47 +24,9 @@ pub struct ManifestMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillEntry {
     pub id: String,
-    pub source: SkillSource,
-    pub version: String,
+    pub origin: Origin,
     #[serde(default)]
     pub groups: Vec<String>,
-    #[serde(default)]
-    pub editable: bool,
-}
-
-/// Source specification for skills
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type")]
-pub enum SkillSource {
-    #[serde(rename = "git")]
-    Git {
-        url: String,
-        #[serde(default)]
-        branch: Option<String>,
-        #[serde(default)]
-        tag: Option<String>,
-        #[serde(default)]
-        subdir: Option<PathBuf>,
-    },
-    #[serde(rename = "source")]
-    Source {
-        name: String,
-        skill: String,
-        #[serde(default)]
-        version: Option<String>,
-    },
-    #[serde(rename = "local")]
-    Local {
-        path: PathBuf,
-        #[serde(default)]
-        editable: bool,
-    },
-    #[serde(rename = "zip-url")]
-    ZipUrl {
-        base_url: String,
-        #[serde(default)]
-        version: Option<String>,
-    },
 }
 
 impl SkillsManifest {
@@ -193,59 +157,18 @@ pub struct DependenciesSection {
     pub dependencies: HashMap<String, DependencySpec>,
 }
 
-/// Dependency specification - can be a simple version string or inline table with source details
+/// Dependency specification - can be a simple version string or inline table with origin details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DependencySpec {
     /// Simple version string: "1.0.0"
     Version(String),
-    /// Inline table with source details
+    /// Inline table with an explicit `Origin`
     Inline {
-        source: DependencySource,
-        #[serde(flatten)]
-        source_specific: SourceSpecificFields,
+        origin: Origin,
         #[serde(default)]
         groups: Option<Vec<String>>,
-        #[serde(default)]
-        editable: Option<bool>,
     },
-}
-
-/// Dependency source type
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DependencySource {
-    #[serde(rename = "git")]
-    Git,
-    #[serde(rename = "local")]
-    Local,
-    #[serde(rename = "zip-url")]
-    ZipUrl,
-    #[serde(rename = "source")]
-    Source,
-}
-
-/// Source-specific fields for dependency specifications
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SourceSpecificFields {
-    /// For git source
-    #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub branch: Option<String>,
-    /// For local source
-    #[serde(default)]
-    pub path: Option<String>,
-    /// For source source
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub skill: Option<String>,
-    /// For zip-url source
-    #[serde(default)]
-    pub zip_url: Option<String>,
-    /// Version (for source source)
-    #[serde(default)]
-    pub version: Option<String>,
 }
 
 /// Tool section containing tool-specific configuration
@@ -566,88 +489,31 @@ impl SkillProjectToml {
 
         if let Some(ref deps_section) = self.dependencies {
             for (skill_id, dep_spec) in &deps_section.dependencies {
-                let (source, version, groups, editable) = match dep_spec {
+                let (origin, groups) = match dep_spec {
                     DependencySpec::Version(version_str) => {
-                        // Version-only dependency - treat as source-based
+                        // Version-only dependency: resolved against the "default" repository,
+                        // preserving today's implicit-source behavior.
+                        let constraint = VersionConstraint::parse(version_str).map_err(|e| {
+                            format!("Invalid version '{}' for {}: {}", version_str, skill_id, e)
+                        })?;
                         (
-                            SkillSource::Source {
-                                name: "default".to_string(),
+                            Origin::Repository {
+                                repo: "default".to_string(),
                                 skill: skill_id.clone(),
-                                version: Some(version_str.clone()),
+                                version: Some(constraint),
                             },
-                            Some(version_str.clone()),
                             Vec::new(),
-                            false,
                         )
                     }
-                    DependencySpec::Inline {
-                        source,
-                        source_specific,
-                        groups,
-                        editable,
-                    } => {
-                        let source = match source {
-                            DependencySource::Git => {
-                                let url = source_specific.url.clone().ok_or_else(|| {
-                                    format!("Git source requires 'url' field for {}", skill_id)
-                                })?;
-                                SkillSource::Git {
-                                    url,
-                                    branch: source_specific.branch.clone(),
-                                    tag: None,
-                                    subdir: None,
-                                }
-                            }
-                            DependencySource::Local => {
-                                let path = source_specific.path.clone().ok_or_else(|| {
-                                    format!("Local source requires 'path' field for {}", skill_id)
-                                })?;
-                                SkillSource::Local {
-                                    path: PathBuf::from(path),
-                                    editable: editable.unwrap_or(false),
-                                }
-                            }
-                            DependencySource::ZipUrl => {
-                                let zip_url = source_specific.zip_url.clone().ok_or_else(|| {
-                                    format!(
-                                        "ZipUrl source requires 'zip_url' field for {}",
-                                        skill_id
-                                    )
-                                })?;
-                                SkillSource::ZipUrl {
-                                    base_url: zip_url,
-                                    version: source_specific.version.clone(),
-                                }
-                            }
-                            DependencySource::Source => {
-                                let name = source_specific.name.clone().ok_or_else(|| {
-                                    format!("Source source requires 'name' field for {}", skill_id)
-                                })?;
-                                let skill = source_specific.skill.clone().ok_or_else(|| {
-                                    format!("Source source requires 'skill' field for {}", skill_id)
-                                })?;
-                                SkillSource::Source {
-                                    name,
-                                    skill,
-                                    version: source_specific.version.clone(),
-                                }
-                            }
-                        };
-                        (
-                            source,
-                            source_specific.version.clone(),
-                            groups.clone().unwrap_or_default(),
-                            editable.unwrap_or(false),
-                        )
+                    DependencySpec::Inline { origin, groups } => {
+                        (origin.clone(), groups.clone().unwrap_or_default())
                     }
                 };
 
                 entries.push(SkillEntry {
                     id: skill_id.clone(),
-                    source,
-                    version: version.unwrap_or_else(|| "*".to_string()),
+                    origin,
                     groups,
-                    editable,
                 });
             }
         }
@@ -737,20 +603,17 @@ mod tests {
 
             [[skills]]
             id = "web-scraper"
-            source = { type = "git", url = "https://github.com/org/repo.git", branch = "main" }
-            version = "*"
+            origin = { type = "git", url = "https://github.com/org/repo.git", ref = { branch = "main" } }
 
             [[skills]]
             id = "dev-tools"
-            source = { type = "git", url = "https://github.com/org/dev-tools.git" }
+            origin = { type = "git", url = "https://github.com/org/dev-tools.git" }
             groups = ["dev"]
-            version = "*"
 
             [[skills]]
             id = "monitoring"
-            source = { type = "source", name = "team-tools", skill = "monitoring", version = "2.1.0" }
+            origin = { type = "repository", repo = "team-tools", skill = "monitoring", version = "=2.1.0" }
             groups = ["prod"]
-            version = "2.1.0"
         "#;
 
         let manifest: SkillsManifest = toml::from_str(toml_content).unwrap();
@@ -772,40 +635,38 @@ mod tests {
     }
 
     #[test]
-    fn test_skill_source_variants() {
-        // Test Git source
-        let git_source = SkillSource::Git {
+    fn test_origin_variants_serialize_as_expected() {
+        // Test Git origin
+        let git_origin = Origin::Git {
             url: "https://github.com/org/repo.git".to_string(),
-            branch: Some("main".to_string()),
-            tag: None,
+            r#ref: crate::core::origin::GitRef::Branch("main".to_string()),
             subdir: None,
         };
 
-        // Test Source reference
-        let source_ref = SkillSource::Source {
-            name: "team-tools".to_string(),
+        // Test Repository reference
+        let repo_origin = Origin::Repository {
+            repo: "team-tools".to_string(),
             skill: "monitoring".to_string(),
-            version: Some("2.1.0".to_string()),
+            version: Some(VersionConstraint::parse("2.1.0").unwrap()),
         };
 
-        // Test Local source
-        let _local_source = SkillSource::Local {
+        // Test Local origin
+        let _local_origin = Origin::Local {
             path: PathBuf::from("./local-skills"),
             editable: false,
         };
 
-        // Test ZipUrl source
-        let _zip_source = SkillSource::ZipUrl {
-            base_url: "https://skills.example.com/".to_string(),
-            version: None,
+        // Test ZipUrl origin
+        let _zip_origin = Origin::ZipUrl {
+            url: "https://skills.example.com/".to_string(),
         };
 
         // Verify they serialize correctly
-        let git_toml = toml::to_string(&git_source).unwrap();
+        let git_toml = toml::to_string(&git_origin).unwrap();
         assert!(git_toml.contains("type = \"git\""));
 
-        let source_toml = toml::to_string(&source_ref).unwrap();
-        assert!(source_toml.contains("type = \"source\""));
+        let repo_toml = toml::to_string(&repo_origin).unwrap();
+        assert!(repo_toml.contains("type = \"repository\""));
     }
 
     #[test]
@@ -817,15 +678,13 @@ mod tests {
 
             [[skills]]
             id = "dual-group-skill"
-            source = { type = "git", url = "https://github.com/org/repo.git" }
+            origin = { type = "git", url = "https://github.com/org/repo.git" }
             groups = ["prod", "dev"]
-            version = "*"
 
             [[skills]]
             id = "only-prod-skill"
-            source = { type = "git", url = "https://github.com/org/repo2.git" }
+            origin = { type = "git", url = "https://github.com/org/repo2.git" }
             groups = ["prod"]
-            version = "*"
         "#;
 
         let manifest: SkillsManifest = toml::from_str(toml_content).unwrap();

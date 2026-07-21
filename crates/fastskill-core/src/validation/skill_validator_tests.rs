@@ -26,6 +26,10 @@ fn create_test_skill_definition(
         name.to_string(),
         description.to_string(),
         version.to_string(),
+        crate::core::origin::Origin::Local {
+            path: skill_dir.clone(),
+            editable: false,
+        },
     );
     skill.skill_file = skill_file;
     skill

@@ -4,11 +4,16 @@
 //! - `ProjectSkillsLock`: deterministic, timestamp-free, for `skills.lock` at project root
 //! - `GlobalSkillsLock`: operational, with timestamps, for `global-skills.lock` in user config dir
 
-use crate::core::manifest::SkillSource;
+use crate::core::origin::{Origin, Resolved};
 use crate::core::skill_manager::SkillDefinition;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+/// The lock format version. Bumped to "3.0" for the `Origin`/`Resolved` reshape
+/// (Phase 0). Lock files from before this version cannot be read — see
+/// [`LockError::UnsupportedVersion`].
+pub const LOCK_FORMAT_VERSION: &str = "3.0";
 
 // ── Project Lock ─────────────────────────────────────────────────────────────
 
@@ -27,24 +32,12 @@ pub struct ProjectLockMetadata {
 pub struct ProjectLockedSkillEntry {
     pub id: String,
     pub name: String,
-    pub version: String,
-    pub source: SkillSource,
-    #[serde(default)]
-    pub source_name: Option<String>,
-    #[serde(default)]
-    pub source_url: Option<String>,
-    #[serde(default)]
-    pub source_branch: Option<String>,
-    #[serde(default)]
-    pub commit_hash: Option<String>,
-    #[serde(default)]
-    pub checksum: Option<String>,
+    pub origin: Origin,
+    pub resolved: Resolved,
     #[serde(default)]
     pub dependencies: Vec<String>,
     #[serde(default)]
     pub groups: Vec<String>,
-    #[serde(default)]
-    pub editable: bool,
     /// Depth in the dependency tree (0 = direct dependency)
     #[serde(default)]
     pub depth: u32,
@@ -65,7 +58,7 @@ impl ProjectSkillsLock {
     pub fn new_empty() -> Self {
         Self {
             metadata: ProjectLockMetadata {
-                version: "2.0".to_string(),
+                version: LOCK_FORMAT_VERSION.to_string(),
                 fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             },
             skills: Vec::new(),
@@ -78,6 +71,7 @@ impl ProjectSkillsLock {
         }
         let safe_path = path.canonicalize().map_err(LockError::Io)?;
         let content = std::fs::read_to_string(&safe_path).map_err(LockError::Io)?;
+        check_lock_format_version(&content)?;
         let lock: ProjectSkillsLock =
             toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
         Ok(lock)
@@ -112,20 +106,17 @@ impl ProjectSkillsLock {
         parent_skill: Option<String>,
     ) {
         self.skills.retain(|s| s.id != skill.id.as_str());
-        let source = build_skill_source(skill);
         let entry = ProjectLockedSkillEntry {
             id: skill.id.to_string(),
             name: skill.name.clone(),
-            version: skill.version.clone(),
-            source,
-            source_name: skill.installed_from.clone(),
-            source_url: skill.source_url.clone(),
-            source_branch: skill.source_branch.clone(),
-            commit_hash: skill.commit_hash.clone(),
-            checksum: None,
+            origin: skill.origin.clone(),
+            resolved: Resolved {
+                version: skill.version.clone(),
+                commit_hash: skill.commit_hash.clone(),
+                checksum: None,
+            },
             dependencies: skill.dependencies.clone().unwrap_or_default(),
             groups: Vec::new(),
-            editable: skill.editable,
             depth,
             parent_skill,
         };
@@ -145,17 +136,17 @@ impl ProjectSkillsLock {
         let mut mismatches = Vec::new();
         for locked in &self.skills {
             if let Some(installed) = installed_skills.iter().find(|s| s.id.as_str() == locked.id) {
-                if installed.version != locked.version {
+                if installed.version != locked.resolved.version {
                     mismatches.push(LockMismatch {
                         skill_id: locked.id.clone(),
                         reason: format!(
                             "Version mismatch: lock={}, installed={}",
-                            locked.version, installed.version
+                            locked.resolved.version, installed.version
                         ),
                     });
                 }
                 if let (Some(lock_commit), Some(inst_commit)) =
-                    (&locked.commit_hash, &installed.commit_hash)
+                    (&locked.resolved.commit_hash, &installed.commit_hash)
                 {
                     if lock_commit != inst_commit {
                         mismatches.push(LockMismatch {
@@ -205,18 +196,8 @@ pub struct GlobalLockMetadata {
 pub struct GlobalLockedSkillEntry {
     pub id: String,
     pub name: String,
-    pub version: String,
-    pub source: SkillSource,
-    #[serde(default)]
-    pub source_name: Option<String>,
-    #[serde(default)]
-    pub source_url: Option<String>,
-    #[serde(default)]
-    pub source_branch: Option<String>,
-    #[serde(default)]
-    pub commit_hash: Option<String>,
-    #[serde(default)]
-    pub checksum: Option<String>,
+    pub origin: Origin,
+    pub resolved: Resolved,
     #[serde(default)]
     pub dependencies: Vec<String>,
     #[serde(default)]
@@ -241,7 +222,7 @@ impl GlobalSkillsLock {
     pub fn new_empty() -> Self {
         Self {
             metadata: GlobalLockMetadata {
-                version: "1.0".to_string(),
+                version: LOCK_FORMAT_VERSION.to_string(),
                 fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             },
             skills: Vec::new(),
@@ -259,6 +240,7 @@ impl GlobalSkillsLock {
         }
         let safe_path = path.canonicalize().map_err(LockError::Io)?;
         let content = std::fs::read_to_string(&safe_path).map_err(LockError::Io)?;
+        check_lock_format_version(&content)?;
         let lock: GlobalSkillsLock =
             toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
         Ok(lock)
@@ -276,17 +258,15 @@ impl GlobalSkillsLock {
 
     pub fn upsert_skill(&mut self, skill: &SkillDefinition, installed_at: DateTime<Utc>) {
         self.skills.retain(|s| s.id != skill.id.as_str());
-        let source = build_skill_source(skill);
         let entry = GlobalLockedSkillEntry {
             id: skill.id.to_string(),
             name: skill.name.clone(),
-            version: skill.version.clone(),
-            source,
-            source_name: skill.installed_from.clone(),
-            source_url: skill.source_url.clone(),
-            source_branch: skill.source_branch.clone(),
-            commit_hash: skill.commit_hash.clone(),
-            checksum: None,
+            origin: skill.origin.clone(),
+            resolved: Resolved {
+                version: skill.version.clone(),
+                commit_hash: skill.commit_hash.clone(),
+                checksum: None,
+            },
             dependencies: skill.dependencies.clone().unwrap_or_default(),
             groups: Vec::new(),
             installed_at,
@@ -350,6 +330,39 @@ pub enum LockError {
     /// Cannot determine global config directory.
     #[error("Global config directory unavailable: {0}")]
     GlobalConfigUnavailable(String),
+
+    /// The lock file predates the `Origin` model (format version < 3.0). There is
+    /// no migrator — the caller must delete the lock and reinstall.
+    #[error(
+        "skills lock format {found} predates the Origin model (3.0); \
+         delete the lock file and re-run `fastskill install`"
+    )]
+    UnsupportedVersion { found: String },
+}
+
+/// Lightweight pre-check: read only `metadata.version` out of the raw TOML text,
+/// before attempting to deserialize the full lock structure. A pre-Origin lock
+/// file's `[[skills]]` entries won't match the current shape at all (e.g. a
+/// missing `origin` field), which would otherwise surface as an opaque
+/// `LockError::Parse` instead of the actionable `UnsupportedVersion` guard.
+fn check_lock_format_version(content: &str) -> Result<(), LockError> {
+    #[derive(Deserialize)]
+    struct VersionOnly {
+        version: String,
+    }
+    #[derive(Deserialize)]
+    struct MetadataOnly {
+        metadata: VersionOnly,
+    }
+
+    let parsed: MetadataOnly =
+        toml::from_str(content).map_err(|e| LockError::Parse(e.to_string()))?;
+    if parsed.metadata.version != LOCK_FORMAT_VERSION {
+        return Err(LockError::UnsupportedVersion {
+            found: parsed.metadata.version,
+        });
+    }
+    Ok(())
 }
 
 // ── Routing helpers ───────────────────────────────────────────────────────────
@@ -374,49 +387,12 @@ pub fn global_lock_path() -> Result<PathBuf, LockError> {
         })
 }
 
-// ── Shared source builder ─────────────────────────────────────────────────────
-
-fn build_skill_source(skill: &SkillDefinition) -> SkillSource {
-    if let Some(source_type) = &skill.source_type {
-        match source_type {
-            crate::core::skill_manager::SourceType::GitUrl => SkillSource::Git {
-                url: skill.source_url.clone().unwrap_or_default(),
-                branch: skill.source_branch.clone(),
-                tag: skill.source_tag.clone(),
-                subdir: skill.source_subdir.clone(),
-            },
-            crate::core::skill_manager::SourceType::LocalPath => SkillSource::Local {
-                path: skill.source_subdir.clone().unwrap_or_else(|| {
-                    std::path::PathBuf::from(skill.source_url.clone().unwrap_or_default())
-                }),
-                editable: skill.editable,
-            },
-            crate::core::skill_manager::SourceType::ZipFile => SkillSource::ZipUrl {
-                base_url: skill.source_url.clone().unwrap_or_default(),
-                version: Some(skill.version.clone()),
-            },
-            crate::core::skill_manager::SourceType::Source => SkillSource::Source {
-                name: skill.installed_from.clone().unwrap_or_default(),
-                skill: skill.id.to_string(),
-                version: Some(skill.version.clone()),
-            },
-        }
-    } else {
-        SkillSource::Git {
-            url: skill.source_url.clone().unwrap_or_default(),
-            branch: None,
-            tag: None,
-            subdir: None,
-        }
-    }
-}
-
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::core::service::SkillId;
-    use crate::core::skill_manager::{SkillDefinition, SourceType};
+    use crate::core::skill_manager::SkillDefinition;
     use chrono::Utc;
     use tempfile::TempDir;
 
@@ -436,15 +412,13 @@ mod tests {
             execution_environment: None,
             dependencies: None,
             timeout: None,
-            source_url: Some("https://github.com/test/repo.git".to_string()),
-            source_type: Some(SourceType::GitUrl),
-            source_branch: Some("main".to_string()),
-            source_tag: None,
-            source_subdir: None,
-            installed_from: None,
+            origin: crate::core::origin::Origin::Git {
+                url: "https://github.com/test/repo.git".to_string(),
+                r#ref: crate::core::origin::GitRef::Branch("main".to_string()),
+                subdir: None,
+            },
             commit_hash: Some("abc123".to_string()),
             fetched_at: Some(Utc::now()),
-            editable: false,
         }
     }
 
@@ -511,10 +485,12 @@ mod tests {
     }
 
     #[test]
-    fn test_project_lock_migration_strips_volatile_fields() {
-        // Simulate loading a v1.0.0 skills.lock that has generated_at and fetched_at
+    fn test_project_lock_pre_origin_format_is_rejected() {
+        // A lock file from before the Origin model (any version != "3.0") must be
+        // rejected with an actionable error rather than silently misparsed — there
+        // is no migrator (spec decision).
         let old_format = r#"[metadata]
-version = "1.0.0"
+version = "2.0"
 generated_at = "2024-01-01T00:00:00Z"
 fastskill_version = "0.9.0"
 
@@ -533,22 +509,34 @@ depth = 0
         let lock_path = tmp.path().join("skills.lock");
         std::fs::write(&lock_path, old_format).unwrap();
 
-        // Load old format - unknown fields (generated_at, fetched_at) are silently ignored
+        let err = ProjectSkillsLock::load_from_file(&lock_path).unwrap_err();
+        match err {
+            LockError::UnsupportedVersion { found } => assert_eq!(found, "2.0"),
+            other => panic!("expected UnsupportedVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_project_lock_no_volatile_fields_after_round_trip() {
+        let tmp = TempDir::new().unwrap();
+        let lock_path = tmp.path().join("skills.lock");
+
+        let mut lock = ProjectSkillsLock::new_empty();
+        lock.update_skill(&make_skill("my-skill"));
+        lock.save_to_file(&lock_path).unwrap();
+
         let loaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
         assert_eq!(loaded.skills.len(), 1);
-        assert_eq!(loaded.skills[0].id, "old-skill");
+        assert_eq!(loaded.skills[0].id, "my-skill");
 
-        // Save with new code
-        loaded.save_to_file(&lock_path).unwrap();
         let new_content = std::fs::read_to_string(&lock_path).unwrap();
-
         assert!(
             !new_content.contains("generated_at"),
-            "generated_at must be stripped on save"
+            "generated_at must not appear"
         );
         assert!(
             !new_content.contains("fetched_at"),
-            "fetched_at must be stripped on save"
+            "fetched_at must not appear"
         );
     }
 

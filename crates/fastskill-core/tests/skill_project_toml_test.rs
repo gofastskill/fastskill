@@ -3,9 +3,9 @@
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 use fastskill_core::core::manifest::{
-    DependenciesSection, DependencySource, DependencySpec, MetadataSection, SkillProjectToml,
-    SourceSpecificFields,
+    DependenciesSection, DependencySpec, MetadataSection, SkillProjectToml,
 };
+use fastskill_core::core::origin::Origin;
 use std::collections::HashMap;
 
 #[test]
@@ -41,18 +41,14 @@ fn test_skill_project_toml_serialization_with_dependencies_only() {
     deps.insert(
         "skill2".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Source,
-            source_specific: SourceSpecificFields {
-                name: Some("enterprise".to_string()),
-                version: Some("2.0.0".to_string()),
-                url: None,
-                branch: None,
-                path: None,
-                skill: None,
-                zip_url: None,
+            origin: Origin::Repository {
+                repo: "enterprise".to_string(),
+                skill: "skill2".to_string(),
+                version: Some(
+                    fastskill_core::core::version::VersionConstraint::parse("2.0.0").unwrap(),
+                ),
             },
             groups: None,
-            editable: None,
         },
     );
 
@@ -66,11 +62,11 @@ fn test_skill_project_toml_serialization_with_dependencies_only() {
 
     assert!(toml_string.contains("[dependencies]"));
     assert!(toml_string.contains("skill1 = \"1.0.0\""));
-    // TOML serializer uses table format for inline tables: [dependencies.skill2]
-    assert!(toml_string.contains("[dependencies.skill2]"));
-    assert!(toml_string.contains("source = \"source\""));
-    assert!(toml_string.contains("name = \"enterprise\""));
-    assert!(toml_string.contains("version = \"2.0.0\""));
+    // TOML serializer uses table format for inline tables: [dependencies.skill2.origin]
+    assert!(toml_string.contains("[dependencies.skill2.origin]"));
+    assert!(toml_string.contains("type = \"repository\""));
+    assert!(toml_string.contains("repo = \"enterprise\""));
+    assert!(toml_string.contains("version = \"=2.0.0\""));
 }
 
 #[test]
@@ -112,7 +108,7 @@ description = "Test description"
 
 [dependencies]
 skill1 = "1.0.0"
-skill2 = { source = "source", name = "enterprise", version = "2.0.0" }
+skill2 = { origin = { type = "repository", repo = "enterprise", skill = "skill2", version = "2.0.0" } }
 "#;
 
     let project: SkillProjectToml = toml::from_str(toml_content).unwrap();

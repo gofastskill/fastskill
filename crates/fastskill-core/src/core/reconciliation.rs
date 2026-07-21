@@ -53,10 +53,22 @@ pub struct VersionMismatch {
     pub locked_version: String,
 }
 
+use crate::core::origin::Origin;
 use crate::core::skill_manager::SkillDefinition;
 use crate::core::version::VersionConstraint;
 use std::collections::HashMap;
 use std::path::Path;
+
+/// A short human-readable description of where a skill came from, derived from
+/// its `Origin`. Used only for display in the reconciliation report.
+fn origin_display(origin: &Origin) -> String {
+    match origin {
+        Origin::Git { url, .. } => url.clone(),
+        Origin::Local { path, .. } => path.display().to_string(),
+        Origin::ZipUrl { url } => url.clone(),
+        Origin::Repository { repo, skill, .. } => format!("{repo}/{skill}"),
+    }
+}
 
 /// Build reconciliation report
 pub fn build_reconciliation_report(
@@ -136,7 +148,7 @@ pub fn build_reconciliation_report(
                     name: skill.name.clone(),
                     version: skill.version.clone(),
                     description: skill.description.clone(),
-                    source: skill.source_url.clone(),
+                    source: Some(origin_display(&skill.origin)),
                     installed_path: skill.skill_file.clone(),
                     installed_at: Some(skill.updated_at),
                     status: status.clone(),
@@ -160,7 +172,7 @@ pub fn build_reconciliation_report(
             name: skill.name.clone(),
             version: skill.version.clone(),
             description: skill.description.clone(),
-            source: skill.source_url.clone(),
+            source: Some(origin_display(&skill.origin)),
             installed_path: skill.skill_file.clone(),
             installed_at: Some(skill.updated_at),
             status,
@@ -188,6 +200,10 @@ mod tests {
             id.to_string(),
             "desc".to_string(),
             version.to_string(),
+            Origin::Local {
+                path: std::path::PathBuf::from(format!("./skills/{id}")),
+                editable: false,
+            },
         )
     }
 
