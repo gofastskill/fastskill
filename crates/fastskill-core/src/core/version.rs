@@ -86,6 +86,30 @@ impl VersionConstraint {
     }
 }
 
+impl std::fmt::Display for VersionConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Delegates to `VersionReq`'s canonical form, so a normalized bare pin
+        // renders as `=1.2.3` — the exact string `parse` will round-trip.
+        std::fmt::Display::fmt(&self.req, f)
+    }
+}
+
+// Persisted form of a constraint is its canonical string, and deserialization
+// funnels back through `parse` so the ADR-0004 normalization (bare version =
+// exact pin) is enforced at the serde boundary, not just at construction.
+impl serde::Serialize for VersionConstraint {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for VersionConstraint {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <String as serde::Deserialize>::deserialize(deserializer)?;
+        VersionConstraint::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Compare two version strings
 pub fn compare_versions(v1: &str, v2: &str) -> Result<std::cmp::Ordering, VersionError> {
     let ver1 = Version::parse(v1).map_err(|e| {

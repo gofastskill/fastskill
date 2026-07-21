@@ -11,6 +11,7 @@ pub mod frontmatter;
 pub mod lock;
 pub mod manifest;
 pub mod metadata;
+pub mod origin;
 pub mod project;
 pub mod project_config;
 pub mod reconciliation;
@@ -61,6 +62,9 @@ pub use manifest::{
 pub use metadata::{
     parse_yaml_frontmatter, MetadataService, MetadataServiceImpl, SkillFrontmatter, SkillMetadata,
 };
+
+// origin
+pub use origin::{GitRef, Origin, Resolved};
 
 // project_config
 pub use project_config::{load_project_config, ProjectConfig};
