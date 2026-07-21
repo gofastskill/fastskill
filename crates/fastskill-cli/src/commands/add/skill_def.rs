@@ -1,6 +1,7 @@
 //! Skill definition helpers for the add command.
 
 use crate::error::{CliError, CliResult, CliWarning};
+use fastskill_core::core::origin::Origin;
 use fastskill_core::SkillDefinition;
 use std::fs;
 use std::path::Path;
@@ -86,8 +87,12 @@ fn generate_fallback_skill_id(skill_path: &Path) -> CliResult<String> {
 
 /// Create a skill definition from a path containing SKILL.md.
 /// The skill ID is read from skill-project.toml if present, otherwise from SKILL.md frontmatter.
+///
+/// `origin` is the caller-constructed provenance (install intent) for this skill;
+/// `source_type` is only a cosmetic label used for the missing-toml warning display.
 pub fn create_skill_from_path(
     skill_path: &Path,
+    origin: Origin,
     source_type: &str,
     editable: bool,
 ) -> CliResult<SkillDefinition> {
@@ -129,8 +134,13 @@ pub fn create_skill_from_path(
         "1.0.0".to_string()
     };
 
-    let mut skill =
-        SkillDefinition::new(skill_id, frontmatter.name, frontmatter.description, version);
+    let mut skill = SkillDefinition::new(
+        skill_id,
+        frontmatter.name,
+        frontmatter.description,
+        version,
+        origin,
+    );
 
     skill.skill_file = skill_file.clone();
     skill.author = frontmatter.author;
@@ -144,6 +154,15 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// A throwaway `Origin` for tests that only care about the resulting `SkillDefinition`
+    /// fields derived from SKILL.md / skill-project.toml, not the origin itself.
+    fn test_origin(path: &Path) -> Origin {
+        Origin::Local {
+            path: path.to_path_buf(),
+            editable: false,
+        }
+    }
 
     #[test]
     fn test_read_project_metadata_missing_file() {
@@ -181,7 +200,8 @@ Test skill content
 "#;
         fs::write(tmp.path().join("SKILL.md"), skill_md).unwrap();
 
-        let skill = create_skill_from_path(tmp.path(), "local", false).unwrap();
+        let skill =
+            create_skill_from_path(tmp.path(), test_origin(tmp.path()), "local", false).unwrap();
         assert_eq!(skill.id.as_str(), "test-skill-no-toml");
     }
 
@@ -204,7 +224,8 @@ version = "1.5.0"
 "#;
         fs::write(tmp.path().join("skill-project.toml"), project_toml).unwrap();
 
-        let skill = create_skill_from_path(tmp.path(), "local", false).unwrap();
+        let skill =
+            create_skill_from_path(tmp.path(), test_origin(tmp.path()), "local", false).unwrap();
         assert_eq!(skill.id.as_str(), "from-toml");
         assert_eq!(skill.version, "1.5.0");
     }
@@ -220,7 +241,8 @@ Test content
 "#;
         fs::write(tmp.path().join("SKILL.md"), skill_md).unwrap();
 
-        let skill = create_skill_from_path(tmp.path(), "local", false).unwrap();
+        let skill =
+            create_skill_from_path(tmp.path(), test_origin(tmp.path()), "local", false).unwrap();
         assert_eq!(skill.id.as_str(), "fallback-name-skill");
     }
 
@@ -235,7 +257,7 @@ Test content
 "#;
         fs::write(tmp.path().join("SKILL.md"), skill_md).unwrap();
 
-        let result = create_skill_from_path(tmp.path(), "local", false);
+        let result = create_skill_from_path(tmp.path(), test_origin(tmp.path()), "local", false);
         assert!(result.is_err(), "Should fail due to spaces in name");
     }
 }

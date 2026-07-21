@@ -47,14 +47,12 @@ pub(crate) fn validate_required_fields(
                     );
                 }
             }
-            "version" => {
-                if skill.version.trim().is_empty() {
-                    result = result.with_error(
-                        "version",
-                        "Skill version cannot be empty",
-                        ErrorSeverity::Critical,
-                    );
-                }
+            "version" if skill.version.trim().is_empty() => {
+                result = result.with_error(
+                    "version",
+                    "Skill version cannot be empty",
+                    ErrorSeverity::Critical,
+                );
             }
             _ => {}
         }

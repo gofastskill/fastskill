@@ -3,10 +3,31 @@
 //! This module provides shared output formatting capabilities that can be used
 //! by multiple CLI commands to ensure consistent output styling.
 
+use crate::core::origin::Origin;
 use crate::core::SkillDefinition;
 use crate::search::SearchResultItem;
 use serde_json;
 use std::fmt;
+
+/// Short origin-type label (git/local/zip-url/repository) for display.
+fn origin_type_label(origin: &Origin) -> &'static str {
+    match origin {
+        Origin::Git { .. } => "git",
+        Origin::Local { .. } => "local",
+        Origin::ZipUrl { .. } => "zip-url",
+        Origin::Repository { .. } => "repository",
+    }
+}
+
+/// Location string (URL/path/repo-skill) for display.
+fn origin_location_label(origin: &Origin) -> String {
+    match origin {
+        Origin::Git { url, .. } => url.clone(),
+        Origin::Local { path, .. } => path.display().to_string(),
+        Origin::ZipUrl { url } => url.clone(),
+        Origin::Repository { repo, skill, .. } => format!("{repo}/{skill}"),
+    }
+}
 
 /// One row for the list table: union of all skills with presence and gap flags.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -539,12 +560,14 @@ fn format_show_table(skills: &[SkillDefinition]) -> Result<String, String> {
         output.push_str(&format!("  ID: {}\n", skill.id));
         output.push_str(&format!("  Version: {}\n", skill.version));
         output.push_str(&format!("  Description: {}\n", skill.description));
-        if let Some(source_type) = &skill.source_type {
-            output.push_str(&format!("  Source Type: {:?}\n", source_type));
-        }
-        if let Some(source_url) = &skill.source_url {
-            output.push_str(&format!("  Source URL: {}\n", source_url));
-        }
+        output.push_str(&format!(
+            "  Source Type: {}\n",
+            origin_type_label(&skill.origin)
+        ));
+        output.push_str(&format!(
+            "  Source: {}\n",
+            origin_location_label(&skill.origin)
+        ));
         output.push('\n');
     }
 
@@ -584,18 +607,14 @@ fn format_show_xml(skills: &[SkillDefinition]) -> Result<String, String> {
             "    <description>{}</description>\n",
             escape_xml(&skill.description)
         ));
-        if let Some(source_type) = &skill.source_type {
-            xml.push_str(&format!(
-                "    <source_type>{:?}</source_type>\n",
-                source_type
-            ));
-        }
-        if let Some(source_url) = &skill.source_url {
-            xml.push_str(&format!(
-                "    <source_url>{}</source_url>\n",
-                escape_xml(source_url)
-            ));
-        }
+        xml.push_str(&format!(
+            "    <source_type>{}</source_type>\n",
+            escape_xml(origin_type_label(&skill.origin))
+        ));
+        xml.push_str(&format!(
+            "    <source_url>{}</source_url>\n",
+            escape_xml(&origin_location_label(&skill.origin))
+        ));
         xml.push_str("  </skill>\n");
     }
 

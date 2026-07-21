@@ -296,9 +296,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
             .map(|locked| SkillInstallItem {
                 entry: SkillEntry {
                     id: locked.id,
-                    source: locked.source,
-                    version: locked.version,
-                    editable: locked.editable,
+                    origin: locked.origin,
                     groups: locked.groups,
                 },
                 depth: locked.depth,
@@ -392,7 +390,6 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
                 installed_skills.push((
                     skill_def,
                     item.entry.groups.clone(),
-                    item.entry.editable,
                     item.depth,
                     item.parent_skill.clone(),
                 ));
@@ -419,7 +416,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     }
 
     // Update lock file with all installed skills including depth and parent info
-    for (skill_def, groups, _editable, depth, parent_skill) in installed_skills {
+    for (skill_def, groups, depth, parent_skill) in installed_skills {
         manifest_utils::update_lock_file_with_depth(
             &lock_path,
             &skill_def,
@@ -613,7 +610,7 @@ Description: A test skill for coverage
 skills_directory = ".claude/skills"
 
 [dependencies]
-test-skill = { path = "source-skill" }
+test-skill = { origin = { type = "local", path = "source-skill" } }
 "#;
         fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 

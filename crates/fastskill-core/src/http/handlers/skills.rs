@@ -15,10 +15,7 @@ pub struct UpgradeRequest {
 }
 
 fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> serde_json::Value {
-    let source_type = skill
-        .source_type
-        .as_ref()
-        .map(|t| serde_json::to_value(t).unwrap_or(serde_json::Value::Null));
+    let origin = serde_json::to_value(&skill.origin).unwrap_or(serde_json::Value::Null);
     serde_json::json!({
         "id": skill.id,
         "name": skill.name,
@@ -31,8 +28,7 @@ fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> s
         "reference_files": skill.reference_files,
         "script_files": skill.script_files,
         "asset_files": skill.asset_files,
-        "source_url": skill.source_url,
-        "source_type": source_type
+        "origin": origin
     })
 }
 

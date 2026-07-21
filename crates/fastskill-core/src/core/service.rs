@@ -526,12 +526,20 @@ impl FastSkillService {
             .to_string();
         let skill_id = SkillId::new(skill_id_str)?;
 
-        // Create skill definition from frontmatter
+        // Create skill definition from frontmatter. This is a directory-scan
+        // registration path with no real provenance to record — the skill IS a
+        // local directory on disk, so `Origin::Local` is the accurate (and
+        // behavior-neutral) origin: previously all source_* fields were simply
+        // left `None` for this path.
         let mut skill = crate::core::skill_manager::SkillDefinition::new(
             skill_id.clone(),
             frontmatter.name,
             frontmatter.description,
             frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()),
+            crate::core::origin::Origin::Local {
+                path: skill_dir.to_path_buf(),
+                editable: false,
+            },
         );
 
         // Set additional fields

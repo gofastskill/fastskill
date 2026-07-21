@@ -542,6 +542,10 @@ mod tests {
             "Sample".to_string(),
             "A sample skill".to_string(),
             "1.0.0".to_string(),
+            crate::core::origin::Origin::Local {
+                path: std::path::PathBuf::from("./skills/sample-skill"),
+                editable: false,
+            },
         )
     }
 

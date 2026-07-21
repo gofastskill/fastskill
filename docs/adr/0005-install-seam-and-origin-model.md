@@ -20,7 +20,7 @@ We must decide (a) how the browser write-handlers obtain install/update/reindex 
 
 Introduce core service methods on `FastSkillService`:
 
-- `install(origin, mode)` where `mode ∈ {Fresh, Update}` — resolve the `Origin` → fetch → validate → write skills dir → update Manifest + Lock → reindex-if-provider. **Install and update are one operation**, differing only in policy (see below).
+- `add_from_origin(origin, mode)` where `mode ∈ {Fresh, Update}` — resolve the `Origin` → fetch → validate → write skills dir → update Manifest + Lock → reindex-if-provider. **Add and update are one operation**, differing only in policy (see below). (Named `add_from_origin`, *not* `install`: in this codebase `install` already means the manifest-reconcile-with-dependencies flow — CONTEXT.md "install = Manifest → skills dir". The per-`Origin`, single-skill operation is `add` semantics.)
 - a **core reindex seam** — reindex is domain logic (skills dir → Vector index) and belongs in core.
 
 Both the HTTP handlers **and** the CLI verbs (`execute_add`/`execute_update`/`execute_reindex`) call these methods. The CLI commands become thin wrappers (arg parsing + human output) over the shared core path.
@@ -30,7 +30,7 @@ The genuinely CLI-flavoured concerns are **construction-time dependencies, not l
 - **Embedding provider** — reading the API key from env/config happens at startup (in the CLI, where config resolution belongs); the constructed provider (already a core abstraction, `OpenAIEmbeddingService`) is handed to the service. Reindex then runs iff a provider is present, else **skips silently** (ADR-0002).
 - **Progress reporting** — a UI concern. The HTTP path returns a structured `Result`; it does not need live progress. The CLI keeps its progress output in its wrapper.
 
-`UpdateService` is **retained but narrowed** to what it already is: the read-only *"is anything newer?"* query (`check_updates`/`resolve_updates`) that backs `check`/`--dry-run`. The *apply* half is `install(origin, Update)`.
+`UpdateService` is **retained but narrowed** to what it already is: the read-only *"is anything newer?"* query (`check_updates`/`resolve_updates`) that backs `check`/`--dry-run` (the update *preflight*). The *apply* half is `add_from_origin(origin, Update)`, gated by a `preflight(origin) → {UpToDate | Immutable | Updatable}` step.
 
 **Rejected — dependency-inversion / trait injection (core defines `SkillInstaller`/`Reindexer` traits, CLI implements and injects them):** this keeps the orchestration physically in the CLI and adds an indirection layer, but the logic (resolve → fetch → write → lock → reindex) is domain logic that has no reason to live in the CLI. Injection is warranted for the *dependencies* (the embedding provider), not for the *logic*. We inject the provider; we move the logic.
 

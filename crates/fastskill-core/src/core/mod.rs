@@ -11,6 +11,7 @@ pub mod frontmatter;
 pub mod lock;
 pub mod manifest;
 pub mod metadata;
+pub mod origin;
 pub mod project;
 pub mod project_config;
 pub mod reconciliation;
@@ -50,17 +51,19 @@ pub use lock::{
 
 // manifest
 pub use manifest::{
-    AuthConfig, AuthType, DependenciesSection, DependencySource, DependencySpec,
-    EmbeddingConfigToml, EvalConfigToml, FastSkillToolConfig, FileResolutionResult,
-    HttpServerConfigToml, ManifestError, ManifestMetadata, MetadataSection, ProjectContext,
-    RepositoryConnection, RepositoryDefinition, RepositoryType, SkillEntry, SkillProjectToml,
-    SkillSource, SkillsManifest, SourceSpecificFields, ToolSection,
+    AuthConfig, AuthType, DependenciesSection, DependencySpec, EmbeddingConfigToml, EvalConfigToml,
+    FastSkillToolConfig, FileResolutionResult, HttpServerConfigToml, ManifestError,
+    ManifestMetadata, MetadataSection, ProjectContext, RepositoryConnection, RepositoryDefinition,
+    RepositoryType, SkillEntry, SkillProjectToml, SkillsManifest, ToolSection,
 };
 
 // metadata
 pub use metadata::{
     parse_yaml_frontmatter, MetadataService, MetadataServiceImpl, SkillFrontmatter, SkillMetadata,
 };
+
+// origin
+pub use origin::{GitRef, Origin, Resolved};
 
 // project_config
 pub use project_config::{load_project_config, ProjectConfig};
@@ -95,9 +98,7 @@ pub use service::{
 };
 
 // skill_manager
-pub use skill_manager::{
-    SkillDefinition, SkillManagementService, SkillManager, SkillUpdate, SourceType,
-};
+pub use skill_manager::{SkillDefinition, SkillManagementService, SkillManager, SkillUpdate};
 
 // sources
 pub use sources::{

@@ -1,24 +1,15 @@
 //! Skill management service implementation
 
+use crate::core::origin::Origin;
 use crate::core::service::{ServiceError, SkillId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 // Note: SkillInfoMetadata removed - use skill-project.toml via manifest system instead
-
-/// Source type for skill installation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SourceType {
-    GitUrl,
-    LocalPath,
-    ZipFile,
-    Source,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillDefinition {
@@ -41,20 +32,21 @@ pub struct SkillDefinition {
     pub dependencies: Option<Vec<String>>,
     pub timeout: Option<u64>,
 
-    // Source tracking
-    pub source_url: Option<String>,
-    pub source_type: Option<SourceType>,
-    pub source_branch: Option<String>,
-    pub source_tag: Option<String>,
-    pub source_subdir: Option<PathBuf>,
-    pub installed_from: Option<String>,
+    // Provenance (install intent)
+    pub origin: Origin,
+    // Resolved facts a fetch produced (read by the lock)
     pub commit_hash: Option<String>,
     pub fetched_at: Option<DateTime<Utc>>,
-    pub editable: bool,
 }
 
 impl SkillDefinition {
-    pub fn new(id: SkillId, name: String, description: String, version: String) -> Self {
+    pub fn new(
+        id: SkillId,
+        name: String,
+        description: String,
+        version: String,
+        origin: Origin,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: id.clone(),
@@ -71,15 +63,9 @@ impl SkillDefinition {
             execution_environment: None,
             dependencies: None,
             timeout: None,
-            source_url: None,
-            source_type: None,
-            source_branch: None,
-            source_tag: None,
-            source_subdir: None,
-            installed_from: None,
+            origin,
             commit_hash: None,
             fetched_at: None,
-            editable: false,
         }
     }
 
@@ -125,15 +111,9 @@ pub struct SkillUpdate {
     pub description: Option<String>,
     pub version: Option<String>,
     pub author: Option<String>,
-    pub source_url: Option<String>,
-    pub source_type: Option<SourceType>,
-    pub source_branch: Option<String>,
-    pub source_tag: Option<String>,
-    pub source_subdir: Option<PathBuf>,
-    pub installed_from: Option<String>,
+    pub origin: Option<Origin>,
     pub commit_hash: Option<String>,
     pub fetched_at: Option<DateTime<Utc>>,
-    pub editable: Option<bool>,
 }
 
 #[async_trait]
@@ -184,32 +164,14 @@ impl SkillManagementService for SkillManager {
             if let Some(author) = updates.author {
                 skill.author = Some(author);
             }
-            if let Some(source_url) = updates.source_url {
-                skill.source_url = Some(source_url);
-            }
-            if let Some(source_type) = updates.source_type {
-                skill.source_type = Some(source_type);
-            }
-            if let Some(source_branch) = updates.source_branch {
-                skill.source_branch = Some(source_branch);
-            }
-            if let Some(source_tag) = updates.source_tag {
-                skill.source_tag = Some(source_tag);
-            }
-            if let Some(source_subdir) = updates.source_subdir {
-                skill.source_subdir = Some(source_subdir);
-            }
-            if let Some(installed_from) = updates.installed_from {
-                skill.installed_from = Some(installed_from);
+            if let Some(origin) = updates.origin {
+                skill.origin = origin;
             }
             if let Some(commit_hash) = updates.commit_hash {
                 skill.commit_hash = Some(commit_hash);
             }
             if let Some(fetched_at) = updates.fetched_at {
                 skill.fetched_at = Some(fetched_at);
-            }
-            if let Some(editable) = updates.editable {
-                skill.editable = editable;
             }
             skill.updated_at = Utc::now();
             Ok(())

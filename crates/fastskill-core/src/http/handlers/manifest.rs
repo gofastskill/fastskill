@@ -1,8 +1,7 @@
 //! Manifest (skill-project.toml) endpoint handlers
 
-use crate::core::manifest::{
-    DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
-};
+use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+use crate::core::origin::Origin;
 use crate::core::repository::RepositoryManager;
 use crate::core::sources::{MarketplaceSkill, SourcesManager};
 use crate::http::errors::{HttpError, HttpResult};
@@ -48,12 +47,37 @@ pub(crate) fn get_repositories(
 fn dep_source_type(spec: &DependencySpec) -> &'static str {
     match spec {
         DependencySpec::Version(_) => "source",
-        DependencySpec::Inline { source, .. } => match source {
-            DependencySource::Git => "git",
-            DependencySource::Local => "local",
-            DependencySource::ZipUrl => "zip-url",
-            DependencySource::Source => "source",
+        DependencySpec::Inline { origin, .. } => match origin {
+            Origin::Git { .. } => "git",
+            Origin::Local { .. } => "local",
+            Origin::ZipUrl { .. } => "zip-url",
+            Origin::Repository { .. } => "source",
         },
+    }
+}
+
+/// Human-readable location string for an `Origin`, used in the `/api/project` view.
+fn origin_location(origin: &Origin) -> String {
+    match origin {
+        Origin::Git { url, r#ref, .. } => match r#ref {
+            crate::core::origin::GitRef::Branch(b) => format!("{} (branch: {})", url, b),
+            crate::core::origin::GitRef::Tag(t) => format!("{} (tag: {})", url, t),
+            crate::core::origin::GitRef::Commit(c) => format!("{} (commit: {})", url, c),
+            crate::core::origin::GitRef::Default => url.clone(),
+        },
+        Origin::Local { path, .. } => path.to_string_lossy().to_string(),
+        Origin::ZipUrl { url } => url.clone(),
+        Origin::Repository { repo, skill, .. } => format!("{} / {}", repo, skill),
+    }
+}
+
+/// The declared version for a dependency, if any. Only `Origin::Repository`
+/// carries a version constraint (ADR-0004); other origins install "whatever
+/// is at that location" and have no separate version concept.
+fn origin_version(origin: &Origin) -> Option<String> {
+    match origin {
+        Origin::Repository { version, .. } => version.as_ref().map(|v| v.to_string()),
+        _ => None,
     }
 }
 
@@ -116,40 +140,8 @@ pub async fn get_project(
                         DependencySpec::Version(v) => {
                             (dep_source_type(spec).to_string(), format!("version {}", v))
                         }
-                        DependencySpec::Inline {
-                            source,
-                            source_specific,
-                            ..
-                        } => {
-                            let typ = dep_source_type(spec).to_string();
-                            let location = match source {
-                                DependencySource::Git => source_specific
-                                    .url
-                                    .clone()
-                                    .map(|u| {
-                                        source_specific
-                                            .branch
-                                            .as_ref()
-                                            .map(|b| format!("{} (branch: {})", u, b))
-                                            .unwrap_or(u)
-                                    })
-                                    .unwrap_or_else(|| "—".to_string()),
-                                DependencySource::Local => source_specific
-                                    .path
-                                    .clone()
-                                    .unwrap_or_else(|| "—".to_string()),
-                                DependencySource::ZipUrl => source_specific
-                                    .zip_url
-                                    .clone()
-                                    .unwrap_or_else(|| "—".to_string()),
-                                DependencySource::Source => source_specific
-                                    .name
-                                    .as_ref()
-                                    .zip(source_specific.skill.as_ref())
-                                    .map(|(n, s)| format!("{} / {}", n, s))
-                                    .unwrap_or_else(|| "—".to_string()),
-                            };
-                            (typ, location)
+                        DependencySpec::Inline { origin, .. } => {
+                            (dep_source_type(spec).to_string(), origin_location(origin))
                         }
                     };
                     serde_json::json!({ "id": id, "type": typ, "location": location })
@@ -191,19 +183,23 @@ pub async fn list_manifest_skills(
                         DependencySpec::Version(v) => {
                             (Some(v.clone()), dep_source_type(spec).to_string())
                         }
-                        DependencySpec::Inline {
-                            source_specific, ..
-                        } => (
-                            source_specific.version.clone(),
-                            dep_source_type(spec).to_string(),
+                        DependencySpec::Inline { origin, .. } => {
+                            (origin_version(origin), dep_source_type(spec).to_string())
+                        }
+                    };
+                    let (groups, editable) = match spec {
+                        DependencySpec::Inline { groups, origin } => (
+                            groups.clone().unwrap_or_default(),
+                            matches!(origin, Origin::Local { editable: true, .. }),
                         ),
+                        DependencySpec::Version(_) => (Vec::new(), false),
                     };
 
                     ManifestSkillResponse {
                         id: id.clone(),
                         version,
-                        groups: Vec::new(), // TODO: extract from inline spec
-                        editable: false,    // TODO: extract from inline spec
+                        groups,
+                        editable,
                         source_type,
                     }
                 })

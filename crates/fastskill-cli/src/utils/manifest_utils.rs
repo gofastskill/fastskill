@@ -2,10 +2,8 @@
 
 use fastskill_core::core::{
     lock::{global_lock_path, GlobalSkillsLock, LockError, ProjectSkillsLock},
-    manifest::{
-        DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
-        SourceSpecificFields,
-    },
+    manifest::{DependenciesSection, DependencySpec, SkillProjectToml},
+    origin::Origin,
     project::resolve_project_file,
     skill_manager::SkillDefinition,
 };
@@ -156,7 +154,6 @@ pub fn remove_from_global_lock_file(skill_id: &str) -> Result<(), Box<dyn std::e
 pub fn add_skill_to_project_toml(
     skill: &SkillDefinition,
     groups: Vec<String>,
-    editable: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Resolve project file from current directory
     let current_dir =
@@ -209,114 +206,31 @@ pub fn add_skill_to_project_toml(
         .as_mut()
         .ok_or_else(|| "Failed to initialize dependencies section".to_string())?;
 
-    // Convert SkillDefinition to DependencySpec
-    let dep_spec = if let Some(source_type) = &skill.source_type {
-        match source_type {
-            fastskill_core::core::skill_manager::SourceType::GitUrl => {
-                let source_specific = SourceSpecificFields {
-                    url: skill.source_url.clone(),
-                    branch: skill.source_branch.clone(),
-                    path: None,
-                    name: None,
-                    skill: None,
-                    zip_url: None,
-                    version: None,
-                };
-                DependencySpec::Inline {
-                    source: DependencySource::Git,
-                    source_specific,
-                    groups: if groups.is_empty() {
-                        None
-                    } else {
-                        Some(groups)
-                    },
-                    editable: if editable { Some(true) } else { None },
-                }
-            }
-            fastskill_core::core::skill_manager::SourceType::LocalPath => {
-                let path_buf = skill
-                    .source_subdir
-                    .clone()
-                    .or_else(|| skill.source_url.clone().map(std::path::PathBuf::from))
-                    .unwrap_or_else(|| std::path::PathBuf::from(skill.id.as_str()));
-
-                // Canonicalize to ensure absolute path (safety net)
-                let canonical_path = path_buf.canonicalize().map_err(|e| {
-                    format!(
-                        "Failed to canonicalize path '{}': {}",
-                        path_buf.display(),
-                        e
-                    )
-                })?;
-
-                let path_str = canonical_path.to_string_lossy().to_string();
-
-                let source_specific = SourceSpecificFields {
-                    url: None,
-                    branch: None,
-                    path: Some(path_str),
-                    name: None,
-                    skill: None,
-                    zip_url: None,
-                    version: None,
-                };
-                DependencySpec::Inline {
-                    source: DependencySource::Local,
-                    source_specific,
-                    groups: if groups.is_empty() {
-                        None
-                    } else {
-                        Some(groups)
-                    },
-                    editable: if editable { Some(true) } else { None },
-                }
-            }
-            fastskill_core::core::skill_manager::SourceType::ZipFile => {
-                let source_specific = SourceSpecificFields {
-                    url: None,
-                    branch: None,
-                    path: None,
-                    name: None,
-                    skill: None,
-                    zip_url: skill.source_url.clone(),
-                    version: Some(skill.version.clone()),
-                };
-                DependencySpec::Inline {
-                    source: DependencySource::ZipUrl,
-                    source_specific,
-                    groups: if groups.is_empty() {
-                        None
-                    } else {
-                        Some(groups)
-                    },
-                    editable: None,
-                }
-            }
-            fastskill_core::core::skill_manager::SourceType::Source => {
-                let source_specific = SourceSpecificFields {
-                    url: None,
-                    branch: None,
-                    path: None,
-                    name: skill.installed_from.clone(),
-                    skill: Some(skill.id.to_string()),
-                    zip_url: None,
-                    version: Some(skill.version.clone()),
-                };
-                DependencySpec::Inline {
-                    source: DependencySource::Source,
-                    source_specific,
-                    groups: if groups.is_empty() {
-                        None
-                    } else {
-                        Some(groups)
-                    },
-                    editable: None,
-                }
+    // Convert SkillDefinition to DependencySpec. `Origin` is now the single source
+    // of truth for provenance (it already carries `editable` for `Origin::Local`),
+    // so this is a direct wrap rather than a per-source-type field remap.
+    let dep_groups = if groups.is_empty() {
+        None
+    } else {
+        Some(groups)
+    };
+    let origin = match &skill.origin {
+        // Safety net: re-canonicalize a local path to an absolute path before
+        // persisting it, in case the caller passed a relative one.
+        Origin::Local { path, editable } => {
+            let canonical_path = path
+                .canonicalize()
+                .map_err(|e| format!("Failed to canonicalize path '{}': {}", path.display(), e))?;
+            Origin::Local {
+                path: canonical_path,
+                editable: *editable,
             }
         }
-    } else {
-        // Default: version string (source-based)
-        DependencySpec::Version(skill.version.clone())
+        other => other.clone(),
+    };
+    let dep_spec = DependencySpec::Inline {
+        origin,
+        groups: dep_groups,
     };
 
     // Add or update dependency
