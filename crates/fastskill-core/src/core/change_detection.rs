@@ -19,9 +19,21 @@ pub fn detect_changed_skills_git(
 
     use std::process::Command;
 
-    // Use git diff to get changed files
+    // Use git diff to get changed files. This runs against the ambient cwd (the
+    // caller is expected to be inside the target repo), so any
+    // GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE inherited from an *enclosing* git
+    // invocation (e.g. this crate's own pre-commit hook, which shells out to
+    // `cargo test`) must be cleared — otherwise `git diff` silently resolves
+    // against that other repository instead of the caller's cwd.
     let output = Command::new("git")
         .args(["diff", "--name-only", base_ref, head_ref])
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_OBJECT_DIRECTORY")
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_CEILING_DIRECTORIES")
         .output()
         .map_err(|e| ServiceError::Custom(format!("Failed to execute git diff: {}", e)))?;
 
@@ -172,13 +184,9 @@ pub fn calculate_skill_hash(skill_path: &Path) -> Result<String, ServiceError> {
 mod tests {
     use super::*;
     use crate::core::build_cache::BuildCache;
+    use crate::test_utils::DIR_MUTEX as CWD_LOCK;
     use std::fs;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    /// Serializes tests that mutate the process-wide current directory (the git
-    /// helper runs `git` in the ambient cwd and has no directory parameter).
-    static CWD_LOCK: Mutex<()> = Mutex::new(());
 
     // --- BUG-7: git-diff path parsing on whole components ---
 
@@ -352,10 +360,31 @@ mod tests {
 
     // --- detect_changed_skills_git (real temporary git repo) ---
 
+    /// A `git` `Command` rooted at `repo`, immune to an *enclosing* git
+    /// invocation's environment. A caller that itself runs under a git hook
+    /// (e.g. this crate's own pre-commit hook, which shells out to
+    /// `cargo test`) may have GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE set so its
+    /// own git invocations resolve without a `-C`/cwd. Those vars are
+    /// inherited by child processes and take precedence over `current_dir`,
+    /// so without clearing them every git subprocess these tests spawn would
+    /// actually operate on *this* crate's own repository instead of `repo` —
+    /// corrupting its index/refs. Clear the whole family defensively.
+    fn git_cmd_in(repo: &Path) -> std::process::Command {
+        let mut cmd = std::process::Command::new("git");
+        cmd.current_dir(repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .env_remove("GIT_OBJECT_DIRECTORY")
+            .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_CEILING_DIRECTORIES");
+        cmd
+    }
+
     fn run_git(repo: &Path, args: &[&str]) {
-        let status = std::process::Command::new("git")
+        let status = git_cmd_in(repo)
             .args(args)
-            .current_dir(repo)
             .env("GIT_AUTHOR_NAME", "t")
             .env("GIT_AUTHOR_EMAIL", "t@example.com")
             .env("GIT_COMMITTER_NAME", "t")
@@ -381,9 +410,8 @@ mod tests {
         run_git(repo, &["add", "-A"]);
         run_git(repo, &["commit", "-q", "-m", "init"]);
         let base = String::from_utf8(
-            std::process::Command::new("git")
+            git_cmd_in(repo)
                 .args(["rev-parse", "HEAD"])
-                .current_dir(repo)
                 .output()
                 .unwrap()
                 .stdout,
