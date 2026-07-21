@@ -397,10 +397,24 @@ impl SkillProjectToml {
                 String::new()
             };
 
-            if !line_info.is_empty() {
-                ManifestError::Parse(format!("TOML syntax error at {}: {}", line_info, error_msg))
+            // Pre-Origin dependency entries used `source = "git|local|zip-url|source"`
+            // with flat sibling fields; those keys no longer parse. Point the author
+            // at the new `origin = { type = … }` shape instead of a raw serde error.
+            let origin_hint = if content.contains("source = \"") {
+                "\n\nhint: this manifest looks like the pre-Origin `[dependencies]` format \
+                 (`source = \"git\"` + flat fields). Replace each dependency's `source`/flat \
+                 fields with `origin = { type = \"git|local|zip-url|repository\", … }`."
             } else {
-                ManifestError::Parse(format!("TOML syntax error: {}", error_msg))
+                ""
+            };
+
+            if !line_info.is_empty() {
+                ManifestError::Parse(format!(
+                    "TOML syntax error at {}: {}{}",
+                    line_info, error_msg, origin_hint
+                ))
+            } else {
+                ManifestError::Parse(format!("TOML syntax error: {}{}", error_msg, origin_hint))
             }
         })?;
 
@@ -594,6 +608,26 @@ pub enum ManifestError {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn pre_origin_manifest_gives_actionable_hint() {
+        // A pre-Origin `[dependencies]` entry (`source = "git"` + flat fields) no
+        // longer parses; the error must point the author at the `origin = {…}` shape.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skill-project.toml");
+        std::fs::write(
+            &path,
+            "[metadata]\nid = \"x\"\nversion = \"1.0.0\"\ndescription = \"d\"\n\n\
+             [dependencies.old]\nsource = \"git\"\nurl = \"https://example.com/x.git\"\n",
+        )
+        .unwrap();
+        let err = SkillProjectToml::load_from_file(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("origin = { type"),
+            "expected migration hint, got: {msg}"
+        );
+    }
 
     #[test]
     fn test_manifest_parsing() {
