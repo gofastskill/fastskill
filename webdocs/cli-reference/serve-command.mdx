@@ -106,16 +106,17 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 | Endpoint | Method | Access | Description |
 |----------|--------|--------|-------------|
-| `/api/v1/status` | GET | read | Service status and uptime |
+| `/api/v1/status` | GET | read | Service status and uptime, plus capability flags: `writable` (server started with `--enable-write`) and `embeddingProvider` (an embedding provider is configured) |
 | `/api/v1/project` | GET | read | Project view from `skill-project.toml` |
 | `/api/v1/skills` | GET | read | List installed skills |
 | `/api/v1/skills/{id}` | GET | read | Get a skill |
 | `/api/v1/skills/{id}` | DELETE | **write** | Remove a skill |
-| `/api/v1/skills/upgrade` | POST | **write** | Update skills from their source |
+| `/api/v1/skills/install` | POST | **write** | Install a skill from an origin (`{ "origin": {...}, "groups"?: [...] }`); `201` on success, `409` if the id is already installed |
+| `/api/v1/skills/update` | POST | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin; `{ "check": true }` reports what would change without applying it. `/api/v1/skills/upgrade` is kept mounted as a back-compat alias for this same endpoint. |
 | `/api/v1/search` | POST | read | Search skills |
 | `/api/v1/resolve` | POST | read | Resolve context for a prompt |
-| `/api/v1/reindex` | POST | **write** | Reindex (returns 501 — run `fastskill reindex` from the CLI) |
-| `/api/v1/reindex/{id}` | POST | **write** | Reindex a skill (returns 501) |
+| `/api/v1/reindex` | POST | **write** | Reindex all skills. Returns `200` with `{ reindexed, count, reason }`; when no embedding provider is configured, reindex skips silently (`reindexed: false` + a `reason`), which is still `200`, not an error. |
+| `/api/v1/reindex/{id}` | POST | **write** | Reindexes the whole index (the core reindex seam has no single-skill mode); same response shape as `/api/v1/reindex`. |
 | `/api/v1/registry/sources` | GET | read | List registry sources |
 | `/api/v1/registry/refresh` | POST | **write** | Refresh registry sources |
 | `/api/v1/manifest/skills` | GET | read | List manifest skills |

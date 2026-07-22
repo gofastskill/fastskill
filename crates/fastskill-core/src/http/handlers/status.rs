@@ -275,6 +275,8 @@ pub async fn status(
         storage_path: config.skill_storage_path.to_string_lossy().to_string(),
         hot_reload_enabled: config.hot_reload.enabled,
         uptime_seconds: state.uptime_seconds(),
+        writable: state.enable_write,
+        embedding_provider: state.service.embedding_service().is_some(),
     };
 
     Ok(axum::Json(ApiResponse::success(response)))

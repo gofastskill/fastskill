@@ -99,7 +99,8 @@ impl FromArgValueMap for ServeArgs {
 }
 
 pub async fn execute_serve(
-    service: std::sync::Arc<fastskill_core::FastSkillService>,
+    global: bool,
+    skills_dir: Option<std::path::PathBuf>,
     args: ServeArgs,
 ) -> CliResult<()> {
     info!(
@@ -119,6 +120,29 @@ pub async fn execute_serve(
     } else {
         println!("  Write endpoints: disabled (read-only); pass --enable-write to enable");
     }
+
+    // Build the served service directly (rather than reusing the CLI's cached
+    // singleton via `FsState::service_with`) so this exact instance can carry
+    // BOTH the edge-injected embedding provider + repository manager
+    // (`inject_edge_services`, same as every other command) AND the served
+    // project's root (ADR-0005 install seam): `add_from_origin`/`preflight`-driven
+    // writes (via `POST /skills/install`, `/skills/update`) must land in the
+    // served project's `skill-project.toml`/`skills.lock`, not wherever the
+    // server process happens to have cwd set.
+    let cfg = crate::config::create_service_config(global, skills_dir)?;
+    let mut service = fastskill_core::FastSkillService::new(cfg)
+        .await
+        .map_err(CliError::Service)?;
+    service.initialize().await.map_err(CliError::Service)?;
+    let mut service = crate::config::inject_edge_services(service)?;
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        if let Ok(project_config) = fastskill_core::core::load_project_config(&current_dir) {
+            service = service.with_project_root(project_config.project_root);
+        }
+    }
+
+    let service = std::sync::Arc::new(service);
 
     let server =
         fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, args.port)

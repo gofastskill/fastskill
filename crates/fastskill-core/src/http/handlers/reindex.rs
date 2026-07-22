@@ -1,49 +1,55 @@
 //! Reindex endpoint handlers
 //!
 //! PARTIAL-6 / ADR-0003: these endpoints mutate the embedding index and are
-//! therefore write-gated (only mounted with `--enable-write`). The real reindex
-//! implementation (`execute_reindex`) lives in the `fastskill-cli` crate and
-//! depends on CLI-only pieces (OpenAI key loading, progress reporting), so it is
-//! NOT cleanly reachable from `fastskill-core`. Rather than returning a fake
-//! `200` with mock counts, these handlers honestly return `501 Not Implemented`
-//! and direct callers to `fastskill reindex` on the CLI. Wiring a core-level
-//! reindex service is tracked separately (spec 003 / browser skill management).
+//! therefore write-gated (only mounted with `--enable-write`). They call the
+//! core reindex seam (`FastSkillService::reindex`, ADR-0002/0005) directly with
+//! no observer (HTTP has no progress-streaming channel). Per ADR-0002, when no
+//! embedding provider is configured the seam skips silently — that is surfaced
+//! here as `200` with `reindexed: false` and a `reason`, not an error.
+//!
+//! The core seam has no single-skill mode (it always walks the whole skills
+//! directory); rather than growing the core seam for an HTTP-only convenience,
+//! `POST /reindex/{id}` reindexes the *whole* index, same as `POST /reindex`.
+//! This is a deliberate, documented simplification, not an oversight.
 
+use crate::http::errors::HttpResult;
 use crate::http::handlers::AppState;
 use crate::http::models::*;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
     Json,
 };
 
-fn not_implemented() -> Response {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::<ReindexResponse>::error(ErrorResponse {
-            code: "NOT_IMPLEMENTED".to_string(),
-            message: "reindex via HTTP is not implemented; run `fastskill reindex` from the CLI"
-                .to_string(),
-            details: None,
-        })),
-    )
-        .into_response()
+fn outcome_response(
+    outcome: crate::core::reindex::ReindexOutcome,
+) -> axum::Json<ApiResponse<ReindexOutcomeResponse>> {
+    Json(ApiResponse::success(ReindexOutcomeResponse {
+        reindexed: outcome.reindexed,
+        count: outcome.count,
+        reason: outcome.reason,
+    }))
 }
 
-/// POST /api/reindex - Reindex all skills
+/// POST /api/v1/reindex - Reindex all skills (skips silently, 200, when no
+/// embedding provider is configured; ADR-0002).
 pub async fn reindex_all(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(_request): Json<ReindexRequest>,
-) -> Response {
-    not_implemented()
+) -> HttpResult<axum::Json<ApiResponse<ReindexOutcomeResponse>>> {
+    let outcome = state.service.reindex(None, None).await?;
+    Ok(outcome_response(outcome))
 }
 
-/// POST /api/reindex/{id} - Reindex specific skill
+/// POST /api/v1/reindex/{id} - Reindex a single skill.
+///
+/// The core reindex seam has no single-skill mode (see module docs); `id` is
+/// accepted for URL/API-contract compatibility but the whole index is
+/// reindexed, same as `POST /reindex`.
 pub async fn reindex_skill(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path(_skill_id): Path<String>,
     Json(_request): Json<ReindexRequest>,
-) -> Response {
-    not_implemented()
+) -> HttpResult<axum::Json<ApiResponse<ReindexOutcomeResponse>>> {
+    let outcome = state.service.reindex(None, None).await?;
+    Ok(outcome_response(outcome))
 }
