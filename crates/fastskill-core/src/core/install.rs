@@ -379,8 +379,15 @@ impl FastSkillService {
     /// from the current working directory (mirrors the CLI's
     /// `manifest_utils::add_skill_to_project_toml` / `update_lock_file`).
     fn upsert_manifest_and_lock(&self, skill_def: &SkillDefinition) -> Result<(), ServiceError> {
-        let current_dir = std::env::current_dir()?;
-        let project_file_result = resolve_project_file(&current_dir);
+        // Resolve the project from the injected root (the served project, for the
+        // `serve` path) if present; otherwise walk up from the process cwd, which
+        // is correct for a CLI invocation. Never resolve solely from cwd on the
+        // server, where cwd is arbitrary (would write to the wrong project).
+        let start_dir = match self.project_root() {
+            Some(root) => root.clone(),
+            None => std::env::current_dir()?,
+        };
+        let project_file_result = resolve_project_file(&start_dir);
         if !project_file_result.found {
             return Err(ServiceError::Config(
                 "skill-project.toml not found in this directory or any parent. Run \
