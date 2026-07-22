@@ -85,6 +85,10 @@ include_dir.workspace = true
 # Semantic versioning
 semver.workspace = true
 
+# Server-side Markdown rendering (SKILL.md v2 HTML preview) + HTML sanitization
+comrak.workspace = true
+ammonia.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 wiremock = "0.5"

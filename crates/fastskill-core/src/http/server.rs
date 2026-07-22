@@ -296,6 +296,10 @@ impl FastSkillServer {
             .route("/registry/sources", get(registry::list_sources))
             .route("/registry/skills", get(registry::list_all_skills))
             .route(
+                "/registry/skills/{id}/versions",
+                get(registry::list_skill_versions),
+            )
+            .route(
                 "/registry/sources/{name}/skills",
                 get(registry::list_source_skills),
             )
