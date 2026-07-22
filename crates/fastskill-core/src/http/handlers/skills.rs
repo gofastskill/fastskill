@@ -131,8 +131,25 @@ pub async fn get_skill_content(
         .await
         .map_err(|_| HttpError::NotFound(format!("Skill file not found on disk: {}", skill_id)))?;
 
+    // Report the skills-dir-relative path, not the absolute server path — the UI
+    // only needs the logical location, and leaking the server's directory layout
+    // is needless disclosure if `serve` is ever exposed. Fall back to the bare
+    // file name if the relative strip fails.
+    let display_path = state
+        .skills_directory
+        .canonicalize()
+        .ok()
+        .and_then(|root| {
+            confined
+                .strip_prefix(&root)
+                .ok()
+                .map(std::path::Path::to_path_buf)
+        })
+        .or_else(|| confined.file_name().map(std::path::PathBuf::from))
+        .unwrap_or_else(|| confined.clone());
+
     Ok(axum::Json(ApiResponse::success(SkillContentResponse {
-        path: confined.to_string_lossy().to_string(),
+        path: display_path.to_string_lossy().to_string(),
         content,
     })))
 }
