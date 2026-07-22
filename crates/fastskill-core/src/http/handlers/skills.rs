@@ -2,12 +2,14 @@
 
 use crate::core::install::{AddMode, UpdatePreflight};
 use crate::core::manifest::SkillProjectToml;
+use crate::core::origin::Origin;
 use crate::core::service::ServiceError;
+use crate::core::version::VersionConstraint;
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -95,6 +97,7 @@ pub async fn get_skill(
 pub async fn get_skill_content(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
+    Query(query): Query<ContentQuery>,
 ) -> HttpResult<axum::Json<ApiResponse<SkillContentResponse>>> {
     let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
@@ -148,10 +151,27 @@ pub async fn get_skill_content(
         .or_else(|| confined.file_name().map(std::path::PathBuf::from))
         .unwrap_or_else(|| confined.clone());
 
+    let format = query.format.unwrap_or_default();
+    let rendered_content = match format {
+        ContentFormat::Raw => content,
+        ContentFormat::Html => render_skill_markdown_html(&content),
+    };
+
     Ok(axum::Json(ApiResponse::success(SkillContentResponse {
         path: display_path.to_string_lossy().to_string(),
-        content,
+        format: format.as_str().to_string(),
+        content: rendered_content,
     })))
+}
+
+/// Render `SKILL.md` Markdown to sanitized HTML (spec 003 v2 / Phase 4 §5
+/// sanitized preview). Server-side rendering via `comrak` followed by
+/// allowlist sanitization via `ammonia::clean` — the result is safe to assign
+/// to `innerHTML`: no `<script>`, no `on*` handlers, no `javascript:`/`data:`
+/// URLs (ammonia's default strict allowlist strips all three).
+fn render_skill_markdown_html(markdown: &str) -> String {
+    let unsafe_html = comrak::markdown_to_html(markdown, &comrak::Options::default());
+    ammonia::clean(&unsafe_html)
 }
 
 /// DELETE /api/skills/{id} - Delete skill (remove from manifest and storage, unregister)
@@ -305,6 +325,66 @@ pub async fn update_skills(
         .skill_id
         .as_deref()
         .filter(|s| !s.is_empty() && *s != "all");
+
+    // Version pin (spec 003 v2 / Phase 4 version picker): only meaningful
+    // together with a single named `skillId`, and only in apply mode — a
+    // `check: true` dry-run reports the ordinary preflight verdict regardless
+    // of `version` (unaffected, per spec).
+    if let Some(version) = payload.version.as_deref() {
+        if !payload.check {
+            let Some(id) = filter_id else {
+                return Err(HttpError::BadRequest(
+                    "`version` requires `skillId` (version pin only applies to a single named \
+                     skill)"
+                        .to_string(),
+                ));
+            };
+            let entry = entries
+                .iter()
+                .find(|e| e.id == id)
+                .ok_or_else(|| HttpError::NotFound(format!("Unknown skill: {}", id)))?;
+
+            let Origin::Repository { repo, skill, .. } = &entry.origin else {
+                return Err(HttpError::BadRequest(format!(
+                    "version pin only applies to repository-origin skills; '{}' is not a \
+                     repository-origin skill",
+                    id
+                )));
+            };
+
+            let constraint = VersionConstraint::parse(version).map_err(|e| {
+                HttpError::BadRequest(format!("Invalid version '{}': {}", version, e))
+            })?;
+            let pinned_origin = Origin::Repository {
+                repo: repo.clone(),
+                skill: skill.clone(),
+                version: Some(constraint),
+            };
+            let groups = entry.groups.clone();
+            let entry_id = entry.id.clone();
+
+            let result = match state
+                .service
+                .add_from_origin(pinned_origin, AddMode::Update, groups)
+                .await
+            {
+                Ok(outcome) => SkillUpdateResult {
+                    id: entry_id,
+                    outcome: "updated".to_string(),
+                    reason: None,
+                    resolved_version: Some(outcome.resolved.version),
+                },
+                Err(e) => SkillUpdateResult {
+                    id: entry_id,
+                    outcome: "error".to_string(),
+                    reason: Some(e.to_string()),
+                    resolved_version: None,
+                },
+            };
+            return Ok(axum::Json(ApiResponse::success(vec![result])));
+        }
+    }
+
     if let Some(id) = filter_id {
         entries.retain(|e| e.id == id);
         if entries.is_empty() {

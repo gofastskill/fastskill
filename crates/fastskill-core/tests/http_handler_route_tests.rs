@@ -212,6 +212,10 @@ fn router(state: AppState) -> Router {
         .route("/reindex/{id}", post(reindex::reindex_skill))
         .route("/registry/sources", get(registry::list_sources))
         .route("/registry/skills", get(registry::list_all_skills))
+        .route(
+            "/registry/skills/{id}/versions",
+            get(registry::list_skill_versions),
+        )
         .route("/registry/index/skills", get(registry::list_index_skills))
         .route(
             "/registry/sources/{name}/skills",
@@ -359,6 +363,46 @@ async fn get_skill_content_traversal_attempt_is_rejected() {
         !body.contains("TOP SECRET"),
         "traversal must not leak file contents: {body}"
     );
+}
+
+#[tokio::test]
+async fn get_skill_content_format_raw_explicit_matches_default() {
+    let f = fixture_for_content().await;
+    let (status, body) = do_get(f.state, "/skills/alpha-skill/content?format=raw").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"format\":\"raw\""), "body: {body}");
+    assert!(body.contains("Alpha Skill"), "body: {body}");
+}
+
+#[tokio::test]
+async fn get_skill_content_format_html_renders_and_sanitizes_malicious_payload() {
+    // Spec 003 v2: `?format=html` renders SKILL.md through comrak then
+    // sanitizes with ammonia -- a <script>, an onerror handler, and a
+    // javascript: URL embedded in the body must all be stripped from the
+    // returned HTML.
+    let f = fixture_for_content().await;
+    let skill_file = f.state.skills_directory.join("alpha-skill/SKILL.md");
+    fs::write(
+        &skill_file,
+        "---\nname: Alpha Skill\ndescription: First test skill\nversion: 1.0.0\n---\n\
+         # Alpha\n\n<script>alert('xss')</script>\n\n\
+         <img src=\"x\" onerror=\"alert(1)\">\n\n\
+         [click me](javascript:alert(1))\n",
+    )
+    .unwrap();
+
+    let (status, body) = do_get(f.state, "/skills/alpha-skill/content?format=html").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"format\":\"html\""), "body: {body}");
+    assert!(!body.contains("<script"), "script tag leaked: {body}");
+    assert!(!body.contains("alert("), "script content leaked: {body}");
+    assert!(!body.contains("onerror"), "event handler leaked: {body}");
+    assert!(
+        !body.contains("javascript:"),
+        "javascript: URL leaked: {body}"
+    );
+    // Something was actually rendered (the safe heading text survives).
+    assert!(body.contains("Alpha"), "body: {body}");
 }
 
 #[tokio::test]
@@ -523,6 +567,201 @@ async fn update_upgrade_alias_route_behaves_identically() {
     let (status, body) = post_json(f.state, "/skills/upgrade", serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains("\"data\":[]"), "body: {body}");
+}
+
+// ---- version-pinned update (spec 003 v2 / Phase 4 version picker) ----
+
+#[tokio::test]
+async fn update_version_without_skill_id_is_400() {
+    let f = fixture_for_install(true).await;
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn update_version_with_all_skill_id_is_400() {
+    // "all" is the sentinel for "every skill" -- not a single named skill.
+    let f = fixture_for_install(true).await;
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"skillId": "all", "version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn update_version_non_repository_origin_is_400() {
+    let f = fixture_for_install(true).await;
+    fs::write(
+        &f.project_file_path,
+        "[dependencies]\nlocaldep = { origin = { type = \"local\", path = \"/tmp/x\" } }\n",
+    )
+    .unwrap();
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"skillId": "localdep", "version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn update_version_check_mode_ignores_version() {
+    // `check: true` reports the ordinary preflight verdict regardless of
+    // `version` -- an unaffected dry-run must not 400 even without `skillId`.
+    let f = fixture_for_install(true).await;
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"check": true, "version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+}
+
+fn build_zip_with_skill_md(skill_dir_name: &str, skill_md: &str) -> Vec<u8> {
+    use std::io::Write;
+    use zip::write::FileOptions;
+    let mut buf = Vec::new();
+    {
+        let cursor = std::io::Cursor::new(&mut buf);
+        let mut writer = zip::ZipWriter::new(cursor);
+        let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer
+            .start_file(format!("{skill_dir_name}/SKILL.md"), opts)
+            .unwrap();
+        writer.write_all(skill_md.as_bytes()).unwrap();
+        writer.finish().unwrap();
+    }
+    buf
+}
+
+#[tokio::test]
+async fn update_version_pin_happy_path_repository_origin() {
+    use fastskill_core::core::registry::client::IndexEntry;
+    use fastskill_core::core::repository::{
+        RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
+    };
+    use sha2::Digest;
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    let storage = TempDir::new().unwrap();
+    let store = skills_root(&storage);
+    let project = TempDir::new().unwrap();
+    let project_file_path = project.path().join("skill-project.toml");
+    fs::write(
+        &project_file_path,
+        format!(
+            "[tool.fastskill]\nskills_directory = \"{}\"\n\n[dependencies]\n\
+             widget = {{ origin = {{ type = \"repository\", repo = \"myreg\", skill = \"widget\" }} }}\n",
+            store.display()
+        ),
+    )
+    .unwrap();
+
+    let server = MockServer::start().await;
+    let zip_bytes = build_zip_with_skill_md(
+        "widget",
+        "---\nname: widget\nversion: \"2.0.0\"\ndescription: A registry skill\n---\nBody\n",
+    );
+    let cksum = format!("sha256:{:x}", sha2::Sha256::digest(&zip_bytes));
+
+    let entries = [
+        IndexEntry {
+            name: "widget".to_string(),
+            vers: "1.0.0".to_string(),
+            deps: vec![],
+            cksum: "sha256:0".to_string(),
+            features: std::collections::HashMap::new(),
+            yanked: false,
+            links: None,
+            download_url: format!("{}/dl/1.0.0", server.uri()),
+            metadata: None,
+        },
+        IndexEntry {
+            name: "widget".to_string(),
+            vers: "2.0.0".to_string(),
+            deps: vec![],
+            cksum,
+            features: std::collections::HashMap::new(),
+            yanked: false,
+            links: None,
+            download_url: format!("{}/dl/2.0.0", server.uri()),
+            metadata: None,
+        },
+    ];
+    let body = entries
+        .iter()
+        .map(|e| serde_json::to_string(e).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Mock::given(method("GET"))
+        .and(path("/index/widget"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/dl/2.0.0"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(zip_bytes))
+        .mount(&server)
+        .await;
+
+    let repo_manager = RepositoryManager::from_definitions(vec![RepositoryDefinition {
+        name: "myreg".to_string(),
+        repo_type: RepositoryType::HttpRegistry,
+        priority: 0,
+        config: RepositoryConfig::HttpRegistry {
+            index_url: format!("{}/index", server.uri()),
+        },
+        auth: None,
+        storage: None,
+    }]);
+
+    let config = ServiceConfig {
+        skill_storage_path: store.clone(),
+        ..Default::default()
+    };
+    let mut svc = FastSkillService::new(config).await.unwrap();
+    svc.initialize().await.unwrap();
+    let svc = svc
+        .with_project_root(project.path().to_path_buf())
+        .with_repository_manager(Arc::new(repo_manager));
+    let service = Arc::new(svc);
+
+    let mut state = AppState::new(service).unwrap();
+    state.project_file_path = project_file_path.clone();
+    state.project_root = project.path().to_path_buf();
+    state.skills_directory = store;
+    state.enable_write = true;
+
+    let (status, body) = post_json(
+        state,
+        "/skills/update",
+        serde_json::json!({"skillId": "widget", "version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"outcome\":\"updated\""), "body: {body}");
+    assert!(
+        body.contains("\"resolvedVersion\":\"2.0.0\""),
+        "body: {body}"
+    );
+
+    // The manifest now records the exact pin, not the original unconstrained origin.
+    let saved = fs::read_to_string(&project_file_path).unwrap();
+    assert!(saved.contains("=2.0.0"), "manifest: {saved}");
 }
 
 // ---------------------------------------------------------------------------
@@ -931,6 +1170,101 @@ async fn registry_marketplace_unknown_is_404() {
     let f = fixture_with_skills(false).await;
     let (status, _b) = do_get(f.state, "/registry/sources/nope/marketplace").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+// ---- list_skill_versions (spec 003 v2 / Phase 4 version picker) ----
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn registry_skill_versions_empty_when_no_registry_configured() {
+    // No skill-project.toml with `[[tool.fastskill.repositories]]` reachable
+    // from cwd -> no sources -> empty `versions`, still 200 (never 404).
+    // `get_repository_manager` resolves off the process cwd, which is shared
+    // process-wide state; hold `DIR_MUTEX` so this can't race the other
+    // `registry_skill_versions_*` tests that `set_current_dir` into a temp
+    // project with repositories configured.
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let f = fixture_with_skills(false).await;
+    let (status, body) = do_get(f.state, "/registry/skills/widget/versions").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"id\":\"widget\""), "body: {body}");
+    assert!(body.contains("\"versions\":[]"), "body: {body}");
+}
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn registry_skill_versions_unknown_id_is_empty_not_404() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let original_dir = std::env::current_dir().ok();
+    let _guard = fastskill_core::test_utils::DirGuard(original_dir);
+
+    let project = TempDir::new().unwrap();
+    let repo_dir = TempDir::new().unwrap();
+    write_skill(repo_dir.path(), "known", "Known", "d");
+    fs::write(
+        project.path().join("skill-project.toml"),
+        format!(
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
+            repo_dir.path().display()
+        ),
+    )
+    .unwrap();
+    std::env::set_current_dir(project.path()).unwrap();
+
+    let f = fixture_with_skills(false).await;
+    let (status, body) = do_get(f.state, "/registry/skills/does-not-exist/versions").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"versions\":[]"), "body: {body}");
+}
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn registry_skill_versions_populated_and_sorted_descending() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let original_dir = std::env::current_dir().ok();
+    let _guard = fastskill_core::test_utils::DirGuard(original_dir);
+
+    let project = TempDir::new().unwrap();
+    let repo_dir = TempDir::new().unwrap();
+    // Two versions of the same skill id, in separate subdirectories, discovered
+    // by the local-source scanner (walks for any nested SKILL.md).
+    for (subdir, version) in [("v1", "1.0.0"), ("v9", "1.9.0"), ("v10", "1.10.0")] {
+        let dir = repo_dir.path().join(subdir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nid: widget\nname: widget\nversion: {version}\ndescription: d\n---\n"),
+        )
+        .unwrap();
+    }
+    fs::write(
+        project.path().join("skill-project.toml"),
+        format!(
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
+            repo_dir.path().display()
+        ),
+    )
+    .unwrap();
+    std::env::set_current_dir(project.path()).unwrap();
+
+    let f = fixture_with_skills(false).await;
+    let (status, body) = do_get(f.state, "/registry/skills/widget/versions").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"id\":\"widget\""), "body: {body}");
+    // Descending, semver-correct (not string) order: 1.10.0 before 1.9.0 before 1.0.0.
+    let pos_10 = body.find("1.10.0").expect("1.10.0 present");
+    let pos_9 = body.find("1.9.0").expect("1.9.0 present");
+    let pos_1 = body.find("1.0.0").expect("1.0.0 present");
+    assert!(
+        pos_10 < pos_9 && pos_9 < pos_1,
+        "expected descending semver order: {body}"
+    );
 }
 
 // ---- registry index (list_index_skills) ----
