@@ -99,6 +99,34 @@ async fn fixture_with_skills(enable_write: bool) -> Fixture {
     }
 }
 
+/// A fixture where `state.skills_directory` actually points at the directory
+/// the fixture's skills are written under (unlike `fixture_with_skills`, whose
+/// `skills_directory` points at an unrelated, nonexistent path only used for
+/// the manifest-view display string) — required for `get_skill_content`'s
+/// path-confinement check to have anything meaningful to confine against.
+async fn fixture_for_content() -> Fixture {
+    let storage = TempDir::new().unwrap();
+    let store = skills_root(&storage);
+    write_skill(&store, "alpha-skill", "Alpha Skill", "First test skill");
+
+    let project = TempDir::new().unwrap();
+    let project_file_path = project.path().join("skill-project.toml");
+
+    let service = make_service(store.clone(), None).await;
+    let mut state = AppState::new(service).unwrap();
+    state.project_file_path = project_file_path.clone();
+    state.project_root = project.path().to_path_buf();
+    state.skills_directory = store;
+    state.enable_write = false;
+
+    Fixture {
+        _storage: storage,
+        _project: project,
+        state,
+        project_file_path,
+    }
+}
+
 /// A fixture for the install/update seam (spec 003 Phase 2): a temp project
 /// with a valid `skill-project.toml` (so `resolve_project_file` succeeds), and
 /// the *service's* `project_root` injected — mirroring what `serve`'s edge
@@ -160,6 +188,7 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/skills", get(skills::list_skills))
         .route("/skills/{id}", get(skills::get_skill))
+        .route("/skills/{id}/content", get(skills::get_skill_content))
         .route("/skills/{id}", delete(skills::delete_skill))
         .route("/skills/install", post(skills::install_skill))
         .route("/skills/update", post(skills::update_skills))
@@ -266,6 +295,73 @@ async fn get_skill_unknown_is_404() {
 }
 
 #[tokio::test]
+async fn get_skill_content_happy_path() {
+    let f = fixture_for_content().await;
+    let (status, body) = do_get(f.state, "/skills/alpha-skill/content").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("Alpha Skill"), "body: {body}");
+    assert!(body.contains("\"path\""), "body: {body}");
+    assert!(body.contains("\"content\""), "body: {body}");
+}
+
+#[tokio::test]
+async fn get_skill_content_unknown_id_is_404() {
+    let f = fixture_for_content().await;
+    let (status, _b) = do_get(f.state, "/skills/does-not-exist/content").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn get_skill_content_missing_file_on_disk_is_404() {
+    // Skill is registered (indexed) but its SKILL.md has since been deleted
+    // from disk -- the confinement check passes (the parent dir still
+    // exists), but the read itself must 404, not 500.
+    let f = fixture_for_content().await;
+    let skill_file = f.state.skills_directory.join("alpha-skill/SKILL.md");
+    fs::remove_file(&skill_file).unwrap();
+    let (status, _b) = do_get(f.state, "/skills/alpha-skill/content").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn get_skill_content_traversal_attempt_is_rejected() {
+    // Directly register a skill whose `skill_file` points outside the
+    // configured skills directory (simulating a corrupted/crafted record) --
+    // the handler must refuse to read it rather than following the path.
+    let f = fixture_for_content().await;
+
+    let outside_dir = TempDir::new().unwrap();
+    let secret = outside_dir.path().join("secret.md");
+    fs::write(&secret, "TOP SECRET").unwrap();
+
+    let id = fastskill_core::SkillId::new("escapee".to_string()).unwrap();
+    let mut def = fastskill_core::SkillDefinition::new(
+        id,
+        "Escapee".to_string(),
+        "desc".to_string(),
+        "1.0.0".to_string(),
+        fastskill_core::core::origin::Origin::Local {
+            path: outside_dir.path().to_path_buf(),
+            editable: false,
+        },
+    );
+    def.skill_file = secret.clone();
+    f.state
+        .service
+        .skill_manager()
+        .force_register_skill(def)
+        .await
+        .unwrap();
+
+    let (status, body) = do_get(f.state, "/skills/escapee/content").await;
+    assert_ne!(status, StatusCode::OK, "body: {body}");
+    assert!(
+        !body.contains("TOP SECRET"),
+        "traversal must not leak file contents: {body}"
+    );
+}
+
+#[tokio::test]
 async fn delete_skill_invalid_id_is_400() {
     let f = fixture_with_skills(true).await;
     let (status, _b) = send(f.state, "DELETE", "/skills/bad%20id", None).await;
@@ -317,7 +413,7 @@ async fn install_fresh_returns_201() {
     let (status, body) = post_json(
         f.state,
         "/skills/install",
-        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+        serde_json::json!({"origin": src.to_string_lossy()}),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
@@ -329,7 +425,7 @@ async fn install_fresh_returns_201() {
 async fn install_fresh_conflict_is_409() {
     let f = fixture_for_install(true).await;
     let src = write_source_skill(f._project.path(), "dup-skill");
-    let payload = serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}});
+    let payload = serde_json::json!({"origin": src.to_string_lossy()});
 
     let (status1, body1) = post_json(f.state.clone(), "/skills/install", payload.clone()).await;
     assert_eq!(status1, StatusCode::CREATED, "body: {body1}");
@@ -347,7 +443,7 @@ async fn install_invalid_operation_is_400() {
     let (status, _b) = post_json(
         f.state,
         "/skills/install",
-        serde_json::json!({"origin": {"type": "local", "path": missing.to_string_lossy()}}),
+        serde_json::json!({"origin": missing.to_string_lossy()}),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -388,7 +484,7 @@ async fn update_check_mode_reports_would_update_without_applying() {
     let (install_status, install_body) = post_json(
         f.state.clone(),
         "/skills/install",
-        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+        serde_json::json!({"origin": src.to_string_lossy()}),
     )
     .await;
     assert_eq!(install_status, StatusCode::CREATED, "body: {install_body}");
@@ -410,7 +506,7 @@ async fn update_applies_updatable_origin() {
     let (install_status, install_body) = post_json(
         f.state.clone(),
         "/skills/install",
-        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+        serde_json::json!({"origin": src.to_string_lossy()}),
     )
     .await;
     assert_eq!(install_status, StatusCode::CREATED, "body: {install_body}");

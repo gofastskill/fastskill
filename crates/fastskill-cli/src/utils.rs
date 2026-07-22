@@ -28,44 +28,27 @@ pub fn service_error_to_cli(
     CliError::Service(e)
 }
 
-/// Git repository information parsed from URL
-#[derive(Debug, Clone)]
-pub struct GitUrlInfo {
-    pub repo_url: String,
-    pub branch: Option<String>,
-    pub subdir: Option<PathBuf>,
-}
+/// Git repository information parsed from URL.
+///
+/// Re-exported from the core Origin-ref inference seam (ADR-0005 / spec 003
+/// Phase 3) rather than duplicated here — see `fastskill_core::core::origin_infer`.
+pub use fastskill_core::core::origin_infer::GitUrlInfo;
 
-/// Detect if input is a skill ID (format: skillid@version, skillid, or scope/skillid@version)
+/// Detect if input is a skill ID (format: skillid@version, skillid, or scope/skillid@version).
+///
+/// Thin wrapper over the core seam's classification rule (ADR-0005 / spec 003
+/// Phase 3) — kept here only so the rest of the CLI's `SkillSource`
+/// classification (which core has no notion of: Folder vs ZipFile, the
+/// `--recursive`/`--global` paths, `--source-type` overrides) has a single
+/// place to call it from.
 pub fn is_skill_id(input: &str) -> bool {
-    // Skill ID format: alphanumeric with dashes/underscores, optionally followed by @version or @tag
-    // Can also be scoped: scope/skillid or scope/skillid@version
-    // Examples: pptx@1.2.3, web-scraper, my_skill@2.0.0, aroff@teste, dev-user/test-skill, org/my-skill@1.0.0
-    // Must not contain backslashes or colons (URL schemes)
-    if input.contains('\\') || input.contains(':') {
-        return false;
-    }
-
-    // Check if it looks like a skill ID (not a file path)
-    // Supports both unscoped (skillid) and scoped (scope/skillid) formats
-    // The @suffix can be a version (1.2.3) or any identifier (teste, label, etc.)
-    // This regex is a compile-time constant pattern, so it should never fail
-    #[allow(clippy::expect_used)]
-    let skill_id_pattern =
-        regex::Regex::new(r"^[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)?(@[a-zA-Z0-9_.-]+)?$")
-            .expect("Invalid regex pattern");
-    skill_id_pattern.is_match(input)
+    fastskill_core::core::origin_infer::is_skill_id(input)
 }
 
-/// Parse skill ID and version from input (format: skillid@version)
+/// Parse skill ID and version from input (format: skillid@version). Thin
+/// wrapper over the core seam's ref splitting (see `is_skill_id`).
 pub fn parse_skill_id(input: &str) -> (String, Option<String>) {
-    if let Some(at_pos) = input.find('@') {
-        let skill_id = input[..at_pos].to_string();
-        let version = input[at_pos + 1..].to_string();
-        (skill_id, Some(version))
-    } else {
-        (input.to_string(), None)
-    }
+    fastskill_core::core::origin_infer::parse_skill_id_ref(input)
 }
 
 /// Detect the type of skill source (zip, folder, git URL, remote zip URL, or skill ID)
@@ -116,59 +99,12 @@ pub enum SkillSource {
     SkillId(String),
 }
 
-/// Parse git URL to extract repository information
+/// Parse git URL to extract repository information. Thin wrapper over the
+/// core seam's `parse_git_url` (ADR-0005 / spec 003 Phase 3) — the CLI keeps
+/// only the `ServiceError` → `CliError` mapping.
 pub fn parse_git_url(git_url: &str) -> CliResult<GitUrlInfo> {
-    let url = Url::parse(git_url)
-        .map_err(|e| CliError::InvalidSource(format!("Invalid git URL: {}", e)))?;
-
-    // Extract query parameters for branch
-    let query_branch = url
-        .query_pairs()
-        .find(|(key, _)| key == "branch")
-        .map(|(_, value)| value.to_string());
-
-    // For GitHub tree URLs, extract branch and subdir
-    let path_segments: Vec<&str> = url.path().split('/').filter(|s| !s.is_empty()).collect();
-    let mut branch = None;
-    let mut subdir = None;
-
-    if url.host_str() == Some("github.com")
-        && path_segments.len() >= 3
-        && path_segments.get(2) == Some(&"tree")
-        && path_segments.len() >= 4
-    {
-        // GitHub tree URL: /org/repo/tree/branch[/subdir...]
-        branch = Some(path_segments[3].to_string());
-        if path_segments.len() > 4 {
-            subdir = Some(std::path::PathBuf::from(path_segments[4..].join("/")));
-        }
-    }
-
-    // Construct clean repo URL
-    let mut clean_url = url.clone();
-    clean_url.set_query(None);
-    let mut path = clean_url.path().to_string();
-
-    // Remove tree/branch/subdir from path for GitHub tree URLs
-    if url.host_str() == Some("github.com") && path.contains("/tree/") {
-        if let Some(tree_pos) = path.find("/tree/") {
-            path = path[..tree_pos].to_string();
-        }
-    }
-
-    // Ensure .git extension
-    if !path.ends_with(".git") {
-        path.push_str(".git");
-    }
-
-    clean_url.set_path(&path);
-    let repo_url = clean_url.to_string();
-
-    Ok(GitUrlInfo {
-        repo_url,
-        branch: branch.or(query_branch),
-        subdir,
-    })
+    fastskill_core::core::origin_infer::parse_git_url(git_url)
+        .map_err(|e| CliError::InvalidSource(e.to_string()))
 }
 
 /// Validate skill structure follows Claude Code standard.
