@@ -1,18 +1,16 @@
 //! Skills CRUD endpoint handlers
 
+use crate::core::install::{AddMode, UpdatePreflight};
+use crate::core::manifest::SkillProjectToml;
+use crate::core::service::ServiceError;
 use crate::http::errors::{HttpError, HttpResult};
 use crate::http::handlers::AppState;
 use crate::http::models::*;
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     Json,
 };
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpgradeRequest {
-    skill_id: Option<String>,
-}
 
 fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> serde_json::Value {
     let origin = serde_json::to_value(&skill.origin).unwrap_or(serde_json::Value::Null);
@@ -159,59 +157,131 @@ pub async fn delete_skill(
     }))))
 }
 
-/// POST /api/skills/upgrade - Upgrade one or all skills from manifest (shells out to fastskill update)
-pub async fn upgrade_skills(
+/// POST /api/v1/skills/install - Fresh-install a skill from an [`Origin`]
+/// (core install seam, ADR-0005 / spec 003 §2). `AddMode::Fresh` fails with a
+/// 409 if the resolved id is already installed; other seam errors map to
+/// 400/500 via the blanket `ServiceError` → `HttpError` conversion.
+pub async fn install_skill(
     State(state): State<AppState>,
-    Json(payload): Json<Option<UpgradeRequest>>,
-) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
-    let project_path = state.project_file_path.clone();
+    Json(request): Json<InstallSkillRequest>,
+) -> HttpResult<(StatusCode, axum::Json<ApiResponse<InstallSkillResponse>>)> {
+    match state
+        .service
+        .add_from_origin(request.origin, AddMode::Fresh, request.groups)
+        .await
+    {
+        Ok(outcome) => {
+            let response = InstallSkillResponse {
+                id: outcome.id,
+                resolved_version: outcome.resolved.version,
+                reindexed: outcome.reindexed,
+            };
+            Ok((StatusCode::CREATED, Json(ApiResponse::success(response))))
+        }
+        // ADR-0005 §Q6 / spec 003 §2: a Fresh conflict on an already-installed
+        // id is a 409, not a generic 400 (which the blanket ServiceError→HttpError
+        // mapping would otherwise give it).
+        Err(ServiceError::AlreadyIndexed(id)) => Err(HttpError::Conflict(format!(
+            "Skill '{}' is already installed",
+            id
+        ))),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// POST /api/v1/skills/update (and its back-compat alias `/skills/upgrade`) -
+/// update one or all skills recorded in the project's `skill-project.toml` by
+/// routing each dependency's recorded `Origin` through the core install seam
+/// (ADR-0005), mirroring `fastskill-cli`'s `update` command: `preflight(&origin)`
+/// decides Updatable/UpToDate/Immutable, and only `Updatable` entries are
+/// re-fetched via `add_from_origin(origin, AddMode::Update, groups)`.
+/// `check: true` reports the preflight verdict without applying anything.
+/// Always 200 with a per-skill result list — a per-skill failure does not fail
+/// the whole request.
+pub async fn update_skills(
+    State(state): State<AppState>,
+    Json(payload): Json<Option<UpdateSkillsRequest>>,
+) -> HttpResult<axum::Json<ApiResponse<Vec<SkillUpdateResult>>>> {
+    let payload = payload.unwrap_or_default();
+    let project_path = &state.project_file_path;
+
+    if !project_path.exists() {
+        return Err(HttpError::NotFound(
+            "skill-project.toml not found".to_string(),
+        ));
+    }
+
+    let project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
+        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    })?;
+
+    let mut entries = project
+        .to_skill_entries()
+        .map_err(HttpError::InternalServerError)?;
+    entries.sort_by(|a, b| a.id.cmp(&b.id));
+
     let filter_id = payload
-        .and_then(|p| p.skill_id)
-        .filter(|s| !s.is_empty() && s != "all");
-
-    // SEC-2: validate a requested skill id against known skills before spawning
-    // a subprocess, so an arbitrary/attacker-controlled id can't drive an update.
-    if let Some(ref id) = filter_id {
-        let known = state.service.skill_manager().list_skills().await?;
-        let is_known = known.iter().any(|s| s.id.to_string() == *id);
-        if !is_known {
-            return Err(HttpError::BadRequest(format!("Unknown skill: {}", id)));
+        .skill_id
+        .as_deref()
+        .filter(|s| !s.is_empty() && *s != "all");
+    if let Some(id) = filter_id {
+        entries.retain(|e| e.id == id);
+        if entries.is_empty() {
+            return Err(HttpError::NotFound(format!("Unknown skill: {}", id)));
         }
     }
 
-    let output = tokio::task::spawn_blocking(move || {
-        let exe = std::env::current_exe().map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to get executable path: {}", e))
-        })?;
-        let mut cmd = std::process::Command::new(exe);
-        cmd.arg("update");
-        // SEC-2 (defense in depth): `--` ends option parsing so a validated id
-        // beginning with `-` can never be read as a flag by `fastskill update`.
-        if let Some(ref id) = filter_id {
-            cmd.arg("--");
-            cmd.arg(id);
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        match state.service.preflight(&entry.origin).await {
+            Ok(UpdatePreflight::Updatable) if payload.check => {
+                results.push(SkillUpdateResult {
+                    id: entry.id,
+                    outcome: "would_update".to_string(),
+                    reason: None,
+                    resolved_version: None,
+                });
+            }
+            Ok(UpdatePreflight::Updatable) => {
+                match state
+                    .service
+                    .add_from_origin(entry.origin.clone(), AddMode::Update, entry.groups.clone())
+                    .await
+                {
+                    Ok(outcome) => results.push(SkillUpdateResult {
+                        id: entry.id,
+                        outcome: "updated".to_string(),
+                        reason: None,
+                        resolved_version: Some(outcome.resolved.version),
+                    }),
+                    Err(e) => results.push(SkillUpdateResult {
+                        id: entry.id,
+                        outcome: "error".to_string(),
+                        reason: Some(e.to_string()),
+                        resolved_version: None,
+                    }),
+                }
+            }
+            Ok(UpdatePreflight::UpToDate) => results.push(SkillUpdateResult {
+                id: entry.id,
+                outcome: "up_to_date".to_string(),
+                reason: None,
+                resolved_version: None,
+            }),
+            Ok(UpdatePreflight::Immutable { reason }) => results.push(SkillUpdateResult {
+                id: entry.id,
+                outcome: "immutable".to_string(),
+                reason: Some(reason),
+                resolved_version: None,
+            }),
+            Err(e) => results.push(SkillUpdateResult {
+                id: entry.id,
+                outcome: "error".to_string(),
+                reason: Some(e.to_string()),
+                resolved_version: None,
+            }),
         }
-        if let Some(parent) = project_path.parent() {
-            cmd.current_dir(parent);
-        }
-        let output = cmd
-            .output()
-            .map_err(|e| HttpError::InternalServerError(format!("Failed to run update: {}", e)))?;
-        Ok::<_, HttpError>(output)
-    })
-    .await
-    .map_err(|e| HttpError::InternalServerError(format!("Upgrade task failed: {}", e)))??;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(HttpError::InternalServerError(format!(
-            "Upgrade failed: {}",
-            stderr.trim()
-        )));
     }
 
-    Ok(axum::Json(ApiResponse::success(serde_json::json!({
-        "message": "Upgrade completed",
-        "upgraded": true
-    }))))
+    Ok(axum::Json(ApiResponse::success(results)))
 }

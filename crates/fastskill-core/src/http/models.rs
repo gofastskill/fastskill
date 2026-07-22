@@ -144,6 +144,17 @@ pub struct ReindexResponse {
     pub duration_ms: u64,
 }
 
+/// Outcome of a call into the core reindex seam (ADR-0002/0005). `reindexed:
+/// false` + a `reason` means the reindex was skipped (e.g. no embedding
+/// provider configured) — a success, not a failure.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReindexOutcomeResponse {
+    pub reindexed: bool,
+    pub count: usize,
+    pub reason: Option<String>,
+}
+
 /// Status response
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +165,11 @@ pub struct StatusResponse {
     pub storage_path: String,
     pub hot_reload_enabled: bool,
     pub uptime_seconds: u64,
+    /// Whether write (mutating) endpoints are enabled on this server instance.
+    pub writable: bool,
+    /// Whether an embedding provider is injected (reindex/semantic search
+    /// available rather than skipping silently / falling back to keyword search).
+    pub embedding_provider: bool,
 }
 
 /// Source response for registry
@@ -231,4 +247,46 @@ pub struct UpdateSkillRequest {
     pub groups: Option<Vec<String>>,
     pub editable: Option<bool>,
     pub version: Option<String>,
+}
+
+/// POST /api/v1/skills/install request body: a fresh install from an [`Origin`]
+/// (core install seam, ADR-0005). `Origin` deserializes directly (internally
+/// tagged by `type`).
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallSkillRequest {
+    pub origin: crate::core::origin::Origin,
+    #[serde(default)]
+    pub groups: Vec<String>,
+}
+
+/// POST /api/v1/skills/install response (201) / success shape.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallSkillResponse {
+    pub id: String,
+    pub resolved_version: String,
+    pub reindexed: bool,
+}
+
+/// POST /api/v1/skills/update request body. `skill_id` omitted (or `"all"`)
+/// updates every skill recorded in the project; `check` reports the preflight
+/// verdict for each without applying anything.
+#[derive(Debug, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSkillsRequest {
+    pub skill_id: Option<String>,
+    #[serde(default)]
+    pub check: bool,
+}
+
+/// Per-skill outcome of a `POST /api/v1/skills/update` call.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUpdateResult {
+    pub id: String,
+    /// One of: `"updated"`, `"would_update"`, `"up_to_date"`, `"immutable"`, `"error"`.
+    pub outcome: String,
+    pub reason: Option<String>,
+    pub resolved_version: Option<String>,
 }

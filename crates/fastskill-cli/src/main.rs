@@ -528,7 +528,6 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_reindex = Arc::clone(&state);
         let state_remove = Arc::clone(&state);
         let state_search = Arc::clone(&state);
-        let state_serve = Arc::clone(&state);
         let state_doctor = Arc::clone(&state);
         builder
             .register(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
@@ -567,10 +566,12 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
             .register(path!["serve"], move |ctx, args: serve::ServeArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_serve);
                 async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    serve::execute_serve(svc, args)
+                    // `serve` builds its own service (rather than going through
+                    // `FsState::service_with`) so it can inject the served
+                    // project's root alongside the usual edge services; see
+                    // `serve::execute_serve`.
+                    serve::execute_serve(global, skills_dir, args)
                         .await
                         .map_err(anyhow::Error::from)
                 }

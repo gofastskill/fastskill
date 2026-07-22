@@ -99,13 +99,71 @@ async fn fixture_with_skills(enable_write: bool) -> Fixture {
     }
 }
 
+/// A fixture for the install/update seam (spec 003 Phase 2): a temp project
+/// with a valid `skill-project.toml` (so `resolve_project_file` succeeds), and
+/// the *service's* `project_root` injected — mirroring what `serve`'s edge
+/// wiring does — so `add_from_origin`'s manifest/lock writes land in the temp
+/// project rather than falling back to the test process's cwd.
+async fn fixture_for_install(enable_write: bool) -> Fixture {
+    let storage = TempDir::new().unwrap();
+    let store = skills_root(&storage);
+
+    let project = TempDir::new().unwrap();
+    let project_file_path = project.path().join("skill-project.toml");
+    fs::write(
+        &project_file_path,
+        format!(
+            "[tool.fastskill]\nskills_directory = \"{}\"\n\n[dependencies]\n",
+            store.display()
+        ),
+    )
+    .unwrap();
+
+    let config = ServiceConfig {
+        skill_storage_path: store.clone(),
+        ..Default::default()
+    };
+    let mut svc = FastSkillService::new(config).await.unwrap();
+    svc.initialize().await.unwrap();
+    let svc = svc.with_project_root(project.path().to_path_buf());
+    let service = Arc::new(svc);
+
+    let mut state = AppState::new(service).unwrap();
+    state.project_file_path = project_file_path.clone();
+    state.project_root = project.path().to_path_buf();
+    state.skills_directory = store;
+    state.enable_write = enable_write;
+
+    Fixture {
+        _storage: storage,
+        _project: project,
+        state,
+        project_file_path,
+    }
+}
+
+/// Write a standalone skill directory (NOT under the service's storage root)
+/// suitable for use as an `Origin::Local` install source.
+fn write_source_skill(root: &std::path::Path, name: &str) -> PathBuf {
+    let dir = root.join(name);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("SKILL.md"),
+        format!("---\nname: {name}\nversion: \"1.0.0\"\ndescription: A test skill\n---\nBody\n"),
+    )
+    .unwrap();
+    dir
+}
+
 /// Full router mirroring the production route table (paths without the /api/v1 prefix).
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/skills", get(skills::list_skills))
         .route("/skills/{id}", get(skills::get_skill))
         .route("/skills/{id}", delete(skills::delete_skill))
-        .route("/skills/upgrade", post(skills::upgrade_skills))
+        .route("/skills/install", post(skills::install_skill))
+        .route("/skills/update", post(skills::update_skills))
+        .route("/skills/upgrade", post(skills::update_skills))
         .route("/project", get(manifest::get_project))
         .route("/manifest/skills", get(manifest::list_manifest_skills))
         .route("/manifest/skills", post(manifest::add_skill_to_manifest))
@@ -253,51 +311,122 @@ async fn delete_skill_success_with_project_and_lock() {
 }
 
 #[tokio::test]
-async fn upgrade_rejects_unknown_skill() {
-    let f = fixture_with_skills(true).await;
+async fn install_fresh_returns_201() {
+    let f = fixture_for_install(true).await;
+    let src = write_source_skill(f._project.path(), "new-skill");
+    let (status, body) = post_json(
+        f.state,
+        "/skills/install",
+        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert!(body.contains("new-skill"), "body: {body}");
+    assert!(body.contains("resolvedVersion"), "body: {body}");
+}
+
+#[tokio::test]
+async fn install_fresh_conflict_is_409() {
+    let f = fixture_for_install(true).await;
+    let src = write_source_skill(f._project.path(), "dup-skill");
+    let payload = serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}});
+
+    let (status1, body1) = post_json(f.state.clone(), "/skills/install", payload.clone()).await;
+    assert_eq!(status1, StatusCode::CREATED, "body: {body1}");
+
+    let (status2, body2) = post_json(f.state, "/skills/install", payload).await;
+    assert_eq!(status2, StatusCode::CONFLICT, "body: {body2}");
+    assert!(body2.contains("dup-skill"), "body: {body2}");
+}
+
+#[tokio::test]
+async fn install_invalid_operation_is_400() {
+    // A nonexistent local path is an InvalidOperation, mapped to 400.
+    let f = fixture_for_install(true).await;
+    let missing = f._project.path().join("does-not-exist");
     let (status, _b) = post_json(
         f.state,
-        "/skills/upgrade",
-        serde_json::json!({"skillId": "ghost"}),
+        "/skills/install",
+        serde_json::json!({"origin": {"type": "local", "path": missing.to_string_lossy()}}),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
-async fn upgrade_all_runs_subprocess_branch() {
-    // skillId "all" -> filter_id None -> no id validation, spawns the (test) binary.
-    // We only assert it is NOT a 400 validation rejection; the subprocess outcome
-    // (200 success or 500 failure) depends on the environment.
+async fn update_missing_manifest_is_404() {
+    // fixture_with_skills never writes a skill-project.toml.
     let f = fixture_with_skills(true).await;
-    let (status, _b) = post_json(
-        f.state,
-        "/skills/upgrade",
-        serde_json::json!({"skillId": "all"}),
-    )
-    .await;
-    assert_ne!(status, StatusCode::BAD_REQUEST);
+    let (status, _b) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn upgrade_known_skill_passes_validation() {
-    // A known id passes the SEC-2 known-skill check and reaches the subprocess.
-    let f = fixture_with_skills(true).await;
+async fn update_unknown_skill_id_is_404() {
+    let f = fixture_for_install(true).await;
     let (status, _b) = post_json(
         f.state,
-        "/skills/upgrade",
-        serde_json::json!({"skillId": "alpha-skill"}),
+        "/skills/update",
+        serde_json::json!({"skillId": "ghost"}),
     )
     .await;
-    assert_ne!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn upgrade_empty_body_is_none_filter() {
-    // JSON null body -> Option<UpgradeRequest> None -> filter_id None.
-    let f = fixture_with_skills(true).await;
-    let (status, _b) = post_json(f.state, "/skills/upgrade", serde_json::Value::Null).await;
-    assert_ne!(status, StatusCode::BAD_REQUEST);
+async fn update_empty_deps_returns_empty_list() {
+    let f = fixture_for_install(true).await;
+    let (status, body) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"data\":[]"), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_check_mode_reports_would_update_without_applying() {
+    let f = fixture_for_install(true).await;
+    let src = write_source_skill(f._project.path(), "chk-skill");
+    let (install_status, install_body) = post_json(
+        f.state.clone(),
+        "/skills/install",
+        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+    )
+    .await;
+    assert_eq!(install_status, StatusCode::CREATED, "body: {install_body}");
+
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"check": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("would_update"), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_applies_updatable_origin() {
+    let f = fixture_for_install(true).await;
+    let src = write_source_skill(f._project.path(), "upd-skill");
+    let (install_status, install_body) = post_json(
+        f.state.clone(),
+        "/skills/install",
+        serde_json::json!({"origin": {"type": "local", "path": src.to_string_lossy()}}),
+    )
+    .await;
+    assert_eq!(install_status, StatusCode::CREATED, "body: {install_body}");
+
+    let (status, body) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"outcome\":\"updated\""), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_upgrade_alias_route_behaves_identically() {
+    // Back-compat: /skills/upgrade is the same handler as /skills/update.
+    let f = fixture_for_install(true).await;
+    let (status, body) = post_json(f.state, "/skills/upgrade", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"data\":[]"), "body: {body}");
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +440,25 @@ async fn status_endpoint_ok() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("running"));
     assert!(body.contains("skillsCount"));
+}
+
+#[tokio::test]
+async fn status_reports_capability_flags() {
+    // enable_write:true + no embedding provider configured (fixture_with_skills
+    // never sets `embedding` on the ServiceConfig).
+    let f = fixture_with_skills(true).await;
+    let (status, body) = do_get(f.state, "/status").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"writable\":true"), "body: {body}");
+    assert!(body.contains("\"embeddingProvider\":false"), "body: {body}");
+}
+
+#[tokio::test]
+async fn status_writable_false_when_write_disabled() {
+    let f = fixture_with_skills(false).await;
+    let (status, body) = do_get(f.state, "/status").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"writable\":false"), "body: {body}");
 }
 
 #[tokio::test]
@@ -363,18 +511,22 @@ async fn dashboard_escapes_xss_and_truncates_over_ten() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn reindex_all_is_501() {
+async fn reindex_all_skips_without_embedding_provider() {
+    // fixture_with_skills configures no embedding provider -> reindex skips
+    // silently (ADR-0002): 200, reindexed:false, with a reason.
     let f = fixture_with_skills(true).await;
     let (status, body) = post_json(f.state, "/reindex", serde_json::json!({})).await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert!(body.contains("not implemented"));
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"reindexed\":false"), "body: {body}");
+    assert!(body.contains("\"reason\":"), "body: {body}");
 }
 
 #[tokio::test]
-async fn reindex_skill_is_501() {
+async fn reindex_skill_skips_without_embedding_provider() {
     let f = fixture_with_skills(true).await;
-    let (status, _b) = post_json(f.state, "/reindex/alpha-skill", serde_json::json!({})).await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    let (status, body) = post_json(f.state, "/reindex/alpha-skill", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"reindexed\":false"), "body: {body}");
 }
 
 // ---------------------------------------------------------------------------

@@ -534,38 +534,11 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     } else {
         AddMode::Fresh
     };
+    let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
     let outcome = service
-        .add_from_origin(origin, mode)
+        .add_from_origin(origin, mode, groups)
         .await
         .map_err(CliError::Service)?;
-
-    // Core-seam gap: `add_from_origin`'s manifest/lock upsert has no `groups`
-    // parameter (always writes `groups: None` / `Vec::new()`), so `--group` is
-    // reapplied here, same as the update path.
-    if let Some(group) = &args.group {
-        let current_dir = env::current_dir()
-            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-        let project_file_result = resolve_project_file(&current_dir);
-        let lock_path = project_file_result
-            .path
-            .parent()
-            .map(|p| p.join("skills.lock"))
-            .unwrap_or_else(|| PathBuf::from("skills.lock"));
-        if let Err(e) = crate::utils::manifest_utils::reapply_groups_after_seam(
-            &project_file_result.path,
-            &lock_path,
-            &outcome.id,
-            vec![group.clone()],
-        ) {
-            eprintln!(
-                "{}",
-                crate::utils::messages::error(&format!(
-                    "Added {} but failed to record its group: {}",
-                    outcome.id, e
-                ))
-            );
-        }
-    }
 
     // `AddOutcome` only carries the skill `id`, not its display `name`; look the
     // freshly-registered skill back up for a nicer message, falling back to the

@@ -76,6 +76,23 @@ async fn write_route_returns_403_when_write_disabled() {
         "403 body should point at --enable-write, got: {body}"
     );
 
+    // Also cover the other new write routes (spec 003 Phase 2): install/update.
+    let install_resp = client
+        .post(format!("http://127.0.0.1:{port}/api/v1/skills/install"))
+        .json(&serde_json::json!({"origin": {"type": "local", "path": "/tmp/does-not-matter"}}))
+        .send()
+        .await
+        .expect("POST /api/v1/skills/install");
+    assert_eq!(install_resp.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let update_resp = client
+        .post(format!("http://127.0.0.1:{port}/api/v1/skills/update"))
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("POST /api/v1/skills/update");
+    assert_eq!(update_resp.status(), reqwest::StatusCode::FORBIDDEN);
+
     handle.abort();
 }
 
@@ -93,8 +110,9 @@ async fn write_route_not_forbidden_when_write_enabled() {
     assert!(wait_for_port(port, 10), "server failed to start");
 
     let client = reqwest::Client::new();
-    // reindex is write-gated; with writes enabled it must NOT be 403.
-    // (PARTIAL-6: the HTTP reindex path is honestly 501, not a fake 200.)
+    // reindex is write-gated; with writes enabled it must NOT be 403. The
+    // service here has no embedding provider configured, so the core reindex
+    // seam skips silently (ADR-0002): 200 with reindexed:false, not an error.
     let resp = client
         .post(format!("http://127.0.0.1:{port}/api/v1/reindex"))
         .json(&serde_json::json!({}))
@@ -102,7 +120,9 @@ async fn write_route_not_forbidden_when_write_enabled() {
         .await
         .expect("POST /api/v1/reindex");
     assert_ne!(resp.status(), reqwest::StatusCode::FORBIDDEN);
-    assert_eq!(resp.status(), reqwest::StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body = resp.text().await.unwrap();
+    assert!(body.contains("\"reindexed\":false"), "body: {body}");
 
     handle.abort();
 }
@@ -136,10 +156,27 @@ async fn read_route_available_when_write_disabled() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn upgrade_rejects_unknown_skill_id() {
-    // SEC-2: an unknown/attacker-controlled skillId must be rejected with 400
-    // BEFORE any subprocess is spawned. The skill store is empty here, so any
-    // id (including a leading-dash one) is unknown.
+#[allow(clippy::await_holding_lock)]
+async fn update_rejects_unknown_skill_id() {
+    // /skills/update (and its /skills/upgrade alias) route each dependency's
+    // recorded Origin through the core install seam; an unknown/attacker-
+    // controlled skillId not present in skill-project.toml's [dependencies]
+    // must be rejected with 404 rather than silently updating everything.
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let project_dir = TempDir::new().unwrap();
+    let original_dir = std::env::current_dir().ok();
+    let _guard = fastskill_core::test_utils::DirGuard(original_dir);
+    std::env::set_current_dir(project_dir.path()).unwrap();
+    std::fs::write(
+        project_dir.path().join("skill-project.toml"),
+        "[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n\
+         [dependencies]\nknown-skill = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".claude/skills")).unwrap();
+
     let dir = TempDir::new().unwrap();
     let Some(port) = free_port() else {
         return;
@@ -160,8 +197,8 @@ async fn upgrade_rejects_unknown_skill_id() {
         .expect("POST /api/v1/skills/upgrade");
     assert_eq!(
         resp.status(),
-        reqwest::StatusCode::BAD_REQUEST,
-        "unknown skillId must be rejected with 400"
+        reqwest::StatusCode::NOT_FOUND,
+        "unknown skillId must be rejected with 404"
     );
 
     handle.abort();
