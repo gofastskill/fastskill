@@ -558,10 +558,18 @@ class FastSkillApp {
     // ---- utilities ----------------------------------------------------------
 
     escapeHtml(text) {
+        // Escapes for BOTH element-text and quoted-attribute contexts. The
+        // textContent/innerHTML trick only escapes & < >, leaving " and '
+        // intact — which is an attribute-breakout XSS when interpolated into
+        // title="…" / href="…" / data-id="…" with untrusted skill content
+        // (SEC-7/SEC-8). Escape all five explicitly; & must go first.
         if (text == null) return '';
-        const div = document.createElement('div');
-        div.textContent = String(text);
-        return div.innerHTML;
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 }
 
