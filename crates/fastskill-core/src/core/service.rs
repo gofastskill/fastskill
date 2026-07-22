@@ -289,6 +289,22 @@ pub struct FastSkillService {
     /// Vector index service (optional, for embedding search)
     vector_index_service: Option<Arc<dyn crate::core::vector_index::VectorIndexService>>,
 
+    /// Embedding provider (optional), injected at the CLI/serve edge where the
+    /// API key is loaded. `None` ⇒ reindex skips silently (ADR-0002/0005).
+    embedding_service: Option<Arc<dyn crate::core::embedding::EmbeddingService>>,
+
+    /// Repository access (optional), injected at the edge from the resolved
+    /// `repos` config. Needed to fetch `Origin::Repository` skills; `None` ⇒
+    /// a repository-origin install returns a clear "no repositories configured" error.
+    repository_manager: Option<Arc<crate::core::repository::RepositoryManager>>,
+
+    /// Project root the install seam writes the Manifest + Lock under, injected at
+    /// the edge. The CLI leaves this `None` (it resolves the project from the
+    /// process cwd, which is correct for a CLI); the `serve` path MUST inject the
+    /// served project's root so `add_from_origin` doesn't write relative to the
+    /// server's arbitrary working directory.
+    project_root: Option<PathBuf>,
+
     /// Skill storage backend
     storage: Arc<dyn crate::storage::StorageBackend>,
 
@@ -355,10 +371,56 @@ impl FastSkillService {
             skill_manager,
             metadata_service,
             vector_index_service,
+            embedding_service: None,
+            repository_manager: None,
+            project_root: None,
             storage,
             hot_reload_manager,
             initialized: false,
         })
+    }
+
+    /// Inject an embedding provider (edge-constructed, holds the API key). Enables
+    /// the core reindex seam; without it reindex skips silently.
+    pub fn with_embedding_service(
+        mut self,
+        embedding: Arc<dyn crate::core::embedding::EmbeddingService>,
+    ) -> Self {
+        self.embedding_service = Some(embedding);
+        self
+    }
+
+    /// Inject repository access resolved from the edge `repos` config. Enables
+    /// fetching `Origin::Repository` skills.
+    pub fn with_repository_manager(
+        mut self,
+        manager: Arc<crate::core::repository::RepositoryManager>,
+    ) -> Self {
+        self.repository_manager = Some(manager);
+        self
+    }
+
+    /// The injected embedding provider, if any.
+    pub fn embedding_service(&self) -> Option<&Arc<dyn crate::core::embedding::EmbeddingService>> {
+        self.embedding_service.as_ref()
+    }
+
+    /// The injected repository manager, if any.
+    pub fn repository_manager(&self) -> Option<&Arc<crate::core::repository::RepositoryManager>> {
+        self.repository_manager.as_ref()
+    }
+
+    /// Inject the project root the install seam writes Manifest/Lock under (the
+    /// served project's root for `serve`). When unset the seam falls back to the
+    /// process cwd (correct for the CLI).
+    pub fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
+        self
+    }
+
+    /// The injected project root, if any.
+    pub fn project_root(&self) -> Option<&PathBuf> {
+        self.project_root.as_ref()
     }
 
     /// Initialize the service

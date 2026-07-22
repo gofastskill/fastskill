@@ -6,15 +6,18 @@ pub mod sources;
 
 // Re-export public API consumed by install_utils.rs
 use crate::error::{manifest_required_message, CliError, CliResult};
-use crate::utils::{detect_skill_source, SkillSource};
+use crate::utils::{detect_skill_source, validate_skill_structure, SkillSource};
 use chrono::Utc;
 use clap::Args;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
-use fastskill_core::core::origin::Origin;
+use fastskill_core::core::origin::{GitRef, Origin};
 use fastskill_core::core::project::resolve_project_file;
+use fastskill_core::core::repository::RepositoryManager;
+use fastskill_core::core::version::VersionConstraint;
+use fastskill_core::core::AddMode;
 use fastskill_core::{FastSkillService, SkillDefinition};
 pub use install::copy_dir_recursive;
 pub use skill_def::create_skill_from_path;
@@ -353,6 +356,84 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
     )))
 }
 
+/// Build the install-intent [`Origin`] for the common (single-skill,
+/// project-level) add path from the classified `source` and parsed args
+/// (ADR-0005: `detect_skill_source` → `Origin`, feeding `add_from_origin`).
+fn build_origin(source: &SkillSource, args: &AddArgs) -> CliResult<Origin> {
+    match source {
+        SkillSource::ZipFile(path) => {
+            let canonical = path.canonicalize().map_err(|e| {
+                CliError::InvalidSource(format!(
+                    "Failed to resolve absolute path for '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            Ok(Origin::Local {
+                path: canonical,
+                editable: false,
+            })
+        }
+        SkillSource::Folder(path) => {
+            let canonical = path.canonicalize().map_err(|e| {
+                CliError::InvalidSource(format!(
+                    "Failed to resolve absolute path for '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            Ok(Origin::Local {
+                path: canonical,
+                editable: args.editable,
+            })
+        }
+        SkillSource::GitUrl(url) => {
+            let git_info = crate::utils::parse_git_url(url)?;
+            let branch = args.branch.clone().or_else(|| git_info.branch.clone());
+            let r#ref = match (&branch, &args.tag) {
+                (Some(b), _) => GitRef::Branch(b.clone()),
+                (None, Some(t)) => GitRef::Tag(t.clone()),
+                (None, None) => GitRef::Default,
+            };
+            Ok(Origin::Git {
+                url: url.clone(),
+                r#ref,
+                subdir: git_info.subdir,
+            })
+        }
+        SkillSource::RemoteZipUrl(url) => Ok(Origin::ZipUrl { url: url.clone() }),
+        SkillSource::SkillId(skill_id_input) => {
+            let (skill_id_full, _scope, _expected_id, version_opt) =
+                sources::parse_registry_scope_id(skill_id_input)?;
+            let version = version_opt
+                .as_deref()
+                .map(VersionConstraint::parse)
+                .transpose()
+                .map_err(|e| CliError::Config(format!("Invalid version constraint: {}", e)))?;
+
+            // Resolve "default" to the concrete configured repository's name now
+            // (mirrors the pre-seam `add_from_registry`), so a missing repository
+            // config fails fast with a clear message rather than surfacing later
+            // from inside the seam.
+            let repositories = crate::config::load_repositories_from_project()?;
+            let repo_manager = RepositoryManager::from_definitions(repositories);
+            let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
+                CliError::Config(
+                    "No default repository configured. Use 'fastskill repos add' to add a \
+                     repository."
+                        .to_string(),
+                )
+            })?;
+
+            Ok(Origin::Repository {
+                repo: default_repo.name.clone(),
+                skill: skill_id_full,
+                version,
+            })
+        }
+    }
+}
+
 pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
@@ -367,7 +448,10 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     if args.editable {
         match &source {
             SkillSource::Folder(_) => {}
-            SkillSource::ZipFile(_) | SkillSource::GitUrl(_) | SkillSource::SkillId(_) => {
+            SkillSource::ZipFile(_)
+            | SkillSource::GitUrl(_)
+            | SkillSource::RemoteZipUrl(_)
+            | SkillSource::SkillId(_) => {
                 return Err(CliError::Config(
                     "--editable (-e) is only supported for local folder sources. \
                      Remove -e or use a local path."
@@ -380,38 +464,133 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     if !global {
         ensure_manifest()?;
     }
-    let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
-    let ctx = AddContext {
-        service,
-        force: args.force,
-        editable: args.editable,
-        groups,
-        global,
+
+    // `--global` and `--recursive` are not (yet) expressible through the core
+    // `add_from_origin` seam — it is single-skill + project-level only (no
+    // global-lock concept, no directory-of-skills fan-out) — so both keep the
+    // pre-seam per-source-type install path below.
+    if global || args.recursive {
+        let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
+        let ctx = AddContext {
+            service,
+            force: args.force,
+            editable: args.editable,
+            groups,
+            global,
+        };
+
+        if args.recursive {
+            let path = match &source {
+                SkillSource::Folder(p) => p,
+                _ => {
+                    return Err(CliError::Config(
+                        "Recursive add is only valid when source is a local directory".to_string(),
+                    ));
+                }
+            };
+            install::handle_recursive_add(&ctx, path).await?;
+        } else {
+            match source {
+                SkillSource::ZipFile(path) => sources::add_from_zip(&ctx, &path).await?,
+                SkillSource::Folder(path) => {
+                    validate_folder_has_skill(&path)?;
+                    sources::add_from_folder(&ctx, &path).await?
+                }
+                SkillSource::GitUrl(url) => {
+                    sources::add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref())
+                        .await?
+                }
+                SkillSource::RemoteZipUrl(url) => sources::add_from_zip_url(&ctx, &url).await?,
+                SkillSource::SkillId(skill_id) => {
+                    sources::add_from_registry(&ctx, &skill_id).await?
+                }
+            }
+        }
+
+        let auto_reindex = crate::config_file::load_auto_reindex_config();
+        return crate::utils::reindex_utils::maybe_auto_reindex(
+            service,
+            "add",
+            reindex,
+            no_reindex,
+            auto_reindex,
+            false,
+        )
+        .await;
+    }
+
+    // Common path: single skill, project-level → core install seam (ADR-0005).
+    // Local-folder sources keep the CLI's own pre-checks (the "did you mean
+    // --recursive?" hint and the StandardValidator compatibility warnings) since
+    // core's own `validate_cloned_skill` is a narrower, warning-free check.
+    if let SkillSource::Folder(path) = &source {
+        validate_folder_has_skill(path)?;
+        validate_skill_structure(path)?;
+    }
+
+    let origin = build_origin(&source, &args)?;
+    let mode = if args.force {
+        AddMode::Update
+    } else {
+        AddMode::Fresh
+    };
+    let outcome = service
+        .add_from_origin(origin, mode)
+        .await
+        .map_err(CliError::Service)?;
+
+    // Core-seam gap: `add_from_origin`'s manifest/lock upsert has no `groups`
+    // parameter (always writes `groups: None` / `Vec::new()`), so `--group` is
+    // reapplied here, same as the update path.
+    if let Some(group) = &args.group {
+        let current_dir = env::current_dir()
+            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+        let project_file_result = resolve_project_file(&current_dir);
+        let lock_path = project_file_result
+            .path
+            .parent()
+            .map(|p| p.join("skills.lock"))
+            .unwrap_or_else(|| PathBuf::from("skills.lock"));
+        if let Err(e) = crate::utils::manifest_utils::reapply_groups_after_seam(
+            &project_file_result.path,
+            &lock_path,
+            &outcome.id,
+            vec![group.clone()],
+        ) {
+            eprintln!(
+                "{}",
+                crate::utils::messages::error(&format!(
+                    "Added {} but failed to record its group: {}",
+                    outcome.id, e
+                ))
+            );
+        }
+    }
+
+    // `AddOutcome` only carries the skill `id`, not its display `name`; look the
+    // freshly-registered skill back up for a nicer message, falling back to the
+    // id (which is always a valid, if less friendly, thing to print).
+    let display_name = match fastskill_core::SkillId::new(outcome.id.clone()) {
+        Ok(id) => service
+            .skill_manager()
+            .get_skill(&id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.name)
+            .unwrap_or_else(|| outcome.id.clone()),
+        Err(_) => outcome.id.clone(),
     };
 
-    if args.recursive {
-        let path = match &source {
-            SkillSource::Folder(p) => p,
-            _ => {
-                return Err(CliError::Config(
-                    "Recursive add is only valid when source is a local directory".to_string(),
-                ));
-            }
-        };
-        return install::handle_recursive_add(&ctx, path).await;
-    }
+    println!(
+        "Successfully added skill: {} (v{})",
+        display_name, outcome.resolved.version
+    );
+    println!(
+        "{}",
+        crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+    );
 
-    match source {
-        SkillSource::ZipFile(path) => sources::add_from_zip(&ctx, &path).await?,
-        SkillSource::Folder(path) => {
-            validate_folder_has_skill(&path)?;
-            sources::add_from_folder(&ctx, &path).await?
-        }
-        SkillSource::GitUrl(url) => {
-            sources::add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref()).await?
-        }
-        SkillSource::SkillId(skill_id) => sources::add_from_registry(&ctx, &skill_id).await?,
-    }
     let auto_reindex = crate::config_file::load_auto_reindex_config();
     crate::utils::reindex_utils::maybe_auto_reindex(
         service,
@@ -529,5 +708,223 @@ mod tests {
         } else {
             panic!("Expected Config error");
         }
+    }
+
+    // ── Common path (project, non-recursive) → core `add_from_origin` seam ────
+
+    fn write_valid_skill_md(dir: &std::path::Path, name: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(
+            dir.join("SKILL.md"),
+            format!(
+                "---\nname: {name}\nversion: \"1.0.0\"\ndescription: A test skill\n---\nBody\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    struct DirGuard(Option<PathBuf>);
+    impl Drop for DirGuard {
+        fn drop(&mut self) {
+            if let Some(dir) = &self.0 {
+                let _ = std::env::set_current_dir(dir);
+            }
+        }
+    }
+
+    fn setup_common_path_project() -> (TempDir, DirGuard, PathBuf) {
+        let tmp = TempDir::new().unwrap();
+        let guard = DirGuard(std::env::current_dir().ok());
+        std::env::set_current_dir(tmp.path()).unwrap();
+        std::fs::write(
+            tmp.path().join("skill-project.toml"),
+            "[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n[dependencies]\n",
+        )
+        .unwrap();
+        let skills_dir = tmp.path().join(".claude/skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        (tmp, guard, skills_dir)
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_execute_add_local_folder_common_path_end_to_end() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_common_path_project();
+
+        let src = tmp.path().join("src-skill");
+        write_valid_skill_md(&src, "common-path-skill");
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: src.display().to_string(),
+            source_type: None,
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: Some("dev".to_string()),
+            recursive: false,
+            reindex: false,
+            no_reindex: false,
+        };
+
+        let result = execute_add(&service, args, false).await;
+        assert!(result.is_ok(), "add should succeed: {:?}", result);
+        assert!(skills_dir.join("common-path-skill/SKILL.md").exists());
+
+        // --group was reapplied onto both the manifest dependency and the lock
+        // entry (core-seam gap workaround: add_from_origin's own upsert has no
+        // groups parameter).
+        let mut project = fastskill_core::core::manifest::SkillProjectToml::load_from_file(
+            &tmp.path().join("skill-project.toml"),
+        )
+        .unwrap();
+        let dep = project
+            .dependencies
+            .as_mut()
+            .unwrap()
+            .dependencies
+            .remove("common-path-skill")
+            .unwrap();
+        match dep {
+            fastskill_core::core::manifest::DependencySpec::Inline { groups, .. } => {
+                assert_eq!(groups, Some(vec!["dev".to_string()]));
+            }
+            other => panic!("expected Inline dependency spec, got {:?}", other),
+        }
+
+        let lock = fastskill_core::core::lock::ProjectSkillsLock::load_from_file(
+            &tmp.path().join("skills.lock"),
+        )
+        .unwrap();
+        let entry = lock
+            .skills
+            .iter()
+            .find(|s| s.id == "common-path-skill")
+            .unwrap();
+        assert_eq!(entry.groups, vec!["dev".to_string()]);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_execute_add_force_overwrites_via_common_path() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_common_path_project();
+
+        let src = tmp.path().join("src-skill");
+        write_valid_skill_md(&src, "force-skill");
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let make_args = |force: bool| AddArgs {
+            source: src.display().to_string(),
+            source_type: None,
+            branch: None,
+            tag: None,
+            force,
+            editable: false,
+            group: None,
+            recursive: false,
+            reindex: false,
+            no_reindex: false,
+        };
+
+        execute_add(&service, make_args(false), false)
+            .await
+            .expect("first add should succeed");
+
+        // Without --force, re-adding the same skill must fail (AddMode::Fresh ->
+        // AlreadyIndexed).
+        let err = execute_add(&service, make_args(false), false).await;
+        assert!(err.is_err(), "re-add without --force must fail");
+
+        // With --force, it must succeed (mapped onto AddMode::Update).
+        execute_add(&service, make_args(true), false)
+            .await
+            .expect("re-add with --force should succeed");
+    }
+
+    // ── ADR-0005 zip-url fix: a URL ending in `.zip` now installs via
+    // Origin::ZipUrl instead of being misclassified as a git URL. ─────────────
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_execute_add_remote_zip_url_common_path_end_to_end() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (_tmp, _guard, skills_dir) = setup_common_path_project();
+
+        let server = MockServer::start().await;
+        let zip_bytes = {
+            use std::io::Write;
+            use zip::write::FileOptions;
+            let mut buf = Vec::new();
+            {
+                let cursor = std::io::Cursor::new(&mut buf);
+                let mut writer = zip::ZipWriter::new(cursor);
+                let opts =
+                    FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+                writer.start_file("zip-url-skill/SKILL.md", opts).unwrap();
+                writer
+                    .write_all(
+                        b"---\nname: zip-url-skill\nversion: \"1.0.0\"\ndescription: d\n---\nBody\n",
+                    )
+                    .unwrap();
+                writer.finish().unwrap();
+            }
+            buf
+        };
+        Mock::given(method("GET"))
+            .and(path("/pkg.zip"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(zip_bytes))
+            .mount(&server)
+            .await;
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let args = AddArgs {
+            source: format!("{}/pkg.zip", server.uri()),
+            source_type: None,
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+            reindex: false,
+            no_reindex: false,
+        };
+
+        // Before the fix, `detect_skill_source` classified this as `GitUrl` and
+        // the add would fail with a git-clone error; it must now install
+        // successfully via `Origin::ZipUrl`.
+        let result = execute_add(&service, args, false).await;
+        assert!(result.is_ok(), "zip-url add should succeed: {:?}", result);
+        assert!(skills_dir.join("zip-url-skill/SKILL.md").exists());
     }
 }

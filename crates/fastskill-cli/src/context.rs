@@ -50,6 +50,7 @@ impl FsState {
                     .await
                     .map_err(CliError::Service)?;
                 s.initialize().await.map_err(CliError::Service)?;
+                let s = crate::config::inject_edge_services(s)?;
                 Ok(Arc::new(s))
             })
             .await

@@ -75,6 +75,49 @@ pub(super) async fn add_from_zip(ctx: &super::AddContext<'_>, zip_path: &Path) -
     super::install::install_via_download(ctx, &skill_path, skill_def, target).await
 }
 
+/// Add a skill from a remote `.zip` archive URL (the `--global`/`--recursive`
+/// path; the project-level common path installs this via `Origin::ZipUrl` +
+/// `add_from_origin` instead). Mirrors `add_from_zip`, but downloads the
+/// archive first instead of reading it from a local path.
+pub(super) async fn add_from_zip_url(ctx: &super::AddContext<'_>, url: &str) -> CliResult<()> {
+    info!("Adding skill from remote zip URL: {}", url);
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| CliError::InvalidSource(format!("Failed to download '{}': {}", url, e)))?
+        .error_for_status()
+        .map_err(|e| CliError::InvalidSource(format!("Failed to download '{}': {}", url, e)))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| CliError::InvalidSource(format!("Failed to read '{}': {}", url, e)))?;
+
+    let temp_dir = TempDir::new().map_err(CliError::Io)?;
+    let zip_path = temp_dir.path().join("package.zip");
+    let extract_path = temp_dir.path().join("extracted");
+    fs::write(&zip_path, &bytes).map_err(CliError::Io)?;
+    fs::create_dir_all(&extract_path).map_err(CliError::Io)?;
+    extract_zip(&zip_path, &extract_path)?;
+
+    let skill_path = find_skill_in_directory(&extract_path)?;
+    validate_skill_structure(&skill_path)?;
+    let origin = Origin::ZipUrl {
+        url: url.to_string(),
+    };
+    let skill_def =
+        super::skill_def::create_skill_from_path(&skill_path, origin.clone(), "zip-url", false)?;
+    let version = skill_def.version.clone();
+    let target = super::InstallTarget {
+        storage_dir: ctx
+            .service
+            .config()
+            .skill_storage_path
+            .join(skill_def.id.as_str()),
+        meta: super::SourceMeta { origin },
+        version_display: version,
+    };
+    super::install::install_via_download(ctx, &skill_path, skill_def, target).await
+}
+
 pub(super) async fn add_from_folder(
     ctx: &super::AddContext<'_>,
     folder_path: &Path,
