@@ -2,7 +2,7 @@
 
 use crate::config::create_service_config;
 use crate::error::{manifest_required_message, CliError, CliResult};
-use crate::utils::{manifest_utils, messages};
+use crate::utils::messages;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
@@ -417,28 +417,12 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         println!("  Updating {}...", entry.id);
         match service.preflight(&entry.origin).await {
             Ok(UpdatePreflight::Updatable) => {
+                // Pass the existing groups so update preserves group membership.
                 match service
-                    .add_from_origin(entry.origin.clone(), AddMode::Update)
+                    .add_from_origin(entry.origin.clone(), AddMode::Update, entry.groups.clone())
                     .await
                 {
-                    Ok(outcome) => {
-                        // Core-seam gap workaround: `add_from_origin`'s manifest/lock
-                        // upsert has no `groups` parameter (see
-                        // `reapply_groups_after_seam`'s doc comment).
-                        if let Err(e) = manifest_utils::reapply_groups_after_seam(
-                            &project_file_path,
-                            &lock_path,
-                            &outcome.id,
-                            entry.groups.clone(),
-                        ) {
-                            eprintln!(
-                                "  {}",
-                                messages::error(&format!(
-                                    "Updated {} but failed to reapply groups: {}",
-                                    entry.id, e
-                                ))
-                            );
-                        }
+                    Ok(_outcome) => {
                         updated_count += 1;
                         println!("  {}", messages::ok(&format!("Updated {}", entry.id)));
                     }

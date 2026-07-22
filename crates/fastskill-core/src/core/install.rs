@@ -61,14 +61,17 @@ pub struct Fetched {
 impl FastSkillService {
     /// Install a single skill from an [`Origin`] (ADR-0005). `Fresh` adds a new
     /// skill (409-style error if the id already exists); `Update` re-resolves the
-    /// origin and overwrites. Equivalent to `commit(fetch(origin), origin, mode)`.
+    /// origin and overwrites. `groups` are recorded on the Manifest + Lock entry;
+    /// on `Update`, an empty `groups` preserves whatever groups the skill already
+    /// had. Equivalent to `commit(fetch(origin), origin, mode, groups)`.
     pub async fn add_from_origin(
         &self,
         origin: Origin,
         mode: AddMode,
+        groups: Vec<String>,
     ) -> Result<AddOutcome, ServiceError> {
         let fetched = self.fetch(&origin).await?;
-        self.commit(fetched, origin, mode).await
+        self.commit(fetched, origin, mode, groups).await
     }
 
     /// Fetch a skill described by `origin` into a temp dir, capturing the resolved
@@ -310,6 +313,7 @@ impl FastSkillService {
         fetched: Fetched,
         origin: Origin,
         mode: AddMode,
+        groups: Vec<String>,
     ) -> Result<AddOutcome, ServiceError> {
         let Fetched {
             temp_dir,
@@ -353,7 +357,7 @@ impl FastSkillService {
             .force_register_skill(skill_def.clone())
             .await?;
 
-        self.upsert_manifest_and_lock(&skill_def)?;
+        self.upsert_manifest_and_lock(&skill_def, &groups)?;
 
         let reindexed = match self.reindex(None, None).await {
             Ok(outcome) => outcome.reindexed,
@@ -378,7 +382,11 @@ impl FastSkillService {
     /// `skills.lock` entry for a just-installed skill. Resolves the project file
     /// from the current working directory (mirrors the CLI's
     /// `manifest_utils::add_skill_to_project_toml` / `update_lock_file`).
-    fn upsert_manifest_and_lock(&self, skill_def: &SkillDefinition) -> Result<(), ServiceError> {
+    fn upsert_manifest_and_lock(
+        &self,
+        skill_def: &SkillDefinition,
+        groups: &[String],
+    ) -> Result<(), ServiceError> {
         // Resolve the project from the injected root (the served project, for the
         // `serve` path) if present; otherwise walk up from the process cwd, which
         // is correct for a CLI invocation. Never resolve solely from cwd on the
@@ -420,6 +428,21 @@ impl FastSkillService {
                 dependencies: HashMap::new(),
             });
         }
+        // Effective groups: explicit `groups` win; an empty list preserves whatever
+        // the skill already had (so `update` never silently drops group membership).
+        let effective_groups: Option<Vec<String>> = if !groups.is_empty() {
+            Some(groups.to_vec())
+        } else {
+            project
+                .dependencies
+                .as_ref()
+                .and_then(|d| d.dependencies.get(&skill_def.id.to_string()))
+                .and_then(|spec| match spec {
+                    DependencySpec::Inline { groups, .. } => groups.clone(),
+                    DependencySpec::Version(_) => None,
+                })
+        };
+
         if let Some(deps) = project.dependencies.as_mut() {
             // Safety net: re-canonicalize a local path to an absolute path before
             // persisting it, in case the caller passed a relative one.
@@ -437,7 +460,7 @@ impl FastSkillService {
                 skill_def.id.to_string(),
                 DependencySpec::Inline {
                     origin: origin_for_manifest,
-                    groups: None,
+                    groups: effective_groups.clone(),
                 },
             );
         }
@@ -454,6 +477,15 @@ impl FastSkillService {
             ProjectSkillsLock::new_empty()
         };
         lock.update_skill(skill_def);
+        // Mirror the manifest's groups onto the lock entry (update_skill does not
+        // carry them from the manifest).
+        if let Some(entry) = lock
+            .skills
+            .iter_mut()
+            .find(|s| s.id == skill_def.id.as_str())
+        {
+            entry.groups = effective_groups.clone().unwrap_or_default();
+        }
         lock.save_to_file(&lock_path)
             .map_err(|e| ServiceError::Config(format!("Failed to save skills.lock: {e}")))?;
 
@@ -811,7 +843,7 @@ mod tests {
             editable: false,
         };
         let outcome = service
-            .add_from_origin(origin, AddMode::Fresh)
+            .add_from_origin(origin, AddMode::Fresh, vec![])
             .await
             .expect("add should succeed");
 
@@ -844,6 +876,59 @@ mod tests {
 
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
+    async fn test_add_from_origin_records_and_preserves_groups() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_project();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let service = make_service(&skills_dir).await;
+        let origin = Origin::Local {
+            path: src.clone(),
+            editable: false,
+        };
+
+        // Fresh add with an explicit group records it on manifest + lock.
+        service
+            .add_from_origin(origin.clone(), AddMode::Fresh, vec!["dev".to_string()])
+            .await
+            .expect("fresh add should succeed");
+
+        let groups_in_manifest = || {
+            let project =
+                SkillProjectToml::load_from_file(&tmp.path().join("skill-project.toml")).unwrap();
+            match project
+                .dependencies
+                .unwrap()
+                .dependencies
+                .remove("test-skill")
+            {
+                Some(DependencySpec::Inline { groups, .. }) => groups,
+                _ => None,
+            }
+        };
+        let lock_groups = || {
+            let lock = ProjectSkillsLock::load_from_file(&tmp.path().join("skills.lock")).unwrap();
+            lock.skills[0].groups.clone()
+        };
+        assert_eq!(groups_in_manifest(), Some(vec!["dev".to_string()]));
+        assert_eq!(lock_groups(), vec!["dev".to_string()]);
+
+        // Update with an empty groups list must PRESERVE the existing group.
+        service
+            .add_from_origin(origin, AddMode::Update, vec![])
+            .await
+            .expect("update should succeed");
+        assert_eq!(
+            groups_in_manifest(),
+            Some(vec!["dev".to_string()]),
+            "update with empty groups must preserve existing groups"
+        );
+        assert_eq!(lock_groups(), vec!["dev".to_string()]);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_add_from_origin_fresh_conflict() {
         let _lock = crate::test_utils::DIR_MUTEX
             .lock()
@@ -857,11 +942,13 @@ mod tests {
             editable: false,
         };
         service
-            .add_from_origin(origin.clone(), AddMode::Fresh)
+            .add_from_origin(origin.clone(), AddMode::Fresh, vec![])
             .await
             .expect("first add should succeed");
 
-        let result = service.add_from_origin(origin, AddMode::Fresh).await;
+        let result = service
+            .add_from_origin(origin, AddMode::Fresh, vec![])
+            .await;
         assert!(matches!(result, Err(ServiceError::AlreadyIndexed(_))));
     }
 
@@ -880,7 +967,7 @@ mod tests {
             editable: false,
         };
         service
-            .add_from_origin(origin.clone(), AddMode::Fresh)
+            .add_from_origin(origin.clone(), AddMode::Fresh, vec![])
             .await
             .expect("first add should succeed");
 
@@ -892,7 +979,7 @@ mod tests {
         .unwrap();
 
         let outcome = service
-            .add_from_origin(origin, AddMode::Update)
+            .add_from_origin(origin, AddMode::Update, vec![])
             .await
             .expect("update should succeed");
         assert_eq!(outcome.resolved.version, "2.0.0");
@@ -923,7 +1010,7 @@ mod tests {
             editable: true,
         };
         let outcome = service
-            .add_from_origin(origin, AddMode::Fresh)
+            .add_from_origin(origin, AddMode::Fresh, vec![])
             .await
             .expect("editable add should succeed");
 
@@ -941,7 +1028,9 @@ mod tests {
             path: tmp.path().join("does-not-exist"),
             editable: false,
         };
-        let result = service.add_from_origin(origin, AddMode::Fresh).await;
+        let result = service
+            .add_from_origin(origin, AddMode::Fresh, vec![])
+            .await;
         assert!(matches!(result, Err(ServiceError::InvalidOperation(_))));
     }
 
@@ -985,7 +1074,7 @@ mod tests {
             url: format!("{}/pkg.zip", server.uri()),
         };
         let outcome = service
-            .add_from_origin(origin, AddMode::Fresh)
+            .add_from_origin(origin, AddMode::Fresh, vec![])
             .await
             .expect("zip-url add should succeed");
         assert_eq!(outcome.id, "test-skill");
@@ -1005,7 +1094,9 @@ mod tests {
             skill: "scope/skill".to_string(),
             version: None,
         };
-        let result = service.add_from_origin(origin, AddMode::Fresh).await;
+        let result = service
+            .add_from_origin(origin, AddMode::Fresh, vec![])
+            .await;
         assert!(matches!(result, Err(ServiceError::Config(_))));
     }
 
@@ -1022,7 +1113,9 @@ mod tests {
             r#ref: GitRef::Commit("deadbeef".to_string()),
             subdir: None,
         };
-        let result = service.add_from_origin(origin, AddMode::Fresh).await;
+        let result = service
+            .add_from_origin(origin, AddMode::Fresh, vec![])
+            .await;
         assert!(matches!(result, Err(ServiceError::InvalidOperation(_))));
     }
 

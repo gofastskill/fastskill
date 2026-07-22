@@ -145,64 +145,6 @@ pub fn remove_from_global_lock_file(skill_id: &str) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// Re-apply `groups` onto both the skill-project.toml dependency entry and the
-/// skills.lock entry for `skill_id`, after a core-seam `add_from_origin` /
-/// `preflight` install (ADR-0005).
-///
-/// Core-seam gap: `add_from_origin`'s shared `commit` pipeline has no `groups`
-/// parameter — its manifest upsert always writes `groups: None` and its lock
-/// upsert always writes `groups: Vec::new()` (`ProjectSkillsLock::update_skill_with_depth`
-/// hardcodes it). This restores the CLI's poetry-style `--group` / dependency-group
-/// UX on top of the seam without touching core. A no-op when `groups` is empty
-/// (the common case), so it never turns a clean write into a dirty one.
-pub fn reapply_groups_after_seam(
-    project_file_path: &Path,
-    lock_path: &Path,
-    skill_id: &str,
-    groups: Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if groups.is_empty() {
-        return Ok(());
-    }
-
-    if project_file_path.exists() {
-        let mut project = SkillProjectToml::load_from_file(project_file_path)
-            .map_err(|e| format!("Failed to load skill-project.toml: {}", e))?;
-        let mut changed = false;
-        if let Some(deps) = project.dependencies.as_mut() {
-            if let Some(DependencySpec::Inline { groups: g, .. }) =
-                deps.dependencies.get_mut(skill_id)
-            {
-                *g = Some(groups.clone());
-                changed = true;
-            }
-        }
-        if changed {
-            project
-                .save_to_file(project_file_path)
-                .map_err(|e| format!("Failed to save skill-project.toml: {}", e))?;
-        }
-    }
-
-    if lock_path.exists() {
-        let sidecar = sidecar_path(lock_path);
-        let _guard = acquire_advisory_lock(&sidecar)
-            .map_err(|e| format!("Failed to acquire lock on skills.lock: {}", e))?;
-
-        let mut lock = ProjectSkillsLock::load_from_file(lock_path)
-            .map_err(|e| format!("Failed to load lock file: {}", e))?;
-        if let Some(entry) = lock.skills.iter_mut().find(|s| s.id == skill_id) {
-            entry.groups = groups;
-            lock.save_to_file(lock_path)
-                .map_err(|e| format!("Failed to save lock file: {}", e))?;
-        }
-
-        let _ = std::fs::remove_file(&sidecar);
-    }
-
-    Ok(())
-}
-
 /// T028: Add skill to skill-project.toml [dependencies] section.
 /// Fails if skill-project.toml is not found in the hierarchy (we never auto-create it).
 ///
