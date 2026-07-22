@@ -10,15 +10,34 @@
     <div id="app">
         <header class="page-header">
             <h1>skill-project.toml</h1>
+
+            <div id="readonly-banner" class="banner banner-warning" hidden>
+                Read-only &mdash; start <code>fastskill serve --enable-write</code> to install or update skills.
+            </div>
+            <div id="provider-banner" class="banner banner-info" hidden>
+                No embedding provider &mdash; search and reindex are unavailable.
+            </div>
+
             <div class="toolbar">
-                <button type="button" id="upgrade-all-btn" class="btn-upgrade-all">Upgrade all</button>
-                <input type="text" id="search-input" placeholder="Filter skills..." class="search-input">
+                <form id="install-form" class="install-bar" hidden>
+                    <input
+                        type="text"
+                        id="install-input"
+                        class="install-input"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="Paste a git URL, .zip URL, local path, or scope/skill">
+                    <button type="submit" id="install-btn" class="btn btn-primary">Install</button>
+                </form>
+                <button type="button" id="update-all-btn" class="btn btn-secondary" hidden>Update all</button>
+                <button type="button" id="reindex-btn" class="btn btn-secondary" hidden>Reindex</button>
+                <input type="text" id="search-input" placeholder="Filter skills&hellip;" class="search-input">
             </div>
         </header>
         <main>
-            <div id="loading" class="loading" style="display: none;">Loading...</div>
-            <div id="error" class="error" style="display: none;"></div>
-            <div id="content" class="content-panel">
+            <div id="loading" class="loading">Loading&hellip;</div>
+            <div id="error" class="error" hidden></div>
+            <div id="content" class="content-panel" hidden>
                 <section id="metadata-section" class="section"></section>
                 <section id="skills-dir-section" class="section"></section>
                 <section id="skills-section" class="section">
@@ -31,6 +50,7 @@
                                 <th>Type</th>
                                 <th>Location</th>
                                 <th>Description</th>
+                                <th>Status</th>
                                 <th class="th-actions">Actions</th>
                             </tr>
                         </thead>
@@ -40,6 +60,20 @@
             </div>
         </main>
     </div>
+
+    <aside id="drawer" class="drawer" aria-hidden="true">
+        <div id="drawer-backdrop" class="drawer-backdrop"></div>
+        <div class="drawer-panel" role="dialog" aria-label="Skill detail" aria-modal="true">
+            <div class="drawer-header">
+                <h2 id="drawer-title">Skill</h2>
+                <button type="button" id="drawer-close" class="btn-close" aria-label="Close">&times;</button>
+            </div>
+            <div id="drawer-body" class="drawer-body"></div>
+        </div>
+    </aside>
+
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
     <script src="app.js"></script>
 </body>
 </html>
