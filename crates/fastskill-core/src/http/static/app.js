@@ -489,6 +489,21 @@ class FastSkillApp {
               `
             : `<tr><td class="k">origin</td><td class="muted">—</td></tr>`;
 
+        // Version picker (v2): only repository-origin skills carry a version
+        // index to pick from — git/local/zip-url are versionless (spec 003
+        // §3, ADR-0004 scope) and render nothing here.
+        const isRepository = !!(origin && origin.type === 'repository');
+        const versionSection = isRepository
+            ? `
+                <h3 class="drawer-subtitle">Version</h3>
+                <div class="version-picker" id="drawer-version-section">
+                    <select id="drawer-version-select" class="version-select" hidden disabled></select>
+                    <button type="button" id="drawer-version-apply" class="btn btn-secondary" hidden disabled>Apply</button>
+                    <p class="muted" id="drawer-version-note">Loading versions&hellip;</p>
+                </div>
+            `
+            : '';
+
         body.innerHTML = `
             <table class="meta-table"><tbody>
                 <tr><td class="k">id</td><td><code>${this.escapeHtml(skill.id)}</code></td></tr>
@@ -497,33 +512,222 @@ class FastSkillApp {
                 <tr><td class="k">author</td><td>${this.escapeHtml(meta.author || '—')}</td></tr>
                 ${originRows}
             </tbody></table>
+            ${versionSection}
             <h3 class="drawer-subtitle">SKILL.md</h3>
+            <div class="content-toggle" role="group" aria-label="Content view">
+                <button type="button" class="toggle-btn active" id="drawer-format-raw" data-format="raw">Raw</button>
+                <button type="button" class="toggle-btn" id="drawer-format-rendered" data-format="rendered">Rendered</button>
+            </div>
             <pre class="skill-content" id="drawer-content">Loading&hellip;</pre>
+            <div class="markdown-body" id="drawer-content-rendered" hidden></div>
         `;
 
         drawer.classList.add('open');
         drawer.setAttribute('aria-hidden', 'false');
         this._openSkillId = skill.id;
+        // format -> fetched content, so toggling Raw/Rendered back and forth
+        // doesn't refetch on every click.
+        this._contentCache = { raw: null, rendered: null };
+
+        const rawBtn = document.getElementById('drawer-format-raw');
+        const renderedBtn = document.getElementById('drawer-format-rendered');
+        if (rawBtn) rawBtn.addEventListener('click', () => this.setContentFormat(skill.id, 'raw'));
+        if (renderedBtn) renderedBtn.addEventListener('click', () => this.setContentFormat(skill.id, 'rendered'));
+
+        if (isRepository) {
+            const versionApplyBtn = document.getElementById('drawer-version-apply');
+            if (versionApplyBtn) versionApplyBtn.addEventListener('click', () => this.applyVersionChange(skill));
+            this.loadVersionPicker(skill);
+        }
+
+        // Raw is selected by default (unchanged v1 behavior).
+        this.setContentFormat(skill.id, 'raw');
+    }
+
+    // Switches the drawer's SKILL.md view between the escaped raw <pre> and
+    // the server-rendered/sanitized markdown container, fetching content for
+    // that format on first use and reusing the cache afterward.
+    setContentFormat(skillId, format) {
+        this._contentFormat = format;
+        const rawBtn = document.getElementById('drawer-format-raw');
+        const renderedBtn = document.getElementById('drawer-format-rendered');
+        const contentEl = document.getElementById('drawer-content');
+        const renderedEl = document.getElementById('drawer-content-rendered');
+        if (rawBtn) rawBtn.classList.toggle('active', format === 'raw');
+        if (renderedBtn) renderedBtn.classList.toggle('active', format === 'rendered');
+        if (contentEl) contentEl.hidden = format !== 'raw';
+        if (renderedEl) renderedEl.hidden = format !== 'rendered';
+        this.loadDrawerContent(skillId, format);
+    }
+
+    async loadDrawerContent(skillId, format) {
+        const cache = this._contentCache || (this._contentCache = { raw: null, rendered: null });
+        if (cache[format] != null) {
+            this.applyContentToDom(format, cache[format]);
+            return;
+        }
+
+        const contentEl = document.getElementById('drawer-content');
+        const renderedEl = document.getElementById('drawer-content-rendered');
+        if (format === 'raw') {
+            if (contentEl) contentEl.textContent = 'Loading…';
+        } else if (renderedEl) {
+            renderedEl.textContent = 'Loading…';
+        }
 
         try {
-            const res = await fetch(`${this.apiBase}/skills/${encodeURIComponent(skill.id)}/content`);
+            const url = format === 'rendered'
+                ? `${this.apiBase}/skills/${encodeURIComponent(skillId)}/content?format=html`
+                : `${this.apiBase}/skills/${encodeURIComponent(skillId)}/content`;
+            const res = await fetch(url);
             const data = await res.json().catch(() => null);
             // The drawer may have been closed/reopened on a different skill
             // while this request was in flight.
-            if (this._openSkillId !== skill.id) return;
-            const contentEl = document.getElementById('drawer-content');
-            if (!contentEl) return;
+            if (this._openSkillId !== skillId) return;
+
             if (res.ok && data && data.success && data.data) {
-                // textContent, not innerHTML: the SKILL.md body is untrusted
-                // content (SEC-7) and must never be interpreted as markup.
-                contentEl.textContent = data.data.content != null ? data.data.content : '';
+                const value = data.data.content != null ? data.data.content : '';
+                cache[format] = value;
+                this.applyContentToDom(format, value);
             } else {
-                contentEl.textContent = `Error loading content: ${(data && data.error && data.error.message) || res.status}`;
+                const msg = `Error loading content: ${(data && data.error && data.error.message) || res.status}`;
+                if (format === 'raw') { if (contentEl) contentEl.textContent = msg; }
+                else if (renderedEl) renderedEl.textContent = msg;
             }
         } catch (err) {
+            if (this._openSkillId !== skillId) return;
+            const msg = `Error: ${err.message}`;
+            if (format === 'raw') { if (contentEl) contentEl.textContent = msg; }
+            else if (renderedEl) renderedEl.textContent = msg;
+        }
+    }
+
+    applyContentToDom(format, value) {
+        const contentEl = document.getElementById('drawer-content');
+        const renderedEl = document.getElementById('drawer-content-rendered');
+        if (format === 'raw') {
+            if (!contentEl) return;
+            // textContent, not innerHTML: the SKILL.md raw body is untrusted
+            // content (SEC-7) and must never be interpreted as markup.
+            contentEl.textContent = value;
+            return;
+        }
+        if (!renderedEl) return;
+        // INTENTIONAL innerHTML, NOT a SEC-7 violation: `value` here is the
+        // *rendered* markdown response (`?format=html`), which the Rust
+        // server already ran through comrak + an ammonia allowlist
+        // sanitizer before sending it — it is not the raw untrusted
+        // SKILL.md text. Re-escaping it here would print literal `<h1>`
+        // tags as text instead of rendering them. Do NOT change this to
+        // textContent/escapeHtml; if you need to distrust this value, fix
+        // the sanitization server-side instead.
+        renderedEl.innerHTML = value;
+        // Extra client-side safety net on top of server sanitization: force
+        // every link to open in a new tab without leaking a window.opener
+        // handle back to the linked page. Operates on the already-sanitized
+        // DOM (not on raw untrusted text), so this is safe regardless of
+        // what the server did or didn't set.
+        renderedEl.querySelectorAll('a[href]').forEach((a) => {
+            a.setAttribute('target', '_blank');
+            a.setAttribute('rel', 'noopener noreferrer');
+        });
+    }
+
+    // ---- version picker (repository-origin skills only) -------------------
+
+    async loadVersionPicker(skill) {
+        const section = document.getElementById('drawer-version-section');
+        if (!section) return;
+
+        const select = document.getElementById('drawer-version-select');
+        const applyBtn = document.getElementById('drawer-version-apply');
+        const note = document.getElementById('drawer-version-note');
+        const writable = !!(this.status && this.status.writable);
+
+        try {
+            const res = await fetch(`${this.apiBase}/registry/skills/${encodeURIComponent(skill.id)}/versions`);
+            const data = await res.json().catch(() => null);
             if (this._openSkillId !== skill.id) return;
-            const contentEl = document.getElementById('drawer-content');
-            if (contentEl) contentEl.textContent = `Error: ${err.message}`;
+
+            const versions = (res.ok && data && data.success && data.data && Array.isArray(data.data.versions))
+                ? data.data.versions
+                : [];
+
+            if (versions.length === 0) {
+                if (select) select.hidden = true;
+                if (applyBtn) applyBtn.hidden = true;
+                if (note) {
+                    note.hidden = false;
+                    note.textContent = 'No other versions available';
+                }
+                return;
+            }
+
+            const meta = skill.metadata || {};
+            const origin = meta.origin || {};
+            const current = origin.version || meta.version || null;
+
+            if (select) {
+                select.innerHTML = versions.map((v) => {
+                    const val = this.escapeHtml(v.version);
+                    const selected = current && v.version === current ? ' selected' : '';
+                    return `<option value="${val}"${selected}>${val}</option>`;
+                }).join('');
+                select.disabled = !writable;
+                select.hidden = false;
+            }
+            if (applyBtn) {
+                applyBtn.disabled = !writable;
+                applyBtn.hidden = false;
+            }
+            if (note) note.hidden = true;
+        } catch (err) {
+            if (this._openSkillId !== skill.id) return;
+            if (select) select.hidden = true;
+            if (applyBtn) applyBtn.hidden = true;
+            if (note) {
+                note.hidden = false;
+                note.textContent = `Error loading versions: ${err.message}`;
+            }
+        }
+    }
+
+    async applyVersionChange(skill) {
+        if (!(this.status && this.status.writable)) {
+            this.toast('Read-only — start with --enable-write to update skills', 'error');
+            return;
+        }
+
+        const select = document.getElementById('drawer-version-select');
+        const applyBtn = document.getElementById('drawer-version-apply');
+        if (!select || !select.value) return;
+
+        if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying…'; }
+        try {
+            const res = await fetch(`${this.apiBase}/skills/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skillId: skill.id, version: select.value }),
+            });
+            const data = await res.json().catch(() => null);
+            if (res.ok && data && data.success && Array.isArray(data.data)) {
+                this.toast(this.summarizeUpdateResults(data.data), 'success');
+                await this.loadAll();
+                // Refresh the drawer in place so metadata/version reflect
+                // the just-applied change, if the skill is still installed.
+                const refreshed = this.skills.find((s) => s.id === skill.id);
+                if (refreshed) await this.openDrawer(refreshed);
+            } else if (res.status === 403) {
+                this.toast('Read-only — start with --enable-write to update skills', 'error');
+            } else {
+                this.toast((data && data.error && data.error.message) || 'Version update failed', 'error');
+            }
+        } catch (err) {
+            this.toast(`Error: ${err.message}`, 'error');
+        } finally {
+            // No-op if openDrawer already replaced the drawer body above.
+            const btn = document.getElementById('drawer-version-apply');
+            if (btn) { btn.disabled = !(this.status && this.status.writable); btn.textContent = 'Apply'; }
         }
     }
 
@@ -533,6 +737,7 @@ class FastSkillApp {
         drawer.classList.remove('open');
         drawer.setAttribute('aria-hidden', 'true');
         this._openSkillId = null;
+        this._contentCache = null;
     }
 
     // ---- toasts -----------------------------------------------------------
