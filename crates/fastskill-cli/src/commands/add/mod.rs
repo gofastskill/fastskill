@@ -357,9 +357,64 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
 }
 
 /// Build the install-intent [`Origin`] for the common (single-skill,
-/// project-level) add path from the classified `source` and parsed args
-/// (ADR-0005: `detect_skill_source` → `Origin`, feeding `add_from_origin`).
-fn build_origin(source: &SkillSource, args: &AddArgs) -> CliResult<Origin> {
+/// project-level) add path (ADR-0005 / spec 003 Phase 3: `infer_origin` is the
+/// one canonical string → `Origin` inference path — the CLI no longer keeps
+/// its own private copy of that classification logic).
+///
+/// `--source-type` is an explicit CLI override of source classification (not
+/// part of the Origin-ref inference contract itself, and not exercised by the
+/// browser UI); it keeps its own narrow per-variant construction
+/// (`build_origin_explicit_source_type`) rather than being routed through the
+/// core seam. The natural (no `--source-type`) path below — the common case —
+/// delegates the raw `args.source` string straight to
+/// `FastSkillService::infer_origin`, then applies the CLI's explicit
+/// `--branch`/`--tag`/`--editable` overrides on top of the inferred `Origin`.
+async fn build_origin(
+    service: &FastSkillService,
+    source: &SkillSource,
+    args: &AddArgs,
+) -> CliResult<Origin> {
+    if args.source_type.is_some() {
+        return build_origin_explicit_source_type(source, args);
+    }
+
+    let mut origin = service.infer_origin(&args.source).await?;
+
+    match &mut origin {
+        Origin::Local { path, editable } => {
+            // `infer_origin` deliberately does not canonicalize (the fetch
+            // step resolves relative paths against cwd) — the CLI still wants
+            // an upfront, actionable "path does not exist" error and an
+            // absolute path recorded in the Manifest, mirroring pre-seam
+            // behavior.
+            let canonical = path.canonicalize().map_err(|e| {
+                CliError::InvalidSource(format!(
+                    "Failed to resolve absolute path for '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            *path = canonical;
+            *editable = args.editable;
+        }
+        Origin::Git { r#ref, .. } => {
+            if let Some(b) = &args.branch {
+                *r#ref = GitRef::Branch(b.clone());
+            } else if matches!(r#ref, GitRef::Default) {
+                if let Some(t) = &args.tag {
+                    *r#ref = GitRef::Tag(t.clone());
+                }
+            }
+        }
+        Origin::ZipUrl { .. } | Origin::Repository { .. } => {}
+    }
+
+    Ok(origin)
+}
+
+/// Pre-seam per-`SkillSource`-variant `Origin` construction, kept only for the
+/// explicit `--source-type` override (see `build_origin`).
+fn build_origin_explicit_source_type(source: &SkillSource, args: &AddArgs) -> CliResult<Origin> {
     match source {
         SkillSource::ZipFile(path) => {
             let canonical = path.canonicalize().map_err(|e| {
@@ -528,7 +583,7 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
         validate_skill_structure(path)?;
     }
 
-    let origin = build_origin(&source, &args)?;
+    let origin = build_origin(service, &source, &args).await?;
     let mode = if args.force {
         AddMode::Update
     } else {

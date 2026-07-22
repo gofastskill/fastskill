@@ -79,7 +79,7 @@ async fn write_route_returns_403_when_write_disabled() {
     // Also cover the other new write routes (spec 003 Phase 2): install/update.
     let install_resp = client
         .post(format!("http://127.0.0.1:{port}/api/v1/skills/install"))
-        .json(&serde_json::json!({"origin": {"type": "local", "path": "/tmp/does-not-matter"}}))
+        .json(&serde_json::json!({"origin": "/tmp/does-not-matter"}))
         .send()
         .await
         .expect("POST /api/v1/skills/install");

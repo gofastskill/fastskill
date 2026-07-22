@@ -249,13 +249,15 @@ pub struct UpdateSkillRequest {
     pub version: Option<String>,
 }
 
-/// POST /api/v1/skills/install request body: a fresh install from an [`Origin`]
-/// (core install seam, ADR-0005). `Origin` deserializes directly (internally
-/// tagged by `type`).
+/// POST /api/v1/skills/install request body: a fresh install from an **Origin
+/// ref** — a raw string (git URL, `.zip` URL, local path, or
+/// `scope/skill[@version]` id) that the server classifies via the core
+/// `infer_origin` seam (ADR-0005 / spec 003 Phase 3) — the UI performs no
+/// detection of its own; it just sends what the user typed.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallSkillRequest {
-    pub origin: crate::core::origin::Origin,
+    pub origin: String,
     #[serde(default)]
     pub groups: Vec<String>,
 }
@@ -278,6 +280,17 @@ pub struct UpdateSkillsRequest {
     pub skill_id: Option<String>,
     #[serde(default)]
     pub check: bool,
+}
+
+/// GET /api/v1/skills/{id}/content response: the installed skill's `SKILL.md`
+/// as raw text (path-confined to the skills directory; see
+/// `handlers::skills::get_skill_content`). Rendered HTML-escaped by the UI —
+/// no Markdown rendering (spec 003 §5 / SEC-7).
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillContentResponse {
+    pub path: String,
+    pub content: String,
 }
 
 /// Per-skill outcome of a `POST /api/v1/skills/update` call.

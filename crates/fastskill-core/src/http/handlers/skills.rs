@@ -85,6 +85,58 @@ pub async fn get_skill(
     Ok(axum::Json(ApiResponse::success(response)))
 }
 
+/// GET /api/v1/skills/{id}/content - Read-only view of the installed skill's
+/// `SKILL.md` (spec 003 §5 / Phase 3 §Q4). Always mounted on the read router
+/// (not write-gated). PATH-CONFINEMENT is a hard requirement here: the
+/// resolved file must canonicalize to somewhere inside the canonicalized
+/// skills directory, or the request is rejected — this endpoint must never
+/// become a directory-traversal primitive, even though `serve` itself is not a
+/// security boundary (ADR-0003).
+pub async fn get_skill_content(
+    State(state): State<AppState>,
+    Path(skill_id): Path<String>,
+) -> HttpResult<axum::Json<ApiResponse<SkillContentResponse>>> {
+    let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
+        .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
+
+    let skills = state.service.skill_manager().list_skills().await?;
+    let skill = skills
+        .into_iter()
+        .find(|s| s.id == skill_id_parsed)
+        .ok_or_else(|| HttpError::NotFound(format!("Skill not found: {}", skill_id)))?;
+
+    // `skill_file` may be stored relative (e.g. `./skills/{id}/SKILL.md`) or
+    // absolute; resolve a relative one against the skills directory before
+    // touching the filesystem.
+    let candidate = if skill.skill_file.is_absolute() {
+        skill.skill_file.clone()
+    } else {
+        state.skills_directory.join(&skill.skill_file)
+    };
+
+    let confined =
+        crate::security::path::validate_path_within_root(&candidate, &state.skills_directory)
+            .map_err(|e| match e {
+                crate::security::path::PathSecurityError::EscapesRoot(msg)
+                | crate::security::path::PathSecurityError::TraversalAttempt(msg)
+                | crate::security::path::PathSecurityError::InvalidComponent(msg) => {
+                    HttpError::BadRequest(msg)
+                }
+                crate::security::path::PathSecurityError::CanonicalizationFailed(_) => {
+                    HttpError::NotFound(format!("Skill file not found on disk: {}", skill_id))
+                }
+            })?;
+
+    let content = tokio::fs::read_to_string(&confined)
+        .await
+        .map_err(|_| HttpError::NotFound(format!("Skill file not found on disk: {}", skill_id)))?;
+
+    Ok(axum::Json(ApiResponse::success(SkillContentResponse {
+        path: confined.to_string_lossy().to_string(),
+        content,
+    })))
+}
+
 /// DELETE /api/skills/{id} - Delete skill (remove from manifest and storage, unregister)
 pub async fn delete_skill(
     State(state): State<AppState>,
@@ -157,17 +209,29 @@ pub async fn delete_skill(
     }))))
 }
 
-/// POST /api/v1/skills/install - Fresh-install a skill from an [`Origin`]
-/// (core install seam, ADR-0005 / spec 003 §2). `AddMode::Fresh` fails with a
-/// 409 if the resolved id is already installed; other seam errors map to
-/// 400/500 via the blanket `ServiceError` → `HttpError` conversion.
+/// POST /api/v1/skills/install - Fresh-install a skill from an **Origin ref**
+/// string (core install seam, ADR-0005 / spec 003 §2 + Phase 3). The server
+/// classifies `request.origin` via `infer_origin` — the UI performs no
+/// detection of its own — then `AddMode::Fresh` fails with a 409 if the
+/// resolved id is already installed; other seam errors map to 400/500 via the
+/// blanket `ServiceError` → `HttpError` conversion.
 pub async fn install_skill(
     State(state): State<AppState>,
     Json(request): Json<InstallSkillRequest>,
 ) -> HttpResult<(StatusCode, axum::Json<ApiResponse<InstallSkillResponse>>)> {
+    // A bad ref / no-default-repo is a client error (400), not a 500 — surface
+    // it distinctly from the blanket `ServiceError` → `HttpError` conversion
+    // below (which maps `Config` to 500, appropriate for the *fetch* path but
+    // not for classifying the ref itself).
+    let origin = state
+        .service
+        .infer_origin(&request.origin)
+        .await
+        .map_err(|e| HttpError::BadRequest(e.to_string()))?;
+
     match state
         .service
-        .add_from_origin(request.origin, AddMode::Fresh, request.groups)
+        .add_from_origin(origin, AddMode::Fresh, request.groups)
         .await
     {
         Ok(outcome) => {
