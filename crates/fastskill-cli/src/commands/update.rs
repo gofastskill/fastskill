@@ -2,25 +2,21 @@
 
 use crate::config::create_service_config;
 use crate::error::{manifest_required_message, CliError, CliResult};
-use crate::utils::{install_utils, manifest_utils, messages};
+use crate::utils::{manifest_utils, messages};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
-    lock::{global_lock_path, GlobalSkillsLock, ProjectSkillsLock},
+    lock::{global_lock_path, GlobalSkillsLock},
     manifest::SkillProjectToml,
     project::resolve_project_file,
-    repository::RepositoryManager,
-    resolver::PackageResolver,
-    sources::SourcesManager,
-    update::{UpdateService, UpdateStrategy},
+    AddMode, UpdatePreflight,
 };
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Update skills to latest versions (behavior matrix affects manifest, lock, and installed state)
 ///
@@ -195,15 +191,17 @@ pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
         let config = create_service_config(global, None)?;
         if let Ok(mut svc) = fastskill_core::FastSkillService::new(config).await {
             if svc.initialize().await.is_ok() {
-                let _ = crate::utils::reindex_utils::maybe_auto_reindex(
-                    &svc,
-                    "update",
-                    reindex,
-                    no_reindex,
-                    auto_reindex_config,
-                    false,
-                )
-                .await;
+                if let Ok(svc) = crate::config::inject_edge_services(svc) {
+                    let _ = crate::utils::reindex_utils::maybe_auto_reindex(
+                        &svc,
+                        "update",
+                        reindex,
+                        no_reindex,
+                        auto_reindex_config,
+                        false,
+                    )
+                    .await;
+                }
             }
         }
     }
@@ -288,6 +286,21 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
     Ok(())
 }
 
+/// Updates skills recorded in the project's `skill-project.toml`/`skills.lock` by
+/// routing each dependency's recorded `Origin` through the core install seam
+/// (ADR-0005): `preflight(&origin)` decides whether there's anything to update
+/// (`Updatable`/`UpToDate`/`Immutable { reason }`), and only `Updatable` entries
+/// are re-fetched via `add_from_origin(origin, AddMode::Update)`.
+///
+/// NOTE (core-seam gap / simplification): `--strategy`/`--version` are parsed and
+/// validated for backward compatibility, but (as in the pre-seam CLI, where they
+/// were likewise parsed yet never consulted by the actual, non-`--check`/`--dry-run`
+/// update loop) they have no effect on which version is installed — the seam
+/// always resolves each origin to what it considers current (newest allowed for a
+/// registry/repository origin, a fresh re-fetch for git/local/zip-url). The
+/// previous marketplace-aware `UpdateService::check_updates` version-diffing for
+/// `--check`/`--dry-run` is likewise replaced by `preflight`'s coarser
+/// Updatable/UpToDate/Immutable classification.
 async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     println!("Updating skills...");
     println!();
@@ -329,82 +342,64 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         return Ok(());
     }
 
-    // Parse update strategy
-    let strategy = match args.strategy.as_str() {
-        "latest" => UpdateStrategy::Latest,
-        "patch" => UpdateStrategy::Patch,
-        "minor" => UpdateStrategy::Minor,
-        "major" => UpdateStrategy::Major,
+    // Parse/validate the update strategy (kept for CLI compatibility; see the
+    // NOTE above — it has no bearing on the seam-based resolution below).
+    match args.strategy.as_str() {
+        "latest" | "patch" | "minor" | "major" => {}
+        _ if args.version.is_some() => {}
         _ => {
-            if let Some(version) = &args.version {
-                UpdateStrategy::Exact(version.clone())
-            } else {
-                return Err(CliError::Config(format!(
-                    "Invalid strategy: {}. Use: latest, patch, minor, major",
-                    args.strategy
-                )));
-            }
+            return Err(CliError::Config(format!(
+                "Invalid strategy: {}. Use: latest, patch, minor, major",
+                args.strategy
+            )));
         }
-    };
+    }
 
-    // If version is specified, use Exact strategy
-    let strategy = if let Some(version) = &args.version {
-        UpdateStrategy::Exact(version.clone())
-    } else {
-        strategy
-    };
-
-    // T033: Load lock file from project root
+    // T033: Resolve the lock file path from the project root
     let lock_path = if let Some(parent) = project_file_path.parent() {
         parent.join("skills.lock")
     } else {
         PathBuf::from("skills.lock")
     };
-    let lock = if lock_path.exists() {
-        ProjectSkillsLock::load_from_file(&lock_path)
-            .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?
-    } else {
+    if !lock_path.exists() {
         return Err(CliError::Config(
             "skills.lock not found. Run 'fastskill install' first.".to_string(),
         ));
-    };
+    }
 
-    // Load repositories and create sources manager for marketplace-based repos
-    let repositories = crate::config::load_repositories_from_project()?;
-    let repo_manager = RepositoryManager::from_definitions(repositories);
-
-    // Create SourcesManager from marketplace-based repositories for PackageResolver
-    let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;
+    // Initialize the (edge-injected) service: embedding provider + repository
+    // manager (ADR-0005). Needed even in --check/--dry-run mode, since
+    // `preflight` on an `Origin::Repository` entry consults the repository
+    // manager.
+    let config = create_service_config(false, None)?;
+    let mut service = FastSkillService::new(config)
+        .await
+        .map_err(CliError::Service)?;
+    service.initialize().await.map_err(CliError::Service)?;
+    let service = crate::config::inject_edge_services(service)?;
 
     if args.check || args.dry_run {
-        if let Some(sources_mgr) = sources_manager {
-            let mut resolver = PackageResolver::new(sources_mgr.clone());
-            resolver
-                .build_index()
-                .await
-                .map_err(|e| CliError::Config(format!("Failed to build resolver index: {}", e)))?;
-
-            let update_service = UpdateService::new(Arc::new(resolver), lock);
-            let updates = update_service
-                .check_updates(args.skill_id.as_deref(), strategy)
-                .map_err(|e| CliError::Config(format!("Failed to check updates: {}", e)))?;
-
-            if updates.is_empty() {
-                println!("{}", messages::info("No updates available"));
-            } else {
-                println!("\nSkills that would be updated:\n");
-                for update in &updates {
-                    println!(
-                        "  • {}: {} -> {}",
-                        update.skill_id, update.current_version, update.available_version
-                    );
+        println!("\nSkills that would be updated:\n");
+        let mut any_reported = false;
+        for entry in &entries {
+            any_reported = true;
+            match service.preflight(&entry.origin).await {
+                Ok(UpdatePreflight::Updatable) => {
+                    println!("  • {} (from {:?})", entry.id, entry.origin);
+                }
+                Ok(UpdatePreflight::UpToDate) => {
+                    println!("  • {} is already up to date", entry.id);
+                }
+                Ok(UpdatePreflight::Immutable { reason }) => {
+                    println!("  • {} is immutable: {}", entry.id, reason);
+                }
+                Err(e) => {
+                    println!("  • {}: {}", entry.id, e);
                 }
             }
-        } else {
-            println!("\nSkills that would be updated:\n");
-            for entry in &entries {
-                println!("  • {} (from {:?})", entry.id, entry.origin);
-            }
+        }
+        if !any_reported {
+            println!("{}", messages::info("No updates available"));
         }
         if args.check {
             println!(
@@ -415,42 +410,62 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         return Ok(());
     }
 
-    // Initialize service
-    // Note: update command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(false, None)?;
-    let mut service = FastSkillService::new(config)
-        .await
-        .map_err(CliError::Service)?;
-    service.initialize().await.map_err(CliError::Service)?;
-
-    // Load repositories and create sources manager for marketplace-based repos
-    let repositories = crate::config::load_repositories_from_project()?;
-    let repo_manager = RepositoryManager::from_definitions(repositories);
-
-    // Create SourcesManager from marketplace-based repositories for PackageResolver
-    let sources_manager = create_sources_manager_from_repositories(&repo_manager)?;
-
-    // Update each skill
+    // Update each skill: preflight first (an honest no-op with a reason for
+    // UpToDate/Immutable), then re-fetch only what's Updatable.
     let mut updated_count = 0;
     for entry in entries {
         println!("  Updating {}...", entry.id);
-        match install_utils::install_skill_from_entry(
-            &service,
-            entry.clone(),
-            sources_manager.as_ref().map(|arc| arc.as_ref()),
-        )
-        .await
-        {
-            Ok(skill_def) => {
-                manifest_utils::update_lock_file(&lock_path, &skill_def, entry.groups.clone())
-                    .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
-                updated_count += 1;
-                println!("  {}", messages::ok(&format!("Updated {}", entry.id)));
+        match service.preflight(&entry.origin).await {
+            Ok(UpdatePreflight::Updatable) => {
+                match service
+                    .add_from_origin(entry.origin.clone(), AddMode::Update)
+                    .await
+                {
+                    Ok(outcome) => {
+                        // Core-seam gap workaround: `add_from_origin`'s manifest/lock
+                        // upsert has no `groups` parameter (see
+                        // `reapply_groups_after_seam`'s doc comment).
+                        if let Err(e) = manifest_utils::reapply_groups_after_seam(
+                            &project_file_path,
+                            &lock_path,
+                            &outcome.id,
+                            entry.groups.clone(),
+                        ) {
+                            eprintln!(
+                                "  {}",
+                                messages::error(&format!(
+                                    "Updated {} but failed to reapply groups: {}",
+                                    entry.id, e
+                                ))
+                            );
+                        }
+                        updated_count += 1;
+                        println!("  {}", messages::ok(&format!("Updated {}", entry.id)));
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "  {}",
+                            messages::error(&format!("Failed to update {}: {}", entry.id, e))
+                        );
+                    }
+                }
+            }
+            Ok(UpdatePreflight::UpToDate) => {
+                println!(
+                    "  {}",
+                    messages::info(&format!("{} is already up to date", entry.id))
+                );
+            }
+            Ok(UpdatePreflight::Immutable { reason }) => {
+                println!(
+                    "  {}",
+                    messages::info(&format!("{} is immutable: {}", entry.id, reason))
+                );
             }
             Err(e) => {
                 eprintln!(
                     "  {}",
-                    messages::error(&format!("Failed to update {}: {}", entry.id, e))
+                    messages::error(&format!("Failed to check {}: {}", entry.id, e))
                 );
             }
         }
@@ -464,14 +479,6 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     println!("   Updated skills.lock");
 
     Ok(())
-}
-
-/// Create SourcesManager from RepositoryManager for marketplace-based repositories
-pub fn create_sources_manager_from_repositories(
-    repo_manager: &RepositoryManager,
-) -> CliResult<Option<Arc<SourcesManager>>> {
-    install_utils::create_sources_manager_from_repositories(repo_manager)
-        .map(|opt| opt.map(Arc::new))
 }
 
 #[cfg(test)]

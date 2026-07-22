@@ -1,20 +1,21 @@
-//! Reindex command implementation
+//! Reindex command implementation — a thin wrapper over the core reindex seam
+//! (`FastSkillService::reindex`, ADR-0002/0005). All indexing logic (finding
+//! `SKILL.md` files, hashing, embedding, updating the vector index, pruning
+//! stale entries) lives in core; this module only renders progress and the
+//! final summary from the `ReindexProgress` observer callbacks and the
+//! returned `ReindexOutcome`.
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
-use fastskill_core::{FastSkillService, VectorIndexService};
-use sha2::{Digest, Sha256};
+use fastskill_core::core::reindex::ReindexProgress;
+use fastskill_core::FastSkillService;
 use std::collections::HashMap;
-use std::fs;
 use std::io::{IsTerminal, Write};
-use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::sync::Semaphore;
-use tracing::{info, warn};
 
 /// Check if progress bars should be shown
 fn should_show_progress() -> bool {
@@ -24,17 +25,6 @@ fn should_show_progress() -> bool {
     }
 
     // Check if stdout is a TTY
-    std::io::stdout().is_terminal()
-}
-
-/// Check if colors should be used
-#[allow(dead_code)]
-fn should_use_colors() -> bool {
-    // NO_COLOR takes precedence over TTY detection
-    if std::env::var("NO_COLOR").is_ok() {
-        return false;
-    }
-
     std::io::stdout().is_terminal()
 }
 
@@ -73,6 +63,11 @@ pub struct ReindexArgs {
     pub force: bool,
 
     /// Maximum number of concurrent embedding requests
+    ///
+    /// NOTE (core-seam gap): the core `reindex` seam processes skills
+    /// sequentially and takes no concurrency parameter, so this is currently
+    /// accepted but has no effect. Kept for CLI/arg compatibility.
+    #[allow(dead_code)]
     pub max_concurrent: usize,
 
     /// Show progress bars and processing details
@@ -177,111 +172,22 @@ impl FromArgValueMap for ReindexArgs {
     }
 }
 
-#[derive(Debug)]
-enum ProcessOutcome {
-    Indexed(String),
-    Skipped(String, String),
-    Failed(String, String),
-}
-
-impl ProcessOutcome {
-    #[allow(dead_code)]
-    fn skill_id(&self) -> &str {
-        match self {
-            ProcessOutcome::Indexed(id) => id,
-            ProcessOutcome::Skipped(id, _) => id,
-            ProcessOutcome::Failed(id, _) => id,
-        }
-    }
-}
-
-struct ProgressTracker {
-    total: usize,
-    completed: usize,
-    skipped: usize,
-    failed: usize,
-    start_time: std::time::Instant,
-    mode: ProgressMode,
-}
-
-impl ProgressTracker {
-    fn new(total: usize, progress: bool, no_progress: bool) -> Self {
-        let mode = ProgressMode::from_flags(progress, no_progress);
-
-        Self {
-            total,
-            completed: 0,
-            skipped: 0,
-            failed: 0,
-            start_time: std::time::Instant::now(),
-            mode,
-        }
-    }
-
-    fn record_success(&mut self, skill_id: &str) {
-        self.completed += 1;
-        if self.mode == ProgressMode::Verbose {
-            println!("  ✓ Indexed: {}", skill_id);
-        }
-        self.print_progress();
-    }
-
-    fn record_skip(&mut self, skill_id: &str, reason: &str) {
-        self.skipped += 1;
-        if self.mode == ProgressMode::Verbose {
-            println!("  ⊘ Skipped: {} ({})", skill_id, reason);
-        }
-        self.print_progress();
-    }
-
-    fn record_failure(&mut self, skill_id: &str, error: &str) {
-        self.failed += 1;
-        if self.mode == ProgressMode::Verbose {
-            eprintln!("  ✗ Failed: {} - {}", skill_id, error);
-        }
-        self.print_progress();
-    }
-
-    fn print_progress(&self) {
-        if self.mode != ProgressMode::Live {
-            return;
-        }
-
-        let elapsed = self.start_time.elapsed().as_secs();
-        let processed = self.completed + self.skipped + self.failed;
-        let progress = if self.total > 0 {
-            (processed as f32 / self.total as f32 * 100.0) as usize
-        } else {
-            0
-        };
-        let pending = self.total.saturating_sub(processed);
-
-        print!(
-            "\r\x1B[KProgress: [{}/{}] ({}%) | Pending: {} | Skipped: {} | Failed: {} | Elapsed: {}s",
-            processed, self.total, progress, pending, self.skipped, self.failed, elapsed
-        );
-
-        let _ = std::io::stdout().flush();
-    }
-
-    fn finish(&self) {
-        if self.mode == ProgressMode::Quiet {
-            return;
-        }
-
-        if self.mode == ProgressMode::Live {
-            println!();
-        }
-
-        println!("Reindex completed");
-        println!("  Total skills: {}", self.total);
-        println!("  Successfully indexed: {}", self.completed);
-        println!("  Skipped (unchanged): {}", self.skipped);
-        println!("  Failed: {}", self.failed);
-        println!(
-            "  Total time: {:.2}s",
-            self.start_time.elapsed().as_secs_f64()
-        );
+/// Wipe every entry currently in the vector index so the next `reindex` call
+/// re-embeds everything, regardless of unchanged file hashes.
+///
+/// This is how `--force` is honored through the core seam: `FastSkillService::reindex`
+/// has no `force` parameter (it always skips unchanged-hash skills), so instead of
+/// duplicating its indexing loop here, we use the existing public
+/// `VectorIndexService` accessor to clear the cache it consults.
+async fn clear_vector_index(service: &FastSkillService) {
+    let Some(vector_index_service) = service.vector_index_service() else {
+        return;
+    };
+    let Ok(all_indexed) = vector_index_service.get_all_skills().await else {
+        return;
+    };
+    for indexed in all_indexed {
+        let _ = vector_index_service.remove_skill(&indexed.id).await;
     }
 }
 
@@ -293,315 +199,90 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
         ));
     }
 
-    // Check if embedding is configured
-    if service.config().embedding.is_none() {
-        println!("Reindex skipped: no embedding provider configured. Run 'fastskill doctor' for setup guidance.");
-        return Ok(());
-    }
-    let embedding_config = service.config().embedding.as_ref().unwrap();
+    let mode = ProgressMode::from_flags(args.progress, args.no_progress);
+    let start_time = std::time::Instant::now();
 
-    // Get OpenAI API key
-    let api_key = crate::config_file::get_openai_api_key()?;
-
-    // Initialize embedding service
-    let embedding_service = std::sync::Arc::new(
-        fastskill_core::OpenAIEmbeddingService::from_config(embedding_config, api_key),
-    );
-
-    // Initialize vector index service
-    let vector_index_service =
-        std::sync::Arc::new(fastskill_core::VectorIndexServiceImpl::with_config(
-            embedding_config,
-            &service.config().skill_storage_path,
-        ));
-
-    // Determine skills directory
-    let skills_dir = args
-        .skills_dir
-        .unwrap_or_else(|| service.config().skill_storage_path.clone());
-
-    info!(
-        "Reindexing vector index for skills directory: {}",
-        skills_dir.display()
-    );
-
-    // Find all SKILL.md files
-    let skill_files = find_skill_files(&skills_dir)?;
-
-    if !args.no_progress {
-        println!("Found {} skills to process", skill_files.len());
+    // `--force`: only meaningful when reindex will actually run (an embedding
+    // provider is injected); otherwise leave the index untouched, matching the
+    // "no embedding configured" skip below.
+    if args.force && service.embedding_service().is_some() {
+        clear_vector_index(service).await;
     }
 
-    if skill_files.is_empty() {
-        if !args.no_progress {
-            println!("No skills found in {}", skills_dir.display());
+    // The observer fires once per skill `reindex` finds, before it decides
+    // whether that skill needs re-embedding. Its first call is also the first
+    // point at which the total skill count is known, so we print
+    // "Found N skills to process" there — same information as before, just
+    // learned from the seam's callback instead of a CLI-side directory scan.
+    let found_total = Arc::new(AtomicUsize::new(0));
+    let seen_any = Arc::new(AtomicBool::new(false));
+    let printed_found = Arc::new(AtomicBool::new(false));
+    let no_progress = args.no_progress;
+    let verbose = mode == ProgressMode::Verbose;
+    let live = mode == ProgressMode::Live;
+
+    let found_total_cb = Arc::clone(&found_total);
+    let seen_any_cb = Arc::clone(&seen_any);
+    let printed_found_cb = Arc::clone(&printed_found);
+
+    let observer = move |p: ReindexProgress| {
+        seen_any_cb.store(true, Ordering::SeqCst);
+        found_total_cb.store(p.total, Ordering::SeqCst);
+        if !no_progress && !printed_found_cb.swap(true, Ordering::SeqCst) {
+            println!("Found {} skills to process", p.total);
         }
-        return Ok(());
-    }
-
-    // Collect current skill IDs for cleanup later
-    let current_skill_ids: std::collections::HashSet<String> = skill_files
-        .iter()
-        .filter_map(|skill_file| {
-            skill_file
-                .parent()
-                .and_then(|parent_dir| parent_dir.file_name())
-                .map(|name| name.to_string_lossy().to_string())
-        })
-        .collect();
-
-    // Initialize progress tracker with Arc<Mutex> for thread-safe updates
-    let progress = Arc::new(Mutex::new(ProgressTracker::new(
-        skill_files.len(),
-        args.progress,
-        args.no_progress,
-    )));
-
-    // Process skills concurrently with semaphore for rate limiting
-    let semaphore = Arc::new(Semaphore::new(args.max_concurrent));
-    let mut tasks = Vec::new();
-
-    for skill_file in skill_files {
-        let embedding_service = embedding_service.clone();
-        let vector_index_service = vector_index_service.clone();
-        let semaphore = semaphore.clone();
-        let progress = progress.clone();
-        let force = args.force;
-
-        let task = tokio::spawn(async move {
-            // Acquire semaphore permit for rate limiting
-            let _permit = semaphore
-                .acquire()
-                .await
-                .map_err(|_| CliError::Config("Semaphore closed unexpectedly".to_string()))?;
-
-            // Process the skill file
-            let outcome = process_skill_file(
-                skill_file,
-                &*embedding_service,
-                &*vector_index_service,
-                force,
-            )
-            .await;
-
-            // Update progress tracker based on outcome
-            let mut tracker = progress.lock().await;
-            match outcome {
-                Ok(ProcessOutcome::Indexed(skill_id)) => {
-                    tracker.record_success(&skill_id);
-                }
-                Ok(ProcessOutcome::Skipped(skill_id, reason)) => {
-                    tracker.record_skip(&skill_id, &reason);
-                }
-                Ok(ProcessOutcome::Failed(skill_id, error)) => {
-                    tracker.record_failure(&skill_id, &error);
-                }
-                Err(e) => {
-                    // Extract skill ID from error context if possible
-                    let skill_id = "unknown";
-                    tracker.record_failure(skill_id, &e.to_string());
-                }
-            }
-
-            Ok::<(), CliError>(())
-        });
-
-        tasks.push(task);
-    }
-
-    // Wait for all tasks to complete
-    for task in tasks {
-        if let Err(e) = task.await {
-            warn!("Task panicked: {}", e);
-        }
-    }
-
-    // Print final summary
-    let tracker = progress.lock().await;
-    tracker.finish();
-    let error_count = tracker.failed;
-    drop(tracker); // Release lock before cleanup
-
-    // Cleanup: Remove skills from index that are no longer on disk
-    let mut cleanup_removed_count = 0;
-    if let Ok(all_indexed_skills) = vector_index_service.get_all_skills().await {
-        for indexed_skill in all_indexed_skills {
-            if !current_skill_ids.contains(&indexed_skill.id) {
-                info!("Removing stale index entry: {}", indexed_skill.id);
-                match vector_index_service.remove_skill(&indexed_skill.id).await {
-                    Ok(_) => {
-                        cleanup_removed_count += 1;
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to remove stale index entry {}: {}",
-                            indexed_skill.id, e
-                        );
-                    }
-                }
-            }
-        }
-
-        if cleanup_removed_count > 0 && !args.no_progress {
-            println!("Removed {} stale entries from index", cleanup_removed_count);
-        }
-    } else {
-        warn!("Failed to retrieve all indexed skills for cleanup");
-    }
-
-    if error_count > 0 {
-        Err(CliError::Validation(format!(
-            "Reindex completed with {} errors",
-            error_count
-        )))
-    } else {
-        Ok(())
-    }
-}
-
-/// Find all SKILL.md files in the skills directory
-fn find_skill_files(skills_dir: &Path) -> CliResult<Vec<std::path::PathBuf>> {
-    let mut skill_files = Vec::new();
-
-    if !skills_dir.exists() {
-        return Err(CliError::Config(format!(
-            "Skills directory does not exist: {}",
-            skills_dir.display()
-        )));
-    }
-
-    // Walk through all subdirectories looking for SKILL.md
-    for entry in walkdir::WalkDir::new(skills_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.file_name() == "SKILL.md")
-    {
-        skill_files.push(entry.path().to_path_buf());
-    }
-
-    Ok(skill_files)
-}
-
-/// Process a single skill file
-async fn process_skill_file(
-    skill_file: std::path::PathBuf,
-    embedding_service: &dyn fastskill_core::EmbeddingService,
-    vector_index_service: &dyn fastskill_core::VectorIndexService,
-    force: bool,
-) -> CliResult<ProcessOutcome> {
-    let skill_dir = skill_file
-        .parent()
-        .ok_or_else(|| CliError::Config("Skill file has no parent directory".to_string()))?;
-    let skill_id = skill_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| {
-            CliError::Validation(format!(
-                "Invalid skill directory name: {}",
-                skill_dir.display()
-            ))
-        })?
-        .to_string();
-
-    // Calculate file hash
-    let file_hash = calculate_file_hash(&skill_file).map_err(|e| {
-        CliError::Validation(format!("Failed to calculate hash for {}: {}", skill_id, e))
-    })?;
-
-    // Check if skill is already indexed and up to date
-    if !force {
-        if let Ok(Some(indexed_skill)) = vector_index_service.get_skill_by_id(&skill_id).await {
-            if indexed_skill.file_hash == file_hash {
-                return Ok(ProcessOutcome::Skipped(
-                    skill_id.clone(),
-                    "unchanged hash".to_string(),
-                ));
-            }
-        }
-    }
-
-    info!("Processing skill: {}", skill_id);
-
-    // Read and parse SKILL.md
-    let content = match fs::read_to_string(&skill_file) {
-        Ok(content) => content,
-        Err(e) => {
-            let error_msg = format!("Failed to read {}: {}", skill_file.display(), e);
-            return Ok(ProcessOutcome::Failed(skill_id, error_msg));
+        if verbose {
+            println!("  Processing: {} ({}/{})", p.skill_id, p.current, p.total);
+        } else if live {
+            let pct = p
+                .current
+                .checked_mul(100)
+                .and_then(|n| n.checked_div(p.total))
+                .unwrap_or(0);
+            print!("\r\x1B[KProgress: [{}/{}] ({}%)", p.current, p.total, pct);
+            let _ = std::io::stdout().flush();
         }
     };
 
-    // Extract frontmatter
-    let frontmatter = match fastskill_core::parse_yaml_frontmatter(&content) {
-        Ok(frontmatter) => frontmatter,
-        Err(e) => {
-            return Ok(ProcessOutcome::Failed(
-                skill_id,
-                format!("Failed to parse frontmatter: {}", e),
-            ));
-        }
-    };
-
-    // Convert frontmatter to JSON for storage
-    let frontmatter_json = match serde_json::to_value(&frontmatter) {
-        Ok(json) => json,
-        Err(e) => {
-            return Ok(ProcessOutcome::Failed(
-                skill_id,
-                format!("Failed to serialize frontmatter: {}", e),
-            ));
-        }
-    };
-
-    // Generate text for embedding
-    let embedding_text = format!("{}\n{}", frontmatter.name, frontmatter.description);
-
-    // Generate embedding
-    let embedding = match embedding_service.embed_text(&embedding_text).await {
-        Ok(embedding) => embedding,
-        Err(e) => {
-            return Ok(ProcessOutcome::Failed(
-                skill_id,
-                format!("Failed to generate embedding: {}", e),
-            ));
-        }
-    };
-
-    // Add/update in vector index
-    match vector_index_service
-        .add_or_update_skill(
-            &skill_id,
-            skill_dir.to_path_buf(),
-            frontmatter_json,
-            embedding,
-            &file_hash,
-        )
+    let outcome = service
+        .reindex(args.skills_dir.as_deref(), Some(&observer))
         .await
-    {
-        Ok(_) => Ok(ProcessOutcome::Indexed(skill_id)),
-        Err(e) => Ok(ProcessOutcome::Failed(
-            skill_id,
-            format!("Failed to update index: {}", e),
-        )),
+        .map_err(CliError::Service)?;
+
+    if live && seen_any.load(Ordering::SeqCst) {
+        println!();
     }
-}
 
-/// Calculate SHA256 hash of a file
-fn calculate_file_hash(file_path: &Path) -> CliResult<String> {
-    let content = fs::read(file_path).map_err(|e| {
-        CliError::Validation(format!(
-            "Failed to read file {}: {}",
-            file_path.display(),
-            e
-        ))
-    })?;
+    if !outcome.reindexed {
+        let reason = outcome
+            .reason
+            .as_deref()
+            .unwrap_or("no embedding provider configured");
+        println!("Reindex skipped: {reason}. Run 'fastskill doctor' for setup guidance.");
+        return Ok(());
+    }
 
-    let mut hasher = Sha256::new();
-    hasher.update(&content);
-    let hash_bytes = hasher.finalize();
+    if !seen_any.load(Ordering::SeqCst) {
+        // Nothing under the skills directory at all.
+        if !no_progress {
+            let dir = args
+                .skills_dir
+                .clone()
+                .unwrap_or_else(|| service.config().skill_storage_path.clone());
+            println!("Found 0 skills to process");
+            println!("No skills found in {}", dir.display());
+        }
+        return Ok(());
+    }
 
-    Ok(format!("{:x}", hash_bytes))
+    if mode != ProgressMode::Quiet {
+        println!("Reindex completed");
+        println!("  Total skills: {}", found_total.load(Ordering::SeqCst));
+        println!("  Indexed/updated: {}", outcome.count);
+        println!("  Total time: {:.2}s", start_time.elapsed().as_secs_f64());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -614,9 +295,9 @@ fn calculate_file_hash(file_path: &Path) -> CliResult<String> {
 mod tests {
     use super::*;
     use fastskill_core::{EmbeddingConfig, ServiceConfig};
+    use std::fs;
     use tempfile::TempDir;
 
-    // Helper function to create a test skill file
     fn create_test_skill(
         skills_dir: &std::path::Path,
         skill_id: &str,
@@ -640,127 +321,10 @@ Test skill content"#,
         fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
     }
 
-    #[tokio::test]
-    async fn test_progress_tracker_verbose_mode() {
-        let tracker = ProgressTracker::new(5, true, false);
-
-        assert_eq!(tracker.total, 5);
-        assert_eq!(tracker.completed, 0);
-        assert_eq!(tracker.mode, ProgressMode::Verbose);
-    }
-
-    #[tokio::test]
-    async fn test_progress_tracker_quiet_mode() {
-        let tracker = ProgressTracker::new(5, false, true);
-
-        assert_eq!(tracker.total, 5);
-        assert_eq!(tracker.mode, ProgressMode::Quiet);
-    }
-
-    #[tokio::test]
-    async fn test_progress_tracker_record_outcomes() {
-        let mut tracker = ProgressTracker::new(10, false, false);
-
-        tracker.record_success("skill1");
-        assert_eq!(tracker.completed, 1);
-
-        tracker.record_skip("skill2", "unchanged");
-        assert_eq!(tracker.skipped, 1);
-
-        tracker.record_failure("skill3", "parse error");
-        assert_eq!(tracker.failed, 1);
-
-        assert_eq!(tracker.completed + tracker.skipped + tracker.failed, 3);
-    }
-
-    #[tokio::test]
-    async fn test_reindex_with_verbose_quiet_args() {
-        let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        // Create test skills
-        create_test_skill(
-            &skills_dir,
-            "test-skill-1",
-            "Test Skill One",
-            "First test skill",
-        );
-        create_test_skill(
-            &skills_dir,
-            "test-skill-2",
-            "Test Skill Two",
-            "Second test skill",
-        );
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir.clone(),
-            embedding: Some(EmbeddingConfig {
-                openai_base_url: "https://api.openai.com/v1".to_string(),
-                embedding_model: "text-embedding-3-small".to_string(),
-                index_path: None,
-            }),
-            ..Default::default()
-        };
-
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        // Test progress mode
-        let progress_args = ReindexArgs {
-            skills_dir: Some(skills_dir.clone()),
-            force: true,
-            max_concurrent: 2,
-            progress: true,
-            no_progress: false,
-        };
-
-        // May fail due to missing API key, but args should be accepted
-        let _ = execute_reindex(&service, progress_args).await;
-
-        // Test no_progress mode
-        let no_progress_args = ReindexArgs {
-            skills_dir: Some(skills_dir),
-            force: true,
-            max_concurrent: 2,
-            progress: false,
-            no_progress: true,
-        };
-
-        let _ = execute_reindex(&service, no_progress_args).await;
-    }
-
-    #[tokio::test]
-    async fn test_process_outcome_skill_id_access() {
-        let indexed = ProcessOutcome::Indexed("skill1".to_string());
-        assert_eq!(indexed.skill_id(), "skill1");
-
-        let skipped = ProcessOutcome::Skipped("skill2".to_string(), "unchanged".to_string());
-        assert_eq!(skipped.skill_id(), "skill2");
-
-        let failed = ProcessOutcome::Failed("skill3".to_string(), "error".to_string());
-        assert_eq!(failed.skill_id(), "skill3");
-    }
-
-    #[tokio::test]
-    async fn test_should_show_progress_respects_environment() {
-        // Save original env var
-        let original = std::env::var("FASTSKILL_NO_PROGRESS").ok();
-
-        // Test with FASTSKILL_NO_PROGRESS set
-        std::env::set_var("FASTSKILL_NO_PROGRESS", "1");
-        assert!(!should_show_progress());
-
-        // Test without FASTSKILL_NO_PROGRESS (result depends on TTY)
-        std::env::remove_var("FASTSKILL_NO_PROGRESS");
-        // Don't assert specific value as it depends on test environment TTY
-
-        // Restore original state
-        if let Some(val) = original {
-            std::env::set_var("FASTSKILL_NO_PROGRESS", val);
-        } else {
-            std::env::remove_var("FASTSKILL_NO_PROGRESS");
-        }
+    #[test]
+    fn test_progress_mode_from_flags() {
+        assert_eq!(ProgressMode::from_flags(true, false), ProgressMode::Verbose);
+        assert_eq!(ProgressMode::from_flags(false, true), ProgressMode::Quiet);
     }
 
     #[tokio::test]
@@ -801,7 +365,11 @@ Test skill content"#,
             ..Default::default()
         };
 
-        let mut service = FastSkillService::new(config).await.unwrap();
+        let mock_embedding = Arc::new(MockEmbeddingService);
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_embedding_service(mock_embedding);
         service.initialize().await.unwrap();
 
         let nonexistent_dir = temp_dir.path().join("nonexistent");
@@ -814,16 +382,17 @@ Test skill content"#,
         };
 
         let result = execute_reindex(&service, args).await;
-        // May fail for various reasons (nonexistent dir, API key, etc.)
-        // Just verify it handles the error gracefully
-        assert!(result.is_err() || result.is_ok());
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_execute_reindex_empty_skills_dir() {
         let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
         let config = ServiceConfig {
-            skill_storage_path: temp_dir.path().to_path_buf(),
+            skill_storage_path: skills_dir.clone(),
             embedding: Some(EmbeddingConfig {
                 openai_base_url: "https://api.openai.com/v1".to_string(),
                 embedding_model: "text-embedding-3-small".to_string(),
@@ -832,39 +401,40 @@ Test skill content"#,
             ..Default::default()
         };
 
-        let mut service = FastSkillService::new(config).await.unwrap();
+        let mock_embedding = Arc::new(MockEmbeddingService);
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_embedding_service(mock_embedding);
         service.initialize().await.unwrap();
 
         let args = ReindexArgs {
-            skills_dir: None,
+            skills_dir: Some(skills_dir),
             force: true,
             max_concurrent: 5,
             progress: false,
             no_progress: false,
         };
 
-        // Should succeed with empty directory (no skills to index)
-        // May fail due to missing API key, but should handle empty directory gracefully
         let result = execute_reindex(&service, args).await;
-        // Result may be Ok (empty directory) or Err (missing API key)
-        assert!(result.is_ok() || result.is_err());
+        assert!(
+            result.is_ok(),
+            "empty directory should be a no-op success: {:?}",
+            result
+        );
     }
 
     #[tokio::test]
-    async fn test_execute_reindex_with_force_and_max_concurrent() {
+    async fn test_execute_reindex_indexes_and_force_clears_cache() {
         let temp_dir = TempDir::new().unwrap();
         let skills_dir = temp_dir.path().join(".claude/skills");
         fs::create_dir_all(&skills_dir).unwrap();
-
-        let skill_dir = skills_dir.join("test-skill");
-        fs::create_dir_all(&skill_dir).unwrap();
-        let skill_content = r#"# Test Skill
-
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
-        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
+        create_test_skill(
+            &skills_dir,
+            "test-skill-1",
+            "Test Skill One",
+            "First test skill",
+        );
 
         let config = ServiceConfig {
             skill_storage_path: skills_dir.clone(),
@@ -876,80 +446,71 @@ Description: A test skill for coverage
             ..Default::default()
         };
 
-        let mut service = FastSkillService::new(config).await.unwrap();
+        let mock_embedding = Arc::new(MockEmbeddingService);
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_embedding_service(mock_embedding);
         service.initialize().await.unwrap();
 
         let args = ReindexArgs {
+            skills_dir: Some(skills_dir.clone()),
+            force: false,
+            max_concurrent: 2,
+            progress: true,
+            no_progress: false,
+        };
+        let result = execute_reindex(&service, args).await;
+        assert!(result.is_ok(), "reindex should succeed: {:?}", result);
+
+        // Re-running with --force must re-embed even though the hash is unchanged.
+        let force_args = ReindexArgs {
             skills_dir: Some(skills_dir),
             force: true,
             max_concurrent: 2,
             progress: false,
-            no_progress: false,
+            no_progress: true,
         };
-
-        let result = execute_reindex(&service, args).await;
-        // May fail due to missing API key, but should process the args correctly
-        assert!(result.is_ok() || result.is_err());
+        let result = execute_reindex(&service, force_args).await;
+        assert!(
+            result.is_ok(),
+            "forced reindex should succeed: {:?}",
+            result
+        );
     }
 
     #[tokio::test]
-    async fn test_reindex_cleanup_removes_stale_entries() {
+    async fn test_reindex_progress_conflict_errors() {
         let temp_dir = TempDir::new().unwrap();
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let skill1_dir = skills_dir.join("skill-one");
-        fs::create_dir_all(&skill1_dir).unwrap();
-        let skill1_content = r#"# Skill One
-
-Name: skill-one
-Version: 1.0.0
-Description: First skill
-"#;
-        fs::write(skill1_dir.join("SKILL.md"), skill1_content).unwrap();
-
-        let skill2_dir = skills_dir.join("skill-two");
-        fs::create_dir_all(&skill2_dir).unwrap();
-        let skill2_content = r#"# Skill Two
-
-Name: skill-two
-Version: 1.0.0
-Description: Second skill
-"#;
-        fs::write(skill2_dir.join("SKILL.md"), skill2_content).unwrap();
-
         let config = ServiceConfig {
-            skill_storage_path: skills_dir.clone(),
-            embedding: Some(EmbeddingConfig {
-                openai_base_url: "https://api.openai.com/v1".to_string(),
-                embedding_model: "text-embedding-3-small".to_string(),
-                index_path: None,
-            }),
+            skill_storage_path: temp_dir.path().to_path_buf(),
             ..Default::default()
         };
-
         let mut service = FastSkillService::new(config).await.unwrap();
         service.initialize().await.unwrap();
 
         let args = ReindexArgs {
-            skills_dir: Some(skills_dir),
-            force: true,
-            max_concurrent: 2,
-            progress: false,
-            no_progress: false,
+            skills_dir: None,
+            force: false,
+            max_concurrent: 5,
+            progress: true,
+            no_progress: true,
         };
+        let result = execute_reindex(&service, args).await;
+        assert!(matches!(result, Err(CliError::Validation(_))));
+    }
 
-        // First reindex with both skills
-        let _ = execute_reindex(&service, args.clone()).await;
+    /// Deterministic, network-free embedding provider for tests.
+    struct MockEmbeddingService;
 
-        // Manually delete skill-two directory
-        fs::remove_dir_all(&skill2_dir).unwrap();
+    #[async_trait::async_trait]
+    impl fastskill_core::EmbeddingService for MockEmbeddingService {
+        async fn embed_text(&self, text: &str) -> Result<Vec<f32>, fastskill_core::ServiceError> {
+            Ok(vec![text.len() as f32, 0.0, 0.0])
+        }
 
-        // Reindex again - should clean up stale entry
-        let _ = execute_reindex(&service, args).await;
-
-        // Verify that only skill-one remains (or both if cleanup failed)
-        // This is a best-effort test since we don't have full control over the index
-        assert!(true);
+        async fn embed_query(&self, query: &str) -> Result<Vec<f32>, fastskill_core::ServiceError> {
+            self.embed_text(query).await
+        }
     }
 }

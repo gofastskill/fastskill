@@ -3,11 +3,12 @@
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::project;
-use fastskill_core::core::repository::RepositoryDefinition;
+use fastskill_core::core::repository::{RepositoryDefinition, RepositoryManager};
 use fastskill_core::core::service::HttpServerConfig;
-use fastskill_core::ServiceConfig;
+use fastskill_core::{FastSkillService, ServiceConfig};
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Load repositories from skill-project.toml [tool.fastskill.repositories]
@@ -211,6 +212,34 @@ pub fn create_service_config(
         registry_index_path,
         ..Default::default()
     })
+}
+
+/// Inject the CLI-edge dependencies the core install/reindex seams need (ADR-0005):
+/// an embedding provider (only ever constructed here, where the API key is loaded)
+/// and a repository manager (resolved from the project's
+/// `[tool.fastskill.repositories]`). Core never loads the key or reads the repos
+/// config itself — only the edge (CLI/serve) does.
+///
+/// Mirrors the construction `add_from_registry` already did inline: load
+/// repositories → `RepositoryManager::from_definitions`. When no `OPENAI_API_KEY`
+/// is set, the embedding provider is simply left unset; `reindex` skips silently
+/// in that case (ADR-0002/0005) rather than erroring.
+pub fn inject_edge_services(mut service: FastSkillService) -> CliResult<FastSkillService> {
+    if let Some(embedding_config) = service.config().embedding.clone() {
+        if let Ok(api_key) = crate::config_file::get_openai_api_key() {
+            let embedding_service = Arc::new(fastskill_core::OpenAIEmbeddingService::from_config(
+                &embedding_config,
+                api_key,
+            ));
+            service = service.with_embedding_service(embedding_service);
+        }
+    }
+
+    let repositories = load_repositories_from_project()?;
+    let repo_manager = RepositoryManager::from_definitions(repositories);
+    service = service.with_repository_manager(Arc::new(repo_manager));
+
+    Ok(service)
 }
 
 /// Load HTTP server configuration from skill-project.toml [tool.fastskill.server]

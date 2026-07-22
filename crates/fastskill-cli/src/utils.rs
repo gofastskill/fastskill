@@ -68,7 +68,7 @@ pub fn parse_skill_id(input: &str) -> (String, Option<String>) {
     }
 }
 
-/// Detect the type of skill source (zip, folder, git URL, or skill ID)
+/// Detect the type of skill source (zip, folder, git URL, remote zip URL, or skill ID)
 pub fn detect_skill_source(path: &str) -> SkillSource {
     // Check if it's a skill ID first
     if is_skill_id(path) {
@@ -78,6 +78,14 @@ pub fn detect_skill_source(path: &str) -> SkillSource {
     // Check if it's a URL (git or http)
     if let Ok(url) = Url::parse(path) {
         if url.scheme() == "git" || url.scheme() == "https" || url.scheme() == "http" {
+            // A URL whose path ends in `.zip` is a remote archive to download, not
+            // a git repository to clone. Previously this was misclassified as
+            // `GitUrl` (a `.zip`-URL add would fail with a git-clone error) — fixed
+            // as part of the ADR-0005 Origin/add_from_origin seam, which now
+            // supports `Origin::ZipUrl` natively.
+            if url.path().to_ascii_lowercase().ends_with(".zip") {
+                return SkillSource::RemoteZipUrl(path.to_string());
+            }
             return SkillSource::GitUrl(path.to_string());
         }
     }
@@ -96,10 +104,16 @@ pub fn detect_skill_source(path: &str) -> SkillSource {
 /// Represents different skill source types
 #[derive(Debug, Clone)]
 pub enum SkillSource {
+    /// A `.zip` archive on the local filesystem.
     ZipFile(PathBuf),
+    /// A directory on the local filesystem.
     Folder(PathBuf),
+    /// A git repository URL (http/https/git scheme, not ending in `.zip`).
     GitUrl(String),
-    SkillId(String), // Format: skillid@version or skillid
+    /// An http(s) URL to a remote `.zip` archive (downloaded, not cloned).
+    RemoteZipUrl(String),
+    /// Format: `skillid@version`, `skillid`, `scope/skillid`, or `scope/skillid@version`.
+    SkillId(String),
 }
 
 /// Parse git URL to extract repository information
@@ -303,6 +317,27 @@ mod tests {
         match detect_skill_source("./bundle.zip") {
             SkillSource::ZipFile(path) => assert_eq!(path, PathBuf::from("./bundle.zip")),
             other => panic!("expected ZipFile, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_skill_source_remote_zip_url() {
+        // ADR-0005 fix: a URL ending in `.zip` must not be classified as git
+        // (previously misclassified as `GitUrl`, causing a spurious git-clone
+        // failure instead of a zip download).
+        match detect_skill_source("https://example.com/skills/bundle.zip") {
+            SkillSource::RemoteZipUrl(url) => {
+                assert_eq!(url, "https://example.com/skills/bundle.zip")
+            }
+            other => panic!("expected RemoteZipUrl, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_skill_source_zip_url_query_string_still_detected() {
+        match detect_skill_source("https://example.com/download.zip?token=abc") {
+            SkillSource::RemoteZipUrl(_) => {}
+            other => panic!("expected RemoteZipUrl, got {:?}", other),
         }
     }
 
