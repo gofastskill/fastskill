@@ -273,24 +273,83 @@ pub struct InstallSkillResponse {
 
 /// POST /api/v1/skills/update request body. `skill_id` omitted (or `"all"`)
 /// updates every skill recorded in the project; `check` reports the preflight
-/// verdict for each without applying anything.
+/// verdict for each without applying anything. `version` (v2, spec 003 Phase 4)
+/// pins a single `repository`-origin skill to an exact version: only valid
+/// together with `skill_id` and only when that skill's recorded `Origin` is
+/// `Repository` (see `handlers::skills::update_skills`).
 #[derive(Debug, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSkillsRequest {
     pub skill_id: Option<String>,
     #[serde(default)]
     pub check: bool,
+    pub version: Option<String>,
 }
 
-/// GET /api/v1/skills/{id}/content response: the installed skill's `SKILL.md`
-/// as raw text (path-confined to the skills directory; see
-/// `handlers::skills::get_skill_content`). Rendered HTML-escaped by the UI —
-/// no Markdown rendering (spec 003 §5 / SEC-7).
+/// Query parameters for `GET /api/v1/skills/{id}/content`.
+#[derive(Debug, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentQuery {
+    pub format: Option<ContentFormat>,
+}
+
+/// `?format=` value for `GET /api/v1/skills/{id}/content` (spec 003 v2 / Phase
+/// 4). `Raw` (the default) is today's behavior; `Html` renders the Markdown
+/// server-side (`comrak`) and allowlist-sanitizes the result (`ammonia`) before
+/// returning it — safe to assign to `innerHTML` (no `<script>`, no `on*`
+/// handlers, no `javascript:`/`data:` URLs).
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentFormat {
+    #[default]
+    Raw,
+    Html,
+}
+
+impl ContentFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ContentFormat::Raw => "raw",
+            ContentFormat::Html => "html",
+        }
+    }
+}
+
+/// GET /api/v1/skills/{id}/content response: the installed skill's `SKILL.md`,
+/// path-confined to the skills directory (see
+/// `handlers::skills::get_skill_content`). `format` echoes the resolved
+/// `?format=` value (`"raw"` or `"html"`); `content` is the raw file text for
+/// `raw`, or sanitized HTML for `html` (spec 003 §5 / SEC-7 — the UI still
+/// HTML-escapes/renders `raw` content itself; `html` content is already safe to
+/// insert directly).
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillContentResponse {
     pub path: String,
+    pub format: String,
     pub content: String,
+}
+
+/// A single version available for a skill in the registry (spec 003 v2 /
+/// Phase 4 version picker). `repo` is the concrete Repository/source name that
+/// offers this version, when known.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfo {
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+}
+
+/// GET /api/v1/registry/skills/{id}/versions response. `versions` is sorted
+/// descending (newest first); empty (not 404) when the registry has no
+/// candidates for `id` (no registry configured, or the id is unknown there) —
+/// see `handlers::registry::list_skill_versions`.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillVersionsResponse {
+    pub id: String,
+    pub versions: Vec<VersionInfo>,
 }
 
 /// Per-skill outcome of a `POST /api/v1/skills/update` call.

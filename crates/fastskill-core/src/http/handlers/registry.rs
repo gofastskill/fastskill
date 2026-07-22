@@ -410,6 +410,63 @@ impl SourceDefinition {
     }
 }
 
+/// GET /api/v1/registry/skills/{id}/versions - Versions available for a skill
+/// id across the configured sources (spec 003 v2 / Phase 4 version picker).
+/// A pure read; always mounted (NOT write-gated). Sourced from
+/// `PackageResolver::get_available_versions`, built over the same
+/// `SourcesManager` the other `/registry/*` browse routes use, and sorted
+/// descending (newest first) by the same semver ordering `VersionConstraint`
+/// uses (unparseable versions sort lowest). No registry configured, or an
+/// unknown id, is an empty `versions` list — a valid answer, never a 404.
+pub async fn list_skill_versions(
+    State(state): State<AppState>,
+    Path(skill_id): Path<String>,
+) -> HttpResult<axum::Json<ApiResponse<SkillVersionsResponse>>> {
+    let empty = || {
+        Json(ApiResponse::success(SkillVersionsResponse {
+            id: skill_id.clone(),
+            versions: Vec::new(),
+        }))
+    };
+
+    let repo_manager = get_repository_manager(&state.service);
+    let (sources_manager, _sources_tmp) = match get_sources_manager_from_repos(&repo_manager).await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!("versions lookup: failed to build sources manager: {}", e);
+            return Ok(empty());
+        }
+    };
+
+    let mut resolver =
+        crate::core::resolver::PackageResolver::new(std::sync::Arc::new(sources_manager));
+    if let Err(e) = resolver.build_index().await {
+        tracing::warn!("versions lookup: failed to build registry index: {}", e);
+        return Ok(empty());
+    }
+
+    let mut candidates = resolver.get_available_versions(&skill_id);
+    candidates.sort_by(|a, b| {
+        semver::Version::parse(&b.version)
+            .ok()
+            .cmp(&semver::Version::parse(&a.version).ok())
+    });
+
+    let versions = candidates
+        .into_iter()
+        .map(|c| VersionInfo {
+            version: c.version.clone(),
+            repo: Some(c.source_name.clone()),
+        })
+        .collect();
+
+    Ok(Json(ApiResponse::success(SkillVersionsResponse {
+        id: skill_id,
+        versions,
+    })))
+}
+
 /// GET /api/v1/registry/index/skills - List all skills from the registry index
 /// Query parameters:
 ///   - scope: Filter by scope (optional)
