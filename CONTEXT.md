@@ -73,6 +73,9 @@ _Avoid_: **source**, **registry** — both are deprecated command aliases now fo
 Where a single installed skill came from — the install **intent** (what the user asked for), recorded as provenance on the installed skill. Variants: `git` (url + ref + subdir), `local` (a filesystem path — directory *or* `.zip` — plus `editable`, dir-only), `zip-url` (a remote zip), and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is intent only: the **resolved** facts (exact commit, resolved version, checksum, timestamps) live in the **Lock**, not in `Origin`. It is the single canonical model — replacing the former `SkillSource` (two colliding types), `SourceType`, `SourceSpecificFields`, and the flat `source_*` fields on the manifest/lock/skill records.
 _Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference; always names a concrete Repository) with **Repository** (the configured place itself).
 
+**Origin ref**:
+The *textual* form of an **Origin** — the single string a user types to name where a skill comes from (a git URL, a `.zip` URL, a local path, or `scope/skill`). It is resolved into a typed `Origin` by one seam, `Origin::infer(&str)`, which is the **only** place ref→`Origin` inference lives: both the CLI (`add`) and the HTTP install route call it, so the browser never re-implements detection. An Origin ref is *unresolved intent as text*; the `Origin` is *typed intent*; the **Lock** holds *resolved facts*. (Do not call it a "source" — banned.)
+
 ### Serving surfaces
 
 Two orthogonal, first-class ways to expose skills to a client — distinguished by *protocol/consumer*, not redundant:

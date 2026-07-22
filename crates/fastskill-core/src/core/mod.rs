@@ -13,6 +13,7 @@ pub mod lock;
 pub mod manifest;
 pub mod metadata;
 pub mod origin;
+pub mod origin_infer;
 pub mod project;
 pub mod project_config;
 pub mod reconciliation;
@@ -66,6 +67,9 @@ pub use metadata::{
 
 // origin
 pub use origin::{GitRef, Origin, Resolved};
+
+// origin_infer (the Origin-ref inference seam, spec 003 Phase 3)
+pub use origin_infer::{is_skill_id, parse_git_url, parse_skill_id_ref, GitUrlInfo};
 
 // install seam
 pub use install::{AddMode, AddOutcome, Fetched, UpdatePreflight};

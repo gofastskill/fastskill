@@ -287,6 +287,7 @@ impl FastSkillServer {
         Router::new()
             .route("/skills", get(skills::list_skills))
             .route("/skills/{id}", get(skills::get_skill))
+            .route("/skills/{id}/content", get(skills::get_skill_content))
             .route("/project", get(manifest::get_project))
             .route("/search", post(search::search_skills))
             .route("/resolve", post(resolve::resolve_context))
