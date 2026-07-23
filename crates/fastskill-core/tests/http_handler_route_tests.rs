@@ -1175,17 +1175,12 @@ async fn registry_marketplace_unknown_is_404() {
 // ---- list_skill_versions (spec 003 v2 / Phase 4 version picker) ----
 
 #[tokio::test]
-#[allow(clippy::await_holding_lock)]
 async fn registry_skill_versions_empty_when_no_registry_configured() {
-    // No skill-project.toml with `[[tool.fastskill.repositories]]` reachable
-    // from cwd -> no sources -> empty `versions`, still 200 (never 404).
-    // `get_repository_manager` resolves off the process cwd, which is shared
-    // process-wide state; hold `DIR_MUTEX` so this can't race the other
-    // `registry_skill_versions_*` tests that `set_current_dir` into a temp
-    // project with repositories configured.
-    let _lock = fastskill_core::test_utils::DIR_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    // No skill-project.toml with `[[tool.fastskill.repositories]]` at
+    // `state.project_file_path` -> no sources -> empty `versions`, still 200
+    // (never 404). `fixture_with_skills` points `project_file_path` at a file
+    // that is never written, so `get_repository_manager` falls back to an
+    // empty manager.
     let f = fixture_with_skills(false).await;
     let (status, body) = do_get(f.state, "/registry/skills/widget/versions").await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -1194,43 +1189,29 @@ async fn registry_skill_versions_empty_when_no_registry_configured() {
 }
 
 #[tokio::test]
-#[allow(clippy::await_holding_lock)]
 async fn registry_skill_versions_unknown_id_is_empty_not_404() {
-    let _lock = fastskill_core::test_utils::DIR_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let original_dir = std::env::current_dir().ok();
-    let _guard = fastskill_core::test_utils::DirGuard(original_dir);
+    let f = fixture_with_skills(false).await;
 
-    let project = TempDir::new().unwrap();
     let repo_dir = TempDir::new().unwrap();
     write_skill(repo_dir.path(), "known", "Known", "d");
     fs::write(
-        project.path().join("skill-project.toml"),
+        &f.project_file_path,
         format!(
             "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
             repo_dir.path().display()
         ),
     )
     .unwrap();
-    std::env::set_current_dir(project.path()).unwrap();
 
-    let f = fixture_with_skills(false).await;
     let (status, body) = do_get(f.state, "/registry/skills/does-not-exist/versions").await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains("\"versions\":[]"), "body: {body}");
 }
 
 #[tokio::test]
-#[allow(clippy::await_holding_lock)]
 async fn registry_skill_versions_populated_and_sorted_descending() {
-    let _lock = fastskill_core::test_utils::DIR_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let original_dir = std::env::current_dir().ok();
-    let _guard = fastskill_core::test_utils::DirGuard(original_dir);
+    let f = fixture_with_skills(false).await;
 
-    let project = TempDir::new().unwrap();
     let repo_dir = TempDir::new().unwrap();
     // Two versions of the same skill id, in separate subdirectories, discovered
     // by the local-source scanner (walks for any nested SKILL.md).
@@ -1244,16 +1225,14 @@ async fn registry_skill_versions_populated_and_sorted_descending() {
         .unwrap();
     }
     fs::write(
-        project.path().join("skill-project.toml"),
+        &f.project_file_path,
         format!(
             "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
             repo_dir.path().display()
         ),
     )
     .unwrap();
-    std::env::set_current_dir(project.path()).unwrap();
 
-    let f = fixture_with_skills(false).await;
     let (status, body) = do_get(f.state, "/registry/skills/widget/versions").await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains("\"id\":\"widget\""), "body: {body}");

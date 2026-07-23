@@ -11,12 +11,10 @@ use axum::{
 };
 use std::collections::HashSet;
 
-fn get_repository_manager(_service: &crate::core::service::FastSkillService) -> RepositoryManager {
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let project_file = crate::core::project::resolve_project_file(&current_dir);
-    if project_file.found {
-        let project_path = project_file.path;
-        if let Ok(project) = crate::core::manifest::SkillProjectToml::load_from_file(&project_path)
+fn get_repository_manager(project_file_path: &std::path::Path) -> RepositoryManager {
+    if project_file_path.exists() {
+        if let Ok(project) =
+            crate::core::manifest::SkillProjectToml::load_from_file(project_file_path)
         {
             if let Some(tool) = project.tool {
                 if let Some(fastskill_config) = tool.fastskill {
@@ -155,7 +153,7 @@ pub async fn list_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<Vec<SourceResponse>>>> {
     // Get repository manager (supports all formats)
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
 
     let repos = repo_manager.list_repositories();
 
@@ -200,7 +198,7 @@ pub async fn list_sources(
 pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
     let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
@@ -287,7 +285,7 @@ pub async fn list_source_skills(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SourceSkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
     let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
@@ -353,7 +351,7 @@ pub async fn get_marketplace(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<MarketplaceJson>>> {
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
     let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
@@ -387,7 +385,7 @@ pub async fn get_marketplace(
 pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
     let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
         .await
         .map_err(|e| {
@@ -429,7 +427,7 @@ pub async fn list_skill_versions(
         }))
     };
 
-    let repo_manager = get_repository_manager(&state.service);
+    let repo_manager = get_repository_manager(&state.project_file_path);
     let (sources_manager, _sources_tmp) = match get_sources_manager_from_repos(&repo_manager).await
     {
         Ok(pair) => pair,
