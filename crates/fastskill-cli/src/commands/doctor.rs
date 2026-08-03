@@ -169,7 +169,7 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
         DoctorCheckResult {
             check: "auth_token".to_string(),
             status: DoctorStatus::Warn,
-            message: "No auth token set. Remote registry operations may fail. Run 'fastskill auth login'.".to_string(),
+            message: "No auth token set. Remote registry operations may fail. Set FASTSKILL_AUTH_TOKEN (or FASTSKILL_TOKEN) with a registry token.".to_string(),
         }
     };
     checks.push(auth_check);
