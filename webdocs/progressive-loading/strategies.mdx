@@ -1,30 +1,72 @@
 ---
 title: "Loading Strategies"
-description: "FastSkill's progressive loading strategies for efficient skill content management and performance optimization."
+description: "Practical guidance for context resolution: configuring embeddings, when to reindex, and local search."
 ---
 
 ## Overview
 
-Progressive loading strategies determine how and when skill content is loaded to optimize performance and memory usage.
+Context resolution ([the resolve API](/progressive-loading/performance)) lets an agent load only the
+skills relevant to a prompt. This page covers the practical setup and habits that keep resolution
+fast and accurate. These are real knobs and commands — FastSkill has no configurable cache or
+eviction policy to tune.
 
-## Loading Strategies
+## Enable semantic ranking
 
-### Metadata Only
-Load only essential skill information for fast discovery.
+Semantic ranking is what makes resolution useful. To turn it on:
 
-### Content on Demand
-Load full skill content when needed for execution.
+1. Configure an embedding provider in `skill-project.toml`:
 
-### Selective Loading
-Load specific parts of skills based on context and requirements.
+   ```toml
+   [tool.fastskill.embedding]
+   embedding_model = "text-embedding-3-small"
+   index_path = ".fastskill/index"
+   # openai_base_url = "https://api.openai.com/v1"  # override if using a proxy
+   ```
 
-### Caching Strategies
-Intelligent caching with configurable eviction policies for optimal performance.
+2. Set `OPENAI_API_KEY` in the environment (via a secret, never in config).
 
-## Implementation
+If no provider is configured, `resolve` and `search` still work but fall back to keyword matching.
+Verify the setup with `fastskill doctor`.
 
-FastSkill automatically manages loading strategies based on configuration and usage patterns.
+## When to reindex
+
+FastSkill **auto-reindexes** after `add`, `install`, `update`, and `remove` (unless
+`auto_reindex = false` in `[tool.fastskill]` or you pass `--no-reindex`), so day to day you rarely
+reindex by hand. Reindex explicitly when:
+
+- you edited a skill's `SKILL.md` in place (for example an editable `add -e` skill) without going
+  through install/update,
+- you set `auto_reindex = false` and manage indexing yourself,
+- you first configure embeddings for a skills directory that already has content.
+
+```bash
+fastskill reindex
+```
+
+Reindex needs an embedding provider; without `OPENAI_API_KEY` it skips silently. A change-detection
+cache (`.fastskill/build-cache.json`) lets reindex re-embed only what changed.
+
+## Search locally without the server
+
+For a quick, offline relevance check over skills already on disk, use `search --local` instead of the
+HTTP resolve endpoint:
+
+```bash
+# Rank installed skills for a query
+fastskill search "convert pdf to markdown" --local
+
+# Emit canonical skill paths (agent-friendly)
+fastskill search "convert pdf to markdown" --local --paths
+
+# Include SKILL.md content in JSON output
+fastskill search "convert pdf to markdown" --local --paths --content full
+```
+
+`resolve` (server) is for agents pulling context at runtime; `search --local` (CLI) is for
+interactive and scripted lookups over the local index. Both use the same embedding index when one is
+configured.
 
 <Callout>
-Choose loading strategies based on your performance requirements and usage patterns.
+Keep the embedding index fresh (auto-reindex or an explicit `fastskill reindex`) — that single habit
+covers essentially all resolution performance and quality concerns.
 </Callout>

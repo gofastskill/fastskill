@@ -253,13 +253,15 @@ fastskill repos skills --scope acme --all-versions --json
 - `--scope <SCOPE>`: Filter skills by scope (exact match)
 - `--all-versions`: Include all versions for each skill (default: latest only)
 - `--include-pre-release`: Include pre-release versions (default: exclude)
-- `--format <table|json|grid>`: Output format (default: table)
+- `--format <table|json|grid|xml>`: Output format (default: table)
 - `--json`: Shorthand for --format json (mutually exclusive with --format)
 - `--repository <NAME>`: Repository name to list skills from (defaults to default repository if not specified)
 
 **Output Format**:
-- **Grid (default)**: Human-readable table with columns: scope, name, description (truncated to 50 chars), latest version (or "version" when `--all-versions` is used), published date
+- **Table (default)**: Human-readable table with columns: scope, name, description (truncated to 50 chars), latest version (or "version" when `--all-versions` is used), published date
+- **Grid**: Human-readable columnar layout with the same fields as table
 - **JSON**: Machine-readable array with fields: id, scope, name, description, latest_version, published_at, and optionally versions array
+- **XML**: Structured XML for agent consumption
 
 ### show
 

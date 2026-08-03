@@ -8,7 +8,7 @@ description: "Understanding FastSkill's multi-source repository system for skill
 FastSkill implements a flexible, multi-source repository system that allows you to discover and install skills from various sources including Git repositories, HTTP registries, ZIP files, and local filesystem paths.
 
 <Callout type="info">
-Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml` or in `.claude/repositories.toml` for backward compatibility.
+Repository configuration lives in the `[[tool.fastskill.repositories]]` array of your `skill-project.toml`.
 </Callout>
 
 ## Repository Types
@@ -27,41 +27,37 @@ url = "https://github.com/team/skills.git"
 branch = "main"
 priority = 0
 
-# Optional authentication
-auth_type = "pat"
-auth_value = "ghp_xxxxxxxxxxxxxxxxxxxx"
-
-# Optional subdirectory
-source_subdir = "skills"
+# Optional authentication (env-var indirection — never inline a token)
+auth = { type = "pat", env_var = "GITHUB_TOKEN" }
 ```
 
 **marketplace.json Format:**
 
+FastSkill uses the Claude Code plugin format: a top-level object with a
+`plugins` array, where each plugin lists its skills as a `skills` path array.
+See [Marketplace.json Format](/registry/marketplace-json) for the full schema.
+
 ```json marketplace.json
 {
-  "version": "1.0",
-  "skills": [
+  "name": "team-skills",
+  "owner": {
+    "name": "FastSkill Team",
+    "email": "team@example.com"
+  },
+  "metadata": {
+    "description": "Team skill catalog",
+    "version": "1.0.0"
+  },
+  "plugins": [
     {
-      "id": "web-scraper",
-      "name": "Web Scraper",
-      "description": "Scrape web content efficiently",
-      "version": "1.2.3",
-      "author": "FastSkill Team",
-      "license": "MIT",
-      "tags": ["web", "scraping", "data"],
-      "capabilities": ["http_requests", "file_io"],
-      "file_path": "web-scraper/SKILL.md"
-    },
-    {
-      "id": "data-processor",
-      "name": "Data Processor",
-      "description": "Process and analyze data",
-      "version": "2.1.0",
-      "author": "Data Team",
-      "license": "Apache-2.0",
-      "tags": ["data", "analysis", "python"],
-      "capabilities": ["file_processing", "statistics"],
-      "file_path": "data-processor/SKILL.md"
+      "name": "team-skills",
+      "description": "Skills for the team",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./web-scraper",
+        "./data-processor"
+      ]
     }
   ]
 }
@@ -91,9 +87,8 @@ type = "http-registry"
 index_url = "https://registry.fastskill.dev/index"
 priority = 0
 
-# Optional authentication
-auth_type = "api-key"
-auth_value = "registry-api-key-xxxxxxxx"
+# Optional authentication (env-var indirection — never inline a key)
+auth = { type = "api_key", env_var = "REGISTRY_TOKEN" }
 ```
 
 **Registry Index Format:**
@@ -148,7 +143,11 @@ priority = 0
 
 **Download Pattern:**
 
-Skills are downloaded as: `{base_url}/{skill_id}-{version}.zip`
+The ZIP source is discovered through a `marketplace.json` accessible under the
+`base_url` (`{base_url}/.claude-plugin/marketplace.json`, falling back to
+`{base_url}/marketplace.json`). Each skill's ZIP is fetched from the
+`download_url` resolved from that marketplace data, not from a hardcoded
+`{base_url}/{id}-{version}.zip` path.
 
 **Use cases:**
 - Simple file servers with ZIP archives
@@ -182,13 +181,17 @@ priority = 0
 
 ## Authentication Types
 
+Authentication is configured with an inline `auth` table. Secrets are always
+supplied through environment variables — FastSkill stores the variable *name*,
+never the token itself. The valid `type` values are `pat`, `ssh-key`, `ssh`,
+`basic`, and `api_key`.
+
 ### PAT (Personal Access Token)
 
 For Git repositories requiring token authentication.
 
 ```toml
-auth_type = "pat"
-auth_value = "ghp_xxxxxxxxxxxxxxxxxxxx"
+auth = { type = "pat", env_var = "GITHUB_TOKEN" }
 ```
 
 **Use cases:**
@@ -201,8 +204,7 @@ auth_value = "ghp_xxxxxxxxxxxxxxxxxxxx"
 Path to SSH private key file.
 
 ```toml
-auth_type = "ssh-key"
-auth_value = "/home/user/.ssh/id_ed25519"
+auth = { type = "ssh-key", path = "/home/user/.ssh/id_ed25519" }
 ```
 
 **Use cases:**
@@ -212,11 +214,10 @@ auth_value = "/home/user/.ssh/id_ed25519"
 
 ### SSH
 
-SSH connection without key file (uses system SSH agent).
+SSH authentication using a private key path.
 
 ```toml
-auth_type = "ssh"
-auth_value = "git@github.com:org/skills.git"
+auth = { type = "ssh", key_path = "/home/user/.ssh/id_ed25519" }
 ```
 
 **Use cases:**
@@ -226,16 +227,12 @@ auth_value = "git@github.com:org/skills.git"
 
 ### Basic Auth
 
-Username and password authentication.
+Username and password authentication. The username is stored inline; the
+password is read from the named environment variable.
 
 ```toml
-auth_type = "basic"
-auth_value = "username:password"
+auth = { type = "basic", username = "ci-bot", password_env = "REGISTRY_PASSWORD" }
 ```
-
-<Callout type="warn">
-Basic auth stores credentials in plain text. Use only for test environments or secure configuration management.
-</Callout>
 
 **Use cases:**
 - Simple HTTP registries
@@ -247,8 +244,7 @@ Basic auth stores credentials in plain text. Use only for test environments or s
 API key for HTTP registry access.
 
 ```toml
-auth_type = "api-key"
-auth_value = "registry-api-key-xxxxxxxx"
+auth = { type = "api_key", env_var = "REGISTRY_TOKEN" }
 ```
 
 **Use cases:**
@@ -354,19 +350,9 @@ priority = 1
 - Version control of entire project setup
 - Easy to share and maintain
 
-### .claude/repositories.toml (Legacy)
-
-Backward-compatible configuration file:
-
-```toml
-[[repositories]]
-name = "public-registry"
-type = "http-registry"
-index_url = "https://registry.fastskill.dev/index"
-priority = 0
-```
-
-**Note:** This format is supported for backward compatibility but `skill-project.toml` is preferred.
+All repository configuration lives here — there is no separate legacy config
+file. FastSkill reads `[[tool.fastskill.repositories]]` from `skill-project.toml`
+(walked up from the current directory).
 
 ## CLI Commands for Repository Management
 
@@ -439,7 +425,7 @@ fastskill repos add github-skills \
 fastskill repos add private-registry \
   --repo-type http-registry \
   https://private.example.com \
-  --auth-type api-key \
+  --auth-type api_key \
   --auth-env PRIVATE_REGISTRY_TOKEN
 ```
 
@@ -564,7 +550,7 @@ Use environment-specific repositories or branch parameters to control which skil
 
 <Accordion id="authentication-failures" title="Authentication failures">
   <Callout type="warn">
-  **Invalid credentials**: Check auth_type and auth_value are correct.
+  **Invalid credentials**: Check the `auth` table's `type` and that the referenced environment variable (`env_var` / `password_env`) is set.
   </Callout>
 
   <Callout type="warn">
@@ -589,9 +575,9 @@ Use environment-specific repositories or branch parameters to control which skil
 
 ## Best Practices
 
-### 1. Use skill-project.toml for repository configuration
+### 1. Keep repository configuration in skill-project.toml
 
-Prefer `skill-project.toml` [tool.fastskill.repositories] section over `.claude/repositories.toml` for better project organization.
+Define repositories in the `[[tool.fastskill.repositories]]` array of `skill-project.toml` so configuration travels with the project.
 
 ### 2. Set appropriate priorities
 

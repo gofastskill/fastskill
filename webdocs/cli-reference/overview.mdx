@@ -47,8 +47,8 @@ fastskill list --help         # Help for list command
 |--------|-------------|---------|
 | `-V, --version` | Print the `fastskill` binary version and exit | `fastskill -V` |
 | `--verbose`, `-v` | Enable verbose logging | `fastskill -v list` |
-| `--repositories-path` | Override path to `repositories.toml` | `fastskill --repositories-path ./repositories.toml list` |
-| `--global` | Use the user-level global skills directory | `fastskill --global list` |
+| `--skills-dir <PATH>` | Override the skills directory path | `fastskill --skills-dir ./skills list` |
+| `--global` | Use the user-level global skills directory (`~/.config/fastskill/skills`) | `fastskill --global list` |
 | Positional `SKILL_ID` | Shorthand for `fastskill read <id>` when no subcommand is given | `fastskill pptx` |
 | `--help`, `-h` | Help | `fastskill --help` |
 
@@ -148,24 +148,19 @@ fastskill 0.9.3
 
 ### Configuration Files
 
-The CLI uses `.fastskill/config.yaml` for service-level configuration:
-
-```yaml .fastskill/config.yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
-
-# Optional: Custom skills directory
-skills_directory: ".claude/skills"
-```
-
-Project-level configuration (skill dependencies and repositories) is stored in `skill-project.toml` at your project root:
+All configuration lives in `skill-project.toml` at your project root. Skill dependencies go under `[dependencies]`; embedding, skills directory, and repositories go under the `[tool.fastskill]` tables:
 
 ```toml skill-project.toml
 [dependencies]
 web-scraper = { source = "git", url = "https://github.com/org/web-scraper.git" }
 
-[tool.fastskill.repositories]
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+
 [[tool.fastskill.repositories]]
 name = "public-registry"
 type = "http-registry"

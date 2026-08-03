@@ -72,9 +72,10 @@ Each line is a compact `VersionEntry` JSON object:
 
 ## Accessing the Registry
 
-### HTTP Endpoint
+### Hosted registry server (external)
 
-The registry index is served over HTTP. Each skill's index file is accessible at:
+On the external registry server that hosts the index, each skill's NDJSON index
+file is served at its own flat path:
 
 ```
 GET /index/{skill_id}
@@ -88,12 +89,20 @@ curl https://api.fastskill.io/index/dev-user/web-scraper
 ```
 
 This returns the newline-delimited JSON entries for all versions of that skill.
+These `/index/...` NDJSON paths are the hosted registry server's own convention,
+not part of the `fastskill serve` versioned API.
 
-A browse/search surface is also available:
+### From `fastskill serve`
+
+When you run `fastskill serve` locally, the registry browse/search surface is
+exposed under the versioned API:
 
 ```
-GET /registry/index/skills
+GET /api/v1/registry/index/skills
 ```
+
+Unversioned `/api/...` requests are 308-redirected to their `/api/v1/...`
+equivalents.
 
 ### From FastSkill CLI
 

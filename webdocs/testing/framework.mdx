@@ -1,28 +1,60 @@
 ---
 title: "Testing Framework"
-description: "FastSkill's comprehensive testing framework for validating skills and integrations."
+description: "Test your skills with `fastskill eval` — validate configuration, run prompts against an agent, and score the results."
 ---
 
 ## Overview
 
-The testing framework provides tools and methodologies for comprehensive FastSkill testing.
+The way you test a skill in FastSkill is `fastskill eval`. You define eval cases in your project
+manifest, run them against an agent, and score the results. There is no separate unit/mock harness —
+eval is the testing framework.
 
-## Testing Types
+## Configure evals
 
-- Unit tests for individual components
-- Integration tests for component interactions
-- Performance tests for optimization
-- Security tests for vulnerability assessment
+Evals are declared under `[tool.fastskill.eval]` in `skill-project.toml`:
 
-## Testing Tools
+```toml
+[tool.fastskill.eval]
+prompts = "evals/prompts.csv"     # CSV of prompt cases
+checks = "evals/checks.toml"      # TOML of checks/assertions
+timeout_seconds = 600             # per-case timeout
+fail_on_missing_agent = false     # error if the target agent isn't available
+```
 
-- Test runners and frameworks
-- Mock and stub utilities
-- Performance profiling tools
-- Coverage analysis
+- `prompts` — path to a CSV of prompt cases to run.
+- `checks` — path to a TOML file of checks applied to each result.
+- `timeout_seconds` — per-case timeout.
+- `fail_on_missing_agent` — when `true`, eval fails instead of skipping if the agent isn't found.
 
-:::note
+## The eval subcommands
 
-Comprehensive testing ensures FastSkill's reliability and performance in production environments.
+| Command | What it does |
+|---------|--------------|
+| `fastskill eval validate` | Validates the eval configuration and referenced files before running |
+| `fastskill eval run` | Runs the eval cases against an agent |
+| `fastskill eval report` | Shows a report for a completed eval run |
+| `fastskill eval score` | Scores results |
 
-:::
+```bash
+# 1. Check the config and files are well-formed
+fastskill eval validate
+
+# 2. Run the prompt cases against the agent
+fastskill eval run
+
+# 3. Review and score
+fastskill eval report
+fastskill eval score
+```
+
+Eval output supports `--format table|json` (no grid/xml for eval).
+
+<Callout>
+Start by pinning down what "good" looks like in your `checks.toml`, then iterate: `eval run` →
+`eval report` → adjust the skill → repeat.
+</Callout>
+
+## See also
+
+- [Evals & quality overview](/evals-quality/overview) — the quality workflow and concepts.
+- [eval command reference](/cli-reference/eval-command) — full flags and output details.

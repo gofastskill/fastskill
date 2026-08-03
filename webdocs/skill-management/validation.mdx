@@ -14,7 +14,7 @@ Validation happens at multiple stages: definition validation, registration valid
 ## What FastSkill checks
 
 - **Layout**: a `SKILL.md` file with readable YAML frontmatter at the skill root
-- **Identifiers**: skill ids that work on disk and in manifests (letters, numbers, `-`, `_`)
+- **Identifiers**: skill ids that work on disk and in manifests (an id is required and must not contain slashes, which are reserved as the scope separator)
 - **Versions**: semantic versions where a version is required (for example `1.2.0`)
 - **Paths**: references that resolve under the skill directory
 - **Consistency**: `fastskill list` compares installed files with `skill-project.toml` and `skills.lock`
@@ -27,10 +27,8 @@ Run `fastskill install` or `fastskill add …` to surface validation errors befo
 
 #### `id` (string, required)
 
-- Must be unique within the service
-- Alphanumeric characters, dashes, and underscores only
-- 3-50 characters in length
-- Cannot start or end with dashes/underscores
+- Required for every skill
+- Must not contain slashes (`/` is reserved as the scope separator)
 
 
 #### `name` (string, required)
@@ -77,18 +75,6 @@ Run `fastskill install` or `fastskill add …` to surface validation errors befo
 - Path relative to skill storage directory
 - Must exist and be readable
 - Should be a Python file or markdown document
-
-
-#### `execution_timeout` (integer, optional)
-
-- 1-300 seconds
-- Must be reasonable for the skill's operations
-
-
-#### `memory_limit_mb` (integer, optional)
-
-- 32-2048 MB
-- Must be sufficient for skill execution
 
 
 ## Automatic Validation
@@ -165,7 +151,7 @@ Capture which registries, groups, and approval steps apply to your org so skill 
   **Missing required fields**: Ensure all required fields are present and have valid values.
 
   Required fields:
-  - `id`: Must be alphanumeric with dashes/underscores only
+  - `id`: Required; must not contain slashes (`/` is the scope separator)
   - `name`: Human-readable name
   - `description`: Detailed description
   - `version`: Semantic version (e.g., "1.0.0")
@@ -175,16 +161,15 @@ Capture which registries, groups, and approval steps apply to your org so skill 
   **Invalid field types**: Check that field values match expected types.
 
   - `id`, `name`, `description`, `version`: strings
-  - `enabled`: boolean
-  - `timeout`: optional integer
+  - `tags`, `capabilities`: lists of strings
   </Callout>
 </Accordion>
 
 <Accordion id="security-validation-issues" title="Security Validation Issues">
   <Callout type="info">
   **Common validation issues**:
-  - Invalid skill ID format (must be alphanumeric, dashes, underscores only)
-  - Skill ID too long (max 255 characters)
+  - Missing skill ID (id is required)
+  - Invalid skill ID format (must not contain slashes; `/` is the scope separator)
   - Invalid file paths
   </Callout>
 </Accordion>

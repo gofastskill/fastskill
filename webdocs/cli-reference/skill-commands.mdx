@@ -130,7 +130,7 @@ You can also run `fastskill <skill-id>` with no subcommand; it routes to the sam
 
 ### fastskill install
 
-Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 <Callout type="info">
 See [install Command](/cli-reference/install-command) for complete documentation with groups, lockfile, and reconciliation features.
@@ -157,10 +157,10 @@ fastskill install --lock
 
 ### fastskill update
 
-Update skills in skills storage directory to their latest versions from source. The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+Update skills in skills storage directory to their latest versions from source. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 <Callout type="info">
-See [update Command](/cli-reference/update-command) for complete documentation with strategies and version constraints.
+See [update Command](/cli-reference/update-command) for complete documentation of the working flags.
 </Callout>
 
 ```bash
@@ -181,9 +181,11 @@ fastskill update --dry-run
 - `<SKILL_ID>`: Skill ID to update (if not specified, updates all)
 - `--check`: Check for updates without installing
 - `--dry-run`: Show what would be updated without actually updating
-- `--version <VERSION>`: Update to specific version
-- `--source <SOURCE>`: Update from specific source
-- `--strategy <STRATEGY>`: Update strategy: latest, patch, minor, major (default: latest)
+- `--reindex` / `--no-reindex`: Control whether the vector index is rebuilt after updating
+
+<Callout type="warning">
+`--version`, `--source`, and `--strategy` are parsed for compatibility but currently have **no effect** — update always re-resolves each skill to what its origin considers current. See the [update Command](/cli-reference/update-command) page for details.
+</Callout>
 
 ### fastskill read (metadata and tree)
 
@@ -217,7 +219,7 @@ fastskill list
 
 Add a skill from a source (git URL, local folder, or zip file) and install it to the skills storage directory. Updates both `skill-project.toml` and `skills.lock`.
 
-**Storage Location**: Skills are installed to the directory configured in `.fastskill/config.yaml` via the `skills_directory` setting (default: `.claude/skills/`). Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`.
+**Storage Location**: Skills are installed to the directory configured in `skill-project.toml` via the `skills_directory` setting under `[tool.fastskill]` (default: `.claude/skills/`). Repository configuration is stored in the `[[tool.fastskill.repositories]]` section of `skill-project.toml`.
 
 **Installing from a subdirectory**: Use a GitHub tree URL to add a skill that lives in a subfolder of a repo. Format: `https://github.com/user/repo/tree/<branch>/<path/to/skill>`. The CLI clones the repo and uses the specified path as the skill root.
 
@@ -258,7 +260,7 @@ fastskill add ./skills -r -e --group dev
 
 ### fastskill remove
 
-Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`. The storage location is configured in `.fastskill/config.yaml` via `skills_directory` (default: `.claude/skills/`).
+Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 ```bash
 # Remove skill (with confirmation)

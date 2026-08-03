@@ -101,21 +101,15 @@ monitoring = { source = "source", name = "registry", skill = "monitoring", group
 
 ### Performance
 
-**Pre-computed embeddings and efficient storage.**
+**Efficient local storage.**
 
-FastSkill includes performance optimizations that make skill management scalable:
-
-**Pre-computed Embeddings:**
-- Skills can bundle pre-computed embeddings in ZIP packages
-- No API calls needed during installation
-- Faster search and discovery
-- Consistent embeddings across installations
+FastSkill keeps semantic search fast and self-contained:
 
 **Local Vector Storage:**
-- SQLite-based embedding database
-- Fast semantic search without external API calls
-- Offline operation capability
-- Incremental indexing for efficiency
+- SQLite-based embedding index stored on disk (`index_path`)
+- Fast semantic search that queries local vectors — no external service call at query time
+- Incremental indexing: a change-detection cache (`.fastskill/build-cache.json`) re-embeds only what changed
+- Auto-reindex after add/install/update/remove keeps the index current
 
 ## Expanding the Claude Code Standard
 
@@ -268,7 +262,7 @@ FastSkill focuses on **repeatable operations** for AI agent skills:
 - **Scale**: many skills and repositories in one project
 - **Collaboration**: shared manifests and locks
 - **Reliability**: explicit versions and dependency entries
-- **Performance**: optional precomputed embeddings in packages
+- **Performance**: a local SQLite vector index with incremental reindexing
 - **Standards-based**: Claude Code `SKILL.md` layout
 
 ## What's Next?

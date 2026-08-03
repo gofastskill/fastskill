@@ -5,195 +5,154 @@ description: "Create skill-project.toml for skill authors and project configurat
 
 ## Overview
 
-The `fastskill init` command creates a `skill-project.toml` file for skill authors. This command extracts metadata from an existing `SKILL.md` file (if present) and interactively prompts for any missing information to create a properly configured skill project.
+`fastskill init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
 
 <Callout type="info">
-This command is for **skill authors** who want to create a new skill project. It generates the `skill-project.toml` manifest file that defines your skill's metadata, dependencies, and configuration. For general FastSkill setup, see the [Installation Guide](/installation).
+`init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
 </Callout>
 
 <Callout type="info">
-**Context Detection**: `fastskill init` automatically detects whether you're working in a skill directory or project root:
-- **Skill-level**: If run in a directory containing `SKILL.md`, creates `skill-project.toml` with `[metadata]` section (for skill authors)
-- **Project-level**: If run at project root, can create `skill-project.toml` with `[dependencies]` section (for skill consumers)
-
-See [Skill Commands](/cli-reference/skill-commands) for details on skill-level initialization.
+**Context detection**: `init` detects whether you're in a skill directory or a project root:
+- **Skill-level**: run in a directory containing `SKILL.md` — writes a `[metadata]` section for skill authors. `skills_directory` is optional.
+- **Project-level**: run at a project root — writes `[dependencies]` for skill consumers. A skills directory is required (via `--skills-dir`, or the prompt).
 </Callout>
 
-## What It Does
+## What it does
 
-When you run `fastskill init`, it performs the following steps:
-
-1. **Checks for Existing Files**: Validates if `skill-project.toml` already exists
-2. **Reads SKILL.md**: Extracts metadata from frontmatter (name, description, version, etc.)
-3. **Interactive Prompts**: Asks for missing information or uses provided CLI arguments
-4. **Creates skill-project.toml**: Generates the manifest file with proper structure
-5. **Validates Configuration**: Ensures all required fields are present and valid
+1. **Checks for an existing file**: refuses to overwrite `skill-project.toml` unless `--force` is given.
+2. **Reads `SKILL.md`** (if present): pulls `version`, `description`, and `author` from the frontmatter.
+3. **Resolves missing fields**: from CLI flags, or by prompting (unless `--yes`).
+4. **Writes `skill-project.toml`**: with `[metadata]`, `[dependencies]`, and — when a skills directory is set — `[tool.fastskill]`.
+5. **Validates**: the skill ID (derived from the directory name) and the version (must be valid semver).
 
 ## Usage
 
-### Interactive Setup (Recommended)
+### Interactive setup
 
 ```bash
 fastskill init
 ```
 
-This will prompt you for each configuration option:
+Prompts for each missing field. For example, at a project root:
 
 ```
-🚀 FastSkill Project Initialization
+FastSkill Skill Initialization
 
-🔑 OpenAI API Key
-Enter your OpenAI API key (or press Enter to set via environment variable): sk-...
+Description (optional, press Enter to skip): My project skills
+Author (optional, press Enter to skip): Jane Doe
+Download URL (optional, press Enter to skip):
+Skills directory (default: .claude/skills): .claude/skills
 
-✅ API key format validated
-
-🤖 Embedding Model
-Choose an embedding model:
-  1. text-embedding-3-small (recommended, cost-effective)
-  2. text-embedding-3-large (higher accuracy, more expensive)
-  3. Custom model
-Enter choice (1-3) [1]: 1
-
-📁 Skills Directory
-Enter skills directory path [.skills]: .skills
-
-✅ FastSkill project initialized successfully!
-
-💡 Next steps:
-  • Add skills to the '.skills' directory
-  • Run: fastskill reindex
-  • Then: fastskill search "your query"
+Created skill-project.toml with version: 1.0.0
+Skills directory: .claude/skills
 ```
 
-### Non-Interactive Setup
+### Non-interactive setup
 
 ```bash
-# Use defaults for everything (requires OPENAI_API_KEY env var)
+# Skill-level: skip all prompts, take metadata from SKILL.md
 fastskill init --yes
 
-# Specify custom options
-fastskill init --yes --skills-dir my-skills
+# Project-level with --yes: a skills directory is required
+fastskill init --yes --skills-dir .claude/skills
 
-# Skip creating example skill
-fastskill init --yes --no-example
+# Provide metadata directly
+fastskill init --yes --version 1.2.0 --description "Team skills" --author "Jane Doe"
 ```
 
-## Command Options
+<Callout type="warn">
+At a project root, `--yes` requires `--skills-dir <path>`. Without it, either drop `--yes` to be prompted or pass the flag.
+</Callout>
+
+## Command options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--yes` | Skip interactive prompts, use defaults | `false` |
-| `--force` | Reinitialize even if files exist | `false` |
-| `--skills-dir <DIR>` | Skills directory path | `.skills` |
-| `--no-example` | Skip creating example skill | `false` |
+| `--yes` | Skip interactive prompts and use defaults | `false` |
+| `--force` | Overwrite an existing `skill-project.toml` | `false` |
+| `--version <VER>` | Set the skill version (validated as semver) | from `SKILL.md`, else `1.0.0` |
+| `--description <TEXT>` | Set the description | from `SKILL.md`, else empty |
+| `--author <NAME>` | Set the author | from `SKILL.md`, else empty |
+| `--download-url <URL>` | Set the download URL | empty |
+| `--skills-dir <DIR>` | Skills directory (global flag) | `.claude/skills` |
 
-**Note**: The `--embedding-model` option is not yet available. To configure embedding model, edit the `.fastskill/config.yaml` file after initialization.
+## The file it creates
 
-## Files Created
+At a project root, `init` produces a `skill-project.toml` like:
 
-### `.fastskill/config.yaml`
+```toml skill-project.toml
+[metadata]
+id = "my-project"
+version = "1.0.0"
+description = "Team skills"
+author = "Jane Doe"
 
-Service-level configuration file with your embedding settings:
+[dependencies]
 
-```yaml
-# FastSkill Configuration
-# This file configures embedding search settings
+[tool.fastskill]
+skills_directory = ".claude/skills"
 
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
+# Additional configuration options for [tool.fastskill]:
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
 ```
 
-**Note**: Service-level configuration (embedding settings) is stored in `.fastskill/config.yaml`. Project-level configuration (skill dependencies and repositories) is stored in `skill-project.toml` at your project root.
+The commented block is written verbatim so you can uncomment and fill in embedding settings or repositories later.
 
-### `.skills/` Directory Structure
+## Skills directory
 
-```
-.skills/
-├── .fastskill/          # Internal FastSkill data (index, cache)
-├── examples/            # Example skills for learning
-│   └── hello-world/
-│       └── SKILL.md    # Sample skill definition
-└── README.md           # Directory documentation
-```
+- **Default**: `.claude/skills`
+- **Custom**: any path you pass via `--skills-dir` or the prompt
+- **Resolution at runtime**: `--skills-dir` flag > `--global` (`~/.config/fastskill/skills`) > `skills_directory` under `[tool.fastskill]` > walk up to an existing `.claude/skills/` > default `.claude/skills/`
 
-### Example Skill
+## Embedding configuration
 
-Creates a basic skill at `.skills/examples/hello-world/SKILL.md`:
+Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `init` — add it when you need it):
 
-```markdown
----
-name: Hello World
-description: A simple example skill that demonstrates the FastSkill format
-version: 1.0.0
-author: FastSkill
-tags: [example, demo, hello-world]
-capabilities: [text_processing, greeting]
----
-
-# Hello World Skill
-
-This is an example skill to demonstrate the FastSkill format and structure.
-
-## Purpose
-
-This skill demonstrates how to create a basic FastSkill skill definition.
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+# index_path = ".fastskill/index"
 ```
 
-## Configuration Options
-
-### Embedding Models
-
-| Model | Description | Cost | Use Case |
-|-------|-------------|------|----------|
-| `text-embedding-3-small` | Cost-effective, good performance | Low | Most projects |
-| `text-embedding-3-large` | Higher accuracy, more expensive | High | Enterprise, high-precision needs |
-| Custom | Any OpenAI-compatible model | Varies | Advanced users |
-
-### Skills Directory
-
-- **Default**: `.skills` (recommended)
-- **Custom**: Any directory path you specify
-- **Existing**: Will be created if it doesn't exist
-
-## Environment Variables
-
-### OPENAI_API_KEY
-
-The init command will use this environment variable if set:
+Set the API key via the environment; if it is unset, semantic search is silently skipped:
 
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
-fastskill init --yes  # Will use the env var automatically
+export OPENAI_API_KEY="your-key-here"
 ```
-
-If not set, you'll be prompted to enter it interactively.
 
 ## Troubleshooting
 
-### "API key should start with 'sk-'"
+### "skill-project.toml already exists. Use --force to overwrite."
 
-**Cause**: The provided API key doesn't match OpenAI's format
-**Solution**: Check that you're using a valid OpenAI API key
+**Cause**: a `skill-project.toml` is already present.
+**Solution**: pass `--force` to overwrite it, or remove the file first.
 
-### "API key appears to be too short"
+### "Project-level init requires --skills-dir"
 
-**Cause**: The API key is incomplete
-**Solution**: Ensure you're copying the complete API key from OpenAI
+**Cause**: `--yes` was used at a project root without a skills directory.
+**Solution**: add `--skills-dir <path>`, or drop `--yes` to be prompted.
 
-### "FastSkill is already initialized"
+### Invalid version
 
-**Cause**: Configuration files already exist
-**Solution**: Use `--force` to reinitialize, or remove existing files first
+**Cause**: the version (from `--version` or `SKILL.md`) is not valid semver.
+**Solution**: use a semver string such as `1.0.0`.
 
-### Permission Denied
+### Permission denied
 
-**Cause**: Cannot write to the current directory
-**Solution**: Check file permissions or run in a directory where you have write access
+**Cause**: the current directory is not writable.
+**Solution**: fix permissions or run in a directory where you have write access.
 
 ## Integration with CI/CD
-
-For automated setups in CI/CD pipelines:
 
 ```yaml
 # .github/workflows/setup-fastskill.yml
@@ -208,63 +167,20 @@ jobs:
         run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 
       - name: Initialize FastSkill
+        run: fastskill init --yes --skills-dir .claude/skills
+
+      - name: Install skills from the manifest
+        run: fastskill install
+
+      - name: Index skills (needs OPENAI_API_KEY for semantic search)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: fastskill init --yes --no-example
-
-      - name: Add skills
-        run: cp -r my-skills/* .skills/
-
-      - name: Index skills
         run: fastskill reindex
 ```
 
-## Best Practices
+## Next steps after init
 
-### Project Structure
-
-Keep FastSkill configuration at the project root:
-
-```
-my-project/
-├── .fastskill/
-│   └── config.yaml  # Service-level configuration (embedding settings)
-├── skill-project.toml  # Project-level configuration (dependencies, repositories)
-├── skills.lock       # Lock file (auto-generated)
-├── .claude/
-│   └── skills/      # Skills directory (default location)
-│       ├── my-skill/
-│       └── another-skill/
-└── src/              # Your application code
-```
-
-### API Key Management
-
-- **Development**: Use environment variables
-- **Production**: Use secure secret management
-- **CI/CD**: Store in encrypted secrets
-
-### Version Control
-
-Consider what to commit:
-
-```bash
-# Commit these files
-git add .fastskill/config.yaml
-git add skill-project.toml
-git add skills.lock
-git add .claude/skills/README.md
-git add .claude/skills/examples/
-
-# Don't commit these (generated)
-echo ".skills/.fastskill/" >> .gitignore
-```
-
-## Next Steps After Init
-
-1. **Add Your Skills**: Create skill directories under `.skills/`
-2. **Index Skills**: Run `fastskill reindex` to build the search index
-3. **Test Search**: Try `fastskill search "your query"`
-4. **Integration**: Connect to your AI agent or application
-
-The init command gets you started quickly with a properly configured FastSkill environment. All the complexity of configuration files and directory structure is handled automatically.
+1. **Add skills**: `fastskill add <skill-id>` (registry, Git, or local path).
+2. **Install from the manifest**: `fastskill install`.
+3. **Index for search**: `fastskill reindex` (requires `OPENAI_API_KEY`).
+4. **Search**: `fastskill search "your query"`.

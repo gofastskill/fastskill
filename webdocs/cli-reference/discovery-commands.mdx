@@ -65,7 +65,7 @@ fastskill search "process text" --repository my-repo
 Rebuild the vector search index by scanning all installed skills. Updates embeddings and similarity database.
 
 <Callout type="info">
-See [reindex Command](/cli-reference/reindex-command) for complete documentation with concurrency options.
+See [reindex Command](/cli-reference/reindex-command) for complete documentation.
 </Callout>
 
 ```bash
@@ -74,9 +74,6 @@ fastskill reindex
 
 # Force reindex (ignore file hash cache)
 fastskill reindex --force
-
-# Control concurrent embedding requests (default 5)
-fastskill reindex --max-concurrent 5
 
 # Optional explicit skills directory
 fastskill reindex --skills-dir ./.claude/skills
@@ -92,8 +89,9 @@ fastskill reindex --skills-dir ./.claude/skills
 **Options**:
 - `--skills-dir <PATH>`: Override skills directory for this run
 - `--force`: Rebuild all embeddings (ignore hash cache)
-- `--max-concurrent <N>`: Concurrent embedding requests (default: 5)
+- `--max-concurrent <N>`: Accepted for compatibility but currently a **no-op** — reindex embeds skills sequentially (default value: 5)
 - `--progress` / `--no-progress`: Control progress UI
+- `-v, --verbose`: Show per-skill processing details
 
 **When to use**:
 - After installing new skills
@@ -148,9 +146,9 @@ type = "git-marketplace"
 url = "https://github.com/team/skills.git"
 priority = 0
 branch = "main"
-# Optional authentication
-auth_type = "pat"
-auth_value = "token-value"
+# Optional authentication — the token is read from the named environment variable,
+# never stored inline in the file.
+auth = { type = "pat", env_var = "GITHUB_TOKEN" }
 ```
 
 **HTTP Registry**:
@@ -160,9 +158,8 @@ name = "public-registry"
 type = "http-registry"
 index_url = "https://registry.fastskill.dev/index"
 priority = 0
-# Optional authentication
-auth_type = "api-key"
-auth_value = "key-value"
+# Optional authentication — the key is read from the named environment variable.
+auth = { type = "api_key", env_var = "FASTSKILL_API_KEY" }
 ```
 
 **ZIP URL**:
@@ -183,22 +180,18 @@ path = "./local-skills"
 priority = 0
 ```
 
-**Authentication Types**:
-- `pat`: Personal Access Token (for git repositories)
-- `ssh-key`: SSH key path
-- `ssh`: SSH connection
-- `basic`: Basic authentication (username/password)
-- `api-key`: API key (for HTTP registries)
+**Authentication Types** (the `type` value in the `auth` table):
+- `pat`: Personal Access Token (for git repositories) — `{ type = "pat", env_var = "..." }`
+- `ssh-key`: SSH key path — `{ type = "ssh-key", path = "..." }`
+- `ssh`: SSH connection — `{ type = "ssh", key_path = "..." }`
+- `basic`: Basic authentication — `{ type = "basic", username = "...", password_env = "..." }`
+- `api_key`: API key (for HTTP registries) — `{ type = "api_key", env_var = "..." }`
 
 **Priority Resolution**:
 When skills are available in multiple repositories, priority determines the order:
 - Lower priority numbers are checked first
 - Default priority: 0
 - Higher priority values are checked later
-
-<Callout type="warn">
-**Legacy commands**: `sources` (alias `source`) and `registry` are hidden from `fastskill --help` but still exist for compatibility. Prefer `fastskill repos` for repository and catalog operations.
-</Callout>
 
 ## Search and Reindex Workflow
 
@@ -251,10 +244,8 @@ fastskill search "skill name or description"
 - Use `--force` to bypass hash cache
 
 **Concurrency**:
-- Embedding API requests are concurrent (default: 10)
-- Use `--max-concurrent` to control API rate limiting
-- Lower values reduce API rate limit errors
-- Higher values speed up reindexing
+- Reindex embeds skills **sequentially** (one at a time)
+- `--max-concurrent` is accepted for compatibility but is currently a **no-op** — it does not change indexing speed or the number of concurrent API requests
 
 ### Searching
 
@@ -295,7 +286,7 @@ fastskill search "skill name or description"
   </Callout>
 
   <Callout type="info">
-  **API rate limit errors**: Reduce concurrent requests with `--max-concurrent 3`.
+  **API rate limit errors**: Reindex already runs sequentially — wait and retry.
   </Callout>
 
   <Callout type="info">
@@ -336,9 +327,9 @@ Set lower priority numbers for primary repositories to ensure preferred skills a
 
 Use `fastskill repos test <name>` to verify repositories are accessible before using them.
 
-### 5. Control API concurrency for reindexing
+### 5. Reindex incrementally
 
-Use `--max-concurrent` to balance speed and API rate limits. Start with default and adjust based on rate limit errors.
+Reindex skips unchanged skills by default (via the file-hash cache), so routine reindexing is cheap. Use `--force` only when you need to rebuild every embedding.
 
 ## See Also
 
