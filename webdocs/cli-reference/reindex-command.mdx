@@ -47,26 +47,22 @@ fastskill reindex --skills-dir .claude/skills/ --force
 
 ### --max-concurrent `&lt;NUMBER&gt;`
 
-Control the number of concurrent embedding API requests (default: 5).
-
-```bash
-# Increase concurrency for faster indexing
-fastskill reindex --skills-dir .claude/skills/ --max-concurrent 10
-
-# Reduce concurrency to avoid rate limits
-fastskill reindex --skills-dir .claude/skills/ --max-concurrent 2
-```
+<Callout type="warning">
+This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
+`reindex` embeds skills **sequentially**, one at a time. Passing a value does not change
+indexing speed or the number of concurrent API requests.
+</Callout>
 
 ## Configuration Requirements
 
-### 1. FastSkill Configuration
+### 1. Embedding Configuration
 
-Create `.fastskill/config.yaml` with embedding settings:
+Add embedding settings to `skill-project.toml` under `[tool.fastskill.embedding]`:
 
-```yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
 ```
 
 ### 2. OpenAI API Key
@@ -115,9 +111,9 @@ For each SKILL.md file:
 
 ### 4. Index Building
 
-- Creates/updates SQLite database
-- Stores metadata, embeddings, and file hashes
-- Creates optimized indexes for fast search
+- Creates/updates the SQLite vector index (`.fastskill/index.db`)
+- Stores metadata and embeddings for fast semantic search
+- Records file hashes in the change-detection cache (`.fastskill/build-cache.json`)
 
 ### 5. Cleanup
 
@@ -129,11 +125,11 @@ For each SKILL.md file:
 
 ### Output Levels
 
-The reindex command supports three output levels:
+The reindex command has these output controls:
 
-- **Default**: Shows progress bar with completion percentage
+- **Default**: Shows a live progress bar with completion percentage (when stdout is a TTY)
 - **Verbose (`-v, --verbose`)**: Shows per-skill processing details
-- **Quiet (`-q, --quiet`)**: Suppresses progress, shows only final summary
+- **`--progress` / `--no-progress`**: Force the progress bar on, or suppress it and show only the final summary
 
 ### Progress Bar
 
@@ -173,12 +169,12 @@ Reindex completed
   Total time: 45.23s
 ```
 
-### Quiet Mode
+### No-Progress Mode
 
-Use `-q` or `--quiet` to suppress all progress output:
+Use `--no-progress` to suppress the progress bar and show only the final summary:
 
 ```bash
-fastskill reindex --quiet
+fastskill reindex --no-progress
 
 Reindex completed
   Total skills: 50
@@ -230,8 +226,8 @@ fastskill reindex --skills-dir .claude/skills/ | grep "error"
 # No progress bar (redirected to file)
 fastskill reindex --skills-dir .claude/skills/ > output.log
 
-# Force quiet mode explicitly
-fastskill reindex --quiet
+# Suppress the progress bar explicitly
+fastskill reindex --no-progress
 ```
 
 ## Output and Progress
@@ -270,28 +266,34 @@ Reindex completed
 error: Reindex completed with 2 errors
 ```
 
-In quiet or default mode, only the summary and error count are shown.
+In default or `--no-progress` mode, only the summary and error count are shown.
 
 Common errors:
 - **API Key Issues**: Check `OPENAI_API_KEY` environment variable
-- **Rate Limits**: Reduce `--max-concurrent` or wait before retrying
+- **Rate Limits**: Wait before retrying (reindex already runs sequentially)
 - **Network Issues**: Check internet connectivity
 - **Permission Issues**: Ensure write access to skills directory
 
-## Database Location
+## On-Disk Layout
 
-The vector index is stored in the skills directory:
+Reindex maintains two files inside the skills directory's `.fastskill/` folder:
 
 ```
 .claude/skills/
 └── .fastskill/
-    └── index.db
+    ├── index.db           # vector index (embeddings)
+    └── build-cache.json   # change-detection cache (file hashes)
 ```
 
-**File Details:**
+**`index.db`** — the vector index:
 - **Format**: SQLite database
 - **Size**: ~1-10MB depending on number of skills
-- **Content**: Metadata, embeddings, file hashes, timestamps
+- **Content**: Metadata and embeddings used by semantic search
+
+**`build-cache.json`** — the change-detection cache:
+- **Format**: JSON
+- **Content**: Per-skill file hashes used to decide which skills changed since the last run
+- Used to skip re-embedding unchanged skills (bypassed with `--force`)
 
 ## Performance Considerations
 
@@ -310,9 +312,6 @@ The vector index is stored in the skills directory:
 ### Optimization Tips
 
 ```bash
-# Use smaller batches for rate limit avoidance
-fastskill reindex --max-concurrent 2
-
 # Index only changed skills (default behavior)
 fastskill reindex --skills-dir .claude/skills/
 
@@ -355,14 +354,12 @@ no separate metadata file to generate or sync.
 
 #### Reindex skipped: no embedding provider configured
 `reindex` requires an embedding provider. When none is configured it is skipped (not an error) —
-run `fastskill doctor` to confirm, then configure one in `.fastskill/config.yaml`:
+run `fastskill doctor` to confirm, then configure one in `skill-project.toml`:
 
-```bash
-cat > .fastskill/config.yaml << EOF
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
-EOF
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
 ```
 
 #### "OPENAI_API_KEY environment variable not set"
@@ -379,8 +376,8 @@ chmod 755 .claude/skills/
 
 #### Rate limit exceeded
 ```bash
-# Solution: Reduce concurrency and retry
-fastskill reindex --max-concurrent 1 --skills-dir .claude/skills/
+# Solution: reindex already runs sequentially; wait and retry
+fastskill reindex --skills-dir .claude/skills/
 ```
 
 ### Debug Mode
@@ -409,10 +406,10 @@ fastskill search "test" --local --embedding false --skills-dir .claude/skills
 
 Use different OpenAI models:
 
-```yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-large"  # Higher accuracy, higher cost
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-large"  # Higher accuracy, higher cost
 ```
 
 ### Multiple Directories

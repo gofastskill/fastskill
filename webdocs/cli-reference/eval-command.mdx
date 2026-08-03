@@ -30,7 +30,7 @@ fastskill eval validate --json
 | Option | Description |
 |--------|-------------|
 | `--agent <AGENT>` | Verify the given agent is available |
-| `--format <FORMAT>` | `table`, `json`, `grid`, or `xml` |
+| `--format <FORMAT>` | `table` or `json` only (eval does not support `grid`/`xml`) |
 | `--json` | Shorthand for `--format json` |
 
 ## eval run
@@ -51,7 +51,7 @@ fastskill eval run --agent codex --output-dir ./evals --json --no-fail
 | `--model <MODEL>` | Optional model override passed to the agent |
 | `--case <ID>` | Run only this case id |
 | `--tag <TAG>` | Run only cases with this tag |
-| `--format <FORMAT>` | Output format |
+| `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero even when the suite fails |
 
@@ -67,7 +67,7 @@ fastskill eval report --run-dir /tmp/evals/latest --json
 | Option | Description |
 |--------|-------------|
 | `--run-dir <DIR>` | **Required.** Run directory to summarize |
-| `--format <FORMAT>` | Output format |
+| `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 
 ## eval score
@@ -82,7 +82,7 @@ fastskill eval score --run-dir /tmp/evals/run-1 --no-fail
 | Option | Description |
 |--------|-------------|
 | `--run-dir <DIR>` | **Required.** Run directory |
-| `--format <FORMAT>` | Output format |
+| `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero on suite failure |
 

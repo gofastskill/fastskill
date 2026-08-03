@@ -25,6 +25,10 @@ fastskill serve
 
 Then open `http://localhost:8080/` or `http://localhost:8080/dashboard` in your browser.
 
+<Callout type="warn">
+`serve` is **read-only by default** (ADR-0003). Browsing and search work out of the box, but the Web UI "Install"/"Uninstall" buttons and other write actions require starting the server with `fastskill serve --enable-write`; otherwise those requests return HTTP 403.
+</Callout>
+
 ## Architecture
 
 The registry consists of:

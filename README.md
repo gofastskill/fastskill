@@ -1,117 +1,176 @@
 # FastSkill
 
-Package manager and operational toolkit for Agent AI Skills.
+**Package manager and operational toolkit for AI agent skills.**
 
 [![CI](https://github.com/gofastskill/fastskill/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/gofastskill/fastskill/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/gofastskill/fastskill/branch/main/graph/badge.svg)](https://codecov.io/gh/gofastskill/fastskill)
 
-## Why FastSkill
+FastSkill brings package management to AI agent skills. It follows the Claude Code `SKILL.md`
+layout and adds a manifest (`skill-project.toml`), a lockfile (`skills.lock`), semantic search,
+quality evals, and a local HTTP/MCP server — so you can **install, organize, discover, and operate
+skills reproducibly**, alone or across a team. Think `npm`/`uv`, but for the skills your agents load.
 
-FastSkill helps you manage AI skills with a clean, repeatable workflow:
+Skills are read directly from your skills directory by Claude Code, Cursor, and other compatible
+agents — there is no metadata-file sync step. FastSkill manages the files; your agent reads them.
 
-- Install skills from local folders, git repositories, or registries
-- Keep installs reproducible with `skill-project.toml` and `skills.lock`
-- Discover skills with remote and local search
-- Validate and evaluate skill quality before sharing
-- Diagnose your environment with `fastskill doctor`
+---
+
+## Who it's for
+
+| You are… | FastSkill gives you… |
+|----------|----------------------|
+| **A developer** using Claude Code / Cursor | One command to install a skill from git, a folder, a zip, or a registry — and `list`/`read`/`search` to see exactly what your agent will load. |
+| **A team** sharing an agent setup | A committed `skill-project.toml` + `skills.lock` so every teammate and CI gets the identical skill set, with groups to split dev-only from production skills. |
+| **An organization** operating skills at scale | Private repositories, reproducible locked installs, duplicate/cluster analysis across large skill collections, and a local API/MCP surface for integration. |
+| **A skill author** | `init` to scaffold a manifest, `eval` to test that your skill triggers on the cases you care about, `optimize` to refine it automatically, and `marketplace create` to publish a catalog. |
+
+## What you can do
+
+- **Install skills** from a local folder, a git repo (branch/tag/subdirectory), a zip URL, or a registry ID.
+- **Keep installs reproducible** with `skill-project.toml` + `skills.lock`; split optional vs production skills into groups.
+- **Discover skills** by meaning with semantic search (remote catalogs by default, `--local` for installed skills).
+- **Test skill quality** with eval suites (`fastskill eval`) before you ship.
+- **Improve skills automatically** with the text-gradient optimizer (`fastskill optimize`).
+- **Analyze a collection** for near-duplicates, clusters, and similarity (`fastskill analyze`).
+- **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill serve`), plus an MCP server that exposes every command to your agent (`fastskill mcp`).
+- **Diagnose** your setup at any time with `fastskill doctor`.
+
+## Install
+
+Pick one (see the [installation guide](webdocs/installation.mdx) for all options and platform notes):
+
+```bash
+# macOS & Linux (Homebrew)
+brew install gofastskill/cli/fastskill
+
+# Windows (Scoop)
+scoop bucket add gofastskill https://github.com/gofastskill/scoop-bucket
+scoop install fastskill
+
+# Linux & macOS (install script)
+curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+```
+
+Verify:
+
+```bash
+fastskill -V
+```
 
 ## Quick start
 
 ```bash
-fastskill -V
-fastskill init
-fastskill add ./skills/my-skill -e --group dev
-fastskill install
-fastskill list
+fastskill init                              # scaffold skill-project.toml
+fastskill add ./skills/my-skill -e --group dev   # add a local skill (editable), in the dev group
+fastskill install                           # apply the manifest, write skills.lock
+fastskill list                              # see installed skills + reconciliation status
 ```
 
-Optional local search flow:
+Optional semantic search (needs an embedding provider — set `OPENAI_API_KEY`):
 
 ```bash
-fastskill reindex
-fastskill search "text processing" --local
+fastskill reindex                           # build the local vector index
+fastskill search "text processing" --local  # find installed skills by meaning
 ```
 
-## skill-project.toml (project manifest)
+## Common scenarios
 
-`skill-project.toml` is the project manifest for skill dependencies.
-It keeps installs reproducible across teammates and CI together with `skills.lock`.
+**Add a skill from anywhere**
 
-Minimal example:
+```bash
+fastskill add ./skills/pptx-helper -e             # local folder, editable (symlink)
+fastskill add ./skills -r --group dev             # every SKILL.md under a folder
+fastskill add https://github.com/org/skill.git --branch main
+fastskill add "https://github.com/org/repo/tree/main/path/to/skill"   # git subdirectory
+fastskill add scope/pptx@1.0.0                    # a pinned registry skill
+```
+
+**Reproducible install in CI**
+
+```bash
+fastskill install --lock          # install exact versions from skills.lock
+fastskill install --without dev   # skip the dev group for production
+```
+
+**Use a shared catalog (repository)**
+
+```bash
+fastskill repos add team-skills --repo-type git-marketplace https://github.com/org/team-skills.git
+fastskill repos list
+fastskill search "web scraping"   # remote catalogs by default
+```
+
+**Test and refine a skill you're authoring**
+
+```bash
+fastskill eval validate           # check your eval config
+fastskill eval run --all --output-dir ./eval-runs
+fastskill optimize run --config optimize.toml     # auto-improve the skill document
+```
+
+**Integrate with your agent**
+
+```bash
+fastskill mcp install --agent claude --scope project   # expose fastskill as MCP tools
+fastskill serve                                        # local HTTP API + web UI (read-only)
+```
+
+## Command reference
+
+| Command | What it does |
+|---------|--------------|
+| `fastskill init` | Scaffold `skill-project.toml` in the current project or skill |
+| `fastskill add <source>` | Add a skill from a local path, zip, git URL, or registry ID |
+| `fastskill install` | Apply the manifest (`--lock`, `--only`, `--without`) |
+| `fastskill update [id]` | Move installed skills forward from their source (`--check`, `--dry-run`) |
+| `fastskill remove <id>…` | Uninstall skills and update the manifest + lock |
+| `fastskill list` | List installed skills with reconciliation status (`--format`, `--json`) |
+| `fastskill read <id>` | Print a skill's `SKILL.md` (`--meta`, `--tree`) |
+| `fastskill search <query>` | Search remote catalogs (default) or installed skills (`--local`) |
+| `fastskill reindex` | Rebuild the local semantic search index |
+| `fastskill repos <cmd>` | Manage repositories & browse catalogs (`list/add/remove/info/update/test/refresh/skills/show/versions`) |
+| `fastskill marketplace create` | Generate a `marketplace.json` catalog from a folder of skills |
+| `fastskill eval <cmd>` | Skill quality evals (`validate/run/report/score`) |
+| `fastskill optimize <cmd>` | Text-gradient skill optimization (`run/resume/status/inspect/export`) |
+| `fastskill analyze <cmd>` | Similarity `matrix`, `cluster`, and `duplicates` across skills |
+| `fastskill serve` | Local HTTP API + web UI (read-only by default; `--enable-write` to mutate) |
+| `fastskill mcp <cmd>` | Run/install the MCP server (`serve/install/list`) for agents |
+| `fastskill doctor` | Diagnose configuration and environment readiness |
+
+Every command supports `--help`. Run `fastskill <skill-id>` as a shorthand for `fastskill read <skill-id>`.
+
+## Configuration
+
+All project configuration lives in **`skill-project.toml`** at your project root (FastSkill walks up
+to find it). A minimal manifest:
 
 ```toml
 [dependencies]
 demo-skill = { source = "local", path = "./skills/demo-skill", editable = true, groups = ["dev"] }
+
+# Only needed for semantic search (reindex / search --local):
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
 ```
 
-Typical workflow:
-
-```bash
-fastskill add ./skills/demo-skill -e --group dev
-fastskill install
-fastskill list
-```
-
-## Usage examples
-
-### Add from local folder (editable)
-
-```bash
-fastskill add ./skills/pptx-helper -e --group dev
-fastskill install
-```
-
-### Add from git
-
-```bash
-fastskill add https://github.com/org/skill.git --branch main
-fastskill install
-```
-
-### Add from registry
-
-```bash
-fastskill add scope/pptx@1.0.0
-fastskill install --lock
-```
-
-## Core commands
-
-| Command | What it does |
-|---------|--------------|
-| `fastskill add <source>` | Add a skill dependency from local, git, zip, or registry |
-| `fastskill install` | Apply dependencies from `skill-project.toml` |
-| `fastskill list` | List installed skills |
-| `fastskill read <id>` | Print a skill's full `SKILL.md` (add `--meta` for metadata, `--tree` for its dependency tree) |
-| `fastskill search "<query>"` | Search remote catalog (default) |
-| `fastskill search "<query>" --local` | Search installed skills |
-| `fastskill eval validate` | Validate eval configuration and checks |
-| `fastskill doctor` | Diagnose configuration and environment (e.g. whether semantic search is available) |
+Set `OPENAI_API_KEY` in your environment to enable embedding-based search. See the
+[configuration guide](webdocs/configuration/init-command.mdx) for the full schema (repositories,
+groups, server, eval).
 
 ## Documentation
 
-- [Welcome](webdocs/welcome.mdx)
-- [Quick Start](webdocs/quickstart.mdx)
-- [Installation](webdocs/installation.mdx)
+- [Welcome](webdocs/welcome.mdx) — the full story and use cases
+- [Quick Start](webdocs/quickstart.mdx) · [Installation](webdocs/installation.mdx) · [Cheatsheet](webdocs/cheatsheet.mdx)
 - [CLI Reference](webdocs/cli-reference/overview.mdx)
-- [Registry Guide](webdocs/registry/overview.mdx)
+- [Registry & repositories](webdocs/registry/overview.mdx)
+- [Evals & quality](webdocs/evals-quality/overview.mdx) · [Optimization](webdocs/optimize/overview.mdx)
+- [Integrations: Claude Code](webdocs/integration/claude-code-integration.mdx) · [Cursor](webdocs/integration/cursor-integration.mdx)
 
-## Crates
+## Contributing
 
-This repository is a Rust workspace with three primary crates:
-
-- [`crates/fastskill-cli`](crates/fastskill-cli): CLI binary and command routing.
-- [`crates/fastskill-core`](crates/fastskill-core): reusable service/library layer.
-- [`crates/fastskill-evals`](crates/fastskill-evals): standalone evaluation engine primitives.
-
-Each crate has its own docs:
-
-- `crates/fastskill-cli/README.md`
-- `crates/fastskill-cli/CONTRIBUTING.md`
-- `crates/fastskill-core/README.md`
-- `crates/fastskill-core/CONTRIBUTING.md`
-- `crates/fastskill-evals/README.md`
-- `crates/fastskill-evals/CONTRIBUTING.md`
+FastSkill is a Rust workspace (`fastskill-cli`, `fastskill-core`, `fastskill-evals`). To build from
+source, run the test suite, or contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

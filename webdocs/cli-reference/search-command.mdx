@@ -278,8 +278,8 @@ echo "$RESULTS" | jq -r '.[].name'
 - **Solution**: Try broader terms or different search method
 
 #### "Embedding configuration required but not found"
-- **Cause**: No `.fastskill/config.yaml` configuration file found in searched locations
-- **Solution**: Run `fastskill init` to set up your project, or create `.fastskill/config.yaml` manually
+- **Cause**: No `[tool.fastskill.embedding]` section found in `skill-project.toml` (walked up from the current directory)
+- **Solution**: Run `fastskill init` to set up your project, or add `[tool.fastskill.embedding]` to `skill-project.toml` manually
 
 #### "Vector index service not available"
 - **Cause**: Skills not indexed yet
@@ -307,8 +307,8 @@ sqlite3 .claude/skills/.fastskill/index.db "SELECT COUNT(*) FROM skills;"
 
 #### Verify Configuration
 ```bash
-# Check if configuration file exists
-cat .fastskill/config.yaml
+# Check the embedding configuration
+cat skill-project.toml
 
 # Test API key is set
 echo $OPENAI_API_KEY
@@ -341,8 +341,10 @@ fastskill search "query" --format table # For human reading
 
 #### API Integration
 ```bash
-# For web applications
-curl -X GET "http://localhost:8080/api/search?q=powerpoint&format=json"
+# For web applications (POST JSON body to the running `fastskill serve` API)
+curl -X POST "http://localhost:8080/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "powerpoint", "limit": 10, "semantic": true}'
 
 # For command-line tools
 fastskill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'

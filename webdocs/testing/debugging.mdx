@@ -1,26 +1,61 @@
 ---
 title: "Debugging Guide"
-description: "Debugging tools and techniques for troubleshooting FastSkill issues and performance problems."
+description: "Diagnose FastSkill setup and behavior with `fastskill doctor` and `--verbose` output."
 ---
 
 ## Overview
 
-Debugging tools help identify and resolve FastSkill issues quickly.
+The two tools for debugging FastSkill are `fastskill doctor` — an environment/configuration health
+check — and the global `--verbose` / `-v` flag for detailed command output.
 
-## Debugging Tools
+## `fastskill doctor`
 
-- Log analysis and filtering
-- Performance profiling
-- Error diagnostics
-- Interactive debugging
+`doctor` inspects your environment and reports what is and isn't set up:
 
-## Common Issues
+```bash
+fastskill doctor
+```
 
-- Configuration problems
-- Performance bottlenecks
-- Execution errors
-- Network connectivity
+It runs these checks:
+
+| Check | What it verifies |
+|-------|------------------|
+| `skills_dir` | The skills directory exists and is a directory |
+| `project_toml` | `skill-project.toml` is present (walk-up from cwd) |
+| `embedding_config` | `[tool.fastskill.embedding]` is configured (semantic search / reindex enabled) |
+| `api_key` | `OPENAI_API_KEY` is set (required for embeddings) |
+| `auth_token` | An auth token is present (`FASTSKILL_AUTH_TOKEN` or `FASTSKILL_TOKEN`) for remote registry operations |
+
+For machine-readable output (CI, scripts):
+
+```bash
+fastskill doctor --json
+```
+
+Common findings and fixes:
+
+- **`project_toml` failing** — run `fastskill init` to create `skill-project.toml`.
+- **`embedding_config` / `api_key` failing** — add `[tool.fastskill.embedding]` and set
+  `OPENAI_API_KEY`; without them semantic search and reindex are disabled (they skip silently, they
+  don't error).
+- **`auth_token` failing** — set `FASTSKILL_AUTH_TOKEN` (or `FASTSKILL_TOKEN`) if you use a private
+  registry.
+
+## Verbose output
+
+Add `--verbose` (or `-v`) to any command to see detailed diagnostic output about what FastSkill is
+doing — useful for understanding install resolution, indexing, and registry access:
+
+```bash
+fastskill install --verbose
+fastskill search "pdf" -v
+```
 
 <Callout>
-Effective debugging tools help maintain FastSkill's reliability and performance.
+Start with `fastskill doctor` to confirm the environment, then re-run the failing command with
+`--verbose` to see the detail.
 </Callout>
+
+## See also
+
+- [Troubleshooting](/troubleshooting) — common issues and resolutions.

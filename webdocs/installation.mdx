@@ -115,11 +115,13 @@ Prefer a user-local path on macOS or Linux? Move `fastskill` to `~/.local/bin/` 
 
 **Skills Directory Resolution:**
 
-The CLI automatically discovers the skills directory in this priority order:
+The CLI resolves the skills directory in this priority order:
 
-1. `skills_directory` setting in `.fastskill/config.yaml`
-2. Walk up directory tree to find existing `.claude/skills/`
-3. Default to `.claude/skills/` in current directory
+1. `--skills-dir <path>` flag
+2. `--global` (uses `~/.config/fastskill/skills`)
+3. `skills_directory` under `[tool.fastskill]` in `skill-project.toml`
+4. Walk up the directory tree to find an existing `.claude/skills/`
+5. Default to `.claude/skills/` in the current directory
 
 **Manifests and lockfiles:**
 
@@ -130,20 +132,20 @@ The CLI automatically discovers the skills directory in this priority order:
 
 ## Configuration
 
-After installation, configure FastSkill by creating `.fastskill/config.yaml`:
+All configuration lives in `skill-project.toml` at your project root. Embedding settings and the skills directory go under the `[tool.fastskill]` tables:
 
-```yaml
-embedding:
-  openai_base_url: "https://api.openai.com/v1"
-  embedding_model: "text-embedding-3-small"
+```toml
+[tool.fastskill]
+skills_directory = ".claude/skills"
 
-# Optional: Custom skills directory
-skills_directory: ".claude/skills"
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
 ```
 
-**Note**: Service-level configuration (embedding settings) is stored in `.fastskill/config.yaml`. Project-level configuration (skill dependencies and repositories) is stored in `skill-project.toml` at your project root.
+**Note**: Skill dependencies and repositories live in the same `skill-project.toml` — under `[dependencies]` and `[[tool.fastskill.repositories]]` respectively.
 
-Set your OpenAI API key:
+Set your OpenAI API key (used for semantic search embeddings; if unset, semantic search is silently skipped):
 
 ```bash
 export OPENAI_API_KEY="your-key-here"
@@ -207,11 +209,11 @@ If you already have a project with `skill-project.toml`, try `fastskill list` or
 
 <Accordion id="configuration-issues" title="Configuration Issues">
   <Callout type="info">
-  **Embedding configuration required**: Create `.fastskill/config.yaml` with OpenAI API configuration.
+  **Embedding configuration required**: Add a `[tool.fastskill.embedding]` table to `skill-project.toml` with your OpenAI-compatible base URL and model.
   </Callout>
 
   <Callout type="info">
-  **OpenAI API key not found**: Set `OPENAI_API_KEY` environment variable or configure in `.fastskill/config.yaml`.
+  **OpenAI API key not found**: Set the `OPENAI_API_KEY` environment variable. Without it, semantic search is silently skipped.
   </Callout>
 </Accordion>
 

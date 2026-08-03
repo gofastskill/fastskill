@@ -1,24 +1,88 @@
 ---
 title: "Integration Tutorials"
-description: "Step-by-step guides for integrating FastSkill with popular AI agent frameworks and platforms."
+description: "Connect FastSkill to agents and pipelines: MCP into Claude Code and Cursor, the serve HTTP API, and locked installs in CI."
 ---
 
 ## Overview
 
-Integration tutorials show how to connect FastSkill with various AI agent frameworks and platforms.
+These tutorials cover FastSkill's real integration surfaces: the **MCP** server for agents, the
+**HTTP API** from `fastskill serve`, and **locked installs** in CI. Each uses commands and endpoints
+that exist in the tool.
 
-## Integration Guides
+## 1. MCP into Claude Code
 
-- LangChain integration
-- AutoGen integration
-- Custom agent frameworks
-- Web application integration
-- Microservices architecture
+Expose every FastSkill command to Claude Code as MCP tools.
 
-## Examples
+```bash
+# Register FastSkill as an MCP server for Claude Code in this project
+fastskill mcp install --agent claude --scope project --stdio
 
-Follow the step-by-step tutorials to integrate FastSkill into your projects.
+# Confirm it's registered
+fastskill mcp list
+```
+
+Claude Code will now see tools named `fastskill.<command>` — for example `fastskill.search`,
+`fastskill.install`, `fastskill.resolve`, and `fastskill.repos.add`. To point the agent at a running
+HTTP MCP server instead of spawning FastSkill itself:
+
+```bash
+fastskill mcp serve --transport http --port 8080 --path /mcp
+fastskill mcp install --agent claude --scope project --url http://127.0.0.1:8080/mcp
+```
+
+## 2. MCP into Cursor
+
+Same flow, different agent key:
+
+```bash
+fastskill mcp install --agent cursor --scope global --url http://127.0.0.1:8080/mcp
+```
+
+Supported agents: `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `codex`. See the full
+[MCP tool-calling guide](/tool-calling/development).
+
+## 3. Call the HTTP API from an app
+
+Run the server and use the versioned `/api/v1/...` REST surface. Start read-only:
+
+```bash
+fastskill serve
+```
+
+```bash
+# List installed skills
+curl http://localhost:8080/api/v1/skills
+
+# Search
+curl -X POST http://localhost:8080/api/v1/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "convert pdf"}'
+
+# Resolve the most relevant skills for a prompt (context loading)
+curl -X POST http://localhost:8080/api/v1/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "build a slide deck from notes", "limit": 5}'
+```
+
+These are all read endpoints and work without `--enable-write`. To manage skills over HTTP (install /
+update / delete), start with `fastskill serve --enable-write`, and front the port with an
+authenticating proxy if it is exposed — `serve` enforces no auth of its own. See the
+[serve command reference](/cli-reference/serve-command) and [security model](/security/model).
+
+## 4. Reproducible installs in CI
+
+Commit `skill-project.toml` and `skills.lock`, then install exact locked versions in the pipeline:
+
+```bash
+# In CI: install exactly what the lockfile records
+fastskill install --lock
+```
+
+Set `OPENAI_API_KEY` from a CI secret if the pipeline needs semantic search or reindex; without it
+those steps skip silently rather than failing.
 
 <Callout>
-Integration tutorials provide practical examples for common use cases and frameworks.
+For agents, install FastSkill as an MCP server. For services and pipelines, use the `serve` HTTP API
+and `install --lock`. There is no separate SDK to integrate — the CLI, MCP tools, and HTTP API are
+the surface.
 </Callout>

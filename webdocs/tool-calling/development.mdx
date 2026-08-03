@@ -1,27 +1,91 @@
 ---
-title: "Tool Development"
-description: "Guide for developing custom tools for FastSkill with best practices and examples."
+title: "MCP Tool Calling"
+description: "Expose every FastSkill command to agents as MCP tools with `fastskill mcp serve`, and wire them into Claude Code, Cursor, and other agents with `fastskill mcp install`."
 ---
 
 ## Overview
 
-Tool development enables you to extend FastSkill with custom functionality.
+FastSkill's tool/integration surface for agents is **MCP** (Model Context Protocol). You do not
+author custom tools inside FastSkill — instead, `fastskill mcp serve` exposes **every** FastSkill CLI
+command to an agent as an MCP tool, and `fastskill mcp install` writes the server config into your
+agent's configuration.
 
-## Development Guide
+## Serve FastSkill as an MCP server
 
-- Define tool interfaces
-- Implement tool logic
-- Add parameter validation
-- Include comprehensive testing
-- Document tool capabilities
+```bash
+fastskill mcp serve
+```
 
-## Best Practices
+Every CLI command is registered as an MCP tool named `fastskill.<path>`, where the command path has
+its separators replaced by dots. For example:
 
-- Follow FastSkill conventions
-- Implement proper error handling
-- Add comprehensive documentation
-- Test thoroughly before deployment
+| CLI command | MCP tool name |
+|-------------|---------------|
+| `fastskill search` | `fastskill.search` |
+| `fastskill repos add` | `fastskill.repos.add` |
+| `fastskill install` | `fastskill.install` |
+| `fastskill list` | `fastskill.list` |
+
+The built-in `completion` command is the one exception — it is never exported as an MCP tool.
+
+### Transports
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--transport <http\|stdio>` | Streamable HTTP or stdin/stdout JSON-RPC | `http` |
+| `--host <HOST>` | Bind address (http only) | `127.0.0.1` |
+| `--port <PORT>` | Bind port (http only) | `8080` |
+| `--path <PATH>` | HTTP path prefix for MCP endpoints (http only) | `/mcp` |
+
+```bash
+# HTTP transport on a custom path
+fastskill mcp serve --transport http --host 127.0.0.1 --port 8080 --path /mcp
+
+# stdio transport (for agents that spawn the process directly)
+fastskill mcp serve --transport stdio
+```
+
+`--host`, `--port`, and `--path` are only valid with `--transport http`.
+
+## Install into an agent
+
+`fastskill mcp install` writes an MCP server entry into a supported agent's configuration file:
+
+```bash
+fastskill mcp install --agent claude --scope project
+```
+
+| Option | Description |
+|--------|-------------|
+| `--agent <AGENT>` | Target agent: `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `codex` |
+| `--scope <SCOPE>` | `project` (default) or `global` |
+| `--name <NAME>` | Server name in the config (defaults to the app name) |
+| `--url <URL>` | HTTP MCP URL (defaults to `http://127.0.0.1:8080/mcp`) |
+| `--stdio` | Use stdio transport (registers `current_exe` as the command) |
+
+`--url` and `--stdio` are mutually exclusive. Use `--url` to point the agent at a running HTTP MCP
+server, or `--stdio` to have the agent launch FastSkill itself.
+
+```bash
+# Point Cursor at a running HTTP MCP server, globally
+fastskill mcp install --agent cursor --scope global --url http://127.0.0.1:8080/mcp
+
+# Register a stdio server for Claude Code in this project
+fastskill mcp install --agent claude --scope project --stdio
+```
+
+## List configured MCP servers
+
+```bash
+fastskill mcp list
+```
 
 <Callout>
-Custom tools extend FastSkill's capabilities and integrate with the skill ecosystem.
+Because MCP tools are generated from the CLI command tree, agents get the full FastSkill surface
+(search, install, repos, resolve, analyze, and more) without any per-tool wiring on your side.
 </Callout>
+
+## See also
+
+- [serve command](/cli-reference/serve-command) — the separate HTTP REST/UI server.
+- [Integration tutorials](/examples/integration-tutorials) — end-to-end MCP setup for Claude Code and Cursor.

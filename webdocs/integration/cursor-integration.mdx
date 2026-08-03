@@ -66,8 +66,8 @@ Cursor scans installed skills for presentation-related descriptions, finds a mat
 ## Configuration
 
 Ensure your project has a `skill-project.toml` and that Cursor and FastSkill agree on the
-skills directory. The default is `.claude/skills/`; override it via `skills_directory` in
-`.fastskill/config.yaml` or the `--skills-dir` flag.
+skills directory. The default is `.claude/skills/`; override it via `skills_directory` under
+`[tool.fastskill]` in `skill-project.toml` or the `--skills-dir` flag.
 
 ```bash
 fastskill install

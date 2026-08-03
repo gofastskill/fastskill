@@ -7,7 +7,7 @@ api: "repositories"
 
 Repositories allow you to define where FastSkill should look for skills. FastSkill supports multiple repository types, all configured through a unified interface.
 
-**Important**: Repositories are used for skill discovery only. They define where skills come FROM. The storage location (where skills are installed when you run `fastskill add`) is configured separately in `.fastskill/config.yaml` via the `skills_directory` setting.
+**Important**: Repositories are used for skill discovery only. They define where skills come FROM. The storage location (where skills are installed when you run `fastskill add`) is configured separately via the `skills_directory` setting under `[tool.fastskill]` in `skill-project.toml`.
 
 ## Configuration File
 
@@ -722,18 +722,6 @@ fastskill repos add external-dev \
   --repo-type git-marketplace \
   ~/projects/external-skills \
   --priority 1
-```
-
-#### Hot Reloading
-
-Local sources support hot reloading during development:
-
-```bash
-# Enable hot reloading (if supported)
-export FASTSKILL_HOT_RELOAD=true
-
-# Changes to local skills are picked up automatically
-# No need to reinstall after file modifications
 ```
 
 #### Testing and Validation
