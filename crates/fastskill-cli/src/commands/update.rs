@@ -210,14 +210,14 @@ pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
 }
 
 async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
-    println!("Updating global skills...");
-    println!();
+    crate::outln!("Updating global skills...");
+    crate::outln!();
 
     let lock_path = global_lock_path()
         .map_err(|e| CliError::Config(format!("Failed to resolve global lock path: {}", e)))?;
 
     if !lock_path.exists() {
-        println!(
+        crate::outln!(
             "{}",
             messages::info(
                 "No global-skills.lock found. Run 'fastskill add --global <skill>' first."
@@ -236,15 +236,15 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
     };
 
     if skill_ids.is_empty() {
-        println!("{}", messages::info("No global skills to update"));
+        crate::outln!("{}", messages::info("No global skills to update"));
         return Ok(());
     }
 
     if args.check || args.dry_run {
-        println!("\nGlobal skills (check mode):\n");
+        crate::outln!("\nGlobal skills (check mode):\n");
         for id in &skill_ids {
             if let Some(entry) = lock.skills.iter().find(|s| s.id == *id) {
-                println!("  • {} @ {}", entry.id, entry.resolved.version);
+                crate::outln!("  • {} @ {}", entry.id, entry.resolved.version);
             }
         }
         if args.check {
@@ -254,7 +254,7 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
             }
             lock.save_to_file(&lock_path)
                 .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
-            println!(
+            crate::outln!(
                 "\n{}",
                 messages::info("Updated last_checked_at in global-skills.lock")
             );
@@ -269,19 +269,19 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
         if lock.skills.iter().any(|s| s.id == *id) {
             lock.mark_updated(id, now);
             updated_count += 1;
-            println!("  {}", messages::ok(&format!("Marked {} as updated", id)));
+            crate::outln!("  {}", messages::ok(&format!("Marked {} as updated", id)));
         }
     }
 
     lock.save_to_file(&lock_path)
         .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
 
-    println!();
-    println!(
+    crate::outln!();
+    crate::outln!(
         "{}",
         messages::ok(&format!("Updated {} global skill(s)", updated_count))
     );
-    println!("   Updated global-skills.lock");
+    crate::outln!("   Updated global-skills.lock");
 
     Ok(())
 }
@@ -302,8 +302,8 @@ async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
 /// `--check`/`--dry-run` is likewise replaced by `preflight`'s coarser
 /// Updatable/UpToDate/Immutable classification.
 async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
-    println!("Updating skills...");
-    println!();
+    crate::outln!("Updating skills...");
+    crate::outln!();
 
     // T034: Resolve skill-project.toml from project root
     let current_dir = env::current_dir()
@@ -338,7 +338,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 
     if entries.is_empty() {
-        println!("{}", messages::info("No skills to update"));
+        crate::outln!("{}", messages::info("No skills to update"));
         return Ok(());
     }
 
@@ -379,30 +379,30 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     let service = crate::config::inject_edge_services(service)?;
 
     if args.check || args.dry_run {
-        println!("\nSkills that would be updated:\n");
+        crate::outln!("\nSkills that would be updated:\n");
         let mut any_reported = false;
         for entry in &entries {
             any_reported = true;
             match service.preflight(&entry.origin).await {
                 Ok(UpdatePreflight::Updatable) => {
-                    println!("  • {} (from {:?})", entry.id, entry.origin);
+                    crate::outln!("  • {} (from {:?})", entry.id, entry.origin);
                 }
                 Ok(UpdatePreflight::UpToDate) => {
-                    println!("  • {} is already up to date", entry.id);
+                    crate::outln!("  • {} is already up to date", entry.id);
                 }
                 Ok(UpdatePreflight::Immutable { reason }) => {
-                    println!("  • {} is immutable: {}", entry.id, reason);
+                    crate::outln!("  • {} is immutable: {}", entry.id, reason);
                 }
                 Err(e) => {
-                    println!("  • {}: {}", entry.id, e);
+                    crate::outln!("  • {}: {}", entry.id, e);
                 }
             }
         }
         if !any_reported {
-            println!("{}", messages::info("No updates available"));
+            crate::outln!("{}", messages::info("No updates available"));
         }
         if args.check {
-            println!(
+            crate::outln!(
                 "\n{}",
                 messages::info("Run without --check to actually update")
             );
@@ -414,7 +414,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     // UpToDate/Immutable), then re-fetch only what's Updatable.
     let mut updated_count = 0;
     for entry in entries {
-        println!("  Updating {}...", entry.id);
+        crate::outln!("  Updating {}...", entry.id);
         match service.preflight(&entry.origin).await {
             Ok(UpdatePreflight::Updatable) => {
                 // Pass the existing groups so update preserves group membership.
@@ -424,7 +424,7 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
                 {
                     Ok(_outcome) => {
                         updated_count += 1;
-                        println!("  {}", messages::ok(&format!("Updated {}", entry.id)));
+                        crate::outln!("  {}", messages::ok(&format!("Updated {}", entry.id)));
                     }
                     Err(e) => {
                         eprintln!(
@@ -435,13 +435,13 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
                 }
             }
             Ok(UpdatePreflight::UpToDate) => {
-                println!(
+                crate::outln!(
                     "  {}",
                     messages::info(&format!("{} is already up to date", entry.id))
                 );
             }
             Ok(UpdatePreflight::Immutable { reason }) => {
-                println!(
+                crate::outln!(
                     "  {}",
                     messages::info(&format!("{} is immutable: {}", entry.id, reason))
                 );
@@ -455,12 +455,12 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         }
     }
 
-    println!();
-    println!(
+    crate::outln!();
+    crate::outln!(
         "{}",
         messages::ok(&format!("Updated {} skill(s)", updated_count))
     );
-    println!("   Updated skills.lock");
+    crate::outln!("   Updated skills.lock");
 
     Ok(())
 }

@@ -127,14 +127,14 @@ pub async fn execute_matrix(ctx: AnalysisContext, args: MatrixArgs) -> CliResult
 
     if !use_json && all_skills.len() > 50 {
         let total_comparisons = all_skills.len() * (all_skills.len() - 1) / 2;
-        println!(
+        crate::outln!(
             "Calculating {} pairwise comparisons for {} skills...",
             total_comparisons,
             all_skills.len()
         );
-        println!("This may take a moment for large skill collections.");
+        crate::outln!("This may take a moment for large skill collections.");
     } else if !use_json {
-        println!(
+        crate::outln!(
             "Calculating pairwise similarities for {} skills...",
             all_skills.len()
         );
@@ -154,7 +154,7 @@ pub async fn execute_matrix(ctx: AnalysisContext, args: MatrixArgs) -> CliResult
         let json_output = serde_json::to_string_pretty(&filtered).map_err(|e| {
             crate::error::CliError::Validation(format!("Failed to serialize JSON: {}", e))
         })?;
-        println!("{}", json_output);
+        crate::outln!("{}", json_output);
     } else {
         print!("{}", build_grid_string(&similarity_matrix, args.threshold));
     }

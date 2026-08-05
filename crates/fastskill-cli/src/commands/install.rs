@@ -214,8 +214,8 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         ));
     }
 
-    println!("Installing skills...");
-    println!();
+    crate::outln!("Installing skills...");
+    crate::outln!();
 
     // Validate depth argument (must be > 0 if provided)
     if let Some(depth) = args.depth {
@@ -288,7 +288,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         let lock = ProjectSkillsLock::load_from_file(&lock_path)
             .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
 
-        println!("Using lock file ({} skills)", lock.skills.len());
+        crate::outln!("Using lock file ({} skills)", lock.skills.len());
 
         // Convert lock entries to installable items
         lock.skills
@@ -360,10 +360,10 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         filtered_items
     };
 
-    println!("Found {} skills to install", skills_to_install.len());
+    crate::outln!("Found {} skills to install", skills_to_install.len());
 
     if skills_to_install.is_empty() {
-        println!(
+        crate::outln!(
             "{}",
             messages::info("No skills to install (filtered by groups)")
         );
@@ -378,7 +378,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     let mut installed_skills = Vec::new();
     let mut failed_skills = Vec::new();
     for item in &skills_to_install {
-        println!("  Installing {} (depth {})...", item.entry.id, item.depth);
+        crate::outln!("  Installing {} (depth {})...", item.entry.id, item.depth);
         match install_utils::install_skill_from_entry(
             &service,
             item.entry.clone(),
@@ -393,7 +393,7 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
                     item.depth,
                     item.parent_skill.clone(),
                 ));
-                println!(
+                crate::outln!(
                     "  {}",
                     messages::ok(&format!("Installed {}", item.entry.id))
                 );
@@ -427,9 +427,9 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
     }
 
-    println!();
-    println!("{}", messages::ok("Installation complete"));
-    println!("   Updated skills.lock");
+    crate::outln!();
+    crate::outln!("{}", messages::ok("Installation complete"));
+    crate::outln!("   Updated skills.lock");
 
     // Return error if any skills failed to install
     if !failed_skills.is_empty() {

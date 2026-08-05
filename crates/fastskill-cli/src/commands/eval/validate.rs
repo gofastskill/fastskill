@@ -195,23 +195,23 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "case_count": case_count,
             "check_count": check_count,
         });
-        println!(
+        crate::outln!(
             "{}",
             serde_json::to_string_pretty(&output).unwrap_or_default()
         );
     } else {
-        println!("eval configuration: valid");
-        println!("  prompts: {}", eval_config.prompts_path.display());
-        println!("  cases: {}", case_count);
+        crate::outln!("eval configuration: valid");
+        crate::outln!("  prompts: {}", eval_config.prompts_path.display());
+        crate::outln!("  cases: {}", case_count);
         if let Some(ref checks) = eval_config.checks_path {
-            println!("  checks: {}", checks.display());
-            println!("  check count: {}", check_count);
+            crate::outln!("  checks: {}", checks.display());
+            crate::outln!("  check count: {}", check_count);
         }
-        println!("  timeout: {}s", eval_config.timeout_seconds);
-        println!("  trials_per_case: {}", eval_config.trials_per_case);
-        println!("  parallel: {}", eval_config.parallel.unwrap_or(0));
-        println!("  pass_threshold: {}", eval_config.pass_threshold);
-        println!(
+        crate::outln!("  timeout: {}s", eval_config.timeout_seconds);
+        crate::outln!("  trials_per_case: {}", eval_config.trials_per_case);
+        crate::outln!("  parallel: {}", eval_config.parallel.unwrap_or(0));
+        crate::outln!("  pass_threshold: {}", eval_config.pass_threshold);
+        crate::outln!(
             "  fail_on_missing_agent: {}",
             eval_config.fail_on_missing_agent
         );
@@ -234,7 +234,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
                 );
             }
             if !use_json {
-                println!(
+                crate::outln!(
                     "  agent '{}': {}",
                     agent_key,
                     if available {

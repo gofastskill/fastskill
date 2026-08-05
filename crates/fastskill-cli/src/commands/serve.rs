@@ -114,11 +114,11 @@ pub async fn execute_serve(
         }
     );
 
-    println!("FastSkill HTTP server starting...");
+    crate::outln!("FastSkill HTTP server starting...");
     if args.enable_write {
-        println!("  Write endpoints: ENABLED (--enable-write)");
+        crate::outln!("  Write endpoints: ENABLED (--enable-write)");
     } else {
-        println!("  Write endpoints: disabled (read-only); pass --enable-write to enable");
+        crate::outln!("  Write endpoints: disabled (read-only); pass --enable-write to enable");
     }
 
     // Build the served service directly (rather than reusing the CLI's cached

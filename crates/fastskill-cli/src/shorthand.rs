@@ -9,8 +9,8 @@
 //!
 //! The rule implemented here: route to `read` *unless* the token is a near miss
 //! of a known command and no installed skill actually claims that name. When we
-//! decline to route, the framework reports an unrecognised subcommand and adds
-//! its own `Did you mean ...?` hint.
+//! decline to route, the caller reports an unrecognised subcommand along with
+//! the nearest command computed by [`nearest_command`].
 //!
 //! An existing skill always wins. `fastskill repo` reads a skill named `repo`
 //! even though the `repos` command is one edit away -- we only intercept names
@@ -253,10 +253,10 @@ mod tests {
             false
         };
         // Nowhere near a command name -> no probe.
-        assert!(routes_to_read("pdf-processor", &known(), &probe));
+        assert!(routes_to_read("pdf-processor", &known(), probe));
         assert!(!probed.get());
         // One edit away -> probe.
-        assert!(!routes_to_read("lst", &known(), &probe));
+        assert!(!routes_to_read("lst", &known(), probe));
         assert!(probed.get());
     }
 

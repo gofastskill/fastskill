@@ -194,6 +194,6 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
         .await
         .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
 
-    println!("{}", outcome.best_artifact_path.display());
+    crate::outln!("{}", outcome.best_artifact_path.display());
     Ok(())
 }

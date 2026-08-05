@@ -258,13 +258,13 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
         .map_err(|e| CliError::Config(format!("Failed to write updated summary.json: {}", e)))?;
 
     if use_json {
-        println!(
+        crate::outln!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()
         );
     } else {
-        println!("Re-scoring complete");
-        println!(
+        crate::outln!("Re-scoring complete");
+        crate::outln!(
             "  result: {}",
             if summary.suite_pass {
                 "PASSED"
@@ -272,7 +272,7 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
                 "FAILED"
             }
         );
-        println!("  cases: {}/{} passed", summary.passed, summary.total_cases);
+        crate::outln!("  cases: {}/{} passed", summary.passed, summary.total_cases);
     }
 
     if !summary.suite_pass && !args.no_fail {

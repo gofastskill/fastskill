@@ -112,21 +112,23 @@ pub(super) async fn finish_skill_install(
 
     if ctx.global {
         super::update_global_files(&skill_def)?;
-        println!(
+        crate::outln!(
             "Successfully added skill: {} (v{})",
-            skill_def.name, version_display
+            skill_def.name,
+            version_display
         );
-        println!(
+        crate::outln!(
             "{}",
             crate::utils::messages::ok("Updated global-skills.lock")
         );
     } else {
         super::update_project_files(&skill_def, ctx.groups.clone())?;
-        println!(
+        crate::outln!(
             "Successfully added skill: {} (v{})",
-            skill_def.name, version_display
+            skill_def.name,
+            version_display
         );
-        println!(
+        crate::outln!(
             "{}",
             crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
         );
@@ -254,7 +256,7 @@ pub(super) async fn handle_recursive_add(
             path.display()
         )));
     }
-    println!(
+    crate::outln!(
         "Found {} skill(s) in directory {}",
         skill_dirs.len(),
         path.display()

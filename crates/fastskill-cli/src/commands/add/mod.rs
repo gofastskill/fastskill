@@ -610,11 +610,12 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
         Err(_) => outcome.id.clone(),
     };
 
-    println!(
+    crate::outln!(
         "Successfully added skill: {} (v{})",
-        display_name, outcome.resolved.version
+        display_name,
+        outcome.resolved.version
     );
-    println!(
+    crate::outln!(
         "{}",
         crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );

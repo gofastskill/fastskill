@@ -193,9 +193,9 @@ fn confirm_removal(skill_ids: &[String], force: bool) -> CliResult<bool> {
         return Ok(true);
     }
 
-    println!("Warning: This will permanently remove the following skills:");
+    crate::outln!("Warning: This will permanently remove the following skills:");
     for skill_id in skill_ids {
-        println!("  - {}", skill_id);
+        crate::outln!("  - {}", skill_id);
     }
     print!("Are you sure you want to continue? (y/n): ");
     io::stdout()
@@ -360,7 +360,7 @@ pub async fn execute_remove(
 
     // Get user confirmation
     if !confirm_removal(&args.skill_ids, args.force)? {
-        println!("Removal cancelled.");
+        crate::outln!("Removal cancelled.");
         return Ok(());
     }
 
@@ -368,19 +368,19 @@ pub async fn execute_remove(
     let mut removed_count = 0;
     for (skill_id, raw_id) in parsed_ids.into_iter().zip(args.skill_ids.iter()) {
         remove_single_skill(service, skill_id, raw_id, global).await?;
-        println!("Removed skill: {}", raw_id);
+        crate::outln!("Removed skill: {}", raw_id);
         removed_count += 1;
     }
 
     // Display success message
     if removed_count > 0 {
         if global {
-            println!(
+            crate::outln!(
                 "{}",
                 crate::utils::messages::ok("Updated global-skills.lock")
             );
         } else {
-            println!(
+            crate::outln!(
                 "{}",
                 crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
             );

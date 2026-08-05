@@ -148,8 +148,8 @@ impl FromArgValueMap for InitArgs {
 }
 
 pub async fn execute_init(args: InitArgs) -> CliResult<()> {
-    println!("FastSkill Skill Initialization");
-    println!();
+    crate::outln!("FastSkill Skill Initialization");
+    crate::outln!();
 
     let skill_project_path = Path::new("skill-project.toml");
     ensure_can_init(skill_project_path, args.force)?;
@@ -409,7 +409,7 @@ fn append_tool_comment(path: &Path, is_skill_level: bool) -> CliResult<()> {
 }
 
 fn print_success(is_skill_level: bool, version: &str, skills_directory: Option<&str>) {
-    println!(
+    crate::outln!(
         "{}",
         messages::ok(&format!(
             "Created skill-project.toml with version: {}",
@@ -417,24 +417,24 @@ fn print_success(is_skill_level: bool, version: &str, skills_directory: Option<&
         ))
     );
     if is_skill_level {
-        println!();
-        println!(
+        crate::outln!();
+        crate::outln!(
             "{}",
             messages::info("This file contains author-provided metadata for your skill.")
         );
-        println!("   It will be used by fastskill for version management.");
+        crate::outln!("   It will be used by fastskill for version management.");
         return;
     }
     if let Some(dir) = skills_directory {
-        println!();
-        println!("{}", messages::info(&format!("Skills directory: {}", dir)));
+        crate::outln!();
+        crate::outln!("{}", messages::info(&format!("Skills directory: {}", dir)));
     }
-    println!();
-    println!(
+    crate::outln!();
+    crate::outln!(
         "{}",
         messages::info("This file configures your project's skill dependencies.")
     );
-    println!("   Add skills with: fastskill add <skill-id>");
+    crate::outln!("   Add skills with: fastskill add <skill-id>");
 }
 
 fn extract_version_from_skill_md(content: &str, skip_prompts: bool) -> CliResult<String> {
@@ -520,8 +520,8 @@ fn version_from_frontmatter_text(frontmatter: &str) -> Option<String> {
 }
 
 fn prompt_for_version() -> CliResult<String> {
-    println!("Version");
-    println!("No version found in SKILL.md frontmatter.");
+    crate::outln!("Version");
+    crate::outln!("No version found in SKILL.md frontmatter.");
     print!("Enter version (or press Enter for 1.0.0): ");
     io::stdout().flush()?;
 

@@ -118,19 +118,24 @@ fn render_status(run_dir: &Path) -> CliResult<()> {
     let history_bytes = std::fs::read(&history_path).map_err(CliError::Io)?;
     let history: Vec<StepRecordView> = serde_json::from_slice(&history_bytes).unwrap_or_default();
 
-    println!(
+    crate::outln!(
         "Run: {}  |  epoch: {}  global_step: {}  best_score: {:.4}",
         run_dir.display(),
         state.epoch,
         state.global_step,
         state.best_score
     );
-    println!();
-    println!(
+    crate::outln!();
+    crate::outln!(
         "{:<6}  {:<10}  {:<10}  {:<10}  {:<8}  {:<10}",
-        "step", "gate", "score(S)", "score(S')", "delta", "tokens"
+        "step",
+        "gate",
+        "score(S)",
+        "score(S')",
+        "delta",
+        "tokens"
     );
-    println!("{}", "-".repeat(62));
+    crate::outln!("{}", "-".repeat(62));
 
     for record in &history {
         let gate_label = if record.accepted {
@@ -143,7 +148,7 @@ fn render_status(run_dir: &Path) -> CliResult<()> {
             .input_tokens
             .unwrap_or(0)
             .saturating_add(record.output_tokens.unwrap_or(0));
-        println!(
+        crate::outln!(
             "{:<6}  {:<10}  {:<10.4}  {:<10.4}  {:<+8.4}  {:<10}",
             record.global_step,
             gate_label,

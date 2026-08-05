@@ -284,7 +284,7 @@ pub async fn execute_list(
 
     let formatted_output = fastskill_core::output::format_list_results(&rows, format, args.details)
         .map_err(CliError::Config)?;
-    println!("{}", formatted_output);
+    crate::outln!("{}", formatted_output);
 
     Ok(())
 }

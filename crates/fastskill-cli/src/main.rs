@@ -16,6 +16,8 @@ mod config;
 mod config_file;
 mod context;
 mod error;
+mod output;
+mod registration;
 pub mod runtime_selector;
 mod shorthand;
 mod utils;
@@ -51,6 +53,18 @@ fn skill_is_installed(name: &str) -> bool {
             .map(|dir| dir.join(name).is_dir())
             .unwrap_or(false)
     })
+}
+
+/// Whether this invocation is `fastskill mcp serve`, ignoring any flags that
+/// appear between or around the two path segments.
+fn is_mcp_serve(args: &[String]) -> bool {
+    let positionals: Vec<&str> = args
+        .iter()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .map(String::as_str)
+        .collect();
+    matches!(positionals.first(), Some(&"mcp")) && positionals.contains(&"serve")
 }
 
 fn ctx_global(ctx: &dyn AppContext) -> bool {
@@ -89,6 +103,14 @@ async fn main() {
     let verbose = raw.iter().any(|a| a == "--verbose" || a == "-v");
     fastskill_core::init_logging_with_verbose(verbose);
 
+    // Under `mcp serve` the process speaks JSON-RPC on stdout, so command output
+    // is buffered and returned as the tool result instead of being printed.
+    output::init(if is_mcp_serve(&raw) {
+        output::Mode::Capture
+    } else {
+        output::Mode::Direct
+    });
+
     let state = Arc::new(FsState::new());
     let ctx = FsCtx;
 
@@ -101,6 +123,10 @@ async fn main() {
         builder
             .with_version("fastskill", fastskill_core::VERSION)
             .with_git_sha_short(None)
+            // Honour `expose_mcp`. The framework default (`AllCommands`)
+            // ignores it, which exported `serve` as a tool -- an MCP call that
+            // starts a server and never returns.
+            .with_mcp_export_policy(cli_framework::mcp::McpToolExportPolicy::ExposeMcpOnly)
             .build(ctx),
         "Error initialising app",
     );
@@ -181,6 +207,7 @@ async fn main() {
 }
 
 fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuilder> {
+    use crate::registration::AppBuilderExt;
     use cli_framework::path;
     use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 
@@ -217,10 +244,10 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
 
     // ── Typed commands (no service) ──────────────────────────────────────────
     let builder = builder
-        .register(path!["init"], |_ctx, args: init::InitArgs| async move {
+        .register_out(path!["init"], |_ctx, args: init::InitArgs| async move {
             init::execute_init(args).await.map_err(anyhow::Error::from)
         })?
-        .register(
+        .register_out(
             path!["install"],
             |_ctx, args: install::InstallArgs| async move {
                 install::execute_install(args)
@@ -228,7 +255,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .map_err(anyhow::Error::from)
             },
         )?
-        .register(path!["update"], |ctx, args: update::UpdateArgs| {
+        .register_out(path!["update"], |ctx, args: update::UpdateArgs| {
             let global = ctx_global(ctx);
             async move {
                 update::execute_update(args, global)
@@ -242,7 +269,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_list = Arc::clone(&state);
         let state_read = Arc::clone(&state);
         builder
-            .register(path!["list"], move |ctx, args: list::ListArgs| {
+            .register_out(path!["list"], move |ctx, args: list::ListArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_list);
@@ -253,7 +280,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["read"], move |ctx, args: read::ReadArgs| {
+            .register_out(path!["read"], move |ctx, args: read::ReadArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_read);
@@ -277,7 +304,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     hidden: false,
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "list"],
                 |_ctx, args: repos::ReposListArgs| async move {
                     repos::execute_repos_list(args)
@@ -285,7 +312,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "add"],
                 |_ctx, args: repos::ReposAddArgs| async move {
                     repos::execute_repos_add(args)
@@ -293,7 +320,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "remove"],
                 |_ctx, args: repos::ReposRemoveArgs| async move {
                     repos::execute_repos_remove(args)
@@ -301,7 +328,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "info"],
                 |_ctx, args: repos::ReposInfoArgs| async move {
                     repos::execute_repos_info(args)
@@ -309,7 +336,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "update"],
                 |_ctx, args: repos::ReposUpdateArgs| async move {
                     repos::execute_repos_update(args)
@@ -317,7 +344,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "test"],
                 |_ctx, args: repos::ReposTestArgs| async move {
                     repos::execute_repos_test(args)
@@ -325,7 +352,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "refresh"],
                 |_ctx, args: repos::ReposRefreshArgs| async move {
                     repos::execute_repos_refresh(args)
@@ -333,7 +360,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "skills"],
                 |_ctx, args: repos::ReposSkillsArgs| async move {
                     repos::execute_repos_skills(args)
@@ -341,7 +368,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "show"],
                 |_ctx, args: repos::ReposShowArgs| async move {
                     repos::execute_repos_show(args)
@@ -349,7 +376,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["repos", "versions"],
                 |_ctx, args: repos::ReposVersionsArgs| async move {
                     repos::execute_repos_versions(args)
@@ -370,7 +397,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     hidden: false,
                 },
             )?
-            .register(
+            .register_out(
                 path!["marketplace", "create"],
                 |_ctx, args: marketplace::MarketplaceCreateArgs| async move {
                     marketplace::execute_marketplace_create(args)
@@ -391,7 +418,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     hidden: false,
                 },
             )?
-            .register(
+            .register_out(
                 path!["eval", "validate"],
                 |_ctx, args: eval::validate::ValidateArgs| async move {
                     eval::validate::execute_validate(args)
@@ -399,7 +426,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["eval", "run"],
                 |_ctx, args: eval::run::RunArgs| async move {
                     eval::run::execute_run(args)
@@ -407,7 +434,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["eval", "report"],
                 |_ctx, args: eval::report::ReportArgs| async move {
                     eval::report::execute_report(args)
@@ -415,7 +442,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["eval", "score"],
                 |_ctx, args: eval::score::ScoreArgs| async move {
                     eval::score::execute_score(args)
@@ -436,7 +463,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     hidden: false,
                 },
             )?
-            .register(
+            .register_out(
                 path!["optimize", "run"],
                 |_ctx, args: skillopt::run::RunArgs| async move {
                     skillopt::run::execute_run(args)
@@ -444,7 +471,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["optimize", "resume"],
                 |_ctx, args: skillopt::resume::ResumeArgs| async move {
                     skillopt::resume::execute_resume(args)
@@ -452,7 +479,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["optimize", "status"],
                 |_ctx, args: skillopt::status::StatusArgs| async move {
                     skillopt::status::execute_status(args)
@@ -460,7 +487,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["optimize", "inspect"],
                 |_ctx, args: skillopt::inspect::InspectArgs| async move {
                     skillopt::inspect::execute_inspect(args)
@@ -468,7 +495,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
-            .register(
+            .register_out(
                 path!["optimize", "export"],
                 |_ctx, args: skillopt::export::ExportArgs| async move {
                     skillopt::export::execute_export(args)
@@ -481,7 +508,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
     // ── add: fully migrated to typed API ─────────────────────────────────────
     let builder = {
         let state_add = Arc::clone(&state);
-        builder.register(path!["add"], move |ctx, args: add::AddArgs| {
+        builder.register_out(path!["add"], move |ctx, args: add::AddArgs| {
             let global = ctx_global(ctx);
             let skills_dir = ctx_skills_dir(ctx);
             let state = Arc::clone(&state_add);
@@ -506,7 +533,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     hidden: false,
                 },
             )?
-            .register(path!["analyze", "matrix"], {
+            .register_out(path!["analyze", "matrix"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::matrix::MatrixArgs| {
                     let global = ctx_global(ctx);
@@ -523,7 +550,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     }
                 }
             })?
-            .register(path!["analyze", "cluster"], {
+            .register_out(path!["analyze", "cluster"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::cluster::ClusterArgs| {
                     let global = ctx_global(ctx);
@@ -540,7 +567,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     }
                 }
             })?
-            .register(path!["analyze", "duplicates"], {
+            .register_out(path!["analyze", "duplicates"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::duplicates::DuplicatesArgs| {
                     let global = ctx_global(ctx);
@@ -566,7 +593,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_search = Arc::clone(&state);
         let state_doctor = Arc::clone(&state);
         builder
-            .register(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
+            .register_out(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_reindex);
@@ -577,7 +604,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["remove"], move |ctx, args: remove::RemoveArgs| {
+            .register_out(path!["remove"], move |ctx, args: remove::RemoveArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_remove);
@@ -588,7 +615,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["search"], move |ctx, args: search::SearchArgs| {
+            .register_out(path!["search"], move |ctx, args: search::SearchArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_search);
@@ -599,7 +626,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["serve"], move |ctx, args: serve::ServeArgs| {
+            .register_out_no_mcp(path!["serve"], move |ctx, args: serve::ServeArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 async move {
@@ -612,7 +639,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register(path!["doctor"], move |ctx, args: doctor::DoctorArgs| {
+            .register_out(path!["doctor"], move |ctx, args: doctor::DoctorArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_doctor);
