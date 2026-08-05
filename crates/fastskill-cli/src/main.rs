@@ -17,6 +17,7 @@ mod config_file;
 mod context;
 mod error;
 pub mod runtime_selector;
+mod shorthand;
 mod utils;
 
 use cli_framework::app::context::AppContext;
@@ -33,6 +34,23 @@ fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
             std::process::exit(1);
         }
     }
+}
+
+/// Whether a skill directory with this name exists in either the project or the
+/// global skills directory.
+///
+/// Used only to arbitrate the read shorthand against a command typo, so it is a
+/// deliberately cheap filesystem probe: config resolution plus an `is_dir`
+/// check, no service initialisation. Any resolution failure (no manifest, no
+/// config dir) is treated as "not installed" -- in that situation there is no
+/// skill to read anyway, so surfacing the command suggestion is the better
+/// outcome.
+fn skill_is_installed(name: &str) -> bool {
+    [false, true].iter().any(|&global| {
+        config::resolve_skills_storage_directory(global)
+            .map(|dir| dir.join(name).is_dir())
+            .unwrap_or(false)
+    })
 }
 
 fn ctx_global(ctx: &dyn AppContext) -> bool {
@@ -126,10 +144,28 @@ async fn main() {
             }
             break;
         }
+        // Unknown token: route it to `read` unless it looks like a typo of a
+        // command that no installed skill claims. Reporting the typo here rather
+        // than letting it fall through to the framework is deliberate -- clap's
+        // built-in suggester answers "init" for "insatll", and acting on that
+        // would scaffold a project the user never asked for.
         if i < raw.len() && !known.contains(raw[i].as_str()) {
-            let mut rewritten = raw;
-            rewritten.insert(i, "read".to_string());
-            rewritten
+            match shorthand::route(&raw[i], &known, skill_is_installed) {
+                shorthand::Routing::DidYouMean(cmd) => {
+                    eprintln!("error: unrecognized subcommand '{}'", raw[i]);
+                    eprintln!("  hint: Did you mean '{}'?", cmd);
+                    eprintln!(
+                        "  hint: to read a skill by this name, run: fastskill read {}",
+                        raw[i]
+                    );
+                    std::process::exit(1);
+                }
+                shorthand::Routing::Read => {
+                    let mut rewritten = raw;
+                    rewritten.insert(i, "read".to_string());
+                    rewritten
+                }
+            }
         } else {
             raw
         }
