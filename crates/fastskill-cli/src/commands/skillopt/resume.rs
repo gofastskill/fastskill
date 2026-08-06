@@ -130,6 +130,6 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     .await
     .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
 
-    println!("{}", outcome.best_artifact_path.display());
+    crate::outln!("{}", outcome.best_artifact_path.display());
     Ok(())
 }

@@ -202,9 +202,10 @@ pub async fn execute_duplicates(ctx: AnalysisContext, args: DuplicatesArgs) -> C
     let effective_floor = args.threshold.max(s_floor);
 
     if !use_json {
-        println!(
+        crate::outln!(
             "Scanning {} skills for duplicates (threshold: {:.2})...",
-            n, args.threshold
+            n,
+            args.threshold
         );
     }
 
@@ -265,21 +266,21 @@ pub async fn execute_duplicates(ctx: AnalysisContext, args: DuplicatesArgs) -> C
         };
         let json_output = serde_json::to_string_pretty(&output)
             .map_err(|e| CliError::Validation(format!("Failed to serialize JSON: {}", e)))?;
-        println!("{}", json_output);
+        crate::outln!("{}", json_output);
     } else if pairs.is_empty() {
-        println!("No duplicate pairs found above threshold.");
+        crate::outln!("No duplicate pairs found above threshold.");
     } else {
-        println!("Found {} potential duplicate pairs\n", pairs.len());
+        crate::outln!("Found {} potential duplicate pairs\n", pairs.len());
         for pair in &pairs {
-            println!(
+            crate::outln!(
                 "{}  {:.3}  {}  ↔  {}",
                 pair.severity.label(),
                 pair.similarity,
                 pair.skill_a.id,
                 pair.skill_b.id
             );
-            println!("  Suggestion: {}", pair.suggestion);
-            println!();
+            crate::outln!("  Suggestion: {}", pair.suggestion);
+            crate::outln!();
         }
 
         struct SeverityCounts {
@@ -312,8 +313,8 @@ pub async fn execute_duplicates(ctx: AnalysisContext, args: DuplicatesArgs) -> C
         .map(|(n, label)| format!("{} {}", n, label))
         .collect::<Vec<_>>()
         .join(", ");
-        println!("Summary: {}", summary);
-        println!("Run 'fastskill remove <skill-id>' to remove a skill after review.");
+        crate::outln!("Summary: {}", summary);
+        crate::outln!("Run 'fastskill remove <skill-id>' to remove a skill after review.");
     }
 
     Ok(())

@@ -35,7 +35,7 @@ pub struct AnalysisContext {
 
 pub async fn load_analysis_context(svc: &FastSkillService) -> CliResult<Option<AnalysisContext>> {
     let Some(vector_svc) = svc.vector_index_service() else {
-        println!("Note: semantic analysis requires an embedding provider. Results may be limited to structural analysis.");
+        crate::outln!("Note: semantic analysis requires an embedding provider. Results may be limited to structural analysis.");
         return Ok(None);
     };
     let skills = vector_svc
@@ -43,7 +43,7 @@ pub async fn load_analysis_context(svc: &FastSkillService) -> CliResult<Option<A
         .await
         .map_err(|e| CliError::Validation(format!("Failed to get indexed skills: {}", e)))?;
     if skills.is_empty() {
-        println!("No skills indexed. Run 'fastskill reindex' first.");
+        crate::outln!("No skills indexed. Run 'fastskill reindex' first.");
         return Ok(None);
     }
     Ok(Some(AnalysisContext { skills, vector_svc }))

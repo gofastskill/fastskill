@@ -18,7 +18,7 @@ pub async fn maybe_auto_reindex(
 
     if service.config().embedding.is_none() {
         if verbose {
-            println!(
+            crate::outln!(
                 "Note: skipping auto-reindex after '{}' (no embedding provider configured).",
                 command_name
             );

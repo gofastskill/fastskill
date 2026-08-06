@@ -120,13 +120,13 @@ pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
         ShowMode::Gate => show_gate(&step_dir)?,
         ShowMode::Skips => show_skips(&step_dir)?,
         ShowMode::All => {
-            println!("=== patches ===");
+            crate::outln!("=== patches ===");
             show_patches(&step_dir)?;
-            println!("\n=== diffs ===");
+            crate::outln!("\n=== diffs ===");
             show_diffs(&step_dir)?;
-            println!("\n=== gate ===");
+            crate::outln!("\n=== gate ===");
             show_gate(&step_dir)?;
-            println!("\n=== skips ===");
+            crate::outln!("\n=== skips ===");
             show_skips(&step_dir)?;
         }
     }
@@ -136,12 +136,12 @@ pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
 
 fn pretty_print_json(path: &std::path::Path, label: &str) -> CliResult<()> {
     if !path.exists() {
-        println!("(no {} artifact)", label);
+        crate::outln!("(no {} artifact)", label);
         return Ok(());
     }
     let bytes = std::fs::read(path).map_err(CliError::Io)?;
     let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
-    println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+    crate::outln!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
     Ok(())
 }
 
@@ -173,8 +173,8 @@ fn show_diffs(step_dir: &std::path::Path) -> CliResult<()> {
         String::new()
     };
 
-    println!("--- skill_before.md");
-    println!("+++ skill_after.md");
+    crate::outln!("--- skill_before.md");
+    crate::outln!("+++ skill_after.md");
     render_unified_diff(&before, &after);
 
     Ok(())
@@ -191,7 +191,7 @@ fn render_unified_diff(before: &str, after: &str) {
         return;
     }
 
-    println!(
+    crate::outln!(
         "@@ -{},{} +{},{} @@",
         1,
         before_lines.len(),
@@ -200,9 +200,9 @@ fn render_unified_diff(before: &str, after: &str) {
     );
 
     for line in &before_lines {
-        println!("-{}", line);
+        crate::outln!("-{}", line);
     }
     for line in &after_lines {
-        println!("+{}", line);
+        crate::outln!("+{}", line);
     }
 }

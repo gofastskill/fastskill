@@ -296,14 +296,14 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
 
     // Format and output results
     if results.is_empty() {
-        println!("No skills found matching '{}'", args.query);
+        crate::outln!("No skills found matching '{}'", args.query);
         return Ok(());
     }
 
     let formatted_output = output::format_search_results(&results, format, &args.query)
         .map_err(CliError::Validation)?;
 
-    println!("{}", formatted_output);
+    crate::outln!("{}", formatted_output);
     Ok(())
 }
 
@@ -328,7 +328,7 @@ async fn execute_search_with_paths(service: &FastSkillService, args: &SearchArgs
     let json_output = serde_json::to_string_pretty(&response)
         .map_err(|e| CliError::Validation(format!("Failed to serialize results to JSON: {}", e)))?;
 
-    println!("{}", json_output);
+    crate::outln!("{}", json_output);
     Ok(())
 }
 

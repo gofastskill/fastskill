@@ -740,12 +740,12 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     // Output results.
     if use_json {
         if all_summaries.len() == 1 {
-            println!(
+            crate::outln!(
                 "{}",
                 serde_json::to_string_pretty(&all_summaries[0]).unwrap_or_default()
             );
         } else {
-            println!(
+            crate::outln!(
                 "{}",
                 serde_json::to_string_pretty(&all_summaries).unwrap_or_default()
             );
@@ -753,29 +753,31 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     } else {
         for summary in &all_summaries {
             let suite_pass_rate = summary.suite_pass_rate.unwrap_or(0.0);
-            println!(
+            crate::outln!(
                 "\nEval run complete for agent '{}': {}/{} passed",
-                summary.agent, summary.passed, summary.total_cases
+                summary.agent,
+                summary.passed,
+                summary.total_cases
             );
-            println!("  run_dir: {}", summary.run_dir.display());
+            crate::outln!("  run_dir: {}", summary.run_dir.display());
             if summary.suite_pass {
                 if args.ci {
-                    println!(
+                    crate::outln!(
                         "  result: PASSED (suite pass rate {:.0}% ≥ {:.0}% threshold)",
                         suite_pass_rate * 100.0,
                         pass_threshold * 100.0
                     );
                 } else {
-                    println!("  result: PASSED");
+                    crate::outln!("  result: PASSED");
                 }
             } else if args.ci {
-                println!(
+                crate::outln!(
                     "  result: FAILED (suite pass rate {:.0}% < {:.0}% threshold)",
                     suite_pass_rate * 100.0,
                     pass_threshold * 100.0
                 );
             } else {
-                println!("  result: FAILED ({} case(s) failed)", summary.failed);
+                crate::outln!("  result: FAILED ({} case(s) failed)", summary.failed);
             }
         }
     }

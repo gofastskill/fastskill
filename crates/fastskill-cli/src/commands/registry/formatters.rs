@@ -103,8 +103,8 @@ pub fn format_table_output(
         .enumerate()
         .map(|(i, h)| format!("{:width$}", h, width = col_widths[i]))
         .collect();
-    println!("\n{}", header_row.join("  "));
-    println!("{}", "-".repeat(header_row.join("  ").len()));
+    crate::outln!("\n{}", header_row.join("  "));
+    crate::outln!("{}", "-".repeat(header_row.join("  ").len()));
 
     for summary in summaries {
         let description = if summary.description.len() > 50 {
@@ -125,10 +125,10 @@ pub fn format_table_output(
             format!("{:width$}", summary.latest_version, width = col_widths[3]),
             format!("{:width$}", published, width = col_widths[4]),
         ];
-        println!("{}", row.join("  "));
+        crate::outln!("{}", row.join("  "));
     }
 
-    println!();
+    crate::outln!();
     Ok(())
 }
 
@@ -137,14 +137,16 @@ pub fn format_grid_output(
     _all_versions: bool,
 ) -> CliResult<()> {
     if summaries.is_empty() {
-        println!("No skills found.");
+        crate::outln!("No skills found.");
         return Ok(());
     }
 
     for summary in summaries {
-        println!(
+        crate::outln!(
             "- {}/{} ({})",
-            summary.scope, summary.name, summary.latest_version
+            summary.scope,
+            summary.name,
+            summary.latest_version
         );
     }
     Ok(())
@@ -153,7 +155,7 @@ pub fn format_grid_output(
 pub fn format_xml_output(
     summaries: &[fastskill_core::core::registry_index::SkillSummary],
 ) -> CliResult<()> {
-    println!("{}", summaries_to_xml(summaries));
+    crate::outln!("{}", summaries_to_xml(summaries));
     Ok(())
 }
 

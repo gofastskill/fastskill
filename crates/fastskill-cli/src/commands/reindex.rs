@@ -229,10 +229,10 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
         seen_any_cb.store(true, Ordering::SeqCst);
         found_total_cb.store(p.total, Ordering::SeqCst);
         if !no_progress && !printed_found_cb.swap(true, Ordering::SeqCst) {
-            println!("Found {} skills to process", p.total);
+            crate::outln!("Found {} skills to process", p.total);
         }
         if verbose {
-            println!("  Processing: {} ({}/{})", p.skill_id, p.current, p.total);
+            crate::outln!("  Processing: {} ({}/{})", p.skill_id, p.current, p.total);
         } else if live {
             let pct = p
                 .current
@@ -250,7 +250,7 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
         .map_err(CliError::Service)?;
 
     if live && seen_any.load(Ordering::SeqCst) {
-        println!();
+        crate::outln!();
     }
 
     if !outcome.reindexed {
@@ -258,7 +258,7 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
             .reason
             .as_deref()
             .unwrap_or("no embedding provider configured");
-        println!("Reindex skipped: {reason}. Run 'fastskill doctor' for setup guidance.");
+        crate::outln!("Reindex skipped: {reason}. Run 'fastskill doctor' for setup guidance.");
         return Ok(());
     }
 
@@ -269,17 +269,17 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
                 .skills_dir
                 .clone()
                 .unwrap_or_else(|| service.config().skill_storage_path.clone());
-            println!("Found 0 skills to process");
-            println!("No skills found in {}", dir.display());
+            crate::outln!("Found 0 skills to process");
+            crate::outln!("No skills found in {}", dir.display());
         }
         return Ok(());
     }
 
     if mode != ProgressMode::Quiet {
-        println!("Reindex completed");
-        println!("  Total skills: {}", found_total.load(Ordering::SeqCst));
-        println!("  Indexed/updated: {}", outcome.count);
-        println!("  Total time: {:.2}s", start_time.elapsed().as_secs_f64());
+        crate::outln!("Reindex completed");
+        crate::outln!("  Total skills: {}", found_total.load(Ordering::SeqCst));
+        crate::outln!("  Indexed/updated: {}", outcome.count);
+        crate::outln!("  Total time: {:.2}s", start_time.elapsed().as_secs_f64());
     }
 
     Ok(())

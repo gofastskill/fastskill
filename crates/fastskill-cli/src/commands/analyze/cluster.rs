@@ -144,7 +144,7 @@ pub async fn execute_cluster(ctx: AnalysisContext, args: ClusterArgs) -> CliResu
     }
 
     if !use_json {
-        println!("Clustering {} skills into {} groups...", n, k);
+        crate::outln!("Clustering {} skills into {} groups...", n, k);
     }
 
     all_skills.sort_by(|a, b| a.id.cmp(&b.id));
@@ -213,7 +213,7 @@ pub async fn execute_cluster(ctx: AnalysisContext, args: ClusterArgs) -> CliResu
     if use_json {
         let json_output = serde_json::to_string_pretty(&clusters)
             .map_err(|e| CliError::Validation(format!("Failed to serialize JSON: {}", e)))?;
-        println!("{}", json_output);
+        crate::outln!("{}", json_output);
     } else {
         print_cluster_output(&clusters, n, k);
     }
@@ -227,26 +227,29 @@ pub(super) fn print_cluster_output(
     actual_k: usize,
 ) {
     if clusters.is_empty() {
-        println!("\nNo clusters to display (all clusters are below the --min-size threshold).");
+        crate::outln!(
+            "\nNo clusters to display (all clusters are below the --min-size threshold)."
+        );
         return;
     }
 
-    println!();
+    crate::outln!();
     for (display_idx, cluster) in clusters.iter().enumerate() {
-        println!(
+        crate::outln!(
             "Cluster {} — {} ({} skills)",
             display_idx + 1,
             cluster.representative,
             cluster.size
         );
-        println!("  Members:");
+        crate::outln!("  Members:");
         for member in &cluster.members {
-            println!(
+            crate::outln!(
                 "    {:<30} {:.2}",
-                member.skill_id, member.distance_to_centroid
+                member.skill_id,
+                member.distance_to_centroid
             );
         }
-        println!();
+        crate::outln!();
     }
 
     let mut largest = &clusters[0];
@@ -260,7 +263,7 @@ pub(super) fn print_cluster_output(
         }
     }
 
-    println!(
+    crate::outln!(
         "Summary: {} clusters  largest: {} skills ({})  smallest: {} skills ({})",
         clusters.len(),
         largest.size,
@@ -272,7 +275,7 @@ pub(super) fn print_cluster_output(
     if actual_k < total_skills {
         let mean_size = total_skills as f32 / actual_k as f32;
         if largest.size as f32 > 2.0 * mean_size {
-            println!(
+            crate::outln!(
                 "Hint: Re-run with -k {} to split larger clusters further.",
                 largest.size
             );

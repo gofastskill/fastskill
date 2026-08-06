@@ -295,7 +295,7 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
         let output = format_show_results(&[skill], format)
             .map_err(|e| CliError::Config(format!("Failed to format output: {}", e)))?;
-        println!("{}", output);
+        crate::outln!("{}", output);
 
         // If --tree is also set, fall through to print tree after meta
         if args.tree {
@@ -479,30 +479,30 @@ pub async fn execute_read(service: Arc<FastSkillService>, args: ReadArgs) -> Cli
 
     // T014: Implement structured output format (header, base directory, content, footer)
     // T016: Ensure plain text output with no ANSI colors or formatting codes
-    println!("Reading: {}", args.skill_id);
-    println!("Base directory: {}", base_dir_absolute.display());
-    println!();
+    crate::outln!("Reading: {}", args.skill_id);
+    crate::outln!("Base directory: {}", base_dir_absolute.display());
+    crate::outln!();
     print!("{}", content);
     if !content.ends_with('\n') {
-        println!();
+        crate::outln!();
     }
-    println!();
-    println!("Skill read: {}", args.skill_id);
+    crate::outln!();
+    crate::outln!("Skill read: {}", args.skill_id);
 
     Ok(())
 }
 
 /// Print a dependency tree for the given skill definition.
 fn print_dependency_tree(skill: &SkillDefinition) {
-    println!("{}", skill.id);
+    crate::outln!("{}", skill.id);
     match &skill.dependencies {
         Some(deps) if !deps.is_empty() => {
             for dep in deps {
-                println!("  - {}", dep);
+                crate::outln!("  - {}", dep);
             }
         }
         _ => {
-            println!("  (no dependencies)");
+            crate::outln!("  (no dependencies)");
         }
     }
 }

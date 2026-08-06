@@ -103,14 +103,14 @@ pub async fn execute_create(
     fs::write(&output_path, json_content)
         .map_err(|e| CliError::Validation(format!("Failed to write marketplace.json: {}", e)))?;
 
-    println!(
+    crate::outln!(
         "{}",
         messages::ok(&format!(
             "Created marketplace.json: {}",
             output_path.display()
         ))
     );
-    println!("   Found {} skills", skills_count);
+    crate::outln!("   Found {} skills", skills_count);
 
     Ok(())
 }

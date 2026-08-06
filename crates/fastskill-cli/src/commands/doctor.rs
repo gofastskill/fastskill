@@ -194,17 +194,17 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
 }
 
 fn print_human(checks: &[DoctorCheckResult]) {
-    println!("FastSkill Doctor");
-    println!("{}", "=".repeat(40));
+    crate::outln!("FastSkill Doctor");
+    crate::outln!("{}", "=".repeat(40));
     for check in checks {
         let icon = match check.status {
             DoctorStatus::Pass => "[PASS]",
             DoctorStatus::Warn => "[WARN]",
             DoctorStatus::Fail => "[FAIL]",
         };
-        println!("{} {}: {}", icon, check.check, check.message);
+        crate::outln!("{} {}: {}", icon, check.check, check.message);
     }
-    println!();
+    crate::outln!();
     let errors = checks
         .iter()
         .filter(|c| c.status == DoctorStatus::Fail)
@@ -214,9 +214,9 @@ fn print_human(checks: &[DoctorCheckResult]) {
         .filter(|c| c.status == DoctorStatus::Warn)
         .count();
     if errors == 0 && warnings == 0 {
-        println!("All checks passed.");
+        crate::outln!("All checks passed.");
     } else {
-        println!("{} error(s), {} warning(s).", errors, warnings);
+        crate::outln!("{} error(s), {} warning(s).", errors, warnings);
     }
 }
 
@@ -231,7 +231,7 @@ fn print_json(checks: &[DoctorCheckResult]) {
             })
         })
         .collect();
-    println!(
+    crate::outln!(
         "{}",
         serde_json::to_string_pretty(&items).unwrap_or_default()
     );

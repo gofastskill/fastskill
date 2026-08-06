@@ -122,18 +122,18 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
     })?;
 
     if use_json {
-        println!(
+        crate::outln!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()
         );
     } else {
-        println!("Eval Report");
-        println!("  run_dir: {}", args.run_dir.display());
-        println!("  agent: {}", summary.agent);
+        crate::outln!("Eval Report");
+        crate::outln!("  run_dir: {}", args.run_dir.display());
+        crate::outln!("  agent: {}", summary.agent);
         if let Some(ref model) = summary.model {
-            println!("  model: {}", model);
+            crate::outln!("  model: {}", model);
         }
-        println!(
+        crate::outln!(
             "  result: {}",
             if summary.suite_pass {
                 "PASSED"
@@ -141,10 +141,10 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
                 "FAILED"
             }
         );
-        println!("  cases: {}/{} passed", summary.passed, summary.total_cases);
+        crate::outln!("  cases: {}/{} passed", summary.passed, summary.total_cases);
 
         if !summary.cases.is_empty() {
-            println!("\nCase Results:");
+            crate::outln!("\nCase Results:");
             for case in &summary.cases {
                 let token_info = match (case.input_tokens, case.output_tokens) {
                     (Some(i), Some(o)) => format!(" (in={} out={})", i, o),
@@ -152,7 +152,7 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
                     (None, Some(o)) => format!(" (out={})", o),
                     (None, None) => String::new(),
                 };
-                println!("  [{}] {}{}", case.status, case.id, token_info);
+                crate::outln!("  [{}] {}{}", case.status, case.id, token_info);
             }
         }
     }

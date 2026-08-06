@@ -71,7 +71,7 @@ pub async fn execute_list_skills(
     };
 
     if matches!(resolved_format, OutputFormat::Table | OutputFormat::Grid) {
-        println!(
+        crate::outln!(
             "{}",
             messages::info(&format!("Listing skills from repository: {}", repo_name))
         );
@@ -94,13 +94,13 @@ pub async fn execute_list_skills(
     if summaries.is_empty() {
         match resolved_format {
             OutputFormat::Json => {
-                println!("[]");
+                crate::outln!("[]");
             }
             OutputFormat::Xml => {
                 super::formatters::format_xml_output(&summaries)?;
             }
             OutputFormat::Table | OutputFormat::Grid => {
-                println!("{}", messages::warning("No skills found in repository"));
+                crate::outln!("{}", messages::warning("No skills found in repository"));
             }
         }
         return Ok(());
@@ -110,7 +110,7 @@ pub async fn execute_list_skills(
         OutputFormat::Json => {
             let json_output = serde_json::to_string_pretty(&summaries)
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-            println!("{}", json_output);
+            crate::outln!("{}", json_output);
         }
         OutputFormat::Table => {
             super::formatters::format_table_output(&summaries, all_versions)?;
@@ -129,7 +129,7 @@ pub async fn execute_show_skill(skill_id: String, repository: Option<String>) ->
 
     let repo_name = super::helpers::resolve_repository_name(&repo_manager, repository)?;
 
-    println!(
+    crate::outln!(
         "{}",
         messages::info(&format!("Fetching skill: {} from {}", skill_id, repo_name))
     );
@@ -141,17 +141,17 @@ pub async fn execute_show_skill(skill_id: String, repository: Option<String>) ->
 
     match client.get_skill(&skill_id, None).await {
         Ok(Some(skill)) => {
-            println!("\nSkill: {}", skill.name);
-            println!("Version: {}", skill.version);
+            crate::outln!("\nSkill: {}", skill.name);
+            crate::outln!("Version: {}", skill.version);
             if !skill.description.is_empty() {
-                println!("Description: {}", skill.description);
+                crate::outln!("Description: {}", skill.description);
             }
             if let Some(author) = &skill.author {
-                println!("Author: {}", author);
+                crate::outln!("Author: {}", author);
             }
         }
         Ok(None) => {
-            println!(
+            crate::outln!(
                 "{}",
                 messages::warning(&format!("Skill '{}' not found in repository", skill_id))
             );
@@ -169,7 +169,7 @@ pub async fn execute_versions(skill_id: String, repository: Option<String>) -> C
 
     let repo_name = super::helpers::resolve_repository_name(&repo_manager, repository)?;
 
-    println!(
+    crate::outln!(
         "{}",
         messages::info(&format!(
             "Fetching versions for: {} from {}",
@@ -185,16 +185,16 @@ pub async fn execute_versions(skill_id: String, repository: Option<String>) -> C
     match client.get_versions(&skill_id).await {
         Ok(versions) => {
             if versions.is_empty() {
-                println!(
+                crate::outln!(
                     "{}",
                     messages::warning(&format!("No versions found for skill: {}", skill_id))
                 );
                 return Ok(());
             }
 
-            println!("\nAvailable versions:");
+            crate::outln!("\nAvailable versions:");
             for version in versions {
-                println!("  - {}", version);
+                crate::outln!("  - {}", version);
             }
             Ok(())
         }

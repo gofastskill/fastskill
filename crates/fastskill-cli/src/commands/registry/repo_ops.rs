@@ -27,14 +27,16 @@ pub async fn execute_list_with_format(format: OutputFormat) -> CliResult<()> {
         OutputFormat::Json => {
             let json_output = serde_json::to_string_pretty(&repos)
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-            println!("{}", json_output);
+            crate::outln!("{}", json_output);
         }
-        OutputFormat::Table => println!("{}", super::formatters::format_repository_list(&repos)),
+        OutputFormat::Table => {
+            crate::outln!("{}", super::formatters::format_repository_list(&repos))
+        }
         OutputFormat::Grid => {
-            println!("{}", super::formatters::format_repository_list_grid(&repos))
+            crate::outln!("{}", super::formatters::format_repository_list_grid(&repos))
         }
         OutputFormat::Xml => {
-            println!("{}", super::formatters::format_repository_list_xml(&repos))
+            crate::outln!("{}", super::formatters::format_repository_list_xml(&repos))
         }
     }
     Ok(())
@@ -61,17 +63,19 @@ pub async fn execute_show_with_format(name: String, format: OutputFormat) -> Cli
         OutputFormat::Json => {
             let json_output = serde_json::to_string_pretty(&repo)
                 .map_err(|e| CliError::Config(format!("Failed to serialize JSON: {}", e)))?;
-            println!("{}", json_output);
+            crate::outln!("{}", json_output);
         }
-        OutputFormat::Table => println!("{}", super::formatters::format_repository_details(repo)),
+        OutputFormat::Table => {
+            crate::outln!("{}", super::formatters::format_repository_details(repo))
+        }
         OutputFormat::Grid => {
-            println!(
+            crate::outln!(
                 "{}",
                 super::formatters::format_repository_details_grid(repo)
             )
         }
         OutputFormat::Xml => {
-            println!("{}", super::formatters::format_repository_details_xml(repo))
+            crate::outln!("{}", super::formatters::format_repository_details_xml(repo))
         }
     }
 
@@ -129,7 +133,7 @@ pub async fn execute_update(
         .save()
         .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
 
-    println!("{}", messages::ok(&format!("Updated repository: {}", name)));
+    crate::outln!("{}", messages::ok(&format!("Updated repository: {}", name)));
     Ok(())
 }
 
@@ -140,7 +144,7 @@ pub async fn execute_test(name: String) -> CliResult<()> {
         .get_repository(&name)
         .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?;
 
-    println!(
+    crate::outln!(
         "{}",
         messages::info(&format!("Testing repository: {}...", name))
     );
@@ -148,7 +152,7 @@ pub async fn execute_test(name: String) -> CliResult<()> {
     match repo_manager.get_client(&name).await {
         Ok(client) => match client.list_skills().await {
             Ok(skills) => {
-                println!(
+                crate::outln!(
                     "{}",
                     messages::ok(&format!(
                         "Repository '{}' is accessible ({} skills found)",
@@ -177,12 +181,12 @@ pub async fn execute_test(name: String) -> CliResult<()> {
 
 pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
     if let Some(repo_name) = name {
-        println!(
+        crate::outln!(
             "{}",
             messages::ok(&format!("Refreshed cache for repository: {}", repo_name))
         );
     } else {
-        println!("{}", messages::ok("Refreshed cache for all repositories"));
+        crate::outln!("{}", messages::ok("Refreshed cache for all repositories"));
     }
     Ok(())
 }
@@ -223,7 +227,7 @@ pub async fn execute_add(
         .save()
         .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
 
-    println!("{}", messages::ok(&format!("Added repository: {}", name)));
+    crate::outln!("{}", messages::ok(&format!("Added repository: {}", name)));
     Ok(())
 }
 
@@ -237,7 +241,7 @@ pub async fn execute_remove(name: String) -> CliResult<()> {
         .save()
         .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
 
-    println!("{}", messages::ok(&format!("Removed repository: {}", name)));
+    crate::outln!("{}", messages::ok(&format!("Removed repository: {}", name)));
     Ok(())
 }
 
