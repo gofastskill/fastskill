@@ -1,9 +1,8 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
-Usage: [HOME_DIR]/ws001/gofastskill/fastskill/target/debug/fastskill <command> [arguments]
+Usage: [FASTSKILL_BIN] <command> [arguments]
 
 Discovery:
   list    List locally installed skills

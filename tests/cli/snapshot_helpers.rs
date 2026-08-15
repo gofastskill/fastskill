@@ -150,6 +150,16 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
     }
 
     if settings.normalize_paths {
+        // Normalize the path of the binary under test. `argv[0]` shows up in
+        // usage lines, and its absolute path depends on where the repo happens
+        // to be checked out -- `/home/me/src/fastskill/...` locally versus
+        // `/home/runner/work/fastskill/...` on CI. Masking only the home
+        // directory leaves the differing remainder, so match the whole path.
+        result = regex::Regex::new(r"\S*/target/(?:debug|release)/fastskill\b")
+            .unwrap()
+            .replace_all(&result, "[FASTSKILL_BIN]")
+            .to_string();
+
         // Normalize user home directory
         result = regex::Regex::new(r"/home/[^\s/]+")
             .unwrap()
@@ -303,9 +313,23 @@ mod tests {
             normalize_timestamps: false,
         };
 
+        // The binary path collapses to a single placeholder: the checkout
+        // location differs between a developer machine and a CI runner, so
+        // keeping any of it would make snapshots environment-specific.
         let input = "/home/user/fastskill/target/debug/fastskill --help";
-        let expected = "[HOME_DIR]/fastskill/target/debug/fastskill --help";
+        let expected = "[FASTSKILL_BIN] --help";
         assert_eq!(normalize_snapshot_output(input, &settings), expected);
+
+        // Same path under a CI-style checkout must normalize identically.
+        let ci_input = "/home/runner/work/fastskill/fastskill/target/debug/fastskill --help";
+        assert_eq!(normalize_snapshot_output(ci_input, &settings), expected);
+
+        // Home directories unrelated to the binary are still masked.
+        let home_input = "/home/user/skills/my-skill";
+        assert_eq!(
+            normalize_snapshot_output(home_input, &settings),
+            "[HOME_DIR]/skills/my-skill"
+        );
     }
 
     #[test]
