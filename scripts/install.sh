@@ -156,16 +156,29 @@ detect_platform() {
             ;;
     esac
     
-    # Currently only Linux x86_64 is supported
-    if [ "$os" != "linux" ] || [ "$arch" != "x86_64" ]; then
-        error "Currently only Linux x86_64 is supported. Detected: ${os} ${arch}"
-    fi
-    
+    # Supported platforms: Linux x86_64 (gnu/musl auto-detected) and macOS x86_64/arm64.
+    # Windows and Linux arm64 are not published by the release workflow.
+    case "$os" in
+        linux)
+            if [ "$arch" != "x86_64" ]; then
+                error "Unsupported platform: ${os} ${arch}. Supported platforms: Linux (x86_64), macOS (x86_64, arm64)."
+            fi
+            ;;
+        macos)
+            if [ "$arch" != "x86_64" ] && [ "$arch" != "arm64" ]; then
+                error "Unsupported platform: ${os} ${arch}. Supported platforms: Linux (x86_64), macOS (x86_64, arm64)."
+            fi
+            ;;
+        *)
+            error "Unsupported platform: ${os} ${arch}. Supported platforms: Linux (x86_64), macOS (x86_64, arm64)."
+            ;;
+    esac
+
     # For Linux x86_64, detect glibc version to choose appropriate binary
-    if [ "$os" = "linux" ] && [ "$arch" = "x86_64" ]; then
+    if [ "$os" = "linux" ]; then
         local glibc_ver
         glibc_ver=$(detect_glibc_version)
-        
+
         # Compare version: glibc >= 2.38 uses gnu binary, otherwise use musl
         # Use awk for floating point comparison
         if [ "$glibc_ver" != "0" ] && awk "BEGIN {exit !($glibc_ver >= 2.38)}" 2>/dev/null; then
@@ -181,8 +194,16 @@ detect_platform() {
         fi
         return
     fi
-    
-    echo "${arch}-unknown-${os}-gnu"
+
+    # macOS: map arch to the published target triple
+    if [ "$os" = "macos" ]; then
+        if [ "$arch" = "arm64" ]; then
+            echo "aarch64-apple-darwin"
+        else
+            echo "x86_64-apple-darwin"
+        fi
+        return
+    fi
 }
 
 # Fetch latest version from GitHub API
