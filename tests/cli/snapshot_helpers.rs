@@ -155,7 +155,12 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         // to be checked out -- `/home/me/src/fastskill/...` locally versus
         // `/home/runner/work/fastskill/...` on CI. Masking only the home
         // directory leaves the differing remainder, so match the whole path.
-        result = regex::Regex::new(r"\S*/target/(?:debug|release)/fastskill\b")
+        //
+        // Anchor on the profile directory rather than `/target/`: under
+        // `cargo llvm-cov` the binary is built into `target/llvm-cov-target/
+        // debug/`, so requiring a literal `/target/debug/` would miss the
+        // coverage job and reintroduce an environment-dependent snapshot.
+        result = regex::Regex::new(r"\S*/(?:debug|release)/fastskill\b")
             .unwrap()
             .replace_all(&result, "[FASTSKILL_BIN]")
             .to_string();
@@ -323,6 +328,15 @@ mod tests {
         // Same path under a CI-style checkout must normalize identically.
         let ci_input = "/home/runner/work/fastskill/fastskill/target/debug/fastskill --help";
         assert_eq!(normalize_snapshot_output(ci_input, &settings), expected);
+
+        // `cargo llvm-cov` builds into its own target dir; the coverage job
+        // must produce the same snapshot as the plain test job.
+        let cov_input = "/home/runner/work/fastskill/target/llvm-cov-target/debug/fastskill --help";
+        assert_eq!(normalize_snapshot_output(cov_input, &settings), expected);
+
+        // A release-profile build normalizes the same way.
+        let rel_input = "/home/user/fastskill/target/release/fastskill --help";
+        assert_eq!(normalize_snapshot_output(rel_input, &settings), expected);
 
         // Home directories unrelated to the binary are still masked.
         let home_input = "/home/user/skills/my-skill";
