@@ -43,39 +43,13 @@ fn can_bind_localhost_or_skip() -> bool {
 
 const PROJECT_TOML: &str = "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n";
 
-/// REAL PRODUCT BUG (do not remove `#[ignore]` until fixed in `crates/fastskill-cli`):
-/// `--port 99999` (out of the valid 0..=65535 range) used to be rejected by clap at
-/// arg-parse time with a clear "invalid value '99999' for '--port <PORT>': 99999 is
-/// not in 0..=65535" error and no server ever started. It is not anymore. The
-/// `--port` arg is now declared as `ArgValueType::Int` in `ServeArgs::command_spec()`
-/// (`crates/fastskill-cli/src/commands/serve.rs`) with no range validation, and
-/// `FromArgValueMap` converts it with a silently-truncating cast:
-///   port: map.get("port").and_then(|v| if let ArgValue::Int(n) = v { Some(*n as u16) } ...)
-/// 99999_i64 as u16 == 34463 (99999 - 65536). So `fastskill serve --port 99999`
-/// does not error at all — it silently starts a real server bound to port 34463
-/// instead of the port the user asked for:
-///   $ fastskill serve --port 99999
-///   FastSkill HTTP server starting...
-///     Write endpoints: disabled (read-only); pass --enable-write to enable
-///     Listening on: http://127.0.0.1:34463
-/// This is worse than a UX regression: it silently binds to an *unintended* port
-/// derived from wraparound arithmetic on invalid input, which is a real footgun
-/// (imagine any "obviously too large" port value quietly resolving to some other,
-/// possibly sensitive, service's port). It also makes this test's outcome
-/// nondeterministic/hang-prone: `run_fastskill_command` waits for the child
-/// process to exit, but `serve` is a long-running server that only exits here
-/// because port 34463 happened to already be in use by another instance in this
-/// run ("Address already in use"); if 34463 is free when this test runs, `serve`
-/// starts successfully and the test hangs forever waiting for a process that
-/// will never exit on its own.
-/// Fix requires validating the port range at arg parse/conversion time and
-/// erroring instead of truncating, in production code this test's owner may not
-/// modify. Re-enable (and restore the snapshot assertion below) once that lands.
+/// Regression test: `--port` values outside 0..=65535 must be rejected.
+///
+/// `--port` is declared as `ArgValueType::Int`, and `FromArgValueMap` cannot
+/// return an error, so narrowing to `u16` there truncated silently: `--port
+/// 99999` wrapped to 34463 and bound a real server to a port the user never
+/// asked for. `execute_serve` now narrows and reports a validation error.
 #[test]
-#[ignore = "REAL BUG: --port silently truncates out-of-range values via `as u16` \
-            cast instead of validating (e.g. --port 99999 binds port 34463 due to \
-            wraparound), so the process can also hang instead of erroring; see \
-            crates/fastskill-cli/src/commands/serve.rs ServeArgs::command_spec()/FromArgValueMap"]
 fn test_serve_invalid_port_error() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".skills");

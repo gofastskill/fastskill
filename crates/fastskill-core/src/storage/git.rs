@@ -292,13 +292,38 @@ pub(crate) async fn execute_git_command(
 /// Check if error is a network error (retryable)
 pub(crate) fn is_network_error(stderr: &str) -> bool {
     let lower_stderr = stderr.to_lowercase();
-    lower_stderr.contains("network")
+    if lower_stderr.contains("network")
         || lower_stderr.contains("connection")
         || lower_stderr.contains("timeout")
         || lower_stderr.contains("unable to access")
         || lower_stderr.contains("failed to connect")
         || lower_stderr.contains("connection refused")
         || lower_stderr.contains("name resolution")
+        || lower_stderr.contains("could not resolve host")
+    {
+        return true;
+    }
+
+    // git reports transport failures as "error: RPC failed; ...". Retry only the
+    // ones that can plausibly succeed next time: a 5xx from the server or a
+    // curl-level transport error. A 4xx (401/403/404) is a durable answer about
+    // auth or existence and would fail identically on every retry.
+    if lower_stderr.contains("rpc failed")
+        && !lower_stderr.contains("http 4")
+        && (lower_stderr.contains("http 5") || lower_stderr.contains("curl "))
+    {
+        // The 4xx exclusion comes first because git appends a curl code even to
+        // 4xx responses ("HTTP 403 curl 22 ..."), which would otherwise read as
+        // a retryable transport error.
+        return true;
+    }
+
+    // Connections that dropped mid-transfer. These carry none of the substrings
+    // above but are exactly the transient case retrying exists for.
+    lower_stderr.contains("early eof")
+        || lower_stderr.contains("remote end hung up")
+        || lower_stderr.contains("recv failure")
+        || lower_stderr.contains("send failure")
 }
 
 /// Execute git command with retry logic for network errors
@@ -700,14 +725,25 @@ mod tests {
         assert!(is_network_error(
             "fatal: unable to access 'https://github.com/...': Failed to connect"
         ));
-        // NOTE: "error: RPC failed; HTTP 504 ..." (a generic HTTP/RPC failure with
-        // no "unable to access"/"connection"/"timeout"/"network" substring) is
-        // NOT currently classified as a network error by `is_network_error` — this
-        // assertion was dropped because it does not match production behavior
-        // (verified across git history: the substring set never included an
-        // HTTP-status or "rpc failed" check). This looks like a real coverage gap
-        // in retry classification, but fixing `is_network_error` is production
-        // logic out of scope for this test-relocation task.
+        // Transport failures worth retrying: a 5xx from the server, or a
+        // curl-level error. Neither carries any of the substrings above.
+        assert!(is_network_error(
+            "error: RPC failed; HTTP 504 curl 22 The requested URL returned error: 504"
+        ));
+        assert!(is_network_error("error: RPC failed; HTTP 502"));
+        assert!(is_network_error(
+            "error: RPC failed; curl 56 GnuTLS recv error (-54)"
+        ));
+
+        // Connections dropped mid-transfer.
+        assert!(is_network_error(
+            "fatal: the remote end hung up unexpectedly"
+        ));
+        assert!(is_network_error("error: RPC failed; early EOF"));
+        assert!(is_network_error(
+            "fatal: could not resolve host: github.com"
+        ));
+
         assert!(is_network_error(
             "fatal: unable to access 'https://...': Connection refused"
         ));
@@ -722,6 +758,15 @@ mod tests {
             "error: pathspec 'nonexistent' did not match any file"
         ));
         assert!(!is_network_error("fatal: Authentication failed"));
+
+        // 4xx responses are durable answers about auth or existence: retrying
+        // returns the identical result, so they must NOT be treated as network
+        // errors even though they arrive as "RPC failed".
+        assert!(!is_network_error(
+            "error: RPC failed; HTTP 403 curl 22 The requested URL returned error: 403"
+        ));
+        assert!(!is_network_error("error: RPC failed; HTTP 404"));
+        assert!(!is_network_error("error: RPC failed; HTTP 401"));
     }
 
     #[test]
