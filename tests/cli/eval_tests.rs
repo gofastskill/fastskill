@@ -1072,7 +1072,36 @@ fn test_eval_validate_agent_flag() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["eval", "validate", "--agent", "codex"], Some(dir.path()));
+    // Provide a fake `codex` executable rather than depending on a real one
+    // being installed: a developer machine may have the agent CLIs on PATH
+    // while a CI runner does not, which would make this test pass locally and
+    // fail in CI. Same approach as the fake `agent` binary used above.
+    let bin_dir = dir.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+    let agent_path = bin_dir.join("codex");
+    fs::write(
+        &agent_path,
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"--version\" ]]; then echo \"codex 0.1\"; exit 0; fi\nexit 0\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&agent_path, perms).unwrap();
+    }
+    let merged_path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let result = run_fastskill_command_with_env(
+        &["eval", "validate", "--agent", "codex"],
+        &[("PATH", merged_path.as_str())],
+        Some(dir.path()),
+    );
     assert!(
         result.success,
         "eval validate --agent codex must succeed; stdout: {}, stderr: {}",
