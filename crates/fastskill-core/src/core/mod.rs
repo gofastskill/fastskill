@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod build_cache;
+pub mod cache;
 pub mod change_detection;
 pub mod context_resolver;
 pub mod dependencies;
@@ -35,6 +36,15 @@ pub mod version_bump;
 // Re-export main types for convenience
 // Note: Selective re-exports to avoid conflicts
 pub use build_cache::{BuildCache, SkillCacheEntry};
+// cache (PRD 006 / RFQ 004): on-disk skill content + index cache. `SkillCache`
+// is the single seam for it -- `install.rs` (US-002/003/004) fetches through
+// it, `repos refresh` (US-005) writes its index through it, and `fastskill
+// cache info`/`clean` (US-006) read/delete through it.
+pub use cache::{
+    CacheIdentity, CacheStats, CachedContent, CleanReport, ContentSourceKind, ContentSourceStats,
+    GitResolution, GitResolutions, SkillCache, SourceIndex, SourceIndexEntry,
+    FASTSKILL_CACHE_DIR_ENV,
+};
 pub use change_detection::{
     calculate_skill_hash, detect_changed_skills_git, detect_changed_skills_hash,
 };

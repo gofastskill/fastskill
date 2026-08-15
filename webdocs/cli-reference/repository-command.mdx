@@ -202,25 +202,45 @@ fastskill repos test team-skills
 
 ### refresh
 
-Refresh repository cache (re-fetch from source).
+Refresh what a repository currently advertises: its skills and their versions for a registry or
+git marketplace, or the resolved commit for a git repository's branch or tag.
 
 ```bash
-# Refresh specific repository
+# Refresh a specific repository
 fastskill repos refresh team-skills
 
-# Refresh all repositories
+# Refresh all configured repositories
 fastskill repos refresh
 ```
 
 **When to use**:
-- After repository has been updated with new skills
-- To get latest skill versions
-- If cache is stale or corrupted
+- After a repository has been updated with new skills or versions
+- Before installing with an unpinned version constraint (`newest`), so it resolves against
+  current data instead of failing with a "run `fastskill repos refresh`" error
+- If a repository's advertised skills seem stale
 
 **What it does**:
-- Re-fetches repository metadata
-- Updates local cache
-- Invalidates stale skill information
+- Contacts each targeted repository and records what it currently advertises
+- For a git repository, resolves its configured branch or tag to the current commit
+- Prints what was refreshed, by name and skill/entry count, for example:
+  ```
+  [OK] Refreshed team-skills: 12 skills
+  ```
+- Refreshing an unknown repository name fails rather than reporting fake success
+- With no name given, every configured repository is attempted; one repository's failure does
+  not stop the rest, and each failure is reported individually
+- Exits non-zero if any repository failed to refresh
+
+<Callout type="warn">
+`refresh` is a real network operation: it can fail if a repository is unreachable. Scripts
+calling `fastskill repos refresh` should check its exit code.
+</Callout>
+
+<Callout type="info">
+`refresh` only updates what a repository advertises -- it never downloads skill content. To see
+or reclaim previously downloaded skill content, use
+[`fastskill cache`](/cli-reference/cache-command).
+</Callout>
 
 ### skills
 
@@ -535,3 +555,5 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 - [Search Command](/cli-reference/search-command) - Semantic search for installed skills
 - [Install Command](/cli-reference/skill-commands#fastskill-install) - Installing skills from repositories
 - [Init Command](/cli-reference/skill-commands#fastskill-init) - Creating skill-project.toml
+- [cache Command](/cli-reference/cache-command) - Inspect or reclaim previously downloaded
+  skill content

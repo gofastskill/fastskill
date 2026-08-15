@@ -9,6 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Registry client for querying and downloading skills
 pub struct RegistryClient {
@@ -36,6 +37,17 @@ pub struct IndexEntry {
 // IndexMetadata is defined in registry_index.rs
 
 // Dependency is defined in registry_index.rs
+
+/// Number of times [`RegistryClient::download`] has actually performed an HTTP
+/// GET for a package's bytes (PRD 006 "Local Skill Cache", US-003).
+/// Instrumentation-only, kept for the same reason as
+/// `storage::git::CLONE_INVOCATIONS`: the content cache should make a repeat
+/// pinned-version install skip the network entirely, and counting real
+/// downloads is the reliable way to prove that in an integration test.
+/// Deliberately not gated behind `#[cfg(test)]` — integration tests are a
+/// separate compilation unit and cannot see items scoped that way.
+#[doc(hidden)] // test instrumentation, not supported public API
+pub static DOWNLOAD_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
 
 impl RegistryClient {
     /// Create a new registry client
@@ -217,6 +229,7 @@ impl RegistryClient {
 
     /// Download skill package
     pub async fn download(&self, name: &str, version: &str) -> Result<Vec<u8>, ServiceError> {
+        DOWNLOAD_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
         let entry = self.get_version(name, version).await?.ok_or_else(|| {
             ServiceError::Custom(format!(
                 "Skill {} version {} not found in registry",

@@ -33,6 +33,7 @@ Setup:
           Usage: doctor [OPTIONS]
 Other:
   analyze      Diagnostic and analysis commands
+  cache        Inspect and reclaim the on-disk skill content cache
   completion   Emit a shell completion stub for top-level subcommands
   eval         Evaluation commands for skill quality assurance
   marketplace  Create and manage skill marketplace artifacts

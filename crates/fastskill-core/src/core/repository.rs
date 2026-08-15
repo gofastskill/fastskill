@@ -435,4 +435,190 @@ impl RepositoryManager {
         repos.sort_by_key(|r| r.priority);
         repos.first().copied()
     }
+
+    /// Refresh the on-disk index cache for a single repository (PRD 006 /
+    /// RFQ 004, US-005). Two independent steps:
+    ///
+    /// 1. For a `GitMarketplace` repository, resolve its configured branch/tag
+    ///    to the remote's current commit SHA via [`crate::storage::git::ls_remote`]
+    ///    and record it in the git-resolutions index — the same cache
+    ///    `install::fetch_git` reads for offline resolution (US-002). An
+    ///    unreachable remote fails the refresh here, before step 2.
+    /// 2. Fetch the repository's current skill listing via [`Self::get_client`]
+    ///    and persist it as a [`crate::core::cache::SourceIndex`].
+    ///
+    /// A step-2 listing failure (e.g. no reachable marketplace.json) does not
+    /// unwind a step-1 resolution already recorded — the two are independently
+    /// useful and the ref-resolution index should stay warm even if the
+    /// listing itself is temporarily broken.
+    ///
+    /// Index only: this never fetches or caches skill *content* (RFQ 004's
+    /// "does not pre-warm content" default).
+    ///
+    /// Returns the number of distinct skills recorded in the refreshed index.
+    pub async fn refresh_index(
+        &self,
+        cache: &crate::core::cache::SkillCache,
+        name: &str,
+    ) -> Result<usize, ServiceError> {
+        let repo = self
+            .get_repository(name)
+            .ok_or_else(|| ServiceError::Custom(format!("Repository '{}' not found", name)))?;
+
+        // Ref resolution first and independent of the listing below: a
+        // `GitMarketplace` repository's branch/tag resolves via `ls_remote`
+        // against the git remote directly, not via whatever serves
+        // marketplace.json, so recording it does not depend on the listing
+        // step succeeding. An unreachable remote fails the whole refresh
+        // fast, before attempting a listing that would fail anyway.
+        if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
+            let sha = crate::storage::git::ls_remote(url, branch.as_deref(), tag.as_deref())
+                .await
+                .map_err(|e| {
+                    ServiceError::Custom(format!(
+                        "failed to resolve current ref for '{}': {}",
+                        name, e
+                    ))
+                })?;
+            let ref_key = crate::core::cache::GitResolutions::branch_or_tag_key(
+                branch.as_deref(),
+                tag.as_deref(),
+            );
+            let mut resolutions = cache.read_git_resolutions()?;
+            resolutions.insert(url, &ref_key, sha, chrono::Utc::now());
+            cache.write_git_resolutions(&resolutions)?;
+        }
+
+        let client = self.get_client(name).await.map_err(|e| {
+            ServiceError::Custom(format!("failed to connect to repository '{}': {}", name, e))
+        })?;
+        let skills = client.list_skills().await.map_err(|e| {
+            ServiceError::Custom(format!("failed to list skills for '{}': {}", name, e))
+        })?;
+
+        // Group by skill id, deduping versions — `list_skills()` currently
+        // advertises one (the current/latest) version per skill for every
+        // repository type, but this stays correct if that ever changes.
+        let mut by_id: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+            std::collections::BTreeMap::new();
+        for skill in &skills {
+            by_id
+                .entry(skill.id.to_string())
+                .or_default()
+                .insert(skill.version.clone());
+        }
+        let entries: Vec<crate::core::cache::SourceIndexEntry> = by_id
+            .into_iter()
+            .map(|(skill, versions)| crate::core::cache::SourceIndexEntry {
+                skill,
+                versions: versions.into_iter().collect(),
+            })
+            .collect();
+        let entry_count = entries.len();
+
+        let idx = crate::core::cache::SourceIndex {
+            fetched_at: chrono::Utc::now(),
+            entries,
+        };
+        cache.write_source_index(name, &idx)?;
+
+        Ok(entry_count)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod refresh_index_tests {
+    //! `RepositoryManager::refresh_index` (PRD 006 / RFQ 004, US-005). Uses
+    //! `Local` repositories exclusively — no network involved — so git-source
+    //! ref resolution (which needs a real `ls_remote`) is covered separately
+    //! by `tests/repo_index_refresh_git_test.rs` against a local git daemon.
+
+    use super::*;
+    use crate::core::cache::SkillCache;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn local_repo(name: &str, path: PathBuf) -> RepositoryDefinition {
+        RepositoryDefinition {
+            name: name.to_string(),
+            repo_type: RepositoryType::Local,
+            priority: 0,
+            config: RepositoryConfig::Local { path },
+            auth: None,
+            storage: None,
+        }
+    }
+
+    fn write_skill(dir: &Path, id: &str, version: &str) {
+        let skill_dir = dir.join(id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {id}\nversion: \"{version}\"\ndescription: a skill\n---\nBody\n"),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn refresh_index_writes_source_index_and_returns_skill_count() {
+        let source_dir = TempDir::new().unwrap();
+        write_skill(source_dir.path(), "alpha", "1.0.0");
+        write_skill(source_dir.path(), "beta", "2.0.0");
+
+        let mut manager = RepositoryManager::new(PathBuf::new());
+        manager
+            .add_repository(
+                "local-src".to_string(),
+                local_repo("local-src", source_dir.path().to_path_buf()),
+            )
+            .unwrap();
+
+        let cache_root = TempDir::new().unwrap();
+        let cache = SkillCache::at_root(cache_root.path());
+
+        let count = manager.refresh_index(&cache, "local-src").await.unwrap();
+        assert_eq!(count, 2);
+
+        let idx = cache
+            .read_source_index("local-src")
+            .unwrap()
+            .expect("index file must be written");
+        let mut skills: Vec<&str> = idx.entries.iter().map(|e| e.skill.as_str()).collect();
+        skills.sort();
+        assert_eq!(skills, vec!["alpha", "beta"]);
+        let alpha = idx.entries.iter().find(|e| e.skill == "alpha").unwrap();
+        assert_eq!(alpha.versions, vec!["1.0.0".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn refresh_index_unknown_repository_is_an_error() {
+        let manager = RepositoryManager::new(PathBuf::new());
+        let cache_root = TempDir::new().unwrap();
+        let cache = SkillCache::at_root(cache_root.path());
+
+        let err = manager.refresh_index(&cache, "nope").await.unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn refresh_index_propagates_a_listing_failure_without_writing_an_index() {
+        let mut manager = RepositoryManager::new(PathBuf::new());
+        manager
+            .add_repository(
+                "missing-path".to_string(),
+                local_repo(
+                    "missing-path",
+                    std::env::temp_dir().join("fastskill-does-not-exist-72f1"),
+                ),
+            )
+            .unwrap();
+
+        let cache_root = TempDir::new().unwrap();
+        let cache = SkillCache::at_root(cache_root.path());
+
+        let result = manager.refresh_index(&cache, "missing-path").await;
+        assert!(result.is_err());
+        assert!(cache.read_source_index("missing-path").unwrap().is_none());
+    }
 }

@@ -93,8 +93,8 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
 }
 
 use commands::{
-    add, analyze, doctor, eval, init, install, list, marketplace, read, reindex, remove, repos,
-    search, serve, skillopt, update,
+    add, analyze, cache, doctor, eval, init, install, list, marketplace, read, reindex, remove,
+    repos, search, serve, skillopt, update,
 };
 
 #[tokio::main]
@@ -385,6 +385,35 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 path!["repos", "versions"],
                 |_ctx, args: repos::ReposVersionsArgs| async move {
                     repos::execute_repos_versions(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+    };
+
+    // ── cache: inspect/reclaim the on-disk skill content cache (PRD 006 US-006) ──
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["cache"],
+                GroupMetadata {
+                    summary: "Inspect and reclaim the on-disk skill content cache",
+                    hidden: false,
+                },
+            )?
+            .register_out(
+                path!["cache", "info"],
+                |_ctx, args: cache::CacheInfoArgs| async move {
+                    cache::execute_cache_info(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register_out(
+                path!["cache", "clean"],
+                |_ctx, args: cache::CacheCleanArgs| async move {
+                    cache::execute_cache_clean(args)
                         .await
                         .map_err(anyhow::Error::from)
                 },

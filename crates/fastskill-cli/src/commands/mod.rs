@@ -2,6 +2,7 @@
 
 pub mod add;
 pub mod analyze;
+pub mod cache;
 pub mod common;
 pub mod doctor;
 pub mod eval;

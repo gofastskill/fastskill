@@ -84,6 +84,34 @@ impl VersionConstraint {
         })?;
         Ok(self.req.matches(&ver))
     }
+
+    /// If this constraint pins to exactly one version — a bare `MAJOR.MINOR.PATCH`
+    /// (normalized to `=MAJOR.MINOR.PATCH` per ADR-0004) or an explicit
+    /// `=MAJOR.MINOR.PATCH[-pre]` — return that version string. `None` for any
+    /// range (`^`, `~`, `>`, `<`, comma ranges, `*`), which needs a list of
+    /// available versions to resolve against.
+    ///
+    /// PRD 006 (US-003, "Local Skill Cache"): registry version resolution uses
+    /// this to skip both the on-disk index and the network entirely for an
+    /// already-known exact version — the offline "a pinned, cached version
+    /// installs with no network" acceptance criterion depends on never needing
+    /// a versions listing for this case.
+    pub fn as_exact(&self) -> Option<String> {
+        let [comparator] = self.req.comparators.as_slice() else {
+            return None;
+        };
+        if comparator.op != semver::Op::Exact {
+            return None;
+        }
+        let minor = comparator.minor?;
+        let patch = comparator.patch?;
+        let pre = if comparator.pre.is_empty() {
+            String::new()
+        } else {
+            format!("-{}", comparator.pre)
+        };
+        Some(format!("{}.{}.{}{}", comparator.major, minor, patch, pre))
+    }
 }
 
 impl std::fmt::Display for VersionConstraint {
@@ -200,6 +228,38 @@ mod tests {
     fn test_is_newer() {
         assert!(is_newer("1.2.4", "1.2.3").unwrap());
         assert!(!is_newer("1.2.3", "1.2.4").unwrap());
+    }
+
+    // --- as_exact (PRD 006 US-003: registry version resolution) ---
+
+    #[test]
+    fn test_as_exact_bare_version() {
+        let constraint = VersionConstraint::parse("1.2.3").unwrap();
+        assert_eq!(constraint.as_exact().as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn test_as_exact_explicit_equals() {
+        let constraint = VersionConstraint::parse("=1.2.3").unwrap();
+        assert_eq!(constraint.as_exact().as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn test_as_exact_prerelease() {
+        let constraint = VersionConstraint::parse("=1.2.3-beta.1").unwrap();
+        assert_eq!(constraint.as_exact().as_deref(), Some("1.2.3-beta.1"));
+    }
+
+    #[test]
+    fn test_as_exact_none_for_ranges() {
+        assert_eq!(VersionConstraint::parse("^1.2.3").unwrap().as_exact(), None);
+        assert_eq!(VersionConstraint::parse("~1.2.0").unwrap().as_exact(), None);
+        assert_eq!(
+            VersionConstraint::parse(">=1.0.0").unwrap().as_exact(),
+            None
+        );
+        assert_eq!(VersionConstraint::parse("*").unwrap().as_exact(), None);
+        assert_eq!(VersionConstraint::parse("").unwrap().as_exact(), None);
     }
 
     // --- Regression tests for BUG-2/3/4/5 + ADR-0004 ---

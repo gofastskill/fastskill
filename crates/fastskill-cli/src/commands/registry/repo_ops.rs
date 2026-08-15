@@ -179,16 +179,80 @@ pub async fn execute_test(name: String) -> CliResult<()> {
     Ok(())
 }
 
+/// `repos refresh [name]` (PRD 006 "Local Skill Cache", US-005): refresh the
+/// on-disk index cache for one repository, or every configured repository,
+/// via [`fastskill_core::core::repository::RepositoryManager::refresh_index`].
+///
+/// An explicit `name` for a repository that does not exist is a fast, honest
+/// error — never fake success. When refreshing "all" repositories, one
+/// source's failure does not stop the rest: every source is attempted, each
+/// prints its own outcome, and the command exits non-zero if any failed
+/// (FR-5). Index only — this never fetches or caches skill content.
 pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
-    if let Some(repo_name) = name {
+    let repo_manager = super::helpers::load_repo_manager().await?;
+    let cache = fastskill_core::core::cache::SkillCache::from_env()?;
+
+    let targets: Vec<String> = match name {
+        Some(repo_name) => {
+            repo_manager
+                .get_repository(&repo_name)
+                .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", repo_name)))?;
+            vec![repo_name]
+        }
+        None => repo_manager
+            .list_repositories()
+            .into_iter()
+            .map(|r| r.name.clone())
+            .collect(),
+    };
+
+    if targets.is_empty() {
         crate::outln!(
             "{}",
-            messages::ok(&format!("Refreshed cache for repository: {}", repo_name))
+            messages::info("No repositories configured to refresh")
         );
-    } else {
-        crate::outln!("{}", messages::ok("Refreshed cache for all repositories"));
+        return Ok(());
     }
-    Ok(())
+
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for target in &targets {
+        match repo_manager.refresh_index(&cache, target).await {
+            Ok(count) => {
+                crate::outln!(
+                    "{}",
+                    messages::ok(&format!(
+                        "Refreshed {}: {} skill{}",
+                        target,
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    ))
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    messages::error(&format!("Failed to refresh {}: {}", target, e))
+                );
+                failed.push((target.clone(), e.to_string()));
+            }
+        }
+    }
+
+    if failed.is_empty() {
+        return Ok(());
+    }
+
+    Err(CliError::Validation(format!(
+        "{} of {} repositor{} failed to refresh:\n{}",
+        failed.len(),
+        targets.len(),
+        if targets.len() == 1 { "y" } else { "ies" },
+        failed
+            .iter()
+            .map(|(n, e)| format!("  - {}: {}", n, e))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )))
 }
 
 pub async fn execute_add(
@@ -390,5 +454,197 @@ skills_directory = ".claude/skills"
 
         let list_result = execute_list_with_json(false).await;
         assert!(list_result.is_ok());
+    }
+
+    // ── PRD 006 "Local Skill Cache", US-005: `repos refresh` real semantics ──
+
+    /// RAII guard restoring `FASTSKILL_CACHE_DIR` to whatever it was before
+    /// the test set it, so these tests never leak into the real platform
+    /// cache dir nor into other tests sharing this process.
+    struct CacheDirEnvGuard(Option<String>);
+    impl Drop for CacheDirEnvGuard {
+        fn drop(&mut self) {
+            match &self.0 {
+                Some(v) => std::env::set_var("FASTSKILL_CACHE_DIR", v),
+                None => std::env::remove_var("FASTSKILL_CACHE_DIR"),
+            }
+        }
+    }
+
+    fn write_skill(dir: &std::path::Path, id: &str, version: &str) {
+        let skill_dir = dir.join(id);
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {id}\nversion: \"{version}\"\ndescription: a skill\n---\nBody\n"),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_execute_refresh_unknown_repository_fails() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = "[tool.fastskill]\nskills_directory = \".claude/skills\"\n";
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let cache_dir = TempDir::new().unwrap();
+        let _env_guard = CacheDirEnvGuard(std::env::var("FASTSKILL_CACHE_DIR").ok());
+        std::env::set_var("FASTSKILL_CACHE_DIR", cache_dir.path());
+
+        let err = execute_refresh(Some("does-not-exist".to_string()))
+            .await
+            .expect_err("refresh of an unknown repository must fail, not fake success");
+        let message = err.to_string();
+        assert!(message.contains("does-not-exist"));
+        assert!(message.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_refresh_writes_index_and_reports_skill_count() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = "[tool.fastskill]\nskills_directory = \".claude/skills\"\n";
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let repo_path = temp_dir.path().join("indexed-repo");
+        write_skill(&repo_path, "indexed-skill", "2.3.4");
+
+        let add_result = execute_add(
+            "idx-repo".to_string(),
+            "local".to_string(),
+            repo_path.display().to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(add_result.is_ok());
+
+        let cache_dir = TempDir::new().unwrap();
+        let _env_guard = CacheDirEnvGuard(std::env::var("FASTSKILL_CACHE_DIR").ok());
+        std::env::set_var("FASTSKILL_CACHE_DIR", cache_dir.path());
+
+        let result = execute_refresh(Some("idx-repo".to_string())).await;
+        assert!(result.is_ok(), "refresh should succeed: {:?}", result.err());
+
+        let index_path = cache_dir.path().join("index").join("idx-repo.json");
+        let index_contents = fs::read_to_string(&index_path)
+            .unwrap_or_else(|e| panic!("expected index file at {}: {e}", index_path.display()));
+        assert!(index_contents.contains("indexed-skill"));
+        assert!(index_contents.contains("2.3.4"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_refresh_all_partial_failure_refreshes_others_and_errors() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        let manifest_content = "[tool.fastskill]\nskills_directory = \".claude/skills\"\n";
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let good_repo_path = temp_dir.path().join("good-repo");
+        write_skill(&good_repo_path, "healthy-skill", "1.0.0");
+        let add_good = execute_add(
+            "healthy".to_string(),
+            "local".to_string(),
+            good_repo_path.display().to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(add_good.is_ok());
+
+        let broken_repo_path = temp_dir.path().join("this-path-does-not-exist");
+        let add_bad = execute_add(
+            "broken".to_string(),
+            "local".to_string(),
+            broken_repo_path.display().to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(add_bad.is_ok());
+
+        let cache_dir = TempDir::new().unwrap();
+        let _env_guard = CacheDirEnvGuard(std::env::var("FASTSKILL_CACHE_DIR").ok());
+        std::env::set_var("FASTSKILL_CACHE_DIR", cache_dir.path());
+
+        let result = execute_refresh(None).await;
+        assert!(
+            result.is_err(),
+            "overall refresh must fail non-zero when any source fails"
+        );
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("broken"));
+
+        // The healthy source still refreshed despite the other's failure.
+        assert!(cache_dir
+            .path()
+            .join("index")
+            .join("healthy.json")
+            .is_file());
+        assert!(!cache_dir.path().join("index").join("broken.json").exists());
     }
 }

@@ -10,6 +10,7 @@
     "search-command",
     "serve-command",
     "repository-command",
+    "cache-command",
     "eval-command",
     "tooling-commands"
   ]
