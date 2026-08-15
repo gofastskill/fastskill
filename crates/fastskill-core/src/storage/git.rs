@@ -2,7 +2,9 @@
 
 use crate::core::service::ServiceError;
 use crate::core::sources::SourceAuth;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -43,6 +45,12 @@ pub enum GitError {
 
     #[error("Authentication failed for {url}: {stderr}")]
     AuthenticationFailed { url: String, stderr: String },
+
+    #[error("Failed to resolve ref for {url}: {stderr}")]
+    LsRemoteFailed { url: String, stderr: String },
+
+    #[error("Ref '{ref_name}' not found on {url}")]
+    RefNotFound { url: String, ref_name: String },
 }
 
 impl From<GitError> for ServiceError {
@@ -234,9 +242,24 @@ pub(crate) fn build_clone_args<'a>(
 
 /// Build the argument vector for `git checkout` (SEC-12).
 ///
-/// `--` terminates options so a ref beginning with `-` cannot be read as a flag.
-pub(crate) fn build_checkout_args(ref_name: &str) -> Vec<&str> {
-    vec!["checkout", "--", ref_name]
+/// Fully-qualifies `ref_name` as `refs/heads/<name>` or `refs/tags/<name>`
+/// (per `is_branch`) rather than using a bare `--` end-of-options separator.
+/// This is deliberate, not just a style choice: `git checkout -- <name>`
+/// (the `build_clone_args`-style guard) means "restore the *pathspec*
+/// `<name>` from the index", not "switch to the ref `<name>`" — it fails with
+/// `pathspec '<name>' did not match any file(s)` for every real branch/tag,
+/// since checkout only treats an argument as a revision when it is *not*
+/// preceded by `--`. Prefixing with a fixed, non-attacker-controlled
+/// `refs/heads/`/`refs/tags/` gives the same SEC-12 protection (the full
+/// argument can never begin with `-`, so it can never be read as a flag)
+/// while keeping correct ref (not path) semantics.
+pub(crate) fn build_checkout_args(ref_name: &str, is_branch: bool) -> Vec<String> {
+    let qualified = if is_branch {
+        format!("refs/heads/{ref_name}")
+    } else {
+        format!("refs/tags/{ref_name}")
+    };
+    vec!["checkout".to_string(), qualified]
 }
 
 /// Command output structure
@@ -245,6 +268,38 @@ pub(crate) struct CommandOutput {
     stdout: String,
     stderr: String,
     exit_code: i32,
+}
+
+/// Environment variables git exports to its own subprocesses (hooks, `rebase
+/// --exec`, aliases, filters) to pin them to *the invoking repository*.
+///
+/// If `fastskill` is itself run from such a context, these are inherited, and
+/// every `git` we spawn silently retargets the caller's repo instead of the
+/// path we asked for — `clone` writes objects into the wrong `GIT_DIR`, and a
+/// `commit` in a scratch directory can even fire the caller's hooks. Clear
+/// them so our invocations always mean what the arguments say.
+const INHERITED_GIT_ENV_VARS: &[&str] = &[
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+    "GIT_NAMESPACE",
+    "GIT_CEILING_DIRECTORIES",
+];
+
+/// Remove the repository-pinning variables listed in
+/// [`INHERITED_GIT_ENV_VARS`] from `cmd`'s environment.
+///
+/// Note `GIT_DIR` *overrides* `Command::current_dir`, so setting a working
+/// directory is not on its own enough to target a repository — any git spawn
+/// that relies on cwd must go through here too.
+pub(crate) fn scrub_inherited_git_env(cmd: &mut Command) {
+    for var in INHERITED_GIT_ENV_VARS {
+        cmd.env_remove(var);
+    }
 }
 
 /// Execute git command with timeout
@@ -258,6 +313,7 @@ pub(crate) async fn execute_git_command(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+    scrub_inherited_git_env(&mut cmd);
 
     // Execute with timeout
     let args_str = args.join(" ");
@@ -360,6 +416,126 @@ pub(crate) async fn execute_git_command_with_retry(
     }
 }
 
+/// Number of times [`clone_repository`] has actually run a `git clone`.
+///
+/// Instrumentation-only (PRD 006 "Local Skill Cache", US-002): the content
+/// cache should make most installs skip cloning entirely, and the only
+/// reliable way to assert that in an integration test — without a full mock
+/// git layer — is to count real invocations. Deliberately not gated behind
+/// `#[cfg(test)]`: integration tests are a separate compilation unit and
+/// cannot see items scoped that way. The cost of an uncontended atomic
+/// increment per clone is negligible in production.
+#[doc(hidden)] // test instrumentation, not supported public API
+pub static CLONE_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Resolve a branch or tag name on the remote at `url` to its commit SHA,
+/// without cloning (PRD 006 "Local Skill Cache", US-002).
+///
+/// `branch` and `tag` are mutually exclusive, mirroring [`clone_repository`];
+/// when both are `None`, resolves `HEAD` (the remote's default branch). For an
+/// annotated tag, resolves to the commit the tag *points at* (the peeled
+/// object) — never the tag object's own SHA — so this matches what a
+/// `clone` + `checkout` of that tag lands on.
+///
+/// Follows the same conventions as [`clone_repository`]: shells out via
+/// `Command::new("git")`, the protocol allowlist + `--` end-of-options guard
+/// (SEC-11), credential redaction in logs, the git-version check, and the
+/// shared retry wrapper.
+///
+/// # Errors
+///
+/// Returns `ServiceError` if git is not installed, the version is too old, the
+/// remote could not be reached, or `branch`/`tag`/`HEAD` does not exist on it.
+pub async fn ls_remote(
+    url: &str,
+    branch: Option<&str>,
+    tag: Option<&str>,
+) -> Result<String, ServiceError> {
+    check_git_version().await?;
+
+    let safe_url = redact_url_credentials(url);
+    let query_refs = ls_remote_query_refs(branch, tag);
+    debug!("Resolving ref for {}: {:?}", safe_url, query_refs);
+
+    let args = build_ls_remote_args(url, &query_refs);
+    let ls_remote_timeout = Duration::from_secs(30);
+    let output = execute_git_command_with_retry(&args, ls_remote_timeout, None, 3)
+        .await
+        .map_err(|e| GitError::LsRemoteFailed {
+            url: safe_url.clone(),
+            stderr: e.to_string(),
+        })?;
+
+    let refs = parse_ls_remote_output(&output.stdout);
+    resolve_sha_from_refs(&refs, &query_refs, &safe_url).map_err(Into::into)
+}
+
+/// The ref patterns to query for a given branch/tag/default selection: exactly
+/// one fully-qualified ref for a branch or `HEAD`; two for a tag (the tag ref
+/// itself, and its peeled `^{}` form) so an annotated tag resolves to the
+/// commit it points at rather than the tag object.
+fn ls_remote_query_refs(branch: Option<&str>, tag: Option<&str>) -> Vec<String> {
+    match (branch, tag) {
+        (Some(b), _) => vec![format!("refs/heads/{b}")],
+        (None, Some(t)) => vec![format!("refs/tags/{t}"), format!("refs/tags/{t}^{{}}")],
+        (None, None) => vec!["HEAD".to_string()],
+    }
+}
+
+/// Build the argument vector for `git ls-remote`.
+///
+/// Hardening (SEC-11): same protocol allowlist as [`build_clone_args`], plus
+/// `--` end-of-options before `url`/`refs` so neither can be read as a flag.
+pub(crate) fn build_ls_remote_args<'a>(url: &'a str, refs: &'a [String]) -> Vec<&'a str> {
+    let mut args = vec![
+        "-c",
+        "protocol.ext.allow=never",
+        "-c",
+        "protocol.file.allow=never",
+        "ls-remote",
+        "--",
+        url,
+    ];
+    args.extend(refs.iter().map(String::as_str));
+    args
+}
+
+/// Parse `git ls-remote` output (`<sha>\t<ref>` per line) into a `ref -> sha` map.
+fn parse_ls_remote_output(stdout: &str) -> HashMap<String, String> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let sha = parts.next()?.trim();
+            let ref_name = parts.next()?.trim();
+            if sha.is_empty() || ref_name.is_empty() {
+                return None;
+            }
+            Some((ref_name.to_string(), sha.to_string()))
+        })
+        .collect()
+}
+
+/// Pick the resolved SHA out of a parsed `ls-remote` ref map. Prefers the
+/// peeled form (`query_refs[1]`, e.g. `refs/tags/v1^{}`) when present — the
+/// commit an annotated tag points at — falling back to the direct ref.
+fn resolve_sha_from_refs(
+    refs: &HashMap<String, String>,
+    query_refs: &[String],
+    safe_url: &str,
+) -> Result<String, GitError> {
+    if let Some(peeled) = query_refs.get(1).and_then(|r| refs.get(r)) {
+        return Ok(peeled.clone());
+    }
+    if let Some(direct) = query_refs.first().and_then(|r| refs.get(r)) {
+        return Ok(direct.clone());
+    }
+    Err(GitError::RefNotFound {
+        url: safe_url.to_string(),
+        ref_name: query_refs.first().cloned().unwrap_or_default(),
+    })
+}
+
 /// Clone a git repository to a temporary directory.
 ///
 /// This function uses the system git binary to clone a repository. It performs shallow clones
@@ -408,6 +584,8 @@ pub async fn clone_repository(
     tag: Option<&str>,
     auth: Option<&SourceAuth>,
 ) -> Result<TempDir, ServiceError> {
+    CLONE_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
+
     // Log deprecation warning if auth is provided
     if auth.is_some() {
         warn!(
@@ -471,7 +649,7 @@ pub async fn clone_repository(
 ///
 /// * `repo_path` - Path to the git repository
 /// * `ref_name` - Branch or tag name to checkout
-/// * `_is_branch` - Whether the reference is a branch (kept for API compatibility)
+/// * `is_branch` - Whether `ref_name` is a branch (`refs/heads/`) or a tag (`refs/tags/`)
 ///
 /// # Errors
 ///
@@ -493,10 +671,11 @@ pub async fn clone_repository(
 pub async fn checkout_branch_or_tag(
     repo_path: &Path,
     ref_name: &str,
-    _is_branch: bool,
+    is_branch: bool,
 ) -> Result<(), ServiceError> {
-    // Build checkout command (`--` end-of-options separator, SEC-12)
-    let args = build_checkout_args(ref_name);
+    // Build checkout command (fully-qualified ref, SEC-12 — see build_checkout_args).
+    let args = build_checkout_args(ref_name, is_branch);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
 
     // Execute checkout (1 minute timeout)
     let checkout_timeout = Duration::from_secs(60); // 1 minute
@@ -628,14 +807,24 @@ mod tests {
     }
 
     #[test]
-    fn test_build_checkout_args_has_end_of_options() {
-        // SEC-12: `--` before ref_name so a "--foo" ref is a positional, not a flag.
-        assert_eq!(build_checkout_args("main"), vec!["checkout", "--", "main"]);
-        let args = build_checkout_args("--evil-flag");
-        assert_eq!(args, vec!["checkout", "--", "--evil-flag"]);
-        // ref sits strictly after the separator.
-        let dd = args.iter().position(|a| *a == "--").unwrap();
-        assert_eq!(args[dd + 1], "--evil-flag");
+    fn test_build_checkout_args_qualifies_branch_and_tag_refs() {
+        assert_eq!(
+            build_checkout_args("main", true),
+            vec!["checkout".to_string(), "refs/heads/main".to_string()]
+        );
+        assert_eq!(
+            build_checkout_args("v1.0.0", false),
+            vec!["checkout".to_string(), "refs/tags/v1.0.0".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_build_checkout_args_ref_cannot_be_read_as_flag() {
+        // SEC-12: the fixed `refs/heads/`/`refs/tags/` prefix means the final
+        // argument can never begin with `-`, however `ref_name` is chosen.
+        let args = build_checkout_args("--evil-flag", true);
+        assert_eq!(args[1], "refs/heads/--evil-flag");
+        assert!(!args[1].starts_with('-'));
     }
 
     #[test]
@@ -868,5 +1057,105 @@ mod tests {
         // Should fail after retries (not a network error, so won't retry)
         // Or if it is a network error, should fail after 3 attempts
         assert!(result.is_err() || result.as_ref().unwrap().exit_code != 0);
+    }
+
+    // ── ls-remote helpers ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_ls_remote_query_refs_branch_is_fully_qualified() {
+        assert_eq!(
+            ls_remote_query_refs(Some("main"), None),
+            vec!["refs/heads/main".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_ls_remote_query_refs_tag_includes_peeled_form() {
+        assert_eq!(
+            ls_remote_query_refs(None, Some("v1.0.0")),
+            vec![
+                "refs/tags/v1.0.0".to_string(),
+                "refs/tags/v1.0.0^{}".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ls_remote_query_refs_default_is_head() {
+        assert_eq!(ls_remote_query_refs(None, None), vec!["HEAD".to_string()]);
+    }
+
+    #[test]
+    fn test_build_ls_remote_args_protocol_flags_and_end_of_options() {
+        let refs = vec!["HEAD".to_string()];
+        let args = build_ls_remote_args("https://example.com/repo.git", &refs);
+
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c", "protocol.ext.allow=never"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c", "protocol.file.allow=never"]));
+
+        let dd = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(args[dd + 1], "https://example.com/repo.git");
+        assert_eq!(args[dd + 2], "HEAD");
+    }
+
+    #[test]
+    fn test_build_ls_remote_args_url_cannot_be_read_as_flag() {
+        let refs = vec!["HEAD".to_string()];
+        let args = build_ls_remote_args("--upload-pack=evil", &refs);
+        let dd = args.iter().position(|a| *a == "--").unwrap();
+        assert_eq!(args[dd + 1], "--upload-pack=evil");
+    }
+
+    #[test]
+    fn test_parse_ls_remote_output_multiple_lines() {
+        let stdout = "abc123\trefs/heads/main\ndef456\trefs/tags/v1.0.0\n";
+        let refs = parse_ls_remote_output(stdout);
+        assert_eq!(
+            refs.get("refs/heads/main").map(String::as_str),
+            Some("abc123")
+        );
+        assert_eq!(
+            refs.get("refs/tags/v1.0.0").map(String::as_str),
+            Some("def456")
+        );
+    }
+
+    #[test]
+    fn test_parse_ls_remote_output_empty_is_empty_map() {
+        assert!(parse_ls_remote_output("").is_empty());
+    }
+
+    #[test]
+    fn test_resolve_sha_from_refs_prefers_peeled_tag() {
+        let mut refs = HashMap::new();
+        refs.insert("refs/tags/v1.0.0".to_string(), "tagobj".to_string());
+        refs.insert("refs/tags/v1.0.0^{}".to_string(), "commitsha".to_string());
+        let query_refs = ls_remote_query_refs(None, Some("v1.0.0"));
+
+        let sha = resolve_sha_from_refs(&refs, &query_refs, "url").unwrap();
+        assert_eq!(sha, "commitsha");
+    }
+
+    #[test]
+    fn test_resolve_sha_from_refs_lightweight_tag_falls_back_to_direct() {
+        let mut refs = HashMap::new();
+        refs.insert("refs/tags/v1.0.0".to_string(), "commitsha".to_string());
+        let query_refs = ls_remote_query_refs(None, Some("v1.0.0"));
+
+        let sha = resolve_sha_from_refs(&refs, &query_refs, "url").unwrap();
+        assert_eq!(sha, "commitsha");
+    }
+
+    #[test]
+    fn test_resolve_sha_from_refs_missing_ref_errors() {
+        let refs = HashMap::new();
+        let query_refs = ls_remote_query_refs(Some("nope"), None);
+
+        let err = resolve_sha_from_refs(&refs, &query_refs, "url").unwrap_err();
+        assert!(matches!(err, GitError::RefNotFound { .. }));
     }
 }

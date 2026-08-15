@@ -5,7 +5,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use super::snapshot_helpers::run_fastskill_command;
+use super::snapshot_helpers::{run_fastskill_command, run_fastskill_command_with_env};
 use std::fs;
 use tempfile::TempDir;
 
@@ -98,8 +98,17 @@ fn test_repos_complete_workflow_matrix() {
     );
     assert!(test.stdout.contains("Testing repository: matrix-local"));
 
-    let refresh_one =
-        run_fastskill_command(&["repos", "refresh", "matrix-local"], Some(temp_dir.path()));
+    // PRD 006 "Local Skill Cache" (US-005): `repos refresh` now does a real
+    // on-disk index refresh via `SkillCache`. Point it at a scratch cache dir
+    // so the test never touches the developer/CI machine's real cache.
+    let cache_dir = TempDir::new().unwrap();
+    let cache_dir_str = cache_dir.path().to_str().unwrap();
+
+    let refresh_one = run_fastskill_command_with_env(
+        &["repos", "refresh", "matrix-local"],
+        &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
+        Some(temp_dir.path()),
+    );
     assert!(
         refresh_one.success,
         "repos refresh <name> failed: {}{}",
@@ -107,9 +116,18 @@ fn test_repos_complete_workflow_matrix() {
     );
     assert!(refresh_one
         .stdout
-        .contains("Refreshed cache for repository: matrix-local"));
+        .contains("Refreshed matrix-local: 1 skill"));
+    assert!(cache_dir
+        .path()
+        .join("index")
+        .join("matrix-local.json")
+        .is_file());
 
-    let refresh_all = run_fastskill_command(&["repos", "refresh"], Some(temp_dir.path()));
+    let refresh_all = run_fastskill_command_with_env(
+        &["repos", "refresh"],
+        &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
+        Some(temp_dir.path()),
+    );
     assert!(
         refresh_all.success,
         "repos refresh failed: {}{}",
@@ -117,7 +135,7 @@ fn test_repos_complete_workflow_matrix() {
     );
     assert!(refresh_all
         .stdout
-        .contains("Refreshed cache for all repositories"));
+        .contains("Refreshed matrix-local: 1 skill"));
 
     let skills = run_fastskill_command(
         &["repos", "skills", "--repository", "matrix-local"],
@@ -204,4 +222,127 @@ fn test_repos_help_does_not_advertise_search() {
     assert!(repos_help.stdout.contains("skills"));
     assert!(repos_help.stdout.contains("show"));
     assert!(repos_help.stdout.contains("versions"));
+}
+
+// ── PRD 006 "Local Skill Cache", US-005: `repos refresh` real semantics ────
+
+/// `refresh <name>` for a repository that was never added must fail with an
+/// error and a non-zero exit — not the old fake-success message.
+#[test]
+fn test_repos_refresh_unknown_repository_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+    let cache_dir = TempDir::new().unwrap();
+
+    let refresh = run_fastskill_command_with_env(
+        &["repos", "refresh", "does-not-exist"],
+        &[("FASTSKILL_CACHE_DIR", cache_dir.path().to_str().unwrap())],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        !refresh.success,
+        "refresh of an unknown repository must fail: {}{}",
+        refresh.stdout, refresh.stderr
+    );
+    assert!(refresh.stderr.contains("does-not-exist"));
+    assert!(refresh.stderr.contains("not found"));
+}
+
+/// Refreshing "all" repositories when one source fails (a `local` repository
+/// pointing at a path that does not exist) must still refresh the remaining,
+/// healthy sources — reporting each outcome — and exit non-zero overall.
+#[test]
+fn test_repos_refresh_all_partial_failure_still_refreshes_others_and_exits_nonzero() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+    let cache_dir = TempDir::new().unwrap();
+    let cache_dir_str = cache_dir.path().to_str().unwrap();
+
+    let good_repo_path = write_local_skill_repo(temp_dir.path(), "healthy-skill", "1.0.0");
+    let add_good = run_fastskill_command(
+        &[
+            "repos",
+            "add",
+            "healthy",
+            "--repo-type",
+            "local",
+            good_repo_path.to_str().unwrap(),
+        ],
+        Some(temp_dir.path()),
+    );
+    assert!(add_good.success, "{}{}", add_good.stdout, add_good.stderr);
+
+    let missing_path = temp_dir.path().join("this-path-does-not-exist");
+    let add_bad = run_fastskill_command(
+        &[
+            "repos",
+            "add",
+            "broken",
+            "--repo-type",
+            "local",
+            missing_path.to_str().unwrap(),
+        ],
+        Some(temp_dir.path()),
+    );
+    assert!(add_bad.success, "{}{}", add_bad.stdout, add_bad.stderr);
+
+    let refresh_all = run_fastskill_command_with_env(
+        &["repos", "refresh"],
+        &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
+        Some(temp_dir.path()),
+    );
+
+    assert!(
+        !refresh_all.success,
+        "overall refresh must exit non-zero when any source fails: {}{}",
+        refresh_all.stdout, refresh_all.stderr
+    );
+    // The healthy source still refreshed and reported its outcome...
+    assert!(refresh_all.stdout.contains("Refreshed healthy: 1 skill"));
+    assert!(cache_dir
+        .path()
+        .join("index")
+        .join("healthy.json")
+        .is_file());
+    // ...and the broken source's failure was reported too, not swallowed.
+    assert!(refresh_all.stderr.contains("broken"));
+    assert!(!cache_dir.path().join("index").join("broken.json").exists());
+}
+
+/// A successful refresh persists a `SourceIndex` to disk under the resolved
+/// cache root, containing the skill(s) the source advertised.
+#[test]
+fn test_repos_refresh_writes_source_index_to_disk() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+    let cache_dir = TempDir::new().unwrap();
+
+    let repo_path = write_local_skill_repo(temp_dir.path(), "indexed-skill", "2.3.4");
+    let add = run_fastskill_command(
+        &[
+            "repos",
+            "add",
+            "idx-repo",
+            "--repo-type",
+            "local",
+            repo_path.to_str().unwrap(),
+        ],
+        Some(temp_dir.path()),
+    );
+    assert!(add.success, "{}{}", add.stdout, add.stderr);
+
+    let refresh = run_fastskill_command_with_env(
+        &["repos", "refresh", "idx-repo"],
+        &[("FASTSKILL_CACHE_DIR", cache_dir.path().to_str().unwrap())],
+        Some(temp_dir.path()),
+    );
+    assert!(refresh.success, "{}{}", refresh.stdout, refresh.stderr);
+
+    let index_path = cache_dir.path().join("index").join("idx-repo.json");
+    let index_contents = fs::read_to_string(&index_path)
+        .unwrap_or_else(|e| panic!("expected index file at {}: {e}", index_path.display()));
+    assert!(index_contents.contains("indexed-skill"));
+    assert!(index_contents.contains("2.3.4"));
+    assert!(index_contents.contains("fetched_at"));
 }

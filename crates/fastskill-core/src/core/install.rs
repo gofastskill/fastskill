@@ -6,6 +6,7 @@
 //! skills dir → upsert Manifest → write Lock → reindex-if-provider). `mode` only
 //! governs the id-conflict policy. `add`/`update` are one operation.
 
+use crate::core::cache::{CacheIdentity, SkillCache, SourceIndex, SourceIndexEntry};
 use crate::core::lock::{project_lock_path, ProjectSkillsLock};
 use crate::core::manifest::{
     DependenciesSection, DependencySpec, ProjectContext, SkillProjectToml,
@@ -17,8 +18,10 @@ use crate::core::repository::RepositoryManager;
 use crate::core::service::{FastSkillService, ServiceError, SkillId};
 use crate::core::skill_manager::SkillDefinition;
 use crate::core::version::{is_newer, newest_version, VersionConstraint};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 
 /// Whether an install is a fresh add (409 on an existing id) or an update
@@ -113,7 +116,48 @@ impl FastSkillService {
             }
         };
 
-        let temp_dir = crate::storage::git::clone_repository(url, branch, tag, None).await?;
+        // PRD 006 / RFQ 004 (US-002): resolve the ref to a SHA before deciding
+        // whether to clone at all, so a repeat install of the same commit — even
+        // from a different project — never re-clones.
+        let cache = self.skill_cache();
+        let ref_key = git_ref_cache_key(git_ref);
+        let resolved_sha = resolve_git_sha(cache, url, &ref_key, branch, tag).await?;
+
+        let (temp_dir, commit_hash) = if let Some(cached) = cache.get(&CacheIdentity::Git {
+            sha: resolved_sha.clone(),
+        }) {
+            // Cache hit: copy the previously-cloned content out of the
+            // (immutable, shared) cache entry rather than cloning again.
+            let temp_dir = TempDir::new()?;
+            copy_dir_recursive(&cached.path, temp_dir.path()).await?;
+            (temp_dir, resolved_sha)
+        } else {
+            // Miss: clone as before. The commit actually landed on is the
+            // source of truth for both the cache key and the recorded
+            // resolved fact — it may differ from `resolved_sha` if the ref
+            // moved between the `ls_remote` above and this clone (a race,
+            // not an error); using it here self-heals the index instead of
+            // caching under a now-stale SHA.
+            let temp_dir = crate::storage::git::clone_repository(url, branch, tag, None).await?;
+            let actual_sha = git_head_commit(temp_dir.path()).await?;
+
+            if let Err(e) = cache.put(
+                &CacheIdentity::Git {
+                    sha: actual_sha.clone(),
+                },
+                temp_dir.path(),
+            ) {
+                // The clone already succeeded and is usable; a cache-write
+                // failure only costs this run the "install once per
+                // machine" win, so it must not fail the install.
+                tracing::warn!("failed to publish git clone to content cache: {}", e);
+            }
+            if let Err(e) = record_git_resolution(cache, url, &ref_key, &actual_sha) {
+                tracing::warn!("failed to record git ref resolution: {}", e);
+            }
+
+            (temp_dir, actual_sha)
+        };
 
         let skill_base = if let Some(subdir) = subdir {
             let joined = safe_subdir_join(temp_dir.path(), subdir)?;
@@ -129,7 +173,6 @@ impl FastSkillService {
         };
         let skill_path = crate::storage::git::validate_cloned_skill(&skill_base)?;
 
-        let commit_hash = git_head_commit(temp_dir.path()).await?;
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
@@ -162,24 +205,18 @@ impl FastSkillService {
             && resolved_path.extension().and_then(|e| e.to_str()) == Some("zip");
 
         let skill_path = if is_zip {
-            let extract_path = temp_dir.path().join("extracted");
-            tokio::fs::create_dir_all(&extract_path).await?;
-            let zip_handler = crate::storage::zip::ZipHandler::new()?;
-            zip_handler.extract_to_dir(&resolved_path, &extract_path)?;
-            crate::storage::git::validate_cloned_skill(&extract_path)?
+            // A `.zip` is always extracted (never symlinked), matching the
+            // pre-cache behavior where `editable` had no effect on a zip
+            // source: there is no "live" directory to point a symlink at.
+            fetch_local_zip(self.skill_cache(), &resolved_path, temp_dir.path()).await?
         } else if editable {
+            // FR-7: an editable install bypasses the content cache entirely.
             // `commit` will symlink this path in place; the original directory
             // must survive untouched (it stays the live, user-owned source), so
             // `skill_path` points straight at it rather than a temp-dir copy.
             crate::storage::git::validate_cloned_skill(&resolved_path)?
         } else {
-            // Non-editable directory: copy into the (throwaway) temp dir so
-            // `commit`'s atomic-move step consumes the copy, never the caller's
-            // original source directory.
-            let validated_source = crate::storage::git::validate_cloned_skill(&resolved_path)?;
-            let copy_dest = temp_dir.path().join("copied");
-            copy_dir_recursive(&validated_source, &copy_dest).await?;
-            copy_dest
+            fetch_local_dir(self.skill_cache(), &resolved_path, temp_dir.path()).await?
         };
 
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
@@ -247,42 +284,58 @@ impl FastSkillService {
             )
         })?;
         let repo_name = resolve_repo_name(repo_manager, repo)?;
-        let client = repo_manager.get_client(&repo_name).await?;
+        let cache = self.skill_cache();
 
-        let available = client
-            .get_versions(skill)
-            .await
-            .map_err(|e| ServiceError::Config(format!("Failed to get versions: {e}")))?;
-        let candidates: Vec<String> = match version {
-            Some(constraint) => available
-                .into_iter()
-                .filter(|v| constraint.satisfies(v).unwrap_or(false))
-                .collect(),
-            None => available,
+        // PRD 006 / RFQ 004 (US-003): resolve to a concrete version before
+        // touching the network at all. An exact pin needs no listing —
+        // `resolved_version` is already known — so the offline "a pinned,
+        // cached version installs with no network" criterion holds even
+        // before the content-cache check below. `newest`/a range constraint
+        // resolves via the on-disk index `repos refresh` populates (US-005),
+        // not a live listing call.
+        let resolved_version = resolve_registry_version(cache, &repo_name, skill, version)?;
+
+        let identity = CacheIdentity::Registry {
+            source: repo_name.clone(),
+            skill: skill.to_string(),
+            version: resolved_version.clone(),
         };
-        let resolved_version = newest_version(&candidates).ok_or_else(|| {
-            ServiceError::Config(format!(
-                "No version of '{skill}' satisfies the requested constraint in repository \
-                 '{repo_name}'"
-            ))
-        })?;
-
-        let zip_data = client
-            .download(skill, &resolved_version)
-            .await
-            .map_err(|e| ServiceError::Config(format!("Failed to download package: {e}")))?;
 
         let temp_dir = TempDir::new()?;
-        let extract_path = temp_dir.path().join("extracted");
-        tokio::fs::create_dir_all(&extract_path).await?;
-        let zip_path = temp_dir
-            .path()
-            .join(format!("package-{resolved_version}.zip"));
-        tokio::fs::write(&zip_path, &zip_data).await?;
+        let skill_path = if let Some(cached) = cache.get(&identity) {
+            // Cache hit: copy the previously-downloaded skill out of the
+            // (immutable, shared) cache entry rather than downloading again.
+            let dest = temp_dir.path().join("cached");
+            copy_dir_recursive(&cached.path, &dest).await?;
+            crate::storage::git::validate_cloned_skill(&dest)?
+        } else {
+            // Miss: download and extract as before, then publish into the
+            // content cache under the resolved version's identity.
+            let client = repo_manager.get_client(&repo_name).await?;
+            let zip_data = client
+                .download(skill, &resolved_version)
+                .await
+                .map_err(|e| ServiceError::Config(format!("Failed to download package: {e}")))?;
 
-        let zip_handler = crate::storage::zip::ZipHandler::new()?;
-        zip_handler.extract_to_dir(&zip_path, &extract_path)?;
-        let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
+            let extract_path = temp_dir.path().join("extracted");
+            tokio::fs::create_dir_all(&extract_path).await?;
+            let zip_path = temp_dir
+                .path()
+                .join(format!("package-{resolved_version}.zip"));
+            tokio::fs::write(&zip_path, &zip_data).await?;
+
+            let zip_handler = crate::storage::zip::ZipHandler::new()?;
+            zip_handler.extract_to_dir(&zip_path, &extract_path)?;
+            let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
+
+            if let Err(e) = cache.put(&identity, &skill_path) {
+                // The download already succeeded and is usable; a cache-write
+                // failure only costs this run the "download once per
+                // machine" win, so it must not fail the install.
+                tracing::warn!("failed to publish registry package to content cache: {}", e);
+            }
+            skill_path
+        };
 
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         // The registry-resolved version selected the package to download; the
@@ -538,6 +591,22 @@ impl FastSkillService {
                     .get_versions(skill)
                     .await
                     .map_err(|e| ServiceError::Config(format!("Failed to get versions: {e}")))?;
+
+                // PRD 006 (US-003, "Resolved Defaults": update implicitly
+                // refreshes just the sources it touches). This listing call
+                // already reached the network for the preflight decision below;
+                // persist it into the on-disk index so a same-invocation
+                // `add_from_origin(.., AddMode::Update, ..)` for a `newest`/range
+                // origin resolves through the content-cache path (US-003)
+                // instead of requiring a separate `repos refresh` the caller
+                // never ran. Best-effort: a write failure must not fail the
+                // preflight, which has already succeeded.
+                if let Err(e) =
+                    upsert_source_index_entry(self.skill_cache(), &repo_name, skill, &available)
+                {
+                    tracing::warn!("failed to update cached index for '{repo_name}': {}", e);
+                }
+
                 let candidates: Vec<String> = match version {
                     Some(constraint) => available
                         .into_iter()
@@ -587,6 +656,92 @@ fn resolve_repo_name(repo_manager: &RepositoryManager, repo: &str) -> Result<Str
     } else {
         Ok(repo.to_string())
     }
+}
+
+/// Resolve `(repo_name, skill, version)` to a concrete version string (PRD 006
+/// "Local Skill Cache", US-003), without ever calling the registry's live
+/// listing endpoint:
+///
+/// - An exact pin (bare `1.2.3`, or explicit `=1.2.3`) needs no listing at
+///   all — it *is* the resolved version. This is what makes "a pinned, cached
+///   version installs with no network" possible.
+/// - `None` ("newest") or a range constraint (`^`, `~`, `>=`, ...) resolves
+///   against the on-disk [`crate::core::cache::SourceIndex`] that `repos
+///   refresh` populates (US-005) — never a live call. With no cached index
+///   (or no matching entry/candidate), fails with an error naming `repos
+///   refresh` rather than silently falling back to the network.
+fn resolve_registry_version(
+    cache: &SkillCache,
+    repo_name: &str,
+    skill: &str,
+    version: Option<&VersionConstraint>,
+) -> Result<String, ServiceError> {
+    if let Some(exact) = version.and_then(VersionConstraint::as_exact) {
+        return Ok(exact);
+    }
+
+    let idx = cache.read_source_index(repo_name)?.ok_or_else(|| {
+        ServiceError::Config(format!(
+            "no cached index for repository '{repo_name}'; run `fastskill repos refresh \
+             {repo_name}` to resolve the newest version of '{skill}'"
+        ))
+    })?;
+    let entry = idx
+        .entries
+        .iter()
+        .find(|e| e.skill == skill)
+        .ok_or_else(|| {
+            ServiceError::Config(format!(
+                "skill '{skill}' not found in the cached index for repository '{repo_name}'; run \
+             `fastskill repos refresh {repo_name}` to refresh it"
+            ))
+        })?;
+    let candidates: Vec<String> = match version {
+        Some(constraint) => entry
+            .versions
+            .iter()
+            .filter(|v| constraint.satisfies(v).unwrap_or(false))
+            .cloned()
+            .collect(),
+        None => entry.versions.clone(),
+    };
+    newest_version(&candidates).ok_or_else(|| {
+        ServiceError::Config(format!(
+            "no version of '{skill}' in the cached index for repository '{repo_name}' satisfies \
+             the requested constraint; run `fastskill repos refresh {repo_name}` to refresh it"
+        ))
+    })
+}
+
+/// Upsert a single skill's versions into the on-disk [`SourceIndex`] for
+/// `repo_name`, leaving every other entry untouched (PRD 006 US-003,
+/// "Resolved Defaults": `update` implicitly refreshes just the sources it
+/// touches). Used by [`FastSkillService::preflight`]'s `Origin::Repository`
+/// branch to persist a listing call it already made live, so a
+/// same-invocation update can resolve through the index instead of needing a
+/// separate `repos refresh`.
+fn upsert_source_index_entry(
+    cache: &SkillCache,
+    repo_name: &str,
+    skill: &str,
+    versions: &[String],
+) -> Result<(), ServiceError> {
+    let mut idx = cache
+        .read_source_index(repo_name)?
+        .unwrap_or_else(|| SourceIndex {
+            fetched_at: chrono::Utc::now(),
+            entries: Vec::new(),
+        });
+    idx.fetched_at = chrono::Utc::now();
+    if let Some(entry) = idx.entries.iter_mut().find(|e| e.skill == skill) {
+        entry.versions = versions.to_vec();
+    } else {
+        idx.entries.push(SourceIndexEntry {
+            skill: skill.to_string(),
+            versions: versions.to_vec(),
+        });
+    }
+    cache.write_source_index(repo_name, &idx)
 }
 
 /// Read and parse `SKILL.md`'s frontmatter from a fetched skill directory.
@@ -688,13 +843,228 @@ fn safe_subdir_join(root: &Path, subdir: &Path) -> Result<PathBuf, ServiceError>
     Ok(joined)
 }
 
+/// A stable string key for a [`GitRef`] within the git-resolutions index,
+/// combined with `url` by [`crate::core::cache::GitResolutions`]. Not
+/// `GitRef`'s `Display` (it has none). The `Default`/`Branch`/`Tag` arms
+/// delegate to [`crate::core::cache::GitResolutions::branch_or_tag_key`] — the
+/// single place that encoding lives — so this stays interchangeable with the
+/// resolutions `repos refresh` records (PRD 006, US-005). `Commit` has no
+/// branch/tag form and is encoded here, its only caller.
+fn git_ref_cache_key(git_ref: &GitRef) -> String {
+    match git_ref {
+        GitRef::Default => crate::core::cache::GitResolutions::branch_or_tag_key(None, None),
+        GitRef::Branch(b) => crate::core::cache::GitResolutions::branch_or_tag_key(Some(b), None),
+        GitRef::Tag(t) => crate::core::cache::GitResolutions::branch_or_tag_key(None, Some(t)),
+        GitRef::Commit(c) => format!("commit:{c}"),
+    }
+}
+
+/// Resolve `url`+`ref_key` (via `branch`/`tag`) to a commit SHA (PRD 006, US-002).
+///
+/// Prefers a live [`crate::storage::git::ls_remote`] and records the result. If
+/// that fails — offline, DNS down, etc. — and a previous resolution for the
+/// same `url`+`ref_key` is recorded in the index cache, proceeds from it with a
+/// warning instead of failing outright; with no prior resolution, propagates
+/// the `ls_remote` error as-is (today's error).
+async fn resolve_git_sha(
+    cache: &SkillCache,
+    url: &str,
+    ref_key: &str,
+    branch: Option<&str>,
+    tag: Option<&str>,
+) -> Result<String, ServiceError> {
+    match crate::storage::git::ls_remote(url, branch, tag).await {
+        Ok(sha) => {
+            if let Err(e) = record_git_resolution(cache, url, ref_key, &sha) {
+                tracing::warn!("failed to record git ref resolution: {}", e);
+            }
+            Ok(sha)
+        }
+        Err(err) => {
+            let resolutions = cache.read_git_resolutions()?;
+            match resolutions.get(url, ref_key) {
+                Some(resolution) => {
+                    tracing::warn!(
+                        "could not resolve the latest commit for '{url}' ({err}); using the \
+                         resolution cached on {resolved_at} instead: {sha}",
+                        resolved_at = resolution.resolved_at,
+                        sha = resolution.sha,
+                    );
+                    Ok(resolution.sha.clone())
+                }
+                None => Err(err),
+            }
+        }
+    }
+}
+
+/// Record a successful `url`+`ref_key -> sha` resolution in the git-resolutions
+/// index, so a later offline install of the same ref can fall back to it.
+fn record_git_resolution(
+    cache: &SkillCache,
+    url: &str,
+    ref_key: &str,
+    sha: &str,
+) -> Result<(), ServiceError> {
+    let mut resolutions = cache.read_git_resolutions()?;
+    resolutions.insert(url, ref_key, sha.to_string(), chrono::Utc::now());
+    cache.write_git_resolutions(&resolutions)
+}
+
+// ── Local origin content cache (PRD 006 "Local Skill Cache", US-004) ──────────
+
+/// Number of times a local-origin fetch actually copied from the original
+/// source directory or extracted a `.zip` (rather than reusing the content
+/// cache). Instrumentation-only, kept for the same reason as
+/// `storage::git::CLONE_INVOCATIONS` / `registry::client::DOWNLOAD_INVOCATIONS`:
+/// proving a cache hit skipped the expensive step is otherwise only
+/// observable by timing. Deliberately not gated behind `#[cfg(test)]` —
+/// integration tests are a separate compilation unit and cannot see items
+/// scoped that way.
+#[doc(hidden)] // test instrumentation, not supported public API
+pub static LOCAL_COPY_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Fetch a non-editable, non-zip local directory through the content cache
+/// (US-004): hash the validated skill directory's tree, check the cache under
+/// that identity, and either copy the cached content out or copy from the
+/// source and `put` it for next time.
+async fn fetch_local_dir(
+    cache: &SkillCache,
+    resolved_path: &Path,
+    temp_dir: &Path,
+) -> Result<PathBuf, ServiceError> {
+    let validated_source = crate::storage::git::validate_cloned_skill(resolved_path)?;
+    let identity = CacheIdentity::Local {
+        tree_hash: compute_local_tree_hash(&validated_source)?,
+    };
+
+    if let Some(cached) = cache.get(&identity) {
+        let dest = temp_dir.join("cached");
+        copy_dir_recursive(&cached.path, &dest).await?;
+        return crate::storage::git::validate_cloned_skill(&dest);
+    }
+
+    LOCAL_COPY_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
+    let dest = temp_dir.join("copied");
+    copy_dir_recursive(&validated_source, &dest).await?;
+    if let Err(e) = cache.put(&identity, &dest) {
+        // The copy already succeeded and is usable; a cache-write failure
+        // only costs this run the "install once per machine" win, so it must
+        // not fail the install.
+        tracing::warn!("failed to publish local source to content cache: {}", e);
+    }
+    Ok(dest)
+}
+
+/// Fetch a non-editable local `.zip` path through the content cache (US-004).
+/// Per FR-6's sibling rule for this story, a `.zip` is cached by the bytes of
+/// the archive itself, not a tree walk of its extracted contents — the
+/// archive's own bytes are its identity.
+async fn fetch_local_zip(
+    cache: &SkillCache,
+    resolved_path: &Path,
+    temp_dir: &Path,
+) -> Result<PathBuf, ServiceError> {
+    let bytes = tokio::fs::read(resolved_path).await?;
+    let identity = CacheIdentity::Local {
+        tree_hash: hash_bytes(&bytes),
+    };
+
+    if let Some(cached) = cache.get(&identity) {
+        let dest = temp_dir.join("cached");
+        copy_dir_recursive(&cached.path, &dest).await?;
+        return crate::storage::git::validate_cloned_skill(&dest);
+    }
+
+    LOCAL_COPY_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
+    let extract_path = temp_dir.join("extracted");
+    tokio::fs::create_dir_all(&extract_path).await?;
+    let zip_handler = crate::storage::zip::ZipHandler::new()?;
+    zip_handler.extract_to_dir(resolved_path, &extract_path)?;
+    let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
+    if let Err(e) = cache.put(&identity, &skill_path) {
+        tracing::warn!(
+            "failed to publish local zip contents to content cache: {}",
+            e
+        );
+    }
+    Ok(skill_path)
+}
+
+/// Compute a deterministic tree-hash of a validated skill directory (US-004):
+/// every regular file's path (relative to `root`, with path separators
+/// normalized to `/` so the hash is stable across platforms) and its content
+/// bytes feed a SHA-256 digest, in a fixed (lexicographically sorted by
+/// relative path) order so directory-read order never affects the result.
+/// File mtimes and permissions are never read, so touching a file without
+/// changing its content produces the same hash. Rejects symlinks (mirrors
+/// `copy_dir_recursive`'s SEC-4 stance): a symlink inside the source tree
+/// must not be silently dereferenced and hashed by its target's contents.
+fn compute_local_tree_hash(root: &Path) -> Result<String, ServiceError> {
+    let mut entries = collect_tree_entries(root, root)?;
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut hasher = Sha256::new();
+    for (rel_path, content) in &entries {
+        // Length-prefix each field so no concatenation of adjacent
+        // path/content bytes can collide across different (path, content)
+        // splits.
+        hasher.update((rel_path.len() as u64).to_le_bytes());
+        hasher.update(rel_path.as_bytes());
+        hasher.update((content.len() as u64).to_le_bytes());
+        hasher.update(content);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Recursively collect `(relative_path, content)` pairs for every regular
+/// file under `dir`, relative to `root` with `/`-normalized separators.
+fn collect_tree_entries(dir: &Path, root: &Path) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+
+        if file_type.is_symlink() {
+            return Err(ServiceError::Validation(format!(
+                "refusing to hash symlink: {}",
+                path.display()
+            )));
+        } else if file_type.is_dir() {
+            entries.extend(collect_tree_entries(&path, root)?);
+        } else {
+            let rel = path
+                .strip_prefix(root)
+                .map_err(|e| ServiceError::Custom(format!("path escaped its root: {e}")))?;
+            let rel_str = rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            let content = std::fs::read(&path)?;
+            entries.push((rel_str, content));
+        }
+    }
+    Ok(entries)
+}
+
+/// SHA-256 hex digest of raw bytes.
+fn hash_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
 /// Resolve `HEAD`'s commit SHA in a freshly-cloned git repository.
 async fn git_head_commit(repo_dir: &Path) -> Result<String, ServiceError> {
-    let output = tokio::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(repo_dir)
-        .output()
-        .await?;
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["rev-parse", "HEAD"]).current_dir(repo_dir);
+    // `GIT_DIR` beats `current_dir`, so without this a fastskill run nested
+    // inside another git invocation (a hook, `rebase --exec`) would report the
+    // *enclosing* repo's HEAD as the commit we just cloned.
+    crate::storage::git::scrub_inherited_git_env(&mut cmd);
+    let output = cmd.output().await?;
     if !output.status.success() {
         return Err(ServiceError::Custom(format!(
             "git rev-parse HEAD failed: {}",
@@ -1322,6 +1692,367 @@ mod tests {
         copy_dir_recursive(&src, &dst).await.unwrap();
         assert!(dst.join("SKILL.md").exists());
         assert!(dst.join("nested/file.txt").exists());
+    }
+
+    // ── compute_local_tree_hash / hash_bytes (US-004) ─────────────────────────
+
+    #[test]
+    fn test_tree_hash_stable_across_mtime_touch() {
+        let tmp = TestTempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(src.join("nested")).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+        std::fs::write(src.join("nested/file.txt"), "data").unwrap();
+
+        let before = compute_local_tree_hash(&src).unwrap();
+
+        // Touch the file's mtime only, content untouched.
+        let file = std::fs::File::open(src.join("nested/file.txt")).unwrap();
+        let new_time = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+        file.set_modified(new_time).unwrap();
+
+        let after = compute_local_tree_hash(&src).unwrap();
+        assert_eq!(
+            before, after,
+            "touching a file's mtime alone must not change the tree-hash"
+        );
+    }
+
+    #[test]
+    fn test_tree_hash_changes_when_content_changes() {
+        let tmp = TestTempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("SKILL.md"), "---\nname: x\n---\nv1\n").unwrap();
+
+        let before = compute_local_tree_hash(&src).unwrap();
+
+        std::fs::write(src.join("SKILL.md"), "---\nname: x\n---\nv2\n").unwrap();
+        let after = compute_local_tree_hash(&src).unwrap();
+
+        assert_ne!(
+            before, after,
+            "changing a file's content must change the tree-hash"
+        );
+    }
+
+    #[test]
+    fn test_tree_hash_independent_of_directory_read_order() {
+        let tmp = TestTempDir::new().unwrap();
+
+        // Same relative paths/contents, written in a different order.
+        let a = tmp.path().join("a");
+        std::fs::create_dir_all(a.join("nested")).unwrap();
+        std::fs::write(a.join("SKILL.md"), "one").unwrap();
+        std::fs::write(a.join("nested/file.txt"), "two").unwrap();
+
+        let b = tmp.path().join("b");
+        std::fs::create_dir_all(b.join("nested")).unwrap();
+        std::fs::write(b.join("nested/file.txt"), "two").unwrap();
+        std::fs::write(b.join("SKILL.md"), "one").unwrap();
+
+        assert_eq!(
+            compute_local_tree_hash(&a).unwrap(),
+            compute_local_tree_hash(&b).unwrap(),
+            "identical (path, content) pairs must hash the same regardless of write/read order"
+        );
+    }
+
+    #[test]
+    fn test_tree_hash_sensitive_to_path_not_just_content() {
+        let tmp = TestTempDir::new().unwrap();
+
+        let a = tmp.path().join("a");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("one.txt"), "same").unwrap();
+
+        let b = tmp.path().join("b");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(b.join("two.txt"), "same").unwrap();
+
+        assert_ne!(
+            compute_local_tree_hash(&a).unwrap(),
+            compute_local_tree_hash(&b).unwrap(),
+            "renaming a file must change the tree-hash even with identical content"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_tree_hash_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+        let tmp = TestTempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("SKILL.md"), "# skill\n").unwrap();
+        let secret = tmp.path().join("secret.txt");
+        std::fs::write(&secret, "TOP SECRET").unwrap();
+        symlink(&secret, src.join("creds")).unwrap();
+
+        let result = compute_local_tree_hash(&src);
+        assert!(matches!(result, Err(ServiceError::Validation(_))));
+    }
+
+    #[test]
+    fn test_hash_bytes_is_deterministic_and_content_sensitive() {
+        let h1 = hash_bytes(b"hello");
+        let h2 = hash_bytes(b"hello");
+        let h3 = hash_bytes(b"world");
+        assert_eq!(h1, h2);
+        assert_ne!(h1, h3);
+    }
+
+    // ── fetch_local: content-cache hit/miss (US-004) ──────────────────────────
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_fetch_local_dir_second_install_hits_cache_not_source() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_project();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let cache_root = TestTempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            skill_cache_root: Some(cache_root.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let origin = Origin::Local {
+            path: src.clone(),
+            editable: false,
+        };
+
+        let baseline = LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst);
+        service
+            .add_from_origin(origin.clone(), AddMode::Fresh, vec![])
+            .await
+            .expect("first add should succeed (cache miss)");
+        assert_eq!(
+            LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst) - baseline,
+            1,
+            "first install must copy from the source (cache miss)"
+        );
+
+        // Mutate the *original* source path so a re-copy would be observable
+        // as different content -- proving a hit never touches it again.
+        std::fs::write(
+            src.join("SKILL.md"),
+            "---\nname: test-skill\nversion: \"1.0.0\"\ndescription: A test skill\n---\nMUTATED\n",
+        )
+        .unwrap();
+
+        // Re-install (Update) from a *content-identical-to-the-original*
+        // copy of the source at a different path, so it resolves to the
+        // same tree-hash identity as the first install without ever
+        // re-reading the (now mutated) original.
+        let src2 = write_valid_skill(tmp.path(), "src-skill-2");
+        let origin2 = Origin::Local {
+            path: src2,
+            editable: false,
+        };
+        let outcome = service
+            .add_from_origin(origin2, AddMode::Update, vec![])
+            .await
+            .expect("second add should succeed (cache hit)");
+        assert_eq!(
+            LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst) - baseline,
+            1,
+            "second install of the same identity must hit the cache, not copy again"
+        );
+
+        let installed =
+            std::fs::read_to_string(skills_dir.join(&outcome.id).join("SKILL.md")).unwrap();
+        assert_eq!(
+            installed, VALID_SKILL_MD,
+            "cache hit must be byte-identical (FR-8)"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_fetch_local_editable_bypasses_cache() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_project();
+        let src = write_valid_skill(tmp.path(), "src-skill");
+        let cache_root = TestTempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            skill_cache_root: Some(cache_root.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let origin = Origin::Local {
+            path: src.clone(),
+            editable: true,
+        };
+        service
+            .add_from_origin(origin, AddMode::Fresh, vec![])
+            .await
+            .expect("editable add should succeed");
+
+        // FR-7: nothing gets published to the content cache for an editable install.
+        let identity = CacheIdentity::Local {
+            tree_hash: compute_local_tree_hash(&src).unwrap(),
+        };
+        assert!(
+            service.skill_cache().get(&identity).is_none(),
+            "editable install must bypass the content cache entirely"
+        );
+    }
+
+    // ── fetch_local: `.zip` content-cache (US-004) ─────────────────────────────
+
+    fn build_local_skill_zip(compression: zip::CompressionMethod) -> Vec<u8> {
+        use std::io::Write;
+        use zip::write::FileOptions;
+        let mut buf = Vec::new();
+        {
+            let cursor = std::io::Cursor::new(&mut buf);
+            let mut writer = zip::ZipWriter::new(cursor);
+            let opts = FileOptions::default().compression_method(compression);
+            writer.start_file("test-skill/SKILL.md", opts).unwrap();
+            writer.write_all(VALID_SKILL_MD.as_bytes()).unwrap();
+            writer.finish().unwrap();
+        }
+        buf
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_fetch_local_zip_second_install_hits_cache_not_source() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_project();
+        let cache_root = TestTempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            skill_cache_root: Some(cache_root.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let zip_bytes = build_local_skill_zip(zip::CompressionMethod::Stored);
+        let zip_a = tmp.path().join("a.zip");
+        std::fs::write(&zip_a, &zip_bytes).unwrap();
+
+        let baseline = LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst);
+        service
+            .add_from_origin(
+                Origin::Local {
+                    path: zip_a,
+                    editable: false,
+                },
+                AddMode::Fresh,
+                vec![],
+            )
+            .await
+            .expect("first zip add should succeed (cache miss)");
+        assert_eq!(
+            LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst) - baseline,
+            1,
+            "first install must extract the zip (cache miss)"
+        );
+
+        // Byte-identical zip at a different path -- same archive identity.
+        let zip_b = tmp.path().join("b.zip");
+        std::fs::write(&zip_b, &zip_bytes).unwrap();
+        service
+            .add_from_origin(
+                Origin::Local {
+                    path: zip_b,
+                    editable: false,
+                },
+                AddMode::Update,
+                vec![],
+            )
+            .await
+            .expect("second zip add should succeed (cache hit)");
+        assert_eq!(
+            LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst) - baseline,
+            1,
+            "second install of a byte-identical zip must hit the cache, not re-extract"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_local_zip_identity_hashes_archive_bytes_not_extracted_tree() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (tmp, _guard, skills_dir) = setup_project();
+        let cache_root = TestTempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            skill_cache_root: Some(cache_root.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        // Two archives that extract to byte-identical content, but whose own
+        // bytes differ (different compression method). If identity were based
+        // on the extracted tree, the second install would be a cache hit; per
+        // FR (US-004), a `.zip` hashes the archive's own bytes, so it must not
+        // be.
+        let stored = tmp.path().join("stored.zip");
+        std::fs::write(
+            &stored,
+            build_local_skill_zip(zip::CompressionMethod::Stored),
+        )
+        .unwrap();
+        let deflated = tmp.path().join("deflated.zip");
+        std::fs::write(
+            &deflated,
+            build_local_skill_zip(zip::CompressionMethod::Deflated),
+        )
+        .unwrap();
+        assert_ne!(
+            std::fs::read(&stored).unwrap(),
+            std::fs::read(&deflated).unwrap(),
+            "test fixture sanity: the two archives must differ at the byte level"
+        );
+
+        let baseline = LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst);
+        service
+            .add_from_origin(
+                Origin::Local {
+                    path: stored,
+                    editable: false,
+                },
+                AddMode::Fresh,
+                vec![],
+            )
+            .await
+            .expect("stored-compression zip add should succeed");
+        service
+            .add_from_origin(
+                Origin::Local {
+                    path: deflated,
+                    editable: false,
+                },
+                AddMode::Update,
+                vec![],
+            )
+            .await
+            .expect("deflated-compression zip add should succeed");
+
+        assert_eq!(
+            LOCAL_COPY_INVOCATIONS.load(Ordering::SeqCst) - baseline,
+            2,
+            "differently-encoded archives with identical extracted content must be \
+             distinct cache identities (archive bytes, not the extracted tree)"
+        );
     }
 
     // ── derive_skill_id_and_version ────────────────────────────────────────────

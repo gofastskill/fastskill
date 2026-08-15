@@ -42,6 +42,15 @@ pub struct ServiceConfig {
 
     /// HTTP server configuration
     pub http_server: Option<HttpServerConfig>,
+
+    /// Override for the on-disk skill content/index cache root (PRD 006 /
+    /// RFQ 004). `None` resolves it via [`crate::core::cache::SkillCache::from_env`]
+    /// (the `FASTSKILL_CACHE_DIR` env var, else the platform cache dir) — what
+    /// production call sites want. Tests should always set this to a
+    /// `tempfile::TempDir` path rather than rely on the env-var default: that
+    /// default is process-global, so asserting on it races against any other
+    /// test in the same process that also touches the cache.
+    pub skill_cache_root: Option<PathBuf>,
 }
 
 impl Default for ServiceConfig {
@@ -55,6 +64,7 @@ impl Default for ServiceConfig {
             security: SecurityConfig::default(),
             registry_index_path: None,
             http_server: None,
+            skill_cache_root: None,
         }
     }
 }
@@ -311,6 +321,10 @@ pub struct FastSkillService {
     /// Hot reload manager
     hot_reload_manager: Option<Arc<crate::storage::hot_reload::HotReloadManager>>,
 
+    /// On-disk skill content/index cache (PRD 006 / RFQ 004). Rooted per
+    /// `config.skill_cache_root` (env-resolved when unset).
+    skill_cache: crate::core::cache::SkillCache,
+
     /// Service state
     initialized: bool,
 }
@@ -366,6 +380,11 @@ impl FastSkillService {
             None
         };
 
+        let skill_cache = match &config.skill_cache_root {
+            Some(root) => crate::core::cache::SkillCache::at_root(root.clone()),
+            None => crate::core::cache::SkillCache::from_env()?,
+        };
+
         Ok(Self {
             config,
             skill_manager,
@@ -376,6 +395,7 @@ impl FastSkillService {
             project_root: None,
             storage,
             hot_reload_manager,
+            skill_cache,
             initialized: false,
         })
     }
@@ -408,6 +428,14 @@ impl FastSkillService {
     /// The injected repository manager, if any.
     pub fn repository_manager(&self) -> Option<&Arc<crate::core::repository::RepositoryManager>> {
         self.repository_manager.as_ref()
+    }
+
+    /// The on-disk skill content/index cache (PRD 006 / RFQ 004). `fetch_git`
+    /// (US-002) goes through it before any clone; later stories (US-003
+    /// registry, US-004 local) wire their own fetch paths through the same
+    /// seam.
+    pub fn skill_cache(&self) -> &crate::core::cache::SkillCache {
+        &self.skill_cache
     }
 
     /// Inject the project root the install seam writes Manifest/Lock under (the

@@ -1,0 +1,384 @@
+//! Integration tests for the git content cache (PRD 006 "Local Skill Cache",
+//! US-002): git installs resolve their ref to a SHA and use the content
+//! cache, so a repeated install of the same commit — even across different
+//! projects — clones at most once per machine.
+//!
+//! The primary fixture is a real `git daemon` serving a bare repo over
+//! `git://127.0.0.1` on a loopback port. This is not "the network": no DNS,
+//! no external host, nothing that can be flaky in CI — it is the only way to
+//! exercise the real `ls_remote`/`clone_repository` code paths without a
+//! local filesystem path, which SEC-11 refuses outright
+//! (`protocol.file.allow=never`; see `storage::git::build_clone_args`).
+//! "Exactly one clone" is proven via `storage::git::CLONE_INVOCATIONS`, a
+//! counting seam kept for exactly this purpose.
+
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use fastskill_core::core::cache::{CacheIdentity, GitResolutions, SkillCache};
+use fastskill_core::core::{AddMode, GitRef, Origin};
+use fastskill_core::storage::git::CLONE_INVOCATIONS;
+use fastskill_core::test_utils::{DirGuard, DIR_MUTEX};
+use fastskill_core::{FastSkillService, ServiceConfig};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
+use tempfile::TempDir;
+
+const VALID_SKILL_MD: &str =
+    "---\nname: cached-git-skill\nversion: \"1.0.0\"\ndescription: A test skill\n---\nBody\n";
+
+// ── git daemon fixture ──────────────────────────────────────────────────────
+
+/// A local `git daemon` exporting every repo under its base path (no
+/// `git-daemon-export-ok` marker required), bound to an OS-assigned loopback
+/// port. Killed on drop.
+struct GitDaemonFixture {
+    child: Child,
+    port: u16,
+    _base: TempDir,
+}
+
+impl GitDaemonFixture {
+    fn start(base: TempDir) -> Self {
+        // `free_loopback_port` can only *suggest* a port: it binds :0, reads the
+        // number, then drops the listener so `git daemon` can take it. Under a
+        // parallel test run another process can win that gap, and the daemon
+        // then dies immediately with "address already in use". Retry on a fresh
+        // port instead of failing the test for an unlucky race.
+        const MAX_ATTEMPTS: u32 = 10;
+        for attempt in 1..=MAX_ATTEMPTS {
+            let port = free_loopback_port();
+            let mut child = git_command()
+                .args([
+                    "daemon",
+                    "--reuseaddr",
+                    "--export-all",
+                    "--listen=127.0.0.1",
+                    &format!("--port={port}"),
+                    &format!("--base-path={}", base.path().display()),
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("failed to start `git daemon`; is git installed with daemon support?");
+
+            if wait_for_port(port, &mut child) {
+                return Self {
+                    child,
+                    port,
+                    _base: base,
+                };
+            }
+
+            // Did not come up: reap this attempt before trying another port.
+            let _ = child.kill();
+            let _ = child.wait();
+            assert!(
+                attempt < MAX_ATTEMPTS,
+                "git daemon failed to start listening after {MAX_ATTEMPTS} attempts"
+            );
+        }
+        unreachable!("loop either returns or asserts on the final attempt")
+    }
+
+    fn repo_url(&self, repo_name: &str) -> String {
+        format!("git://127.0.0.1:{}/{repo_name}", self.port)
+    }
+}
+
+impl Drop for GitDaemonFixture {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// `git` exports these to its own subprocesses (hooks, `rebase --exec`) to pin
+/// them to the invoking repository. A test run *from* such a context — most
+/// obviously this repo's own `pre-push` hook — would otherwise inherit them,
+/// and every `git` below would retarget the real repo instead of the scratch
+/// one, firing the real hooks. Always spawn git through this.
+fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    for var in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+        "GIT_NAMESPACE",
+        "GIT_CEILING_DIRECTORIES",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
+fn free_loopback_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
+    listener
+        .local_addr()
+        .expect("failed to read local addr")
+        .port()
+}
+
+/// Poll until `port` accepts connections. Returns `false` (rather than
+/// panicking) if the daemon exits first or the deadline passes, so the caller
+/// can retry on a different port.
+fn wait_for_port(port: u16, child: &mut Child) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return true;
+        }
+        // A daemon that already exited is never going to listen -- fail this
+        // attempt immediately instead of burning the whole deadline.
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return false;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Run a git command in `dir`, panicking with stderr on failure.
+fn run_git(dir: &Path, args: &[&str]) {
+    let output = git_command()
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to execute `git {}`: {e}", args.join(" ")));
+    assert!(
+        output.status.success(),
+        "`git {}` failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Seed a bare repo at `base/<repo_name>.git` with a single commit containing
+/// `SKILL.md` on `branch`. Returns the seeded commit's SHA.
+fn seed_bare_repo(base: &Path, repo_name: &str, branch: &str) -> String {
+    let bare_path = base.join(format!("{repo_name}.git"));
+    run_git(
+        base,
+        &["init", "--bare", "--quiet", bare_path.to_str().unwrap()],
+    );
+
+    let work = base.join(format!("{repo_name}-work"));
+    std::fs::create_dir_all(&work).unwrap();
+    run_git(&work, &["init", "--quiet"]);
+    run_git(&work, &["config", "user.email", "test@example.com"]);
+    run_git(&work, &["config", "user.name", "test"]);
+    std::fs::write(work.join("SKILL.md"), VALID_SKILL_MD).unwrap();
+    run_git(&work, &["add", "-A"]);
+    run_git(&work, &["commit", "--quiet", "-m", "init"]);
+    run_git(&work, &["branch", "-M", branch]);
+    run_git(
+        &work,
+        &["remote", "add", "origin", bare_path.to_str().unwrap()],
+    );
+    run_git(&work, &["push", "--quiet", "origin", branch]);
+
+    let output = git_command()
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+// ── project fixture ──────────────────────────────────────────────────────
+
+/// A minimal fastskill project directory: `skill-project.toml` + an empty
+/// skills directory, ready for `add_from_origin`.
+fn setup_project(root: &Path) -> std::path::PathBuf {
+    std::fs::write(
+        root.join("skill-project.toml"),
+        "[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n[dependencies]\n",
+    )
+    .unwrap();
+    let skills_dir = root.join(".claude/skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+    skills_dir
+}
+
+async fn make_service(storage: &Path, cache_root: &Path) -> FastSkillService {
+    let config = ServiceConfig {
+        skill_storage_path: storage.to_path_buf(),
+        skill_cache_root: Some(cache_root.to_path_buf()),
+        ..Default::default()
+    };
+    let mut service = FastSkillService::new(config).await.unwrap();
+    service.initialize().await.unwrap();
+    service
+}
+
+// ── tests ────────────────────────────────────────────────────────────────
+
+/// Two installs of the same git ref, into two different project directories,
+/// must perform exactly one `git clone` — the second is served from the
+/// shared content cache (PRD 006, US-002 acceptance criterion).
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn two_installs_of_the_same_ref_clone_exactly_once() {
+    let _lock = DIR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let daemon_base = TempDir::new().unwrap();
+    let expected_sha = seed_bare_repo(daemon_base.path(), "repo", "main");
+    let daemon = GitDaemonFixture::start(daemon_base);
+    let repo_url = daemon.repo_url("repo");
+
+    let shared_cache = TempDir::new().unwrap();
+    let origin = Origin::Git {
+        url: repo_url,
+        r#ref: GitRef::Branch("main".to_string()),
+        subdir: None,
+    };
+
+    let baseline_clones = CLONE_INVOCATIONS.load(Ordering::SeqCst);
+
+    // Project A: fresh clone (cache miss).
+    let project_a = TempDir::new().unwrap();
+    let original_dir = std::env::current_dir().ok();
+    std::env::set_current_dir(project_a.path()).unwrap();
+    let _guard_a = DirGuard(original_dir);
+    let skills_a = setup_project(project_a.path());
+    let storage_a = TempDir::new().unwrap();
+    let service_a = make_service(storage_a.path(), shared_cache.path()).await;
+    let outcome_a = service_a
+        .add_from_origin(origin.clone(), AddMode::Fresh, vec![])
+        .await
+        .expect("project A install should succeed");
+    assert_eq!(
+        outcome_a.resolved.commit_hash.as_deref(),
+        Some(expected_sha.as_str())
+    );
+    let _ = skills_a;
+
+    // Project B: same ref, different project dir — must be a cache hit.
+    let project_b = TempDir::new().unwrap();
+    std::env::set_current_dir(project_b.path()).unwrap();
+    let skills_b = setup_project(project_b.path());
+    let storage_b = TempDir::new().unwrap();
+    let service_b = make_service(storage_b.path(), shared_cache.path()).await;
+    let outcome_b = service_b
+        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .await
+        .expect("project B install should succeed");
+    assert_eq!(
+        outcome_b.resolved.commit_hash.as_deref(),
+        Some(expected_sha.as_str())
+    );
+    let _ = skills_b;
+
+    let clones_performed = CLONE_INVOCATIONS.load(Ordering::SeqCst) - baseline_clones;
+    assert_eq!(
+        clones_performed, 1,
+        "two installs of the same ref must perform exactly one clone"
+    );
+
+    // Both projects ended up with byte-identical installed content (FR-8).
+    let content_a =
+        std::fs::read_to_string(storage_a.path().join("cached-git-skill").join("SKILL.md"))
+            .unwrap();
+    let content_b =
+        std::fs::read_to_string(storage_b.path().join("cached-git-skill").join("SKILL.md"))
+            .unwrap();
+    assert_eq!(content_a, content_b);
+    assert_eq!(content_a, VALID_SKILL_MD);
+}
+
+/// When `ls_remote` fails (offline / unreachable remote) but a previous
+/// resolution for the same `url`+`ref` is recorded in the index cache, install
+/// proceeds from the cached content with a warning rather than failing.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn offline_install_falls_back_to_previously_resolved_sha() {
+    let _lock = DIR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    // A URL nothing is listening on (port 1 is reserved/unprivileged-unbindable),
+    // so `ls_remote` fails fast without ever touching the real network.
+    let unreachable_url = "git://127.0.0.1:1/does-not-exist.git";
+    let sha = "1111111111111111111111111111111111111a";
+
+    let cache_root = TempDir::new().unwrap();
+    let cache = SkillCache::at_root(cache_root.path());
+
+    // Prime the content cache with the "previously fetched" skill content.
+    let content_dir = TempDir::new().unwrap();
+    std::fs::write(content_dir.path().join("SKILL.md"), VALID_SKILL_MD).unwrap();
+    cache
+        .put(
+            &CacheIdentity::Git {
+                sha: sha.to_string(),
+            },
+            content_dir.path(),
+        )
+        .unwrap();
+
+    // Prime the git-resolutions index as if a prior online install had
+    // resolved this exact url+ref. The key format (`branch:<name>`) mirrors
+    // `install.rs`'s private `git_ref_cache_key` encoding.
+    let mut resolutions = GitResolutions::default();
+    resolutions.insert(
+        unreachable_url,
+        "branch:main",
+        sha.to_string(),
+        chrono::Utc::now(),
+    );
+    cache.write_git_resolutions(&resolutions).unwrap();
+
+    let project = TempDir::new().unwrap();
+    let original_dir = std::env::current_dir().ok();
+    std::env::set_current_dir(project.path()).unwrap();
+    let _guard = DirGuard(original_dir);
+    setup_project(project.path());
+    let storage = TempDir::new().unwrap();
+    let service = make_service(storage.path(), cache_root.path()).await;
+
+    let origin = Origin::Git {
+        url: unreachable_url.to_string(),
+        r#ref: GitRef::Branch("main".to_string()),
+        subdir: None,
+    };
+    let outcome = service
+        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .await
+        .expect("offline install with a cached resolution should succeed");
+
+    assert_eq!(outcome.resolved.commit_hash.as_deref(), Some(sha));
+    let installed =
+        std::fs::read_to_string(storage.path().join("cached-git-skill").join("SKILL.md")).unwrap();
+    assert_eq!(installed, VALID_SKILL_MD);
+}
+
+/// With no prior resolution recorded, an unreachable remote fails the install
+/// (no silent staleness, no panic).
+#[tokio::test]
+async fn offline_install_with_no_prior_resolution_fails() {
+    let unreachable_url = "git://127.0.0.1:1/does-not-exist.git";
+    let cache_root = TempDir::new().unwrap();
+    let storage = TempDir::new().unwrap();
+    let service = make_service(storage.path(), cache_root.path()).await;
+
+    let origin = Origin::Git {
+        url: unreachable_url.to_string(),
+        r#ref: GitRef::Branch("main".to_string()),
+        subdir: None,
+    };
+    let result = service
+        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .await;
+    assert!(
+        result.is_err(),
+        "install must fail without a cached resolution"
+    );
+}
