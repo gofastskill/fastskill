@@ -15,8 +15,10 @@
 //!   git/<sha>/                             content, keyed by commit SHA
 //!   registry/<source>/<skill>/<version>/   content, keyed by pinned version
 //!   local/<tree-hash>/                     content, keyed by tree/archive hash
+//!   zip/<sha256>/                          content, keyed by archive bytes' hash (spec 007)
 //!   index/<source>.json                    what a source currently advertises
 //!   index/git-resolutions.json             url+ref -> resolved sha (see `index`)
+//!   index/zip-validators.json              url -> {etag/last_modified, content_hash} (spec 007)
 //!   tmp/                                   private staging area for atomic writes
 //!   CACHEDIR.TAG                           https://bford.info/cachedir/ marker
 //! ```
@@ -53,7 +55,9 @@
 
 pub mod index;
 
-pub use index::{GitResolution, GitResolutions, SourceIndex, SourceIndexEntry};
+pub use index::{
+    GitResolution, GitResolutions, SourceIndex, SourceIndexEntry, ZipValidator, ZipValidators,
+};
 
 use crate::core::service::ServiceError;
 use serde::Serialize;
@@ -93,6 +97,7 @@ const CACHE_ROOT_ALLOWED_ENTRIES: &[&str] = &[
     "git",
     "registry",
     "local",
+    "zip",
     "index",
     STAGING_DIR_NAME,
     CACHE_TAG_FILE_NAME,
@@ -121,6 +126,11 @@ pub enum CacheIdentity {
     },
     /// `local/<tree-hash>/` — a local directory or `.zip`, content-hashed (US-004).
     Local { tree_hash: String },
+    /// `zip/<sha256>/` — a `.zip` downloaded from a bare URL, keyed by the
+    /// hash of the downloaded archive bytes rather than any identity known
+    /// before the fetch (spec 007): a bare URL carries no version identity of
+    /// its own, unlike git/registry/local.
+    ZipUrl { content_hash: String },
 }
 
 impl CacheIdentity {
@@ -140,6 +150,9 @@ impl CacheIdentity {
                 .join(validate_component(version)?)),
             CacheIdentity::Local { tree_hash } => {
                 Ok(PathBuf::from("local").join(validate_component(tree_hash)?))
+            }
+            CacheIdentity::ZipUrl { content_hash } => {
+                Ok(PathBuf::from("zip").join(validate_component(content_hash)?))
             }
         }
     }
@@ -170,25 +183,27 @@ pub struct CachedContent {
     pub path: PathBuf,
 }
 
-/// The three top-level content kinds a [`CacheIdentity`] belongs to — also
-/// its on-disk directory name directly under the cache root (`git`,
-/// `registry`, `local`; see the module docs' on-disk layout). `fastskill
-/// cache info`/`clean` (PRD 006, US-006) report and scope by this rather
-/// than a free-form string, so an invalid `--source` can never be turned
-/// into a path.
+/// The top-level content kinds a [`CacheIdentity`] belongs to — also its
+/// on-disk directory name directly under the cache root (`git`, `registry`,
+/// `local`, `zip`; see the module docs' on-disk layout). `fastskill cache
+/// info`/`clean` (PRD 006, US-006; `zip` added by spec 007) report and scope
+/// by this rather than a free-form string, so an invalid `--source` can
+/// never be turned into a path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContentSourceKind {
     Git,
     Registry,
     Local,
+    Zip,
 }
 
 impl ContentSourceKind {
-    /// All three kinds, in the order `fastskill cache info` reports them.
-    pub const ALL: [ContentSourceKind; 3] = [
+    /// All kinds, in the order `fastskill cache info` reports them.
+    pub const ALL: [ContentSourceKind; 4] = [
         ContentSourceKind::Git,
         ContentSourceKind::Registry,
         ContentSourceKind::Local,
+        ContentSourceKind::Zip,
     ];
 
     /// This kind's directory name directly under the cache root.
@@ -197,16 +212,17 @@ impl ContentSourceKind {
             ContentSourceKind::Git => "git",
             ContentSourceKind::Registry => "registry",
             ContentSourceKind::Local => "local",
+            ContentSourceKind::Zip => "zip",
         }
     }
 
     /// Depth (in directories) from `<cache-root>/<dir_name>/` down to a leaf
     /// identity directory — the unit `stats`/`clean` count and delete as one
-    /// entry. `git/<sha>/` and `local/<tree-hash>/` are one level deep;
-    /// `registry/<source>/<skill>/<version>/` is three.
+    /// entry. `git/<sha>/`, `local/<tree-hash>/`, and `zip/<sha256>/` are one
+    /// level deep; `registry/<source>/<skill>/<version>/` is three.
     fn leaf_depth(self) -> u32 {
         match self {
-            ContentSourceKind::Git | ContentSourceKind::Local => 1,
+            ContentSourceKind::Git | ContentSourceKind::Local | ContentSourceKind::Zip => 1,
             ContentSourceKind::Registry => 3,
         }
     }
@@ -226,8 +242,9 @@ impl std::str::FromStr for ContentSourceKind {
             "git" => Ok(ContentSourceKind::Git),
             "registry" => Ok(ContentSourceKind::Registry),
             "local" => Ok(ContentSourceKind::Local),
+            "zip" => Ok(ContentSourceKind::Zip),
             other => Err(ServiceError::Validation(format!(
-                "unknown cache source '{other}'; expected one of: git, registry, local"
+                "unknown cache source '{other}'; expected one of: git, registry, local, zip"
             ))),
         }
     }
@@ -249,6 +266,7 @@ pub struct CacheStats {
     pub git: ContentSourceStats,
     pub registry: ContentSourceStats,
     pub local: ContentSourceStats,
+    pub zip: ContentSourceStats,
 }
 
 impl CacheStats {
@@ -258,14 +276,21 @@ impl CacheStats {
             ContentSourceKind::Git => self.git,
             ContentSourceKind::Registry => self.registry,
             ContentSourceKind::Local => self.local,
+            ContentSourceKind::Zip => self.zip,
         }
     }
 
-    /// Entry counts and bytes summed across all three kinds.
+    /// Entry counts and bytes summed across all kinds.
     pub fn total(&self) -> ContentSourceStats {
         ContentSourceStats {
-            entry_count: self.git.entry_count + self.registry.entry_count + self.local.entry_count,
-            total_bytes: self.git.total_bytes + self.registry.total_bytes + self.local.total_bytes,
+            entry_count: self.git.entry_count
+                + self.registry.entry_count
+                + self.local.entry_count
+                + self.zip.entry_count,
+            total_bytes: self.git.total_bytes
+                + self.registry.total_bytes
+                + self.local.total_bytes
+                + self.zip.total_bytes,
         }
     }
 }
@@ -440,6 +465,17 @@ impl SkillCache {
         index::write_git_resolutions(&self.root, resolutions)
     }
 
+    /// Read `<cache-root>/index/zip-validators.json` (spec 007), or an empty
+    /// map if never written.
+    pub fn read_zip_validators(&self) -> Result<ZipValidators, ServiceError> {
+        index::read_zip_validators(&self.root)
+    }
+
+    /// Atomically write `<cache-root>/index/zip-validators.json` (spec 007).
+    pub fn write_zip_validators(&self, validators: &ZipValidators) -> Result<(), ServiceError> {
+        index::write_zip_validators(&self.root, validators)
+    }
+
     // ---- `fastskill cache info`/`clean` (PRD 006, US-006). --------------
 
     /// Entry counts and on-disk bytes per [`ContentSourceKind`] (`fastskill
@@ -451,6 +487,7 @@ impl SkillCache {
             git: self.source_stats(ContentSourceKind::Git)?,
             registry: self.source_stats(ContentSourceKind::Registry)?,
             local: self.source_stats(ContentSourceKind::Local)?,
+            zip: self.source_stats(ContentSourceKind::Zip)?,
         })
     }
 

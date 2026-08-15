@@ -8,6 +8,9 @@
 //!   advertises (skills + versions), one file per source.
 //! - US-002 reads and writes [`GitResolutions`] — the `url+ref -> sha` map
 //!   that lets an offline install proceed from a previously-resolved ref.
+//! - Spec 007 (zip-url caching) reads and writes [`ZipValidators`] — the
+//!   `url -> {etag/last_modified, content_hash, fetched_at}` map that backs
+//!   the conditional-request staleness check for `Origin::ZipUrl`.
 
 use crate::core::cache::validate_component;
 use crate::core::service::ServiceError;
@@ -18,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 const INDEX_DIR_NAME: &str = "index";
 const GIT_RESOLUTIONS_FILE_NAME: &str = "git-resolutions.json";
+const ZIP_VALIDATORS_FILE_NAME: &str = "zip-validators.json";
 
 /// `<cache-root>/index/<source>.json` — what a single configured source
 /// currently advertises: which skills, at which versions. Written by a real
@@ -94,6 +98,50 @@ impl GitResolutions {
     }
 }
 
+/// A single zip-URL fetch's recorded HTTP validators, plus the content hash
+/// they produced (spec 007 FR-2/FR-3). `etag`/`last_modified` are each
+/// optional because a server may supply either, both, or neither — with
+/// neither, only the "download-then-hash" dedup fallback applies (no
+/// fetch-time saving, no offline check; see spec 007's design notes).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ZipValidator {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    pub content_hash: String,
+    pub fetched_at: DateTime<Utc>,
+}
+
+/// `<cache-root>/index/zip-validators.json` — `url -> ZipValidator` (spec
+/// 007 FR-2). A newtype over the map (rather than a bare `HashMap<String,
+/// ZipValidator>` alias), mirroring [`GitResolutions`], so the flat JSON
+/// object the spec calls for lives at exactly one call site. Serialized
+/// `#[serde(transparent)]` for the same reason.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ZipValidators(HashMap<String, ZipValidator>);
+
+impl ZipValidators {
+    /// Look up a previously-recorded validator for `url`.
+    pub fn get(&self, url: &str) -> Option<&ZipValidator> {
+        self.0.get(url)
+    }
+
+    /// Record (or replace) the validator for `url`.
+    pub fn insert(&mut self, url: &str, validator: ZipValidator) {
+        self.0.insert(url.to_string(), validator);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 fn index_dir(root: &Path) -> PathBuf {
     root.join(INDEX_DIR_NAME)
 }
@@ -129,6 +177,19 @@ pub(super) fn write_git_resolutions(
 ) -> Result<(), ServiceError> {
     let path = index_dir(root).join(GIT_RESOLUTIONS_FILE_NAME);
     write_json(&path, resolutions)
+}
+
+pub(super) fn read_zip_validators(root: &Path) -> Result<ZipValidators, ServiceError> {
+    let path = index_dir(root).join(ZIP_VALIDATORS_FILE_NAME);
+    Ok(read_json(&path)?.unwrap_or_default())
+}
+
+pub(super) fn write_zip_validators(
+    root: &Path,
+    validators: &ZipValidators,
+) -> Result<(), ServiceError> {
+    let path = index_dir(root).join(ZIP_VALIDATORS_FILE_NAME);
+    write_json(&path, validators)
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, ServiceError> {
@@ -232,5 +293,57 @@ mod tests {
         let root = TempDir::new().unwrap();
         let resolutions = read_git_resolutions(root.path()).unwrap();
         assert!(resolutions.is_empty());
+    }
+
+    #[test]
+    fn zip_validators_round_trip_and_key_on_url() {
+        let root = TempDir::new().unwrap();
+        let mut validators = ZipValidators::default();
+        let now = Utc::now();
+        validators.insert(
+            "https://example.com/pkg.zip",
+            ZipValidator {
+                etag: Some("\"abc123\"".to_string()),
+                last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+                content_hash: "deadbeef".to_string(),
+                fetched_at: now,
+            },
+        );
+        validators.insert(
+            "https://example.com/no-validators.zip",
+            ZipValidator {
+                etag: None,
+                last_modified: None,
+                content_hash: "cafef00d".to_string(),
+                fetched_at: now,
+            },
+        );
+
+        write_zip_validators(root.path(), &validators).unwrap();
+        let read_back = read_zip_validators(root.path()).unwrap();
+
+        let with_validators = read_back.get("https://example.com/pkg.zip").unwrap();
+        assert_eq!(with_validators.etag.as_deref(), Some("\"abc123\""));
+        assert_eq!(
+            with_validators.last_modified.as_deref(),
+            Some("Wed, 21 Oct 2015 07:28:00 GMT")
+        );
+        assert_eq!(with_validators.content_hash, "deadbeef");
+
+        let without_validators = read_back
+            .get("https://example.com/no-validators.zip")
+            .unwrap();
+        assert_eq!(without_validators.etag, None);
+        assert_eq!(without_validators.last_modified, None);
+        assert_eq!(without_validators.content_hash, "cafef00d");
+
+        assert_eq!(read_back.len(), 2);
+    }
+
+    #[test]
+    fn zip_validators_missing_file_is_empty() {
+        let root = TempDir::new().unwrap();
+        let validators = read_zip_validators(root.path()).unwrap();
+        assert!(validators.is_empty());
     }
 }

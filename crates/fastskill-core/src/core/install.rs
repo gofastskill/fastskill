@@ -6,7 +6,7 @@
 //! skills dir → upsert Manifest → write Lock → reindex-if-provider). `mode` only
 //! governs the id-conflict policy. `add`/`update` are one operation.
 
-use crate::core::cache::{CacheIdentity, SkillCache, SourceIndex, SourceIndexEntry};
+use crate::core::cache::{CacheIdentity, SkillCache, SourceIndex, SourceIndexEntry, ZipValidator};
 use crate::core::lock::{project_lock_path, ProjectSkillsLock};
 use crate::core::manifest::{
     DependenciesSection, DependencySpec, ProjectContext, SkillProjectToml,
@@ -233,30 +233,21 @@ impl FastSkillService {
         })
     }
 
+    /// Fetch a remote `.zip` (spec 007 "zip-url caching"). Unlike every other
+    /// origin, a bare URL resolves to no identity *before* fetching — no SHA,
+    /// no pinned version, no local tree already on disk — so this cannot
+    /// just mirror `fetch_git`/`fetch_repository`'s "resolve identity, then
+    /// check cache" shape. Instead it prefers an HTTP conditional request
+    /// (`If-None-Match`/`If-Modified-Since` against a previously-recorded
+    /// `ETag`/`Last-Modified`) as the cheap "did it change?" check, with
+    /// download-then-hash as the correctness fallback when a server sends no
+    /// validators at all. See [`fetch_zip_url_cached`] for the full state
+    /// machine.
     async fn fetch_zip_url(&self, url: &str) -> Result<Fetched, ServiceError> {
-        let response = reqwest::get(url)
-            .await
-            .map_err(|e| {
-                ServiceError::InvalidOperation(format!("Failed to download '{url}': {e}"))
-            })?
-            .error_for_status()
-            .map_err(|e| {
-                ServiceError::InvalidOperation(format!("Failed to download '{url}': {e}"))
-            })?;
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| ServiceError::InvalidOperation(format!("Failed to read '{url}': {e}")))?;
-
+        let cache = self.skill_cache();
+        let client = reqwest::Client::new();
         let temp_dir = TempDir::new()?;
-        let zip_path = temp_dir.path().join("package.zip");
-        let extract_path = temp_dir.path().join("extracted");
-        tokio::fs::write(&zip_path, &bytes).await?;
-        tokio::fs::create_dir_all(&extract_path).await?;
-
-        let zip_handler = crate::storage::zip::ZipHandler::new()?;
-        zip_handler.extract_to_dir(&zip_path, &extract_path)?;
-        let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
+        let skill_path = fetch_zip_url_cached(cache, &client, url, temp_dir.path()).await?;
 
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
@@ -989,6 +980,258 @@ async fn fetch_local_zip(
         );
     }
     Ok(skill_path)
+}
+
+// ── Zip-URL content cache (spec 007 "zip-url caching") ─────────────────────
+
+/// Number of times [`fetch_zip_url_cached`] has actually read a full response
+/// body over the network — incremented by the number of bytes read, never on
+/// a `304 Not Modified` (which per HTTP carries no body). Instrumentation
+/// only, kept for the same reason as `storage::git::CLONE_INVOCATIONS` /
+/// `registry::client::DOWNLOAD_INVOCATIONS`: proving the 304 fast path really
+/// downloaded nothing is otherwise only observable by timing. Deliberately
+/// not gated behind `#[cfg(test)]` — integration tests are a separate
+/// compilation unit and cannot see items scoped that way.
+#[doc(hidden)] // test instrumentation, not supported public API
+pub static ZIP_URL_BODY_BYTES_DOWNLOADED: AtomicUsize = AtomicUsize::new(0);
+
+/// The outcome of one HTTP attempt against a zip URL, distinguishing "server
+/// confirmed the bytes are unchanged" from "server sent (new) bytes" — the
+/// two paths [`fetch_zip_url_cached`] needs to tell apart.
+enum ZipFetchAttempt {
+    /// `304 Not Modified`: no body was sent.
+    NotModified,
+    /// `200 OK` (or any other success status): a body was sent and read.
+    Modified {
+        bytes: Vec<u8>,
+        etag: Option<String>,
+        last_modified: Option<String>,
+    },
+}
+
+/// Issue one GET against `url`, conditional on `validator` when given
+/// (`If-None-Match`/`If-Modified-Since`). Any failure — connection refused,
+/// DNS failure, timeout, or a non-2xx/304 status — is surfaced as a single
+/// `ServiceError` so [`fetch_zip_url_cached`] can apply spec 007 FR-5's
+/// offline fallback uniformly, the same way `resolve_git_sha` treats any
+/// `ls_remote` failure as one case regardless of cause.
+async fn zip_url_conditional_fetch(
+    client: &reqwest::Client,
+    url: &str,
+    validator: Option<&ZipValidator>,
+) -> Result<ZipFetchAttempt, ServiceError> {
+    let mut request = client.get(url);
+    if let Some(v) = validator {
+        if let Some(etag) = &v.etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+        if let Some(last_modified) = &v.last_modified {
+            request = request.header(reqwest::header::IF_MODIFIED_SINCE, last_modified);
+        }
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| ServiceError::InvalidOperation(format!("Failed to download '{url}': {e}")))?;
+
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        if validator.is_none() {
+            // A server returning 304 to a request that carried no validators
+            // at all is a protocol violation on its part, not a state this
+            // code can act on: there is nothing recorded to resolve it
+            // against. Surface it as an error rather than guessing.
+            return Err(ServiceError::InvalidOperation(format!(
+                "'{url}' returned 304 Not Modified to an unconditional request (no validators \
+                 were sent)"
+            )));
+        }
+        return Ok(ZipFetchAttempt::NotModified);
+    }
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| ServiceError::InvalidOperation(format!("Failed to download '{url}': {e}")))?;
+
+    let etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let last_modified = response
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| ServiceError::InvalidOperation(format!("Failed to read '{url}': {e}")))?
+        .to_vec();
+    ZIP_URL_BODY_BYTES_DOWNLOADED.fetch_add(bytes.len(), Ordering::SeqCst);
+
+    Ok(ZipFetchAttempt::Modified {
+        bytes,
+        etag,
+        last_modified,
+    })
+}
+
+/// Extract freshly-downloaded archive `bytes`, publish them into the content
+/// cache under their hash (FR-1: the archive bytes are the identity — same
+/// input as `fetch_local_zip`'s local `.zip` handling), and record the new
+/// validator (FR-2/FR-3). Dedups against the content cache first: identical
+/// bytes served under a different URL (or by a server with no validators at
+/// all) are stored once.
+async fn store_downloaded_zip(
+    cache: &SkillCache,
+    url: &str,
+    temp_dir: &Path,
+    bytes: &[u8],
+    etag: Option<String>,
+    last_modified: Option<String>,
+) -> Result<PathBuf, ServiceError> {
+    let content_hash = hash_bytes(bytes);
+    let identity = CacheIdentity::ZipUrl {
+        content_hash: content_hash.clone(),
+    };
+
+    let skill_path = if let Some(cached) = cache.get(&identity) {
+        let dest = temp_dir.join("cached");
+        copy_dir_recursive(&cached.path, &dest).await?;
+        crate::storage::git::validate_cloned_skill(&dest)?
+    } else {
+        let zip_path = temp_dir.join("package.zip");
+        let extract_path = temp_dir.join("extracted");
+        tokio::fs::write(&zip_path, bytes).await?;
+        tokio::fs::create_dir_all(&extract_path).await?;
+
+        let zip_handler = crate::storage::zip::ZipHandler::new()?;
+        zip_handler.extract_to_dir(&zip_path, &extract_path)?;
+        let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
+        if let Err(e) = cache.put(&identity, &skill_path) {
+            // The download already succeeded and is usable; a cache-write
+            // failure only costs this run the "download once per machine"
+            // win, so it must not fail the install.
+            tracing::warn!("failed to publish zip-url content to content cache: {}", e);
+        }
+        skill_path
+    };
+
+    if let Err(e) = record_zip_validator(cache, url, &content_hash, etag, last_modified) {
+        tracing::warn!("failed to record zip-url validator: {}", e);
+    }
+
+    Ok(skill_path)
+}
+
+/// Record (or replace) `url`'s validator in the zip-validators index (FR-2).
+fn record_zip_validator(
+    cache: &SkillCache,
+    url: &str,
+    content_hash: &str,
+    etag: Option<String>,
+    last_modified: Option<String>,
+) -> Result<(), ServiceError> {
+    let mut validators = cache.read_zip_validators()?;
+    validators.insert(
+        url,
+        ZipValidator {
+            etag,
+            last_modified,
+            content_hash: content_hash.to_string(),
+            fetched_at: chrono::Utc::now(),
+        },
+    );
+    cache.write_zip_validators(&validators)
+}
+
+/// Fetch a zip URL through the content cache (spec 007 FR-3): consult the
+/// recorded validator, issue a conditional request, and follow whichever of
+/// the spec's paths applies:
+///
+/// - **304** with the recorded hash still in the content cache (FR-3): serve
+///   it straight from the cache — zero bytes of body downloaded.
+/// - **304** with the recorded hash evicted, e.g. by `cache clean` (FR-4):
+///   fall back to an unconditional download rather than failing.
+/// - **200**: download, hash, store, and record the new validator (FR-3).
+/// - **transport/status failure** (FR-5): if a recorded hash exists *and* is
+///   still cached, proceed from it with a warning naming the recorded fetch
+///   time — mirroring `resolve_git_sha`'s offline fallback. Otherwise
+///   propagate the failure as-is.
+async fn fetch_zip_url_cached(
+    cache: &SkillCache,
+    client: &reqwest::Client,
+    url: &str,
+    temp_dir: &Path,
+) -> Result<PathBuf, ServiceError> {
+    let validators = cache.read_zip_validators()?;
+    let recorded = validators.get(url).cloned();
+
+    match zip_url_conditional_fetch(client, url, recorded.as_ref()).await {
+        Ok(ZipFetchAttempt::NotModified) => {
+            // `zip_url_conditional_fetch` only returns `NotModified` when a
+            // validator was actually sent, so `recorded` is present here.
+            let Some(recorded) = recorded else {
+                return Err(ServiceError::Custom(
+                    "zip-url fetch reported 304 Not Modified with no recorded validator"
+                        .to_string(),
+                ));
+            };
+            if let Some(cached) = cache.get(&CacheIdentity::ZipUrl {
+                content_hash: recorded.content_hash.clone(),
+            }) {
+                let dest = temp_dir.join("cached");
+                copy_dir_recursive(&cached.path, &dest).await?;
+                return crate::storage::git::validate_cloned_skill(&dest);
+            }
+
+            // FR-4: the server confirmed the bytes are unchanged, but this
+            // machine no longer has them (e.g. `cache clean`). Fall back to
+            // an unconditional download rather than failing.
+            tracing::warn!(
+                "cached content for '{url}' (hash {}) is no longer in the content cache; \
+                 re-downloading",
+                recorded.content_hash
+            );
+            match zip_url_conditional_fetch(client, url, None).await? {
+                ZipFetchAttempt::Modified {
+                    bytes,
+                    etag,
+                    last_modified,
+                } => store_downloaded_zip(cache, url, temp_dir, &bytes, etag, last_modified).await,
+                ZipFetchAttempt::NotModified => Err(ServiceError::Custom(format!(
+                    "'{url}' returned 304 Not Modified to an unconditional re-download request"
+                ))),
+            }
+        }
+        Ok(ZipFetchAttempt::Modified {
+            bytes,
+            etag,
+            last_modified,
+        }) => store_downloaded_zip(cache, url, temp_dir, &bytes, etag, last_modified).await,
+        Err(err) => {
+            // FR-5: offline / transport failure. Proceed from a recorded,
+            // still-cached hash with a warning; otherwise the failure stands.
+            if let Some(recorded) = &recorded {
+                if let Some(cached) = cache.get(&CacheIdentity::ZipUrl {
+                    content_hash: recorded.content_hash.clone(),
+                }) {
+                    tracing::warn!(
+                        "could not fetch '{url}' ({err}); using the content cached on \
+                         {fetched_at} instead (hash {hash})",
+                        fetched_at = recorded.fetched_at,
+                        hash = recorded.content_hash,
+                    );
+                    let dest = temp_dir.join("cached");
+                    copy_dir_recursive(&cached.path, &dest).await?;
+                    return crate::storage::git::validate_cloned_skill(&dest);
+                }
+            }
+            Err(err)
+        }
+    }
 }
 
 /// Compute a deterministic tree-hash of a validated skill directory (US-004):
