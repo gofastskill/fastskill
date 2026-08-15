@@ -1,0 +1,11 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
+expression: normalized
+---
+Skill: meta-skill
+  ID: meta-skill
+  Version: [VERSION]
+  Description: A skill for testing metadata display
+  Source Type: local
+  Source: [TEMP_DIR]

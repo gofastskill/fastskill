@@ -194,6 +194,49 @@ embedding_model = "text-embedding-3-small"
     );
 }
 
+/// With no embedding provider configured (no config, no OPENAI_API_KEY),
+/// reindex is a graceful no-op (ADR-0002): exit 0 with a skip message, not an
+/// error. See `fastskill-core/src/core/reindex.rs` (reason text) and
+/// `fastskill-cli/src/commands/reindex.rs:261` (CLI rendering).
+#[test]
+fn test_reindex_skips_gracefully_without_embedding_provider() {
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    // No skill-project.toml at all: no [tool.fastskill.embedding] config.
+    let binary = super::snapshot_helpers::get_binary_path();
+    let mut cmd = if binary == "cargo" {
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.args(["run", "--bin", "fastskill", "--"]);
+        cmd
+    } else {
+        std::process::Command::new(&binary)
+    };
+    let output = cmd
+        .args(["reindex", "--skills-dir", skills_dir.to_str().unwrap()])
+        .current_dir(temp_dir.path())
+        // Explicitly clear so the test is not at the mercy of the developer's
+        // real shell environment.
+        .env_remove("OPENAI_API_KEY")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "reindex without an embedding provider must exit 0 (informational skip, not an error); stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(
+            "Reindex skipped: no embedding provider configured. Run 'fastskill doctor' for setup guidance."
+        ),
+        "expected the reindex skip message on stdout, got:\n{stdout}"
+    );
+}
+
 #[test]
 fn test_reindex_invalid_directory_error() {
     let temp_dir = TempDir::new().unwrap();
@@ -230,7 +273,33 @@ embedding_model = "text-embedding-3-small"
 
 #[test]
 fn test_reindex_progress_conflict() {
-    let result = run_fastskill_command(&["reindex", "--progress", "--no-progress"], None);
+    // The --progress/--no-progress conflict is enforced as a "runtime validation
+    // guard" inside `execute_reindex` (see `crates/fastskill-cli/src/commands/reindex.rs`),
+    // which only runs *after* `FastSkillService` has already loaded skill-project.toml
+    // for the working directory — it is not a clap-level `conflicts_with` checked
+    // before any config is touched. Using `None` (the test process's inherited cwd)
+    // is therefore not reliable: if any ancestor directory of the inherited cwd
+    // happens to contain a skill-project.toml (e.g. a workspace-level manifest one
+    // level above this repo checkout), config loading fails first with a
+    // "skill-project.toml not found"/parse error instead of ever reaching the
+    // conflict check, and this assertion never sees the expected message. Run
+    // against an isolated TempDir with a valid minimal project so the conflict
+    // check is what actually gets exercised, matching the pattern already used by
+    // `test_registry_remove_nonexistent_error` in tests/cli_tests.rs for the same
+    // reason.
+    let temp_dir = TempDir::new().unwrap();
+    let skills_dir = temp_dir.path().join(".skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &["reindex", "--progress", "--no-progress"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
     assert!(result.stderr.contains("--progress") && result.stderr.contains("--no-progress"));

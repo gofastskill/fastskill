@@ -1,7 +1,8 @@
 //! Tests for recursive (transitive) dependency resolution during install
 
-use fastskill::core::dependency_resolver::{DependencyResolver, SkillInstallItem};
-use fastskill::core::manifest::{SkillEntry, SkillSource};
+use fastskill_core::core::dependency_resolver::DependencyResolver;
+use fastskill_core::core::manifest::SkillEntry;
+use fastskill_core::core::origin::Origin;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -10,13 +11,11 @@ use tempfile::TempDir;
 fn local_entry(id: &str) -> SkillEntry {
     SkillEntry {
         id: id.to_string(),
-        source: SkillSource::Local {
+        origin: Origin::Local {
             path: PathBuf::from(format!("local/{}", id)),
             editable: false,
         },
-        version: "*".to_string(),
         groups: vec![],
-        editable: false,
     }
 }
 
@@ -56,12 +55,12 @@ async fn test_transitive_chain_a_to_b_to_c() {
     write_manifest(
         dir.path(),
         "skill-a",
-        r#"skill-b = { source = "local", path = "local/skill-b" }"#,
+        r#"skill-b = { origin = { type = "local", path = "local/skill-b" } }"#,
     );
     write_manifest(
         dir.path(),
         "skill-b",
-        r#"skill-c = { source = "local", path = "local/skill-c" }"#,
+        r#"skill-c = { origin = { type = "local", path = "local/skill-c" } }"#,
     );
     // skill-c has no manifest → leaf
 
@@ -92,12 +91,12 @@ async fn test_deduplication_same_transitive_dep() {
     write_manifest(
         dir.path(),
         "skill-a",
-        r#"shared-lib = { source = "local", path = "local/shared-lib" }"#,
+        r#"shared-lib = { origin = { type = "local", path = "local/shared-lib" } }"#,
     );
     write_manifest(
         dir.path(),
         "skill-b",
-        r#"shared-lib = { source = "local", path = "local/shared-lib" }"#,
+        r#"shared-lib = { origin = { type = "local", path = "local/shared-lib" } }"#,
     );
 
     let mut resolver = DependencyResolver::new(5);
@@ -122,17 +121,17 @@ async fn test_depth_limit_enforced() {
     write_manifest(
         dir.path(),
         "a",
-        r#"b = { source = "local", path = "local/b" }"#,
+        r#"b = { origin = { type = "local", path = "local/b" } }"#,
     );
     write_manifest(
         dir.path(),
         "b",
-        r#"c = { source = "local", path = "local/c" }"#,
+        r#"c = { origin = { type = "local", path = "local/c" } }"#,
     );
     write_manifest(
         dir.path(),
         "c",
-        r#"d = { source = "local", path = "local/d" }"#,
+        r#"d = { origin = { type = "local", path = "local/d" } }"#,
     );
 
     let mut resolver = DependencyResolver::new(2);
@@ -186,7 +185,7 @@ async fn test_depth_tracking() {
     write_manifest(
         dir.path(),
         "root",
-        r#"child = { source = "local", path = "local/child" }"#,
+        r#"child = { origin = { type = "local", path = "local/child" } }"#,
     );
 
     let mut resolver = DependencyResolver::new(5);
@@ -204,34 +203,14 @@ async fn test_depth_tracking() {
 }
 
 #[tokio::test]
-async fn test_topological_sort_is_stable() {
-    // topological_sort must return the same order as input (no-op for BFS output)
-    let resolver = DependencyResolver::new(5);
-
-    let items: Vec<SkillInstallItem> = vec!["x", "y", "z"]
-        .into_iter()
-        .enumerate()
-        .map(|(i, id)| SkillInstallItem {
-            entry: local_entry(id),
-            depth: i as u32,
-            parent_skill: None,
-        })
-        .collect();
-
-    let sorted = resolver.topological_sort(items.clone());
-    for (orig, sort) in items.iter().zip(sorted.iter()) {
-        assert_eq!(orig.entry.id, sort.entry.id);
-    }
-}
-
-#[tokio::test]
 async fn test_install_depth_default_from_config() {
     let toml_str = r#"
 [tool.fastskill]
 skills_directory = ".claude/skills"
 "#;
 
-    let parsed: fastskill::core::manifest::SkillProjectToml = toml::from_str(toml_str).unwrap();
+    let parsed: fastskill_core::core::manifest::SkillProjectToml =
+        toml::from_str(toml_str).unwrap();
 
     let depth = parsed
         .tool
@@ -250,7 +229,8 @@ async fn test_skip_transitive_default_is_false() {
 skills_directory = ".claude/skills"
 "#;
 
-    let parsed: fastskill::core::manifest::SkillProjectToml = toml::from_str(toml_str).unwrap();
+    let parsed: fastskill_core::core::manifest::SkillProjectToml =
+        toml::from_str(toml_str).unwrap();
 
     let skip = parsed
         .tool
@@ -270,7 +250,8 @@ skills_directory = ".claude/skills"
 install_depth = 3
 "#;
 
-    let parsed: fastskill::core::manifest::SkillProjectToml = toml::from_str(toml_str).unwrap();
+    let parsed: fastskill_core::core::manifest::SkillProjectToml =
+        toml::from_str(toml_str).unwrap();
 
     let depth = parsed
         .tool
@@ -289,7 +270,8 @@ skills_directory = ".claude/skills"
 skip_transitive = true
 "#;
 
-    let parsed: fastskill::core::manifest::SkillProjectToml = toml::from_str(toml_str).unwrap();
+    let parsed: fastskill_core::core::manifest::SkillProjectToml =
+        toml::from_str(toml_str).unwrap();
 
     let skip = parsed
         .tool

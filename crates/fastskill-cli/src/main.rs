@@ -244,8 +244,13 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
 
     // ── Typed commands (no service) ──────────────────────────────────────────
     let builder = builder
-        .register_out(path!["init"], |_ctx, args: init::InitArgs| async move {
-            init::execute_init(args).await.map_err(anyhow::Error::from)
+        .register_out(path!["init"], |ctx, args: init::InitArgs| {
+            let skills_dir = ctx_skills_dir(ctx).map(|p| p.display().to_string());
+            async move {
+                init::execute_init(args.with_skills_dir(skills_dir))
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
         })?
         .register_out(
             path!["install"],

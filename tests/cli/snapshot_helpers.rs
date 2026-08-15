@@ -3,7 +3,6 @@
 //! This module provides common patterns for testing CLI commands with snapshots,
 //! including normalization of dynamic content like paths, timestamps, and version numbers.
 
-use std::path::Path;
 use std::process::Command;
 
 /// Result of running a CLI command
@@ -20,30 +19,18 @@ pub struct SnapshotSettings {
     pub normalize_timestamps: bool,
 }
 
-/// Candidate paths for the fastskill binary, in resolution order.
-/// `llvm-cov-target` is used by cargo-llvm-cov when collecting coverage.
-fn binary_path_candidates(manifest_dir: &str) -> [String; 3] {
-    [
-        format!("{}/target/llvm-cov-target/debug/fastskill", manifest_dir),
-        format!("{}/target/debug/fastskill", manifest_dir),
-        format!("{}/target/release/fastskill", manifest_dir),
-    ]
-}
-
 /// Get the path to the fastskill binary for testing.
-/// Resolves under coverage (llvm-cov-target), debug, and release builds.
+///
+/// Uses `CARGO_BIN_EXE_fastskill`, which Cargo sets at compile time for
+/// integration tests to the exact path of the `fastskill` bin target as
+/// built for the active profile (debug/release/llvm-cov-target/...). This
+/// crate's tests now live under `crates/fastskill-cli` while `target/` is
+/// shared at the workspace root, so hand-rolling `{manifest_dir}/target/...`
+/// silently resolves to a path that never exists (silently falling back to
+/// `cargo run`, which is slow and pollutes captured stdout/stderr with build
+/// output). `CARGO_BIN_EXE_*` sidesteps that entirely.
 pub fn get_binary_path() -> String {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    for path in &binary_path_candidates(manifest_dir) {
-        if Path::new(path).exists() {
-            #[cfg(test)]
-            println!("DEBUG: Using binary at: {}", path);
-            return path.clone();
-        }
-    }
-    #[cfg(test)]
-    println!("DEBUG: No binary found, using cargo fallback");
-    "cargo".to_string()
+    env!("CARGO_BIN_EXE_fastskill").to_string()
 }
 
 /// Run a fastskill command and return the result
@@ -163,6 +150,21 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
     }
 
     if settings.normalize_paths {
+        // Normalize the path of the binary under test. `argv[0]` shows up in
+        // usage lines, and its absolute path depends on where the repo happens
+        // to be checked out -- `/home/me/src/fastskill/...` locally versus
+        // `/home/runner/work/fastskill/...` on CI. Masking only the home
+        // directory leaves the differing remainder, so match the whole path.
+        //
+        // Anchor on the profile directory rather than `/target/`: under
+        // `cargo llvm-cov` the binary is built into `target/llvm-cov-target/
+        // debug/`, so requiring a literal `/target/debug/` would miss the
+        // coverage job and reintroduce an environment-dependent snapshot.
+        result = regex::Regex::new(r"\S*/(?:debug|release)/fastskill\b")
+            .unwrap()
+            .replace_all(&result, "[FASTSKILL_BIN]")
+            .to_string();
+
         // Normalize user home directory
         result = regex::Regex::new(r"/home/[^\s/]+")
             .unwrap()
@@ -191,7 +193,7 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
     // Normalize network-dependent git and socket errors to keep snapshots stable
     // across environments with different DNS/network policies.
     result = regex::Regex::new(
-        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+WARN fastskill::storage::git: Git operation failed with network error.*\n?",
+        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+WARN fastskill_core::storage::git: Git operation failed with network error.*\n?",
     )
     .unwrap()
     .replace_all(&result, "")
@@ -316,9 +318,32 @@ mod tests {
             normalize_timestamps: false,
         };
 
+        // The binary path collapses to a single placeholder: the checkout
+        // location differs between a developer machine and a CI runner, so
+        // keeping any of it would make snapshots environment-specific.
         let input = "/home/user/fastskill/target/debug/fastskill --help";
-        let expected = "[HOME_DIR]/fastskill/target/debug/fastskill --help";
+        let expected = "[FASTSKILL_BIN] --help";
         assert_eq!(normalize_snapshot_output(input, &settings), expected);
+
+        // Same path under a CI-style checkout must normalize identically.
+        let ci_input = "/home/runner/work/fastskill/fastskill/target/debug/fastskill --help";
+        assert_eq!(normalize_snapshot_output(ci_input, &settings), expected);
+
+        // `cargo llvm-cov` builds into its own target dir; the coverage job
+        // must produce the same snapshot as the plain test job.
+        let cov_input = "/home/runner/work/fastskill/target/llvm-cov-target/debug/fastskill --help";
+        assert_eq!(normalize_snapshot_output(cov_input, &settings), expected);
+
+        // A release-profile build normalizes the same way.
+        let rel_input = "/home/user/fastskill/target/release/fastskill --help";
+        assert_eq!(normalize_snapshot_output(rel_input, &settings), expected);
+
+        // Home directories unrelated to the binary are still masked.
+        let home_input = "/home/user/skills/my-skill";
+        assert_eq!(
+            normalize_snapshot_output(home_input, &settings),
+            "[HOME_DIR]/skills/my-skill"
+        );
     }
 
     #[test]

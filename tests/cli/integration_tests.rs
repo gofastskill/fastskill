@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::{FastSkillService, ServiceConfig};
+use fastskill_core::{FastSkillService, ServiceConfig};
 use tempfile::TempDir;
 use tokio;
 
@@ -96,30 +96,9 @@ version: 1.0.0
     service.initialize().await.unwrap();
 
     // Test read through service
-    let skill_id = fastskill::SkillId::new("read-test".to_string()).unwrap();
+    let skill_id = fastskill_core::SkillId::new("read-test".to_string()).unwrap();
     let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
     assert!(skill.is_some());
-}
-
-#[tokio::test]
-async fn test_disable_command() {
-    let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join("skills");
-    std::fs::create_dir_all(&skills_dir).unwrap();
-
-    let config = ServiceConfig {
-        skill_storage_path: skills_dir.clone(),
-        ..Default::default()
-    };
-
-    let mut service = FastSkillService::new(config).await.unwrap();
-    service.initialize().await.unwrap();
-
-    // Test disable through service directly
-    let skill_id = fastskill::SkillId::new("nonexistent".to_string()).unwrap();
-    let result = service.skill_manager().disable_skill(&skill_id).await;
-    // Should fail because skill doesn't exist
-    assert!(result.is_err());
 }
 
 #[tokio::test]
@@ -163,7 +142,7 @@ This is a test skill for auto-indexing.
     service.initialize().await.unwrap();
 
     // Check that skills were auto-indexed
-    let all_skills = service.skill_manager().list_skills(None).await.unwrap();
+    let all_skills = service.skill_manager().list_skills().await.unwrap();
     assert_eq!(all_skills.len(), skill_names.len());
 
     // Check that skills can be found via search
@@ -176,7 +155,7 @@ This is a test skill for auto-indexing.
 
     // Verify specific skills exist
     for skill_name in &skill_names {
-        let skill_id = fastskill::SkillId::new(skill_name.to_string()).unwrap();
+        let skill_id = fastskill_core::SkillId::new(skill_name.to_string()).unwrap();
         let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
         assert!(skill.is_some());
         let skill = skill.unwrap();
@@ -222,10 +201,10 @@ This skill is in a deeply nested directory.
     service.initialize().await.unwrap();
 
     // Check that the nested skill was found and indexed
-    let all_skills = service.skill_manager().list_skills(None).await.unwrap();
+    let all_skills = service.skill_manager().list_skills().await.unwrap();
     assert_eq!(all_skills.len(), 1);
 
-    let skill_id = fastskill::SkillId::new("nested-skill".to_string()).unwrap();
+    let skill_id = fastskill_core::SkillId::new("nested-skill".to_string()).unwrap();
     let skill = service.skill_manager().get_skill(&skill_id).await.unwrap();
     assert!(skill.is_some());
     let skill = skill.unwrap();

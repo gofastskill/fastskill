@@ -2,8 +2,8 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::manifest::SkillProjectToml;
-use fastskill::core::project::resolve_project_file;
+use fastskill_core::core::manifest::SkillProjectToml;
+use fastskill_core::core::project::resolve_project_file;
 use std::fs;
 use tempfile::TempDir;
 
@@ -20,7 +20,7 @@ fn test_install_reads_dependencies_from_skill_project_toml() {
         r#"
 [dependencies]
 web-scraper = "1.0.0"
-dev-tools = { source = "git", url = "https://github.com/org/dev-tools.git" }
+dev-tools = { origin = { type = "git", url = "https://github.com/org/dev-tools.git" } }
 "#,
     )
     .unwrap();

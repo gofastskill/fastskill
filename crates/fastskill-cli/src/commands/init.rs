@@ -74,9 +74,9 @@ impl IntoCommandSpec for InitArgs {
                     ..Default::default()
                 },
                 ArgSpec {
-                    name: "version",
+                    name: "set-version",
                     kind: ArgKind::Option,
-                    long: Some("version"),
+                    long: Some("set-version"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     help: "Set version directly",
@@ -137,13 +137,28 @@ impl FromArgValueMap for InitArgs {
         Self {
             yes: map.get("yes").and_then(bool_flag).unwrap_or(false),
             force: map.get("force").and_then(bool_flag).unwrap_or(false),
-            version: map.get("version").and_then(opt_str),
+            version: map.get("set-version").and_then(opt_str),
             description: map.get("description").and_then(opt_str),
             author: map.get("author").and_then(opt_str),
             download_url: map.get("download-url").and_then(opt_str),
-            // skills_dir is omitted from the spec; use the global --skills-dir flag instead
+            // `--skills-dir` is a global (root-level) flag, so it never reaches this
+            // subcommand's arg map. main.rs injects it via `with_skills_dir`.
             skills_dir: None,
         }
+    }
+}
+
+impl InitArgs {
+    /// Inject the value of the global `--skills-dir` flag.
+    ///
+    /// `--skills-dir` is declared on the root command, not on `init`, so it is
+    /// absent from this subcommand's arg map; the caller reads it off the app
+    /// context and hands it in here.
+    pub fn with_skills_dir(mut self, skills_dir: Option<String>) -> Self {
+        if skills_dir.is_some() {
+            self.skills_dir = skills_dir;
+        }
+        self
     }
 }
 

@@ -223,7 +223,7 @@ async fn test_health_and_versioning_endpoints() {
 
 #[test]
 fn test_marketplace_json_structure() {
-    use fastskill::core::sources::{MarketplaceJson, MarketplaceSkill};
+    use fastskill_core::core::sources::{MarketplaceJson, MarketplaceSkill};
 
     let skill = MarketplaceSkill {
         id: "test-skill".to_string(),
@@ -248,7 +248,7 @@ fn test_marketplace_json_structure() {
 
 #[test]
 fn test_marketplace_json_validation() {
-    use fastskill::core::sources::MarketplaceSkill;
+    use fastskill_core::core::sources::MarketplaceSkill;
 
     // Valid skill
     let valid = MarketplaceSkill {

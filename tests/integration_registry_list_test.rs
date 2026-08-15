@@ -4,9 +4,9 @@
 //!
 //! Tests the HTTP endpoint integration for listing skills from a registry
 
-use fastskill::core::registry_index::{ListSkillsOptions, SkillSummary};
-use fastskill::core::repository::CratesRegistryClient;
-use fastskill::core::repository::{
+use fastskill_core::core::registry_index::{ListSkillsOptions, SkillSummary};
+use fastskill_core::core::repository::CratesRegistryClient;
+use fastskill_core::core::repository::{
     RepositoryAuth, RepositoryConfig, RepositoryDefinition, RepositoryType,
 };
 use std::collections::HashMap;
@@ -109,7 +109,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
 
     // Mock the endpoint
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -136,7 +136,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server2)
@@ -162,7 +162,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     };
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -178,7 +178,7 @@ async fn test_list_skills_cli_calling_registry_http_endpoint() {
     };
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("include_pre_release", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -202,7 +202,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -219,7 +219,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&mock_server_401)
         .await;
@@ -236,7 +236,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(403))
         .mount(&mock_server_403)
         .await;
@@ -261,7 +261,7 @@ async fn test_unauthenticated_vs_authenticated_registry_listing() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(wiremock::matchers::header(
             "Authorization",
             "token test-token-123",
@@ -354,7 +354,7 @@ async fn test_performance_benchmark_http_listing_1000_skills() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -431,7 +431,7 @@ async fn test_list_skills_scope_flag() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -456,8 +456,8 @@ async fn test_list_skills_scope_flag() {
 async fn test_scope_filtering_exact_match() {
     // Test T023: Unit test for scope filtering logic with exact match requirement
 
-    use fastskill::core::registry_index::scan_registry_index;
-    use fastskill::core::registry_index::{update_skill_version, VersionMetadata};
+    use fastskill_core::core::registry_index::scan_registry_index;
+    use fastskill_core::core::registry_index::{update_skill_version, VersionMetadata};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -482,7 +482,7 @@ async fn test_scope_filtering_exact_match() {
             links: None,
             download_url: format!("https://example.com/{}.zip", skill_id),
             published_at: "2024-01-01T00:00:00Z".to_string(),
-            metadata: Some(fastskill::core::registry_index::IndexMetadata {
+            metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
                 description: Some(format!("Description for {}", skill_id)),
                 author: None,
                 license: None,
@@ -512,8 +512,8 @@ async fn test_scope_filtering_exact_match() {
 async fn test_scope_filtering_nonexistent_scope() {
     // Test T024: Unit test for scope filtering with nonexistent scope
 
-    use fastskill::core::registry_index::scan_registry_index;
-    use fastskill::core::registry_index::{update_skill_version, VersionMetadata};
+    use fastskill_core::core::registry_index::scan_registry_index;
+    use fastskill_core::core::registry_index::{update_skill_version, VersionMetadata};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -531,7 +531,7 @@ async fn test_scope_filtering_nonexistent_scope() {
         links: None,
         download_url: "https://example.com/test.zip".to_string(),
         published_at: "2024-01-01T00:00:00Z".to_string(),
-        metadata: Some(fastskill::core::registry_index::IndexMetadata {
+        metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
             description: Some("Test skill".to_string()),
             author: None,
             license: None,
@@ -558,8 +558,8 @@ async fn test_scope_filtering_nonexistent_scope() {
 async fn test_performance_scope_filtering_1000_skills() {
     // Test T025: Performance benchmark test for scope filtering with 1000 skills (assert < 1s)
 
-    use fastskill::core::registry_index::scan_registry_index;
-    use fastskill::core::registry_index::{update_skill_version, VersionMetadata};
+    use fastskill_core::core::registry_index::scan_registry_index;
+    use fastskill_core::core::registry_index::{update_skill_version, VersionMetadata};
     use std::time::Instant;
     use tempfile::TempDir;
 
@@ -580,7 +580,7 @@ async fn test_performance_scope_filtering_1000_skills() {
             links: None,
             download_url: format!("https://example.com/{}.zip", skill_id),
             published_at: "2024-01-01T00:00:00Z".to_string(),
-            metadata: Some(fastskill::core::registry_index::IndexMetadata {
+            metadata: Some(fastskill_core::core::registry_index::IndexMetadata {
                 description: Some(format!("Description for skill {}", i)),
                 author: None,
                 license: None,
@@ -631,7 +631,7 @@ async fn test_list_skills_json_flag() {
     let response_body = serde_json::to_string(&summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
         .await;
@@ -676,7 +676,7 @@ async fn test_list_skills_json_scope_flag() {
     let filtered_response = serde_json::to_string(&filtered_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("scope", "acme"))
         .respond_with(ResponseTemplate::new(200).set_body_string(filtered_response.clone()))
         .mount(&mock_server)
@@ -767,7 +767,7 @@ async fn test_list_skills_all_versions_flag() {
     let response_body = serde_json::to_string(&all_versions_summaries).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
@@ -833,7 +833,7 @@ async fn test_list_skills_all_versions_include_pre_release_json() {
     let response_body = serde_json::to_string(&summaries_with_prerelease).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .and(query_param("include_pre_release", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
@@ -890,7 +890,7 @@ async fn test_list_skills_all_versions_without_pre_release() {
     let response_body = serde_json::to_string(&summaries_without_prerelease).unwrap();
 
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .and(query_param("all_versions", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
         .mount(&mock_server)
@@ -926,8 +926,8 @@ async fn test_fastskill_list_grid_output() {
     // data structures and reconciliation logic work correctly.
 
     use chrono::Utc;
-    use fastskill::core::service::SkillId;
-    use fastskill::core::skill_manager::SkillDefinition;
+    use fastskill_core::core::service::SkillId;
+    use fastskill_core::core::skill_manager::SkillDefinition;
     use std::collections::HashMap;
 
     // Create mock installed skills
@@ -937,7 +937,6 @@ async fn test_fastskill_list_grid_output() {
         description: "First tool".to_string(),
         version: "1.0.0".to_string(),
         author: None,
-        enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         skill_file: std::path::PathBuf::from(".claude/skills/acme/tool1/SKILL.md"),
@@ -947,15 +946,11 @@ async fn test_fastskill_list_grid_output() {
         execution_environment: None,
         dependencies: None,
         timeout: None,
-        source_url: Some("https://example.com/acme/tool1".to_string()),
-        source_type: None,
-        source_branch: None,
-        source_tag: None,
-        source_subdir: None,
-        installed_from: None,
+        origin: fastskill_core::core::origin::Origin::ZipUrl {
+            url: "https://example.com/acme/tool1".to_string(),
+        },
         commit_hash: None,
         fetched_at: None,
-        editable: false,
     }];
 
     // Mock project dependencies
@@ -981,7 +976,7 @@ async fn test_fastskill_list_json_output() {
     // Test T056: Integration test for `fastskill list --json` output with installed skills
     // This test verifies JSON serialization works correctly
 
-    use fastskill::core::reconciliation::{
+    use fastskill_core::core::reconciliation::{
         InstalledSkillInfo, ReconciliationReport, ReconciliationStatus,
     };
 
@@ -1020,8 +1015,8 @@ async fn test_fastskill_list_json_output() {
 async fn test_missing_dependencies_reconciliation() {
     // Test T057: Integration test for missing dependencies (in skills-project.toml but not installed)
 
-    use fastskill::core::reconciliation::build_reconciliation_report;
-    use fastskill::core::skill_manager::SkillDefinition;
+    use fastskill_core::core::reconciliation::build_reconciliation_report;
+    use fastskill_core::core::skill_manager::SkillDefinition;
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -1052,9 +1047,9 @@ async fn test_extraneous_packages_reconciliation() {
     // Test T058: Integration test for extraneous packages (installed but not in skills-project.toml)
 
     use chrono::Utc;
-    use fastskill::core::reconciliation::{build_reconciliation_report, ReconciliationStatus};
-    use fastskill::core::service::SkillId;
-    use fastskill::core::skill_manager::SkillDefinition;
+    use fastskill_core::core::reconciliation::{build_reconciliation_report, ReconciliationStatus};
+    use fastskill_core::core::service::SkillId;
+    use fastskill_core::core::skill_manager::SkillDefinition;
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -1067,7 +1062,6 @@ async fn test_extraneous_packages_reconciliation() {
         description: "Not in project".to_string(),
         version: "1.0.0".to_string(),
         author: None,
-        enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         skill_file: std::path::PathBuf::from(".claude/skills/acme/extraneous-tool/SKILL.md"),
@@ -1077,15 +1071,12 @@ async fn test_extraneous_packages_reconciliation() {
         execution_environment: None,
         dependencies: None,
         timeout: None,
-        source_url: None,
-        source_type: None,
-        source_branch: None,
-        source_tag: None,
-        source_subdir: None,
-        installed_from: None,
+        origin: fastskill_core::core::origin::Origin::Local {
+            path: std::path::PathBuf::from(".claude/skills/acme/extraneous-tool"),
+            editable: false,
+        },
         commit_hash: None,
         fetched_at: None,
-        editable: false,
     }];
 
     // Empty project dependencies
@@ -1111,9 +1102,9 @@ async fn test_version_mismatches_reconciliation() {
     // Test T059: Integration test for version mismatches (installed vs skills-lock.toml)
 
     use chrono::Utc;
-    use fastskill::core::reconciliation::{build_reconciliation_report, ReconciliationStatus};
-    use fastskill::core::service::SkillId;
-    use fastskill::core::skill_manager::SkillDefinition;
+    use fastskill_core::core::reconciliation::{build_reconciliation_report, ReconciliationStatus};
+    use fastskill_core::core::service::SkillId;
+    use fastskill_core::core::skill_manager::SkillDefinition;
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -1125,7 +1116,6 @@ async fn test_version_mismatches_reconciliation() {
         description: "A tool".to_string(),
         version: "1.0.0".to_string(), // Installed version
         author: None,
-        enabled: true,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         skill_file: std::path::PathBuf::from(".claude/skills/acme/tool/SKILL.md"),
@@ -1135,15 +1125,12 @@ async fn test_version_mismatches_reconciliation() {
         execution_environment: None,
         dependencies: None,
         timeout: None,
-        source_url: None,
-        source_type: None,
-        source_branch: None,
-        source_tag: None,
-        source_subdir: None,
-        installed_from: None,
+        origin: fastskill_core::core::origin::Origin::Local {
+            path: std::path::PathBuf::from(".claude/skills/acme/tool"),
+            editable: false,
+        },
         commit_hash: None,
         fetched_at: None,
-        editable: false,
     }];
 
     // Project has the tool (using unscoped ID to match SkillId)

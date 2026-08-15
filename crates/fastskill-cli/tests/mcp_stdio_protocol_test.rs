@@ -150,6 +150,38 @@ fn long_running_serve_is_not_exported_as_a_tool() {
 }
 
 #[test]
+fn stdio_transport_rejects_http_only_flags() {
+    // cli-framework 0.5.8 (src/mcp/commands.rs) rejects `--host`/`--port`/`--path`
+    // overrides when `--transport=stdio` with a `[E004]` error instead of silently
+    // ignoring them, since stdio has no host/port/path to bind.
+    let project = fixture();
+    let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+        .args(["mcp", "serve", "--transport", "stdio", "--host", "0.0.0.0"])
+        .current_dir(project.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("run fastskill mcp serve");
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit, got status {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "[E004] invalid usage: '--host', '--port', and '--path' are only valid when --transport=http"
+        ),
+        "expected E004 invalid-usage error on stderr, got:\n{stderr}"
+    );
+}
+
+#[test]
 fn tool_schemas_document_their_parameters() {
     // cli-framework 0.5.8 forwards `ArgSpec.help` into the JSON-Schema
     // `description`. Without it every property is a bare `{"type":"boolean"}`

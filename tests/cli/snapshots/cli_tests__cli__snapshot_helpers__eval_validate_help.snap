@@ -1,5 +1,6 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
 Validate eval configuration and files
@@ -7,14 +8,14 @@ Validate eval configuration and files
 Usage: fastskill eval validate [OPTIONS]
 
 Options:
-  -a, --agent <AGENT>    Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
-      --all              Target all runtimes discovered by aikit (mutually exclusive with --agent)
-      --format <FORMAT>  Output format: table, json, grid, xml
-      --json             Shorthand for --format json
-  -h, --help             Print help
+  -a, --agent <agent>            Target runtime(s); repeatable (mutually exclusive with --all)
+      --skills-dir <skills-dir>  Override the skills directory path
+      --all                      Target all runtimes (mutually exclusive with --agent)
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --format <format>          Output format: table, json
+  -v, --verbose                  Enable verbose output
+      --json                     Shorthand for --format json
+  -h, --help                     Print help
+  -V, --version                  Print version
 
-Examples:
-  fastskill eval validate
-  fastskill eval validate --agent codex
-  fastskill eval validate --agent codex --agent claude
-  fastskill eval validate --all
+Syntax: eval validate [OPTIONS]

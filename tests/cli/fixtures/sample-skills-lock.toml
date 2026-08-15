@@ -1,34 +1,31 @@
 [metadata]
-version = "1.0"
-generated_at = "2024-01-01T00:00:00Z"
-fastskill_version = "0.9.16"
+version = "3.0"
+fastskill_version = "0.9.156"
 
 [[skills]]
 id = "web-scraper"
 name = "web-scraper"
-version = "1.2.3"
-source = { type = "source", name = "default-registry", skill = "web-scraper", version = "1.2.3" }
-fetched_at = "2024-01-01T00:00:00Z"
-checksum = "abc123def456"
+groups = ["main"]
+origin = { type = "repository", repo = "default", skill = "web-scraper", version = "=1.2.3" }
+resolved = { version = "1.2.3", checksum = "abc123def456" }
 
 [[skills]]
 id = "dev-tools"
 name = "dev-tools"
-version = "2.0.0"
-source = { type = "git", url = "https://github.com/org/dev-tools.git", branch = "main" }
-commit_hash = "commit-sha-here"
-fetched_at = "2024-01-01T00:00:00Z"
+groups = ["main"]
+origin = { type = "git", url = "https://github.com/org/dev-tools.git", ref = { branch = "main" } }
+resolved = { version = "2.0.0", commit_hash = "commit-sha-here" }
 
 [[skills]]
 id = "local-skill"
 name = "local-skill"
-version = "1.0.0"
-source = { type = "local", path = "./local-skill" }
-fetched_at = "2024-01-01T00:00:00Z"
+groups = ["main"]
+origin = { type = "local", path = "./local-skill" }
+resolved = { version = "1.0.0" }
 
 [[skills]]
 id = "remote-skill"
 name = "remote-skill"
-version = "1.0.0"
-source = { type = "zip-url", base_url = "https://example.com/skill.zip" }
-fetched_at = "2024-01-01T00:00:00Z"
+groups = ["main"]
+origin = { type = "zip-url", url = "https://example.com/skill.zip" }
+resolved = { version = "1.0.0" }

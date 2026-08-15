@@ -149,9 +149,9 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
                     ..Default::default()
                 },
                 ArgSpec {
-                    name: "version",
+                    name: "repo-version",
                     kind: ArgKind::Option,
-                    long: Some("version"),
+                    long: Some("repo-version"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     help: "Repository version (optional)",
@@ -218,7 +218,7 @@ impl FromArgValueMap for MarketplaceCreateArgs {
                     None
                 }
             }),
-            version: map.get("version").and_then(|v| {
+            version: map.get("repo-version").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(s.clone())
                 } else {

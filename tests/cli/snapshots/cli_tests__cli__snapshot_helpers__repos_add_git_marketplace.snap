@@ -1,0 +1,5 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+[OK] Added repository: git-repo

@@ -1,0 +1,6 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
+expression: normalized
+---
+Health endpoints verified

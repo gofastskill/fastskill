@@ -1,7 +1,7 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
-FastSkill [VERSION]
 Scanning 4 skills for duplicates (threshold: 0.88)...
 No duplicate pairs found above threshold.

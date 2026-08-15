@@ -1,5 +1,24 @@
 //! Tests that each command's --help shows at least one runnable example.
 //! Validates the examples added via clap after_help for all command forms.
+//!
+//! `disable_help_shows_examples` and `show_help_shows_examples` were removed:
+//! `disable`/`show` are retired commands (main.rs explicitly excludes them
+//! from the `read` shorthand as issue-#183 "cli-command-surface-redesign"
+//! removals), so `fastskill disable --help` / `fastskill show --help` now
+//! exit non-zero with "unrecognized subcommand" — there is no help text left
+//! to assert on.
+//!
+//! The `sources`/`registry` top-level commands from the same redesign are
+//! gone too (`fastskill sources ...` / `fastskill registry ...` now fail
+//! with "unknown argument"); their subcommands were folded into `repos`
+//! (`sources list/add/remove/show/update/test/refresh` -> `repos
+//! list/add/remove/info/update/test/refresh`, `registry
+//! list-skills/show-skill/versions` -> `repos skills/show/versions`), so the
+//! per-subcommand example checks below were ported onto the `repos`
+//! equivalents. `sources create` (marketplace-catalog generation) has no
+//! `repos` equivalent — that functionality now lives under the unrelated
+//! `marketplace create` command tree, which is out of scope for `repos`
+//! coverage, so that test was dropped rather than ported.
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
@@ -30,11 +49,6 @@ fn add_help_shows_examples() {
 }
 
 #[test]
-fn disable_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["disable", "--help"]);
-}
-
-#[test]
 fn init_help_shows_examples() {
     help_succeeds_and_contains_examples(&["init", "--help"]);
 }
@@ -55,23 +69,23 @@ fn read_help_shows_examples() {
 }
 
 #[test]
-fn registry_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["registry", "--help"]);
+fn repos_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "--help"]);
 }
 
 #[test]
-fn registry_list_skills_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["registry", "list-skills", "--help"]);
+fn repos_skills_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "skills", "--help"]);
 }
 
 #[test]
-fn registry_show_skill_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["registry", "show-skill", "--help"]);
+fn repos_show_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "show", "--help"]);
 }
 
 #[test]
-fn registry_versions_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["registry", "versions", "--help"]);
+fn repos_versions_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "versions", "--help"]);
 }
 
 #[test]
@@ -95,53 +109,38 @@ fn serve_help_shows_examples() {
 }
 
 #[test]
-fn show_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["show", "--help"]);
+fn repos_list_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "list", "--help"]);
 }
 
 #[test]
-fn sources_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "--help"]);
+fn repos_add_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "add", "--help"]);
 }
 
 #[test]
-fn sources_list_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "list", "--help"]);
+fn repos_remove_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "remove", "--help"]);
 }
 
 #[test]
-fn sources_add_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "add", "--help"]);
+fn repos_info_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "info", "--help"]);
 }
 
 #[test]
-fn sources_remove_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "remove", "--help"]);
+fn repos_update_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "update", "--help"]);
 }
 
 #[test]
-fn sources_show_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "show", "--help"]);
+fn repos_test_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "test", "--help"]);
 }
 
 #[test]
-fn sources_update_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "update", "--help"]);
-}
-
-#[test]
-fn sources_test_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "test", "--help"]);
-}
-
-#[test]
-fn sources_refresh_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "refresh", "--help"]);
-}
-
-#[test]
-fn sources_create_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["sources", "create", "--help"]);
+fn repos_refresh_help_shows_examples() {
+    help_succeeds_and_contains_examples(&["repos", "refresh", "--help"]);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::ServiceConfig;
+use fastskill_core::ServiceConfig;
 use std::path::PathBuf;
 use tempfile::TempDir;
 

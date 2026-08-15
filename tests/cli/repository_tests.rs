@@ -52,8 +52,8 @@ async fn test_scan_directory_for_skills() {
 /// T026: Integration test for fastskill sources add updating repositories in skill-project.toml
 #[test]
 fn test_registry_add_updates_repositories_in_skill_project_toml() {
-    use fastskill::core::manifest::SkillProjectToml;
-    use fastskill::core::manifest::{
+    use fastskill_core::core::manifest::SkillProjectToml;
+    use fastskill_core::core::manifest::{
         FastSkillToolConfig, RepositoryDefinition, RepositoryType, ToolSection,
     };
 
@@ -86,6 +86,7 @@ web-scraper = "1.0.0"
         install_depth: 5,
         skip_transitive: false,
         eval: None,
+        auto_reindex: true,
     });
     let repos = fastskill_config.repositories.get_or_insert_with(Vec::new);
 
@@ -93,7 +94,7 @@ web-scraper = "1.0.0"
         name: "test-registry".to_string(),
         r#type: RepositoryType::HttpRegistry,
         priority: 1,
-        connection: fastskill::core::manifest::RepositoryConnection::HttpRegistry {
+        connection: fastskill_core::core::manifest::RepositoryConnection::HttpRegistry {
             index_url: "https://registry.example.com".to_string(),
         },
         auth: None,
@@ -146,7 +147,7 @@ version = "2.0.0"
 
 #[test]
 fn test_marketplace_json_generation() {
-    use fastskill::core::sources::{MarketplaceJson, MarketplaceSkill};
+    use fastskill_core::core::sources::{MarketplaceJson, MarketplaceSkill};
 
     let skills = vec![
         MarketplaceSkill {
@@ -182,7 +183,7 @@ fn test_marketplace_json_generation() {
 
 #[test]
 fn test_claude_code_marketplace_json_parsing() {
-    use fastskill::core::sources::ClaudeCodeMarketplaceJson;
+    use fastskill_core::core::sources::ClaudeCodeMarketplaceJson;
 
     let json = r#"{
         "name": "test-repo",
@@ -246,7 +247,7 @@ fn test_claude_code_marketplace_parsing() {
         ]
     });
 
-    let claude_marketplace: fastskill::core::sources::ClaudeCodeMarketplaceJson =
+    let claude_marketplace: fastskill_core::core::sources::ClaudeCodeMarketplaceJson =
         serde_json::from_value(claude_json).unwrap();
     assert_eq!(claude_marketplace.name, "test-repo");
     assert_eq!(claude_marketplace.plugins.len(), 1);
@@ -257,7 +258,7 @@ fn test_claude_code_marketplace_parsing() {
 
 #[test]
 fn test_claude_code_marketplace_structure() {
-    use fastskill::core::sources::{ClaudeCodeMarketplaceJson, ClaudeCodePlugin};
+    use fastskill_core::core::sources::{ClaudeCodeMarketplaceJson, ClaudeCodePlugin};
 
     // Create a Claude Code marketplace
     let claude_marketplace = ClaudeCodeMarketplaceJson {

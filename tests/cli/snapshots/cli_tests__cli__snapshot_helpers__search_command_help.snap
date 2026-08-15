@@ -1,27 +1,30 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
-Search skills by query with explicit scope flags (remote default)
+Search skills by query with explicit scope flags
 
-Usage: fastskill search [OPTIONS] <QUERY>
+Usage: fastskill search [OPTIONS] [query]
 
 Arguments:
-  <QUERY>  Search query string
+  [query]  Search query string
 
 Options:
       --local                    Search local/installed skills only
-      --remote                   Search remote skill catalogs (default, can be explicit for scripts)
-      --repository <REPOSITORY>  Limit remote search to specific repository (remote scope only)
-  -l, --limit <LIMIT>            Maximum number of results (default: 10) [default: 10]
-  -f, --format <FORMAT>          Output format: table, json, grid, xml (default: table)
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --remote                   Search remote skill catalogs
+      --repository <repository>  Limit remote search to specific repository
+  -v, --verbose                  Enable verbose output
+  -l, --limit <limit>            Maximum number of results [default: 10]
+  -f, --format <format>          Output format: table, json, grid, xml
       --json                     Shorthand for --format json
-      --embedding <EMBEDDING>    Use embedding search: true, false, or auto Only applies to local search; ignored for remote search [possible values: true, false, auto]
-      --skills-dir <SKILLS_DIR>  Skills directory path
+      --embedding <embedding>    Use embedding search: true, false, or auto
+      --skills-dir <skills-dir>  Skills directory path (overrides default discovery)
+      --paths                    Output resolved file paths instead of search results (--local only)
+      --content <content>        Content to include in JSON output: none, preview, full (--local
+                                 --paths only)
   -h, --help                     Print help
+  -V, --version                  Print version
 
-Examples:
-  fastskill search "text processing"
-  fastskill search "text processing" --local
-  fastskill search "pptx" --repository my-repo
-  fastskill search "query" -l 5 --json
+Syntax: search <QUERY> [--local|--remote] [OPTIONS]
