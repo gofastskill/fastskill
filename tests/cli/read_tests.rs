@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::{FastSkillService, ServiceConfig, SkillId};
+use fastskill_core::{FastSkillService, ServiceConfig, SkillId};
 use tempfile::TempDir;
 
 /// Helper to create a test skill
@@ -140,7 +140,7 @@ async fn test_error_message_structure() {
     service.initialize().await.unwrap();
 
     // Verify service is initialized
-    assert!(service.skill_manager().list_skills(None).await.is_ok());
+    assert!(service.skill_manager().list_skills().await.is_ok());
 }
 
 /// Test file size limit validation
@@ -218,6 +218,6 @@ async fn test_multiple_skill_matches() {
     service.initialize().await.unwrap();
 
     // Verify service can list skills (empty list is fine)
-    let all_skills = service.skill_manager().list_skills(None).await.unwrap();
+    let all_skills = service.skill_manager().list_skills().await.unwrap();
     assert!(all_skills.is_empty() || !all_skills.is_empty());
 }

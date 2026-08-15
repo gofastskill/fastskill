@@ -77,7 +77,12 @@ fn test_skillopt_export_help() {
 #[test]
 fn test_skillopt_run_config_missing() {
     let result = run_fastskill_command(
-        &["optimize", "run", "--config", "/tmp/nonexistent-skillopt-config-xyz.toml"],
+        &[
+            "optimize",
+            "run",
+            "--config",
+            "/tmp/nonexistent-skillopt-config-xyz.toml",
+        ],
         None,
     );
     assert!(!result.success);
@@ -120,12 +125,7 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &[
-            "optimize",
-            "run",
-            "--config",
-            config_path.to_str().unwrap(),
-        ],
+        &["optimize", "run", "--config", config_path.to_str().unwrap()],
         None,
     );
     assert!(!result.success);
@@ -166,12 +166,7 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &[
-            "optimize",
-            "run",
-            "--config",
-            config_path.to_str().unwrap(),
-        ],
+        &["optimize", "run", "--config", config_path.to_str().unwrap()],
         None,
     );
     assert!(!result.success);
@@ -211,12 +206,7 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &[
-            "optimize",
-            "run",
-            "--config",
-            config_path.to_str().unwrap(),
-        ],
+        &["optimize", "run", "--config", config_path.to_str().unwrap()],
         None,
     );
     assert!(!result.success);
@@ -233,7 +223,11 @@ timeout_seconds = 30
 #[test]
 fn test_skillopt_resume_missing_run_dir() {
     let result = run_fastskill_command(
-        &["optimize", "resume", "/tmp/nonexistent-skillopt-run-dir-xyz"],
+        &[
+            "optimize",
+            "resume",
+            "/tmp/nonexistent-skillopt-run-dir-xyz",
+        ],
         None,
     );
     assert!(!result.success);
@@ -289,7 +283,11 @@ fn test_skillopt_export_byte_identical() {
         ],
         None,
     );
-    assert!(result.success, "export failed: {}{}", result.stdout, result.stderr);
+    assert!(
+        result.success,
+        "export failed: {}{}",
+        result.stdout, result.stderr
+    );
 
     // Verify byte-identical via SHA-256
     let exported = fs::read(&out_path).unwrap();

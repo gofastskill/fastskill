@@ -28,7 +28,7 @@ fn test_cli_help() {
 
 #[tokio::test]
 async fn test_service_integration() {
-    use fastskill::{FastSkillService, ServiceConfig};
+    use fastskill_core::{FastSkillService, ServiceConfig};
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
@@ -46,11 +46,6 @@ async fn test_service_integration() {
     // Test search functionality
     let results = service.metadata_service().discover_skills("test").await;
     assert!(results.is_ok());
-
-    // Test disable with string reference
-    let skill_id = fastskill::SkillId::new("test-skill".to_string()).unwrap();
-    let _result = service.skill_manager().disable_skill(&skill_id).await;
-    // Expected to fail since skill doesn't exist, but tests the interface
 }
 
 // E2E tests for uncovered commands
@@ -169,14 +164,31 @@ fn test_install_missing_project_file_error() {
     );
 }
 
+// `show` was retired (main.rs explicitly keeps it out of the `read` shorthand
+// as one of the issue-#183 "cli-command-surface-redesign" removals, alongside
+// `resolve`/`sync`/`disable`). Its job — show metadata for a skill — is now
+// `read --meta`, so these two tests are adapted to that rather than deleted:
+// the underlying behavior (a clear error for an unknown/invalid skill id)
+// still exists and is still worth covering.
+
 #[test]
 fn test_show_nonexistent_skill_error() {
+    use std::fs;
     use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
+    // Needs a real skill-project.toml, otherwise the command fails on
+    // "skill-project.toml not found" before it ever looks for the skill —
+    // a "not found" message, but the wrong one for what this test means to
+    // cover (an unknown skill id, not a missing project file).
+    fs::write(
+        temp_dir.path().join("skill-project.toml"),
+        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["show", "nonexistent-skill"],
+        &["read", "--meta", "nonexistent-skill"],
         Some(temp_dir.path()),
     );
 
@@ -203,7 +215,7 @@ fn test_show_invalid_skill_id_format() {
     .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["show", "invalid skill id!"],
+        &["read", "--meta", "invalid skill id!"],
         Some(temp_dir.path()),
     );
 
@@ -265,52 +277,14 @@ fn test_read_invalid_skill_id_format() {
     );
 }
 
-#[test]
-fn test_auth_login_unreachable_registry_error() {
-    let result = cli::snapshot_helpers::run_fastskill_command(
-        &["auth", "login", "--registry", "http://localhost:99999"],
-        None,
-    );
-
-    assert!(!result.success);
-    assert!(result.stderr.contains("Failed to connect") || result.stderr.contains("error"));
-
-    cli::snapshot_helpers::assert_snapshot_with_settings(
-        "auth_login_invalid_port",
-        &result.stderr,
-        &cli::snapshot_helpers::cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_auth_logout_nonexistent_registry() {
-    use std::fs;
-    use tempfile::TempDir;
-
-    let temp_dir = TempDir::new().unwrap();
-    let config_dir = temp_dir.path().join("config");
-    fs::create_dir_all(&config_dir).unwrap();
-
-    let env_vars = vec![("FASTSKILL_CONFIG_DIR", config_dir.to_str().unwrap())];
-
-    let result = cli::snapshot_helpers::run_fastskill_command_with_env(
-        &[
-            "auth",
-            "logout",
-            "--registry",
-            "http://nonexistent-registry",
-        ],
-        &env_vars,
-        Some(temp_dir.path()),
-    );
-    assert!(result.success);
-
-    cli::snapshot_helpers::assert_snapshot_with_settings(
-        "auth_logout_nonexistent",
-        &result.stdout,
-        &cli::snapshot_helpers::cli_snapshot_settings(),
-    );
-}
+// NOTE: `auth login` / `auth logout` tested a registry-authentication
+// subcommand that does not exist in the current CLI surface (verified via
+// `fastskill --help`: no `auth` command group at all — only
+// `repos {add,remove,list,...}` for repository management, which has no
+// login/logout concept). This isn't a rename target like `sources`/`registry`
+// below; there is no current equivalent to adapt to, so the two `auth_*`
+// tests are deleted rather than kept as dead weight against a feature that
+// was never shipped in this command-layer generation.
 
 #[test]
 fn test_registry_list_empty() {
@@ -321,8 +295,9 @@ fn test_registry_list_empty() {
     let config_dir = temp_dir.path().join("config");
     fs::create_dir_all(&config_dir).unwrap();
 
+    // `sources` was renamed to `repos` (see `fastskill --help`).
     let result =
-        cli::snapshot_helpers::run_fastskill_command(&["sources", "list"], Some(temp_dir.path()));
+        cli::snapshot_helpers::run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
     assert!(result.success);
     assert!(result.stdout.contains("No repositories") || result.stdout.is_empty());
 
@@ -342,8 +317,10 @@ fn test_registry_add_validation_missing_url() {
     let config_dir = temp_dir.path().join("config");
     fs::create_dir_all(&config_dir).unwrap();
 
+    // `sources add` was renamed to `repos add`; it still requires both
+    // `<name>` and `<url-or-path>` positionals (see `fastskill repos add --help`).
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["sources", "add", "missing-url", "--repo-type", "local"],
+        &["repos", "add", "missing-url", "--repo-type", "local"],
         None,
     );
     assert!(!result.success);
@@ -358,15 +335,27 @@ fn test_registry_add_validation_missing_url() {
 
 #[test]
 fn test_registry_remove_nonexistent_error() {
+    use tempfile::TempDir;
+
+    // `registry remove` was renamed to `repos remove`, which now exists as a
+    // real subcommand (the old assertion special-cased "unrecognized
+    // subcommand 'remove'" because at the time neither `registry` nor
+    // `remove` resolved at all). Assert the actual not-found error instead of
+    // the generic "error" fallback, since `repos remove` is real now.
+    //
+    // Run in a fresh temp dir rather than `None` (inherited cwd): unlike
+    // `repos add`'s missing-arg check (rejected during arg parsing, before
+    // any config is touched), `repos remove` loads skill-project.toml to
+    // resolve the configured repositories, so with `None` this test picks up
+    // whatever manifest (if any) happens to sit above the process's actual
+    // working directory and asserts on the wrong error entirely.
+    let temp_dir = TempDir::new().unwrap();
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["registry", "remove", "nonexistent-repo"],
-        None,
+        &["repos", "remove", "nonexistent-repo"],
+        Some(temp_dir.path()),
     );
     assert!(!result.success);
-    assert!(
-        result.stderr.contains("unrecognized subcommand 'remove'")
-            || result.stderr.contains("error")
-    );
+    assert!(result.stderr.contains("not found"));
 
     cli::snapshot_helpers::assert_snapshot_with_settings(
         "registry_remove_nonexistent",

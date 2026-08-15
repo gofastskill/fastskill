@@ -93,5 +93,18 @@ predicates = "3.0"
 wiremock = "0.5"
 zip.workspace = true
 
+[[test]]
+name = "cli_tests"
+path = "../../tests/cli_tests.rs"
+
+[[test]]
+name = "cli_init_test"
+path = "../../tests/cli_init_test.rs"
+
+
+[[test]]
+name = "http_tests"
+path = "../../tests/http_tests.rs"
+
 [lints]
 workspace = true

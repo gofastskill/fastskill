@@ -91,9 +91,9 @@ impl IntoCommandSpec for UpdateArgs {
                     ..Default::default()
                 },
                 ArgSpec {
-                    name: "version",
+                    name: "to-version",
                     kind: ArgKind::Option,
-                    long: Some("version"),
+                    long: Some("to-version"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     help: "Update to specific version",
@@ -157,7 +157,7 @@ impl FromArgValueMap for UpdateArgs {
             skill_id: map.get("skill-id").and_then(opt_str),
             check: matches!(map.get("check"), Some(ArgValue::Bool(true))),
             dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
-            version: map.get("version").and_then(opt_str),
+            version: map.get("to-version").and_then(opt_str),
             source: map.get("source").and_then(opt_str),
             strategy: map
                 .get("strategy")

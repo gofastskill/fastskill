@@ -19,9 +19,9 @@
     clippy::useless_vec
 )]
 
-use fastskill::http::handlers::search::search_skills;
-use fastskill::http::models::{ApiResponse, SearchRequest};
-use fastskill::{EmbeddingConfig, ServiceConfig};
+use fastskill_core::http::handlers::search::search_skills;
+use fastskill_core::http::models::{ApiResponse, SearchRequest};
+use fastskill_core::{EmbeddingConfig, ServiceConfig};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -29,7 +29,7 @@ use tempfile::TempDir;
 async fn create_test_app_state(
     skills_dir: &std::path::Path,
     with_embedding: bool,
-) -> fastskill::http::handlers::AppState {
+) -> fastskill_core::http::handlers::AppState {
     let config = ServiceConfig {
         skill_storage_path: skills_dir.to_path_buf(),
         embedding: if with_embedding {
@@ -44,10 +44,10 @@ async fn create_test_app_state(
         ..Default::default()
     };
 
-    let mut service = fastskill::FastSkillService::new(config).await.unwrap();
+    let mut service = fastskill_core::FastSkillService::new(config).await.unwrap();
     service.initialize().await.unwrap();
 
-    fastskill::http::handlers::AppState {
+    fastskill_core::http::handlers::AppState {
         service: Arc::new(service),
         start_time: std::time::SystemTime::now(),
         project_file_path: std::path::PathBuf::from("skill-project.toml"),

@@ -1,8 +1,7 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-FastSkill [VERSION]
 Repository: showable-repo
   Type: git-marketplace
   Priority: 5

@@ -2,8 +2,8 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::core::manifest::SkillProjectToml;
-use fastskill::core::project::resolve_project_file;
+use fastskill_core::core::manifest::SkillProjectToml;
+use fastskill_core::core::project::resolve_project_file;
 use std::fs;
 use tempfile::TempDir;
 
@@ -32,7 +32,7 @@ web-scraper = "1.0.0"
     let deps = project.dependencies.as_mut().unwrap();
     deps.dependencies.insert(
         "dev-tools".to_string(),
-        fastskill::core::manifest::DependencySpec::Version("2.0.0".to_string()),
+        fastskill_core::core::manifest::DependencySpec::Version("2.0.0".to_string()),
     );
 
     // Save updated project
@@ -58,7 +58,7 @@ fn test_resolve_project_file_returns_path_user_can_create_manifest() {
     let project_toml = result.path;
     let new_project = SkillProjectToml {
         metadata: None,
-        dependencies: Some(fastskill::core::manifest::DependenciesSection {
+        dependencies: Some(fastskill_core::core::manifest::DependenciesSection {
             dependencies: std::collections::HashMap::new(),
         }),
         tool: None,

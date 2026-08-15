@@ -181,9 +181,12 @@ fn test_repos_command_excludes_search_subcommand() {
 
     let repos_search = run_fastskill_command(&["repos", "search", "test"], Some(temp_dir.path()));
     assert!(!repos_search.success);
+    // cli-framework's rejection wording for an unknown nested path differs
+    // from clap's native "unrecognized subcommand '...'" phrasing (see the
+    // command-layer migration, spec #89); assert on the current message.
     assert!(repos_search
         .stderr
-        .contains("unrecognized subcommand 'search'"));
+        .contains("nested command path 'repos search test' not found"));
 
     let search_help = run_fastskill_command(&["search", "--help"], Some(temp_dir.path()));
     assert!(search_help.success);

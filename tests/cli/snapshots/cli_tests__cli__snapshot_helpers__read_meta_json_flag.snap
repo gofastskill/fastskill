@@ -1,0 +1,29 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
+expression: normalized
+---
+[
+  {
+    "id": "meta-skill",
+    "name": "meta-skill",
+    "description": "A skill for testing metadata display",
+    "version": "[VERSION]",
+    "author": "Test Author",
+    "created_at": "[TIMESTAMP]",
+    "updated_at": "[TIMESTAMP]",
+    "skill_file": "[TEMP_DIR]
+    "reference_files": null,
+    "script_files": null,
+    "asset_files": null,
+    "execution_environment": null,
+    "dependencies": null,
+    "timeout": null,
+    "origin": {
+      "type": "local",
+      "path": "[TEMP_DIR]
+    },
+    "commit_hash": null,
+    "fetched_at": null
+  }
+]

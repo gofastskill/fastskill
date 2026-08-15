@@ -300,10 +300,16 @@ fn test_read_meta_json_flag() {
     let temp_dir = TempDir::new().unwrap();
     create_test_skill_dir(&temp_dir);
 
-    let result =
-        run_fastskill_command(&["read", "meta-skill", "--meta", "--json"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["read", "meta-skill", "--meta", "--json"],
+        Some(temp_dir.path()),
+    );
 
-    assert!(result.success, "read --meta --json failed: {}", result.stderr);
+    assert!(
+        result.success,
+        "read --meta --json failed: {}",
+        result.stderr
+    );
     // Should be valid JSON containing id, name, version, description
     assert!(
         result.stdout.contains("\"meta-skill\"") || result.stdout.contains("meta-skill"),
@@ -339,8 +345,7 @@ fn test_read_locked_without_meta_fails() {
     )
     .unwrap();
 
-    let result =
-        run_fastskill_command(&["read", "some-skill", "--locked"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["read", "some-skill", "--locked"], Some(temp_dir.path()));
 
     assert!(!result.success, "read --locked without --meta should fail");
     assert!(
@@ -371,7 +376,11 @@ fn test_read_shorthand_streams_content() {
 
     // Test `fastskill read <id>`
     let result = run_fastskill_command(&["read", "shorthand-skill"], Some(temp_dir.path()));
-    assert!(result.success, "read shorthand-skill failed: {}", result.stderr);
+    assert!(
+        result.success,
+        "read shorthand-skill failed: {}",
+        result.stderr
+    );
     assert!(
         result.stdout.contains("Body content here"),
         "Expected SKILL.md body in output, got: {}",

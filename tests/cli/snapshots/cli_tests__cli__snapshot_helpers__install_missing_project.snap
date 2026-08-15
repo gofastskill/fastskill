@@ -1,8 +1,8 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
-FastSkill [VERSION]
 Installing skills...
 
 Error: Configuration error: skill-project.toml not found in this directory or any parent. Create it at the top level of your workspace (e.g. run 'fastskill init' there), then run this command again.

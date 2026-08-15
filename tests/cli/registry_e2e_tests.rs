@@ -1,6 +1,17 @@
-//! E2E tests for sources (registry) commands
+//! E2E tests for `repos` (repository management) commands.
 //!
-//! These tests execute the CLI binary and verify actual behavior.
+//! These tests execute the CLI binary and verify actual behavior. They
+//! target scenarios that `tests/cli/repos_integration_tests.rs` does not
+//! already cover (its `test_repos_complete_workflow_matrix` walks a single
+//! happy-path sequence through add/list/info/update/test/refresh/skills/
+//! show/versions/remove for one `local`-type repository). The tests here
+//! were ported from the retired `sources`/`registry` top-level commands
+//! (see issue-#183 "cli-command-surface-redesign") onto their `repos`
+//! equivalents, keeping only cases that add coverage beyond that matrix:
+//! empty-state output, manifest-defined repositories (not added via the
+//! CLI), the `--priority`/`--branch` flags on `add`, the `git-marketplace`
+//! repo type, validation/duplicate/not-found error paths, and both the
+//! success and failure paths of `repos test` connectivity checks.
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -25,26 +36,23 @@ async fn start_mock_server_or_skip() -> Option<MockServer> {
 }
 
 #[test]
-fn test_sources_list_empty() {
+fn test_repos_list_empty() {
     let temp_dir = TempDir::new().unwrap();
 
-    let result = run_fastskill_command(&["sources", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("No repositories") || result.stdout.is_empty());
 
-    assert_snapshot_with_settings(
-        "sources_list_empty",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
+    assert_snapshot_with_settings("repos_list_empty", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
-fn test_sources_list_with_repositories() {
+fn test_repos_list_with_manifest_defined_repositories() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml with repositories
+    // Repositories declared directly in skill-project.toml (not added via
+    // `repos add`) must still be parsed and listed correctly.
     let project_content = r#"[dependencies]
 
 [tool.fastskill]
@@ -65,67 +73,33 @@ priority = 5
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
-    let result = run_fastskill_command(&["sources", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("local-skills") && result.stdout.contains("git-repo"));
 
     assert_snapshot_with_settings(
-        "sources_list_with_repos",
+        "repos_list_with_manifest_repos",
         &result.stdout,
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_add_local_repository() {
+fn test_repos_add_with_priority() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join("test-repo");
-    fs::create_dir_all(&skills_dir).unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
+    // `repos update --priority` is covered by the workflow matrix, but
+    // setting priority at `add` time is a separate code path.
     let result = run_fastskill_command(
         &[
-            "sources",
-            "add",
-            "test-repo",
-            "--repo-type",
-            "local",
-            skills_dir.to_str().unwrap(),
-        ],
-        Some(temp_dir.path()),
-    );
-
-    assert!(result.success);
-    assert!(result.stdout.contains("Added") || result.stdout.contains("test-repo"));
-
-    assert_snapshot_with_settings(
-        "sources_add_local",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_sources_add_with_priority() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Create skill-project.toml to establish project structure
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
-    )
-    .unwrap();
-
-    let result = run_fastskill_command(
-        &[
-            "sources",
+            "repos",
             "add",
             "priority-repo",
             "--repo-type",
@@ -138,29 +112,37 @@ fn test_sources_add_with_priority() {
     );
 
     assert!(result.success);
-    assert!(result.stdout.contains("Added") || result.stdout.contains("priority"));
+    assert!(result.stdout.contains("Added repository: priority-repo"));
+
+    let info = run_fastskill_command(
+        &["repos", "info", "priority-repo", "--json"],
+        Some(temp_dir.path()),
+    );
+    assert!(info.success);
+    assert!(info.stdout.contains("\"priority\": 10"));
 
     assert_snapshot_with_settings(
-        "sources_add_with_priority",
+        "repos_add_with_priority",
         &result.stdout,
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_add_git_marketplace() {
+fn test_repos_add_git_marketplace() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
+    // The workflow matrix only exercises the `local` repo type; verify the
+    // `git-marketplace` type (with `--branch`) is also wired up via `add`.
     let result = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "git-repo",
             "--repo-type",
@@ -173,17 +155,26 @@ fn test_sources_add_git_marketplace() {
     );
 
     assert!(result.success);
-    assert!(result.stdout.contains("Added") || result.stdout.contains("git-repo"));
+    assert!(result.stdout.contains("Added repository: git-repo"));
 
-    assert_snapshot_with_settings("sources_add_git", &result.stdout, &cli_snapshot_settings());
+    let info = run_fastskill_command(&["repos", "info", "git-repo"], Some(temp_dir.path()));
+    assert!(info.success);
+    assert!(info.stdout.contains("Type: git-marketplace"));
+    assert!(info.stdout.contains("Branch: main"));
+
+    assert_snapshot_with_settings(
+        "repos_add_git_marketplace",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
 }
 
 #[test]
-fn test_sources_add_validation_missing_url() {
+fn test_repos_add_validation_missing_url() {
     let temp_dir = TempDir::new().unwrap();
 
     let result = run_fastskill_command(
-        &["sources", "add", "missing-url", "--repo-type", "local"],
+        &["repos", "add", "missing-url", "--repo-type", "local"],
         Some(temp_dir.path()),
     );
 
@@ -191,27 +182,25 @@ fn test_sources_add_validation_missing_url() {
     assert!(result.stderr.contains("error") || result.stderr.contains("required"));
 
     assert_snapshot_with_settings(
-        "sources_add_missing_url",
+        "repos_add_missing_url",
         &format!("{}{}", result.stdout, result.stderr),
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_add_duplicate_name_error() {
+fn test_repos_add_duplicate_name_error() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
-    // Add first repository
     let result1 = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "duplicate-repo",
             "--repo-type",
@@ -222,10 +211,9 @@ fn test_sources_add_duplicate_name_error() {
     );
     assert!(result1.success);
 
-    // Try to add second repository with same name
     let result2 = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "duplicate-repo",
             "--repo-type",
@@ -236,90 +224,47 @@ fn test_sources_add_duplicate_name_error() {
     );
 
     assert!(!result2.success);
-    assert!(result2.stderr.contains("error") || result2.stderr.contains("already exists"));
+    assert!(result2.stderr.contains("already exists"));
 
     assert_snapshot_with_settings(
-        "sources_add_duplicate",
+        "repos_add_duplicate",
         &format!("{}{}", result2.stdout, result2.stderr),
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_remove_existing_repo() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Create skill-project.toml to establish project structure
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
-    )
-    .unwrap();
-
-    // Add a repository first
-    let add_result = run_fastskill_command(
-        &[
-            "sources",
-            "add",
-            "removable-repo",
-            "--repo-type",
-            "local",
-            "/tmp/test",
-        ],
-        Some(temp_dir.path()),
-    );
-    assert!(add_result.success);
-
-    // Remove the repository
-    let result = run_fastskill_command(
-        &["sources", "remove", "removable-repo"],
-        Some(temp_dir.path()),
-    );
-
-    assert!(result.success);
-    assert!(result.stdout.contains("Removed") || result.stdout.contains("removable-repo"));
-
-    assert_snapshot_with_settings(
-        "sources_remove_success",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_sources_remove_nonexistent_error() {
+fn test_repos_remove_nonexistent_error() {
     let temp_dir = TempDir::new().unwrap();
 
     let result = run_fastskill_command(
-        &["sources", "remove", "nonexistent-repo"],
+        &["repos", "remove", "nonexistent-repo"],
         Some(temp_dir.path()),
     );
 
     assert!(!result.success);
-    assert!(result.stderr.contains("error") || result.stderr.contains("not found"));
+    assert!(result.stderr.contains("not found"));
 
     assert_snapshot_with_settings(
-        "sources_remove_nonexistent",
+        "repos_remove_nonexistent",
         &format!("{}{}", result.stdout, result.stderr),
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_show_repository_details() {
+fn test_repos_info_repository_details() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
-    // Add a repository first
     let add_result = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "showable-repo",
             "--repo-type",
@@ -332,35 +277,32 @@ fn test_sources_show_repository_details() {
     );
     assert!(add_result.success);
 
-    // Show repository details
-    let result =
-        run_fastskill_command(&["sources", "show", "showable-repo"], Some(temp_dir.path()));
+    // Text-mode `repos info` (the matrix only exercises `--json` mode).
+    let result = run_fastskill_command(&["repos", "info", "showable-repo"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("showable-repo") && result.stdout.contains("git-marketplace"));
 
     assert_snapshot_with_settings(
-        "sources_show_details",
+        "repos_info_details",
         &result.stdout,
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_update_branch() {
+fn test_repos_update_branch() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
-    // Add a repository first
     let add_result = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "updateable-repo",
             "--repo-type",
@@ -373,100 +315,54 @@ fn test_sources_update_branch() {
     );
     assert!(add_result.success);
 
-    // Update repository branch
+    // The matrix only exercises `repos update --priority`; verify
+    // `--branch` updates independently.
     let result = run_fastskill_command(
-        &[
-            "sources",
-            "update",
-            "updateable-repo",
-            "--branch",
-            "develop",
-        ],
+        &["repos", "update", "updateable-repo", "--branch", "develop"],
         Some(temp_dir.path()),
     );
 
     assert!(result.success);
-    assert!(result.stdout.contains("Updated") || result.stdout.contains("develop"));
+    assert!(result
+        .stdout
+        .contains("Updated repository: updateable-repo"));
+
+    let info = run_fastskill_command(&["repos", "info", "updateable-repo"], Some(temp_dir.path()));
+    assert!(info.success);
+    assert!(info.stdout.contains("Branch: develop"));
 
     assert_snapshot_with_settings(
-        "sources_update_branch",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_sources_update_priority() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Create skill-project.toml to establish project structure
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
-    )
-    .unwrap();
-
-    // Add a repository first
-    let add_result = run_fastskill_command(
-        &[
-            "sources",
-            "add",
-            "priority-update-repo",
-            "--repo-type",
-            "local",
-            "/tmp/test",
-        ],
-        Some(temp_dir.path()),
-    );
-    assert!(add_result.success);
-
-    // Update repository priority
-    let result = run_fastskill_command(
-        &[
-            "sources",
-            "update",
-            "priority-update-repo",
-            "--priority",
-            "15",
-        ],
-        Some(temp_dir.path()),
-    );
-
-    assert!(result.success);
-    assert!(result.stdout.contains("Updated") || result.stdout.contains("15"));
-
-    assert_snapshot_with_settings(
-        "sources_update_priority",
+        "repos_update_branch",
         &result.stdout,
         &cli_snapshot_settings(),
     );
 }
 
 #[tokio::test]
-async fn test_sources_test_connectivity() {
+async fn test_repos_test_connectivity_reachable() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
     )
     .unwrap();
 
-    // Mock server for testing
+    // The matrix's `repos test` only covers a `local`-type repository,
+    // which never makes a network call. Exercise the real HTTP-registry
+    // reachable path here.
     let Some(mock_server) = start_mock_server_or_skip().await else {
         return;
     };
     Mock::given(method("GET"))
-        .and(path("/api/registry/index/skills"))
+        .and(path("/api/v1/registry/index/skills"))
         .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
         .mount(&mock_server)
         .await;
 
-    // Add a mock repository that references the mock server
     let add_result = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "testable-repo",
             "--repo-type",
@@ -477,25 +373,26 @@ async fn test_sources_test_connectivity() {
     );
     assert!(add_result.success);
 
-    // Test repository connectivity
-    let result =
-        run_fastskill_command(&["sources", "test", "testable-repo"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repos", "test", "testable-repo"], Some(temp_dir.path()));
 
-    assert!(result.success);
-    assert!(result.stdout.contains("reachable") || result.stdout.contains("OK"));
+    assert!(
+        result.success,
+        "repos test failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(result.stdout.contains("accessible"));
 
     assert_snapshot_with_settings(
-        "sources_test_connectivity",
+        "repos_test_connectivity",
         &result.stdout,
         &cli_snapshot_settings(),
     );
 }
 
 #[test]
-fn test_sources_test_unreachable_error() {
+fn test_repos_test_unreachable_error() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create skill-project.toml to establish project structure
     fs::write(
         temp_dir.path().join("skill-project.toml"),
         "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
@@ -504,7 +401,7 @@ fn test_sources_test_unreachable_error() {
 
     let result = run_fastskill_command(
         &[
-            "sources",
+            "repos",
             "add",
             "unreachable-repo",
             "--repo-type",
@@ -515,112 +412,17 @@ fn test_sources_test_unreachable_error() {
     );
     assert!(result.success);
 
-    // Test unreachable repository
     let test_result = run_fastskill_command(
-        &["sources", "test", "unreachable-repo"],
+        &["repos", "test", "unreachable-repo"],
         Some(temp_dir.path()),
     );
 
     assert!(!test_result.success);
-    assert!(
-        test_result.stderr.contains("error") || test_result.stderr.contains("Failed to connect")
-    );
+    assert!(test_result.stderr.contains("error") || test_result.stderr.contains("test failed"));
 
     assert_snapshot_with_settings(
-        "sources_test_unreachable",
+        "repos_test_unreachable",
         &format!("{}{}", test_result.stdout, test_result.stderr),
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_sources_refresh_single_repo() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Create skill-project.toml to establish project structure
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
-    )
-    .unwrap();
-
-    // Add a repository first
-    let add_result = run_fastskill_command(
-        &[
-            "sources",
-            "add",
-            "refreshable-repo",
-            "--repo-type",
-            "local",
-            "/tmp/test",
-        ],
-        Some(temp_dir.path()),
-    );
-    assert!(add_result.success);
-
-    // Refresh single repository
-    let result = run_fastskill_command(
-        &["sources", "refresh", "refreshable-repo"],
-        Some(temp_dir.path()),
-    );
-
-    assert!(result.success);
-    assert!(result.stdout.contains("Refreshed") || result.stdout.contains("refreshable-repo"));
-
-    assert_snapshot_with_settings(
-        "sources_refresh_single",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_sources_refresh_all_repos() {
-    let temp_dir = TempDir::new().unwrap();
-
-    // Create skill-project.toml to establish project structure
-    fs::write(
-        temp_dir.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".cursor/skills\"\n",
-    )
-    .unwrap();
-
-    // Add multiple repositories
-    let add_result1 = run_fastskill_command(
-        &[
-            "sources",
-            "add",
-            "repo1",
-            "--repo-type",
-            "local",
-            "/tmp/test1",
-        ],
-        Some(temp_dir.path()),
-    );
-    assert!(add_result1.success);
-
-    let add_result2 = run_fastskill_command(
-        &[
-            "sources",
-            "add",
-            "repo2",
-            "--repo-type",
-            "local",
-            "/tmp/test2",
-        ],
-        Some(temp_dir.path()),
-    );
-    assert!(add_result2.success);
-
-    // Refresh all repositories
-    let result = run_fastskill_command(&["sources", "refresh"], Some(temp_dir.path()));
-
-    assert!(result.success);
-    assert!(result.stdout.contains("Refreshed") || result.stdout.contains("repositories"));
-
-    assert_snapshot_with_settings(
-        "sources_refresh_all",
-        &result.stdout,
         &cli_snapshot_settings(),
     );
 }

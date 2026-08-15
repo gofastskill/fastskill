@@ -1,9 +1,9 @@
 //! Unit tests for TOML parsing, serialization, and context detection
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use fastskill::core::manifest::{
-    DependenciesSection, DependencySource, DependencySpec, FastSkillToolConfig, MetadataSection,
-    ProjectContext, SkillProjectToml, ToolSection,
+use fastskill_core::core::manifest::{
+    DependenciesSection, DependencySpec, FastSkillToolConfig, MetadataSection, ProjectContext,
+    SkillProjectToml, ToolSection,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ fn test_toml_parsing_with_dependencies() {
     let toml_content = r#"
 [dependencies]
 web-scraper = "1.0.0"
-dev-tools = { source = "git", url = "https://github.com/org/dev-tools.git" }
+dev-tools = { origin = { type = "git", url = "https://github.com/org/dev-tools.git" } }
 "#;
 
     let project: SkillProjectToml = toml::from_str(toml_content).unwrap();
@@ -78,7 +78,7 @@ fn test_context_detection_skill_level() {
         tool: None,
     };
 
-    let context = fastskill::core::project::detect_context_from_content(&project);
+    let context = fastskill_core::core::project::detect_context_from_content(&project);
     assert_eq!(context, ProjectContext::Skill);
 }
 
@@ -96,7 +96,7 @@ fn test_context_detection_project_level() {
         tool: None,
     };
 
-    let context = fastskill::core::project::detect_context_from_content(&project);
+    let context = fastskill_core::core::project::detect_context_from_content(&project);
     assert_eq!(context, ProjectContext::Project);
 }
 
@@ -108,7 +108,7 @@ fn test_context_detection_ambiguous() {
         tool: None,
     };
 
-    let context = fastskill::core::project::detect_context_from_content(&project);
+    let context = fastskill_core::core::project::detect_context_from_content(&project);
     assert_eq!(context, ProjectContext::Ambiguous);
 }
 
@@ -171,6 +171,7 @@ fn test_validation_project_level() {
                 install_depth: 5,
                 skip_transitive: false,
                 eval: None,
+                auto_reindex: true,
             }),
         }),
     };
@@ -198,8 +199,8 @@ fn test_reading_dependencies_from_skill_project_toml() {
     let toml_content = r#"
 [dependencies]
 web-scraper = "1.0.0"
-dev-tools = { source = "git", url = "https://github.com/org/dev-tools.git" }
-monitoring = { source = "local", path = "./local-skills/monitoring" }
+dev-tools = { origin = { type = "git", url = "https://github.com/org/dev-tools.git" } }
+monitoring = { origin = { type = "local", path = "./local-skills/monitoring" } }
 "#;
 
     let project: SkillProjectToml = toml::from_str(toml_content).unwrap();
@@ -219,8 +220,11 @@ monitoring = { source = "local", path = "./local-skills/monitoring" }
     }
 
     // Check git dependency
-    if let DependencySpec::Inline { source, .. } = deps.dependencies.get("dev-tools").unwrap() {
-        assert!(matches!(source, DependencySource::Git));
+    if let DependencySpec::Inline { origin, .. } = deps.dependencies.get("dev-tools").unwrap() {
+        assert!(matches!(
+            origin,
+            fastskill_core::core::origin::Origin::Git { .. }
+        ));
     } else {
         panic!("Expected inline dependency for dev-tools");
     }
@@ -258,14 +262,14 @@ branch = "main"
     assert_eq!(registry_repo.priority, 1);
     assert!(matches!(
         registry_repo.r#type,
-        fastskill::core::manifest::RepositoryType::HttpRegistry
+        fastskill_core::core::manifest::RepositoryType::HttpRegistry
     ));
 
     let git_repo = repos.iter().find(|r| r.name == "git-marketplace").unwrap();
     assert_eq!(git_repo.priority, 2);
     assert!(matches!(
         git_repo.r#type,
-        fastskill::core::manifest::RepositoryType::GitMarketplace
+        fastskill_core::core::manifest::RepositoryType::GitMarketplace
     ));
 }
 
@@ -300,7 +304,7 @@ download_url = "https://example.com/skill.zip"
 /// T036: Test skill-level context detection
 #[test]
 fn test_skill_level_context_detection() {
-    use fastskill::core::project::detect_context;
+    use fastskill_core::core::project::detect_context;
     use std::fs;
     use tempfile::TempDir;
 
@@ -330,8 +334,8 @@ version = "1.0.0"
 /// T045: Test ambiguous context detection
 #[test]
 fn test_ambiguous_context_detection() {
-    use fastskill::core::manifest::SkillProjectToml;
-    use fastskill::core::project::detect_context_from_content;
+    use fastskill_core::core::manifest::SkillProjectToml;
+    use fastskill_core::core::project::detect_context_from_content;
 
     // Empty project - should be ambiguous
     let project = SkillProjectToml {
@@ -345,7 +349,7 @@ fn test_ambiguous_context_detection() {
 
     // Project with empty metadata and empty dependencies - ambiguous
     let project = SkillProjectToml {
-        metadata: Some(fastskill::core::manifest::MetadataSection {
+        metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: None,
             version: None,
             description: None,
@@ -353,7 +357,7 @@ fn test_ambiguous_context_detection() {
             download_url: None,
             name: None,
         }),
-        dependencies: Some(fastskill::core::manifest::DependenciesSection {
+        dependencies: Some(fastskill_core::core::manifest::DependenciesSection {
             dependencies: std::collections::HashMap::new(),
         }),
         tool: None,
@@ -366,13 +370,13 @@ fn test_ambiguous_context_detection() {
 /// T046: Test content-based context resolution
 #[test]
 fn test_content_based_context_resolution() {
-    use fastskill::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
-    use fastskill::core::project::detect_context_from_content;
+    use fastskill_core::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+    use fastskill_core::core::project::detect_context_from_content;
     use std::collections::HashMap;
 
     // Project with metadata.id - should resolve to Skill
     let project = SkillProjectToml {
-        metadata: Some(fastskill::core::manifest::MetadataSection {
+        metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
             description: None,
@@ -409,7 +413,7 @@ fn test_content_based_context_resolution() {
         DependencySpec::Version("1.0.0".to_string()),
     );
     let project = SkillProjectToml {
-        metadata: Some(fastskill::core::manifest::MetadataSection {
+        metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
             description: None,
@@ -428,7 +432,7 @@ fn test_content_based_context_resolution() {
 /// T061: Test malformed TOML error messages
 #[test]
 fn test_malformed_toml_error_messages() {
-    use fastskill::core::manifest::SkillProjectToml;
+    use fastskill_core::core::manifest::SkillProjectToml;
     use std::fs;
     use tempfile::TempDir;
 
@@ -481,7 +485,7 @@ version = [invalid]
 /// T062: Test missing required sections error
 #[test]
 fn test_missing_required_sections_error() {
-    use fastskill::core::manifest::{ProjectContext, SkillProjectToml};
+    use fastskill_core::core::manifest::{ProjectContext, SkillProjectToml};
     use std::fs;
     use tempfile::TempDir;
 
@@ -548,89 +552,63 @@ name = "My Project"
     );
 }
 
-/// T073: Verify all dependency source types work (git, local, zip-url, source)
+/// T073: Verify all origin variants work (git, local, zip-url, repository)
+/// Rewritten for the Origin model (ADR-0005), which replaced the old
+/// `DependencySource`/`SourceSpecificFields` flat-field representation.
 #[test]
 fn test_all_dependency_source_types() {
-    use fastskill::core::manifest::{
-        DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
-        SourceSpecificFields,
-    };
+    use fastskill_core::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+    use fastskill_core::core::origin::{GitRef, Origin};
+    use fastskill_core::core::version::VersionConstraint;
     use std::collections::HashMap;
 
-    // Test git source
+    // Test git origin
     let mut deps = HashMap::new();
     deps.insert(
         "git-skill".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Git,
-            source_specific: SourceSpecificFields {
-                url: Some("https://github.com/org/git-skill.git".to_string()),
-                branch: Some("main".to_string()),
-                path: None,
-                name: None,
-                skill: None,
-                zip_url: None,
-                version: None,
+            origin: Origin::Git {
+                url: "https://github.com/org/git-skill.git".to_string(),
+                r#ref: GitRef::Branch("main".to_string()),
+                subdir: None,
             },
             groups: None,
-            editable: None,
         },
     );
 
-    // Test local source
+    // Test local origin (editable)
     deps.insert(
         "local-skill".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Local,
-            source_specific: SourceSpecificFields {
-                url: None,
-                branch: None,
-                path: Some("/path/to/local/skill".to_string()),
-                name: None,
-                skill: None,
-                zip_url: None,
-                version: None,
+            origin: Origin::Local {
+                path: PathBuf::from("/path/to/local/skill"),
+                editable: true,
             },
             groups: None,
-            editable: Some(true),
         },
     );
 
-    // Test zip-url source
+    // Test zip-url origin
     deps.insert(
         "zip-skill".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::ZipUrl,
-            source_specific: SourceSpecificFields {
-                url: None,
-                branch: None,
-                path: None,
-                name: None,
-                skill: None,
-                zip_url: Some("https://example.com/skill.zip".to_string()),
-                version: Some("1.0.0".to_string()),
+            origin: Origin::ZipUrl {
+                url: "https://example.com/skill.zip".to_string(),
             },
             groups: None,
-            editable: None,
         },
     );
 
-    // Test source source
+    // Test repository-backed origin (formerly the "source" source type)
     deps.insert(
         "source-skill".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Source,
-            source_specific: SourceSpecificFields {
-                url: None,
-                branch: None,
-                path: None,
-                name: Some("registry-name".to_string()),
-                skill: Some("skill-id".to_string()),
-                zip_url: None,
-                version: Some("1.0.0".to_string()),
+            origin: Origin::Repository {
+                repo: "registry-name".to_string(),
+                skill: "skill-id".to_string(),
+                version: Some(VersionConstraint::parse("1.0.0").unwrap()),
             },
             groups: None,
-            editable: None,
         },
     );
 
@@ -644,43 +622,36 @@ fn test_all_dependency_source_types() {
     let entries = project.to_skill_entries().unwrap();
     assert_eq!(entries.len(), 4);
 
-    // Verify git source
+    // Verify git origin
     let git_entry = entries.iter().find(|e| e.id == "git-skill").unwrap();
-    assert!(matches!(
-        git_entry.source,
-        fastskill::core::manifest::SkillSource::Git { .. }
-    ));
+    assert!(matches!(git_entry.origin, Origin::Git { .. }));
 
-    // Verify local source
+    // Verify local origin (editable now lives on Origin::Local itself)
     let local_entry = entries.iter().find(|e| e.id == "local-skill").unwrap();
-    assert!(matches!(
-        local_entry.source,
-        fastskill::core::manifest::SkillSource::Local { .. }
-    ));
-    assert!(local_entry.editable);
+    if let Origin::Local { editable, .. } = &local_entry.origin {
+        assert!(*editable);
+    } else {
+        panic!("Expected Origin::Local for local-skill");
+    }
 
-    // Verify zip-url source
+    // Verify zip-url origin
     let zip_entry = entries.iter().find(|e| e.id == "zip-skill").unwrap();
-    assert!(matches!(
-        zip_entry.source,
-        fastskill::core::manifest::SkillSource::ZipUrl { .. }
-    ));
+    assert!(matches!(zip_entry.origin, Origin::ZipUrl { .. }));
 
-    // Verify source source
+    // Verify repository origin
     let source_entry = entries.iter().find(|e| e.id == "source-skill").unwrap();
-    assert!(matches!(
-        source_entry.source,
-        fastskill::core::manifest::SkillSource::Source { .. }
-    ));
+    assert!(matches!(source_entry.origin, Origin::Repository { .. }));
 }
 
-/// T074: Verify dependency groups and editable installs work
+/// T074: Verify dependency groups and editable installs work.
+/// Rewritten for the Origin model: `editable` now lives only on
+/// `Origin::Local` (a git origin has no editable concept at all), and
+/// `SkillEntry` no longer carries a standalone `source`/`editable` field —
+/// both are read off `entry.origin`.
 #[test]
 fn test_dependency_groups_and_editable_installs() {
-    use fastskill::core::manifest::{
-        DependenciesSection, DependencySource, DependencySpec, SkillProjectToml,
-        SourceSpecificFields,
-    };
+    use fastskill_core::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+    use fastskill_core::core::origin::{GitRef, Origin};
     use std::collections::HashMap;
 
     let mut deps = HashMap::new();
@@ -689,18 +660,12 @@ fn test_dependency_groups_and_editable_installs() {
     deps.insert(
         "dev-tool".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Git,
-            source_specific: SourceSpecificFields {
-                url: Some("https://github.com/org/dev-tool.git".to_string()),
-                branch: None,
-                path: None,
-                name: None,
-                skill: None,
-                zip_url: None,
-                version: None,
+            origin: Origin::Git {
+                url: "https://github.com/org/dev-tool.git".to_string(),
+                r#ref: GitRef::Default,
+                subdir: None,
             },
             groups: Some(vec!["dev".to_string(), "testing".to_string()]),
-            editable: None,
         },
     );
 
@@ -708,18 +673,11 @@ fn test_dependency_groups_and_editable_installs() {
     deps.insert(
         "editable-skill".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Local,
-            source_specific: SourceSpecificFields {
-                url: None,
-                branch: None,
-                path: Some("/path/to/editable".to_string()),
-                name: None,
-                skill: None,
-                zip_url: None,
-                version: None,
+            origin: Origin::Local {
+                path: PathBuf::from("/path/to/editable"),
+                editable: true,
             },
             groups: Some(vec!["dev".to_string()]),
-            editable: Some(true),
         },
     );
 
@@ -727,18 +685,11 @@ fn test_dependency_groups_and_editable_installs() {
     deps.insert(
         "full-featured".to_string(),
         DependencySpec::Inline {
-            source: DependencySource::Local,
-            source_specific: SourceSpecificFields {
-                url: None,
-                branch: None,
-                path: Some("/path/to/full".to_string()),
-                name: None,
-                skill: None,
-                zip_url: None,
-                version: None,
+            origin: Origin::Local {
+                path: PathBuf::from("/path/to/full"),
+                editable: true,
             },
             groups: Some(vec!["dev".to_string(), "optional".to_string()]),
-            editable: Some(true),
         },
     );
 
@@ -756,17 +707,26 @@ fn test_dependency_groups_and_editable_installs() {
     assert_eq!(dev_tool.groups.len(), 2);
     assert!(dev_tool.groups.contains(&"dev".to_string()));
     assert!(dev_tool.groups.contains(&"testing".to_string()));
-    assert!(!dev_tool.editable);
+    // Git origins have no editable concept at all (editable is Origin::Local-only).
+    assert!(matches!(dev_tool.origin, Origin::Git { .. }));
 
     // Verify editable
     let editable_skill = entries.iter().find(|e| e.id == "editable-skill").unwrap();
-    assert!(editable_skill.editable);
+    if let Origin::Local { editable, .. } = &editable_skill.origin {
+        assert!(*editable);
+    } else {
+        panic!("Expected Origin::Local for editable-skill");
+    }
     assert_eq!(editable_skill.groups.len(), 1);
     assert!(editable_skill.groups.contains(&"dev".to_string()));
 
     // Verify both groups and editable
     let full_featured = entries.iter().find(|e| e.id == "full-featured").unwrap();
-    assert!(full_featured.editable);
+    if let Origin::Local { editable, .. } = &full_featured.origin {
+        assert!(*editable);
+    } else {
+        panic!("Expected Origin::Local for full-featured");
+    }
     assert_eq!(full_featured.groups.len(), 2);
     assert!(full_featured.groups.contains(&"dev".to_string()));
     assert!(full_featured.groups.contains(&"optional".to_string()));
@@ -775,7 +735,9 @@ fn test_dependency_groups_and_editable_installs() {
 /// T063: Test repository priority conflict resolution (first occurrence wins)
 #[test]
 fn test_repository_priority_conflict_resolution() {
-    use fastskill::core::manifest::{RepositoryConnection, RepositoryDefinition, SkillProjectToml};
+    use fastskill_core::core::manifest::{
+        RepositoryConnection, RepositoryDefinition, SkillProjectToml,
+    };
 
     // Create skill-project.toml with duplicate repository names
     let toml_content = r#"

@@ -1,29 +1,29 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
 Run eval cases against an agent
 
-Usage: fastskill eval run [OPTIONS] --output-dir <OUTPUT_DIR>
+Usage: fastskill eval run [OPTIONS] --output-dir <output-dir>
 
 Options:
-  -a, --agent <AGENT>            Target runtime(s) for this operation; repeatable (mutually exclusive with --all)
-      --all                      Target all runtimes discovered by aikit (mutually exclusive with --agent)
-      --output-dir <OUTPUT_DIR>  Output directory for artifacts (required)
-      --model <MODEL>            Optional model override forwarded to the agent
-      --case <CASE>              Filter: run only the case with this ID
-      --tag <TAG>                Filter: run only cases with this tag
-      --format <FORMAT>          Output format: table, json, grid, xml
+  -a, --agent <agent>            Target runtime(s); repeatable (mutually exclusive with --all)
+      --skills-dir <skills-dir>  Override the skills directory path
+      --all                      Target all runtimes (mutually exclusive with --agent)
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --output-dir <output-dir>  Output directory for artifacts (required)
+  -v, --verbose                  Enable verbose output
+      --model <model>            Optional model override forwarded to the agent
+      --case <case>              Filter: run only the case with this ID
+      --tag <tag>                Filter: run only cases with this tag
+      --format <format>          Output format: table, json
       --json                     Shorthand for --format json
       --no-fail                  Do not fail with non-zero exit code on suite failure
-      --trials <TRIALS>          Override trials per case from config
-      --ci                       Enable CI mode: exit non-zero if suite pass rate below threshold
-      --threshold <THRESHOLD>    Override pass threshold (0.0-1.0)
+      --trials <trials>          Override trials per case from config (1-1000)
+      --ci                       CI mode: pass/fail on suite pass rate vs threshold
+      --threshold <threshold>    Override pass threshold (0.0-1.0)
   -h, --help                     Print help
+  -V, --version                  Print version
 
-Examples:
-  fastskill eval run --agent codex --output-dir [TEMP_DIR]
-  fastskill eval run --agent codex --agent claude --output-dir [TEMP_DIR]
-  fastskill eval run --all --output-dir [TEMP_DIR]
-  fastskill eval run --agent agent --output-dir ./evals --case my-case
-  fastskill eval run --agent codex --output-dir ./evals --tag basic
+Syntax: eval run [OPTIONS]

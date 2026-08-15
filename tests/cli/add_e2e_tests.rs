@@ -27,7 +27,7 @@ fn test_add_from_folder_no_verbose_shows_compatibility_warning() {
     .unwrap();
 
     let fixture_skill =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cli/fixtures/minimal-skill");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/minimal-skill");
     let result = run_fastskill_command(
         &["add", fixture_skill.to_str().unwrap(), "--force"],
         Some(temp_dir.path()),
@@ -53,7 +53,7 @@ fn test_add_from_folder_verbose_shows_compatibility_warning() {
     .unwrap();
 
     let fixture_skill =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cli/fixtures/minimal-skill");
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/minimal-skill");
     // --verbose is a global flag, must come before subcommand
     let result = run_fastskill_command(
         &[

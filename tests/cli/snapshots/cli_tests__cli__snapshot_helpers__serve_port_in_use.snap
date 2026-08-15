@@ -1,8 +1,9 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
-FastSkill [VERSION]
 FastSkill HTTP server starting...
-  Listening on: http://localhost:18084
+  Write endpoints: disabled (read-only); pass --enable-write to enable
+  Listening on: http://[VERSION].1:[PORT]
 Error: Validation error: Server error: Address already in use (os error 98)

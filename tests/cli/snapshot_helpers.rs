@@ -3,7 +3,6 @@
 //! This module provides common patterns for testing CLI commands with snapshots,
 //! including normalization of dynamic content like paths, timestamps, and version numbers.
 
-use std::path::Path;
 use std::process::Command;
 
 /// Result of running a CLI command
@@ -20,30 +19,18 @@ pub struct SnapshotSettings {
     pub normalize_timestamps: bool,
 }
 
-/// Candidate paths for the fastskill binary, in resolution order.
-/// `llvm-cov-target` is used by cargo-llvm-cov when collecting coverage.
-fn binary_path_candidates(manifest_dir: &str) -> [String; 3] {
-    [
-        format!("{}/target/llvm-cov-target/debug/fastskill", manifest_dir),
-        format!("{}/target/debug/fastskill", manifest_dir),
-        format!("{}/target/release/fastskill", manifest_dir),
-    ]
-}
-
 /// Get the path to the fastskill binary for testing.
-/// Resolves under coverage (llvm-cov-target), debug, and release builds.
+///
+/// Uses `CARGO_BIN_EXE_fastskill`, which Cargo sets at compile time for
+/// integration tests to the exact path of the `fastskill` bin target as
+/// built for the active profile (debug/release/llvm-cov-target/...). This
+/// crate's tests now live under `crates/fastskill-cli` while `target/` is
+/// shared at the workspace root, so hand-rolling `{manifest_dir}/target/...`
+/// silently resolves to a path that never exists (silently falling back to
+/// `cargo run`, which is slow and pollutes captured stdout/stderr with build
+/// output). `CARGO_BIN_EXE_*` sidesteps that entirely.
 pub fn get_binary_path() -> String {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    for path in &binary_path_candidates(manifest_dir) {
-        if Path::new(path).exists() {
-            #[cfg(test)]
-            println!("DEBUG: Using binary at: {}", path);
-            return path.clone();
-        }
-    }
-    #[cfg(test)]
-    println!("DEBUG: No binary found, using cargo fallback");
-    "cargo".to_string()
+    env!("CARGO_BIN_EXE_fastskill").to_string()
 }
 
 /// Run a fastskill command and return the result
@@ -191,7 +178,7 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
     // Normalize network-dependent git and socket errors to keep snapshots stable
     // across environments with different DNS/network policies.
     result = regex::Regex::new(
-        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+WARN fastskill::storage::git: Git operation failed with network error.*\n?",
+        r"(?m)^(?:\[TIMESTAMP\]|\d{4}-\d{2}-\d{2}T[^\s]*)\s+WARN fastskill_core::storage::git: Git operation failed with network error.*\n?",
     )
     .unwrap()
     .replace_all(&result, "")

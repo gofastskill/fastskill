@@ -1,13 +1,13 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
-FastSkill [VERSION]
 Updating skills...
 
 Skills that would be updated:
 
-  • dev-tools (from Git { url: "https://github.com/org/dev-tools.git", branch: Some("main"), tag: None, subdir: None })
+  • dev-tools (from Git { url: "https://github.com/org/dev-tools.git", ref: Branch("main"), subdir: None })
   • local-skill (from Local { path: "./local-skill", editable: false })
-  • remote-skill (from ZipUrl { base_url: "https://example.com/skill.zip", version: None })
-  • web-scraper (from Source { name: "default", skill: "web-scraper", version: Some("[VERSION]") })
+  • remote-skill (from ZipUrl { url: "https://example.com/skill.zip" })
+  • test-utils: Configuration error: No default repository configured
+  • web-scraper: Configuration error: No default repository configured

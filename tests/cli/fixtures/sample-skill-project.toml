@@ -3,20 +3,22 @@ name = "test-project"
 version = "1.0.0"
 
 [dependencies]
-# Registry-based dependency
-web-scraper = "1.2.3"
+# Registry-based dependency (main group)
+web-scraper = { origin = { type = "repository", repo = "default", skill = "web-scraper", version = "1.2.3" }, groups = ["main"] }
 
-# Git-based dependency
-dev-tools = { source = "git", url = "https://github.com/org/dev-tools.git", branch = "main" }
+# Git-based dependency (main group)
+dev-tools = { origin = { type = "git", url = "https://github.com/org/dev-tools.git", ref = { branch = "main" } }, groups = ["main"] }
 
-# Local path dependency
-local-skill = { source = "local", path = "./local-skill" }
+# Local path dependency (main group)
+local-skill = { origin = { type = "local", path = "./local-skill" }, groups = ["main"] }
 
-# Zip URL dependency
-remote-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+# Zip URL dependency (main group)
+remote-skill = { origin = { type = "zip-url", url = "https://example.com/skill.zip" }, groups = ["main"] }
 
-[dev-dependencies]
-test-utils = "0.1.0"
+# Dev-only dependency, tagged via groups (poetry-style groups replaced the old
+# [dev-dependencies] section — see DependencySpec::Inline in
+# fastskill_core::core::manifest).
+test-utils = { origin = { type = "repository", repo = "default", skill = "test-utils", version = "0.1.0" }, groups = ["dev"] }
 
 [tool.fastskill]
 skills_directory = ".skills"

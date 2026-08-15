@@ -1,0 +1,97 @@
+# Known drift between webdocs/cli-reference/*.mdx and the real fastskill CLI
+# command surface (as reported by `fastskill spec --format json`), checked by
+# crates/fastskill-cli/tests/spec_docs_parity_test.rs.
+#
+# Each entry documents *why* the drift is allowed to stand rather than
+# failing CI. When you fix the underlying issue (edit the doc, or add/rename
+# the CLI command), remove the corresponding entry -- an allowlist entry for
+# drift that no longer exists is just dead weight, not a failure, but keep
+# this file honest.
+
+# ---------------------------------------------------------------------------
+# documented_but_missing: webdocs/cli-reference mentions a `fastskill <cmd>`
+# invocation that does not exist in the CLI surface.
+# ---------------------------------------------------------------------------
+
+[[documented_but_missing]]
+command = "version"
+reason = """
+webdocs/cli-reference/overview.mdx documents `fastskill version` as a real \
+subcommand (## Version Command / ### fastskill version, with example output \
+`fastskill 0.9.3`), but there is no `version` subcommand in the CLI -- only \
+the global `--version`/`-V` flag works. Confirmed 2026-08-15 by running \
+`./target/debug/fastskill version` against this checkout: it does NOT print \
+a version, it fails trying to load skill-project.toml (unknown top-level \
+subcommands fall through to the `read <skill-id>` route per \
+skill-commands.mdx's own note: "You can also run `fastskill <skill-id>` \
+with no subcommand; it routes to the same read behavior"). `fastskill \
+--version` does work and prints "fastskill 0.9.156". This is a doc bug, not \
+allowlisted-forever policy; fix by correcting overview.mdx to document \
+`fastskill --version` / `-V` instead of a `version` subcommand, then remove \
+this entry.
+"""
+
+# ---------------------------------------------------------------------------
+# implemented_but_undocumented: a real CLI command path is not mentioned
+# anywhere in webdocs/cli-reference/*.mdx.
+# ---------------------------------------------------------------------------
+#
+# All nine entries below are the full `mcp` and `optimize` command groups.
+# Verified 2026-08-15: neither group is mentioned anywhere under
+# webdocs/cli-reference/, but both ARE documented elsewhere in webdocs/ --
+# `mcp *` under webdocs/integration/*.mdx and webdocs/tool-calling/*.mdx,
+# `optimize *` under its own webdocs/optimize/*.mdx section (setup.mdx,
+# running.mdx, configuration.mdx, overview.mdx). This test only scans
+# webdocs/cli-reference/ (per its design brief), so these read as
+# "undocumented" even though they're not. If webdocs/cli-reference/ later
+# grows a dedicated mcp-command.mdx / optimize-command.mdx, remove the
+# corresponding entries below.
+
+[[implemented_but_undocumented]]
+command = "mcp install"
+reason = "Documented under webdocs/integration/*.mdx and webdocs/tool-calling/development.mdx, not webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "mcp list"
+reason = "Same mcp group as `mcp install` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "mcp register"
+reason = "Same mcp group as `mcp install` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "mcp serve"
+reason = "Same mcp group as `mcp install` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "optimize export"
+reason = "Documented under webdocs/optimize/*.mdx (setup.mdx, running.mdx, configuration.mdx, overview.mdx), not webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "optimize inspect"
+reason = "Same optimize group as `optimize export` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "optimize resume"
+reason = "Same optimize group as `optimize export` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "optimize run"
+reason = "Same optimize group as `optimize export` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "optimize status"
+reason = "Same optimize group as `optimize export` above; documented outside webdocs/cli-reference/."
+
+[[implemented_but_undocumented]]
+command = "spec"
+reason = """
+Verified 2026-08-15: `fastskill spec` (the cli-framework built-in that emits \
+this very command surface as JSON/YAML/Markdown -- what this test itself \
+shells out to) is not mentioned anywhere in webdocs/ at all, not just \
+webdocs/cli-reference/. Plausibly an intentional omission (it's a \
+machine-consumption/introspection command, not something an end user reads \
+docs for), but that's an editorial call for the docs owners, not something \
+to silently paper over here -- so it's allowlisted with this explanation \
+rather than left to fail CI. If/when it's documented, remove this entry.
+"""

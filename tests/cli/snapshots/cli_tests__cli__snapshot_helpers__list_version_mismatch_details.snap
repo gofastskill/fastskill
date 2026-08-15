@@ -1,9 +1,9 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 262
 expression: normalized
 ---
-FastSkill [VERSION]
 
-ID          Name        Description  Version  Manifest  Lock  Installed  Source Path                                         Type  Flags            
-----------------------------------------------------------------------------------------------------------------------------------------------------
-test-skill  test-skill  Test skill   [VERSION]    Y         -     Y          [TEMP_DIR]  -     missing from lock
+ID          Name        Description  Version  Manifest  Lock  Installed  Source Path                                         Type   Flags            
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+test-skill  test-skill  Test skill   [VERSION]    Y         -     Y          [TEMP_DIR]  local  missing from lock

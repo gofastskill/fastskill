@@ -2,7 +2,7 @@
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
-use fastskill::{VectorIndexService, VectorIndexServiceImpl};
+use fastskill_core::{VectorIndexService, VectorIndexServiceImpl};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;

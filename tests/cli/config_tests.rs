@@ -11,30 +11,13 @@ use super::snapshot_helpers::{
 use std::env;
 use tempfile::TempDir;
 
-#[test]
-fn test_cli_repositories_path_argument() {
-    let temp_dir = TempDir::new().unwrap();
-    let repos_path = temp_dir.path().join("repositories.toml");
-    std::fs::write(&repos_path, "# Test repositories file").unwrap();
-
-    // Test that --repositories-path argument is accepted
-    let result = run_fastskill_command(
-        &[
-            "--repositories-path",
-            &repos_path.to_string_lossy(),
-            "--help",
-        ],
-        None,
-    );
-
-    // Should succeed (even with --help, --repositories-path should be parsed)
-    assert!(result.success);
-    assert_snapshot_with_settings(
-        "cli_repositories_path_argument",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
+// `--repositories-path` is no longer a registered global flag (grep of
+// crates/fastskill-cli/src/{main,registration,arg_helpers}.rs finds no trace
+// of it; only `--skills-dir`/`--global`/`--verbose` are wired up today).
+// Passing it now falls through to the `read`-shorthand unknown-token path in
+// main.rs, so `test_cli_repositories_path_argument` and
+// `test_cli_invalid_repositories_path` were exercising a removed flag —
+// deleted rather than adapted since there is no current equivalent.
 
 #[test]
 fn test_cli_with_env_var() {
@@ -106,23 +89,6 @@ fn test_cli_directory_walking() {
     assert!(result.success);
     assert_snapshot_with_settings(
         "cli_directory_walking",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
-}
-
-#[test]
-fn test_cli_invalid_repositories_path() {
-    let invalid_path = "/nonexistent/path/to/repositories.toml";
-
-    // Test that CLI handles invalid repositories path gracefully
-    let result = run_fastskill_command(&["--repositories-path", invalid_path, "--help"], None);
-
-    // CLI should still show help even with invalid path
-    // (the path validation happens later in actual commands)
-    assert!(result.success);
-    assert_snapshot_with_settings(
-        "cli_invalid_repositories_path",
         &result.stdout,
         &cli_snapshot_settings(),
     );
