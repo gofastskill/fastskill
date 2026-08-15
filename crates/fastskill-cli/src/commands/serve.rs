@@ -15,7 +15,12 @@ pub struct ServeArgs {
     host: String,
 
     /// Port to bind the server to
-    port: u16,
+    /// Raw port value as parsed. Kept unnarrowed because
+    /// `FromArgValueMap::from_arg_value_map` cannot fail: casting to `u16`
+    /// there would silently wrap (`--port 99999` became 34463 and the server
+    /// happily bound the wrong port). `execute_serve` narrows and reports a
+    /// clean error instead.
+    port: i64,
 
     /// Enable mutating (write) endpoints. Read-only by default (ADR-0003).
     enable_write: bool,
@@ -84,7 +89,7 @@ impl FromArgValueMap for ServeArgs {
                 .get("port")
                 .and_then(|v| {
                     if let ArgValue::Int(n) = v {
-                        Some(*n as u16)
+                        Some(*n)
                     } else {
                         None
                     }
@@ -103,10 +108,18 @@ pub async fn execute_serve(
     skills_dir: Option<std::path::PathBuf>,
     args: ServeArgs,
 ) -> CliResult<()> {
+    // Reject out-of-range ports rather than truncating into one.
+    let port = u16::try_from(args.port).map_err(|_| {
+        CliError::Validation(format!(
+            "Invalid --port {}: port must be between 0 and 65535",
+            args.port
+        ))
+    })?;
+
     info!(
         "Starting FastSkill HTTP server on {}:{} (write endpoints {})",
         args.host,
-        args.port,
+        port,
         if args.enable_write {
             "enabled"
         } else {
@@ -145,7 +158,7 @@ pub async fn execute_serve(
     let service = std::sync::Arc::new(service);
 
     let server =
-        fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, args.port)
+        fastskill_core::http::server::FastSkillServer::from_ref(&service, &args.host, port)
             .enable_write(args.enable_write);
 
     // Start the server (this will block until shutdown)
