@@ -221,6 +221,28 @@ async fn make_service(storage: &Path, cache_root: &Path) -> FastSkillService {
     service
 }
 
+/// Every regular file under `root`, as a `/`-normalized path relative to
+/// `root`, sorted. Used to assert a cache entry's contents exactly, without
+/// caring about directory-read order.
+fn list_files_relative(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, base: &Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, base, out);
+            } else {
+                let rel = path.strip_prefix(base).unwrap();
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
+}
+
 // ── tests ────────────────────────────────────────────────────────────────
 
 /// Two installs of the same git ref, into two different project directories,
@@ -294,6 +316,104 @@ async fn two_installs_of_the_same_ref_clone_exactly_once() {
             .unwrap();
     assert_eq!(content_a, content_b);
     assert_eq!(content_a, VALID_SKILL_MD);
+}
+
+/// Bugfix regression (cache bloat): the content cache must store only skill
+/// files, never the clone's own `.git` metadata. `.git` is only ever read
+/// transiently, to resolve the commit the clone just landed on
+/// (`git rev-parse HEAD`) — a cache entry is only ever copied back out as
+/// skill *files* (never re-treated as a git repository), so caching `.git`
+/// is pure bloat that scales with the source repo's full history, not the
+/// (typically tiny) skill payload it actually serves. Also proves a
+/// cache-hit install still reproduces byte-identical skill content to the
+/// original clone-path install, and that the cache-hit's own on-disk footprint
+/// (what `cache info` sizes) matches the pared-down entry, not a `.git`-laden
+/// one.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn git_cache_entry_excludes_git_metadata_and_stays_byte_identical_on_a_hit() {
+    let _lock = DIR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let daemon_base = TempDir::new().unwrap();
+    let expected_sha = seed_bare_repo(daemon_base.path(), "repo", "main");
+    let daemon = GitDaemonFixture::start(daemon_base);
+    let repo_url = daemon.repo_url("repo");
+
+    let shared_cache = TempDir::new().unwrap();
+    let origin = Origin::Git {
+        url: repo_url,
+        r#ref: GitRef::Branch("main".to_string()),
+        subdir: None,
+    };
+
+    // Project A: fresh clone (cache miss) — exercises the `fetch_git` "miss"
+    // branch that strips `.git` before `cache.put`.
+    let project_a = TempDir::new().unwrap();
+    let original_dir = std::env::current_dir().ok();
+    std::env::set_current_dir(project_a.path()).unwrap();
+    let _guard_a = DirGuard(original_dir);
+    setup_project(project_a.path());
+    let storage_a = TempDir::new().unwrap();
+    let service_a = make_service(storage_a.path(), shared_cache.path()).await;
+    service_a
+        .add_from_origin(origin.clone(), AddMode::Fresh, vec![])
+        .await
+        .expect("project A install should succeed");
+
+    // Inspect the published cache entry directly: it must hold exactly the
+    // skill's files, nothing named `.git` anywhere inside it.
+    let cache = SkillCache::at_root(shared_cache.path());
+    let cached = cache
+        .get(&CacheIdentity::Git {
+            sha: expected_sha.clone(),
+        })
+        .expect("cache entry should exist after a miss+put");
+
+    assert!(
+        !cached.path.join(".git").exists(),
+        "published cache entry must not contain a .git directory"
+    );
+    let entry_files = list_files_relative(&cached.path);
+    assert_eq!(
+        entry_files,
+        vec!["SKILL.md".to_string()],
+        "cache entry must contain exactly the skill's files, no git metadata"
+    );
+
+    // Project B: same ref, different project directory — must be a cache hit
+    // (exercises the `fetch_git` "hit" branch's `copy_dir_recursive`).
+    let project_b = TempDir::new().unwrap();
+    std::env::set_current_dir(project_b.path()).unwrap();
+    setup_project(project_b.path());
+    let storage_b = TempDir::new().unwrap();
+    let service_b = make_service(storage_b.path(), shared_cache.path()).await;
+    service_b
+        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .await
+        .expect("project B (cache-hit) install should succeed");
+
+    // Byte-identical skill content between the clone-path and cache-hit-path
+    // installs (FR-8): read the same file both ways and compare raw bytes.
+    let content_a =
+        std::fs::read(storage_a.path().join("cached-git-skill").join("SKILL.md")).unwrap();
+    let content_b =
+        std::fs::read(storage_b.path().join("cached-git-skill").join("SKILL.md")).unwrap();
+    assert_eq!(
+        content_a, content_b,
+        "a cache-hit install must be byte-identical to the original clone-path install"
+    );
+    assert_eq!(content_a, VALID_SKILL_MD.as_bytes());
+
+    // The cache-hit install must not have materialized a `.git` either,
+    // proving the cache entry it copied from was itself already clean.
+    assert!(
+        !storage_b
+            .path()
+            .join("cached-git-skill")
+            .join(".git")
+            .exists(),
+        "a cache-hit install must not carry a .git directory into the installed skill"
+    );
 }
 
 /// When `ls_remote` fails (offline / unreachable remote) but a previous
