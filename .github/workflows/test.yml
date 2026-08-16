@@ -46,7 +46,7 @@ jobs:
       - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
 
-  # Windows unit-test coverage (Phase 1).
+  # Windows unit + integration test coverage (Phase 2a).
   #
   # release.yml ships an x86_64-pc-windows-msvc binary, but every other job
   # here is ubuntu-only, so Windows-specific code has never executed anywhere.
@@ -55,12 +55,20 @@ jobs:
   # open) has never even been compiled -- it cannot be built from Linux
   # because `ring` and `onig_sys` need MSVC tooling to cross-compile.
   #
-  # Scope is deliberately the fastskill-core library unit tests, with default
-  # features. The integration tests under crates/fastskill-core/tests/ are
-  # NOT included: they spin up a real `git daemon`, and one of them finds the
-  # daemon's child via /proc, which is Linux-only. Porting those is Phase 2.
+  # Scope is the fastskill-core library unit tests (Phase 1) plus the
+  # integration tests under crates/fastskill-core/tests/, with default
+  # features. Excluded are the three integration-test binaries that spin up
+  # a real `git daemon`. Their fixture is unported rather than known-broken:
+  # it kills the daemon by finding its child process through
+  # /proc/<pid>/task/<pid>/children, which does not exist on Windows. (Git
+  # for Windows does ship git-daemon, so these may well work once the
+  # fixture uses a portable process-tree kill.) The three files are:
+  #   - git_content_cache_test
+  #   - offline_verification_sweep_test
+  #   - repo_index_refresh_git_test
+  # Porting those is Phase 2b.
   test-windows:
-    name: Test (Windows, core unit tests)
+    name: Test (Windows, core unit + integration tests)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +76,7 @@ jobs:
       - run: cargo install cargo-nextest --locked
       # --no-fail-fast: this job is still being brought up, and stopping at the
       # first failure would surface only one platform issue per CI round-trip.
-      - run: cargo nextest run -p fastskill-core --lib --retries 3 --no-fail-fast
+      - run: cargo nextest run -p fastskill-core --lib --test '*' --retries 3 --no-fail-fast -E 'not binary(git_content_cache_test) and not binary(offline_verification_sweep_test) and not binary(repo_index_refresh_git_test)'
 
   test-all-features:
     name: Test (All Features)
