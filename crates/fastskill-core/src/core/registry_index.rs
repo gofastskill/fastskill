@@ -353,7 +353,13 @@ pub async fn scan_registry_index(
 
         // Try to determine skill_id from path
         // Path format: {registry_path}/{scope}/{name}
-        let relative_path = path.strip_prefix(registry_path).map_err(|e| {
+        //
+        // Strip the *canonical* root, which is what WalkDir actually walked.
+        // Stripping `registry_path` instead only works when the two forms
+        // coincide: on Windows `canonicalize()` yields an extended-length path
+        // (`\\?\C:\...`), so every entry failed to strip and the whole scan
+        // returned Err -- registry listing was broken outright there.
+        let relative_path = path.strip_prefix(&canonical_registry).map_err(|e| {
             ServiceError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Failed to strip prefix: {}", e),
