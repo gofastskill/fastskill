@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Search skills by query with explicit scope flags
@@ -28,3 +27,7 @@ Options:
   -V, --version                  Print version
 
 Syntax: search <QUERY> [--local|--remote] [OPTIONS]
+
+Examples:
+  fastskill search "pdf generation" --local
+  fastskill search "presentation builder" --remote --limit 5

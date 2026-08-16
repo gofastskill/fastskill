@@ -669,7 +669,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=f6b77aebc6518c5e819f685942ed8257442717d0#f6b77aebc6518c5e819f685942ed8257442717d0"
+source = "git+https://github.com/aroff/cli-framework?rev=42cb312a6a21c01baf75ccb433e9f87a9adce423#42cb312a6a21c01baf75ccb433e9f87a9adce423"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",

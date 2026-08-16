@@ -1,5 +1,5 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 Export the best skill document from a completed run
@@ -18,3 +18,6 @@ Options:
   -V, --version                  Print version
 
 Syntax: optimize export <run-dir> --out <path>
+
+Examples:
+  fastskill optimize export ./optimize-runs/run-1 --out ./SKILL.md
