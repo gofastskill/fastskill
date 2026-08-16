@@ -20,7 +20,7 @@
 )]
 
 use fastskill_core::http::handlers::search::search_skills;
-use fastskill_core::http::models::{ApiResponse, SearchRequest};
+use fastskill_core::http::models::SearchRequest;
 use fastskill_core::{EmbeddingConfig, ServiceConfig};
 use std::sync::Arc;
 use tempfile::TempDir;

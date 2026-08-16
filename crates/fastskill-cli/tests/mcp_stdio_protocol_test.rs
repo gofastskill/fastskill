@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 //! `fastskill mcp serve --transport stdio` must speak only JSON-RPC on stdout.
 //!
 //! Regression coverage for the bug where commands wrote to `stdout` with
@@ -59,7 +61,7 @@ fn fixture() -> tempfile::TempDir {
     dir
 }
 
-fn response<'a>(stdout: &'a str, id: i64) -> serde_json::Value {
+fn response(stdout: &str, id: i64) -> serde_json::Value {
     stdout
         .lines()
         .filter(|l| !l.trim().is_empty())
