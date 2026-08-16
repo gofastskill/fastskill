@@ -63,6 +63,10 @@ impl IntoCommandSpec for SearchArgs {
             summary: "Search skills by query with explicit scope flags",
             syntax: Some("search <QUERY> [--local|--remote] [OPTIONS]"),
             category: Some("discovery"),
+            examples: vec![
+                "fastskill search \"pdf generation\" --local",
+                "fastskill search \"presentation builder\" --remote --limit 5",
+            ],
             args: vec![
                 ArgSpec {
                     name: "query",

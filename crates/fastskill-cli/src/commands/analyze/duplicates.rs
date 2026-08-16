@@ -56,6 +56,10 @@ impl IntoCommandSpec for DuplicatesArgs {
             summary: "Find semantically duplicate or very similar skills",
             syntax: Some("analyze duplicates [OPTIONS]"),
             category: Some("analysis"),
+            examples: vec![
+                "fastskill analyze duplicates",
+                "fastskill analyze duplicates --threshold 0.95 --severity critical",
+            ],
             args: vec![
                 ArgSpec {
                     name: "threshold",

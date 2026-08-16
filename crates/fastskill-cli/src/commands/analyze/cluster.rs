@@ -37,6 +37,10 @@ impl IntoCommandSpec for ClusterArgs {
             summary: "Group skills by semantic similarity",
             syntax: Some("analyze cluster [OPTIONS]"),
             category: Some("analysis"),
+            examples: vec![
+                "fastskill analyze cluster",
+                "fastskill analyze cluster --num-clusters 8 --format json",
+            ],
             args: vec![
                 ArgSpec {
                     name: "num-clusters",

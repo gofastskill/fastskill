@@ -158,6 +158,11 @@ impl IntoCommandSpec for AddArgs {
             summary: "Add a skill (from local path, zip, git URL, or registry ID)",
             syntax: Some("add <SOURCE> [OPTIONS]"),
             category: Some("packages"),
+            examples: vec![
+                "fastskill add pptx",
+                "fastskill add ./my-skill --editable",
+                "fastskill add https://github.com/org/skill-repo.git --branch main",
+            ],
             args: vec![
                 ArgSpec {
                     name: "source",

@@ -37,6 +37,10 @@ impl IntoCommandSpec for MatrixArgs {
             summary: "Show pairwise similarity matrix for all indexed skills",
             syntax: Some("analyze matrix [OPTIONS]"),
             category: Some("analysis"),
+            examples: vec![
+                "fastskill analyze matrix",
+                "fastskill analyze matrix --threshold 0.5 --limit 3",
+            ],
             args: vec![
                 ArgSpec {
                     name: "format",

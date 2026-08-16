@@ -48,6 +48,7 @@ impl IntoCommandSpec for ValidateArgs {
             summary: "Validate eval configuration and files",
             syntax: Some("eval validate [OPTIONS]"),
             category: Some("quality"),
+            examples: vec!["fastskill eval validate --all"],
             args: vec![
                 ArgSpec {
                     name: "agent",

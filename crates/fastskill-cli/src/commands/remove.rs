@@ -51,6 +51,10 @@ impl IntoCommandSpec for RemoveArgs {
             summary: "Uninstall skills (removes from manifest and local installation)",
             syntax: Some("remove <SKILL_ID>... [OPTIONS]"),
             category: Some("packages"),
+            examples: vec![
+                "fastskill remove pptx",
+                "fastskill remove pptx docx --force",
+            ],
             args: vec![
                 ArgSpec {
                     name: "skill-ids",

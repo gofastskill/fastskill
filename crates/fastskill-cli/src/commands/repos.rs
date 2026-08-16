@@ -266,6 +266,7 @@ impl IntoCommandSpec for ReposListArgs {
             summary: "List all configured repositories",
             syntax: Some("repos list [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos list", "fastskill repos list --json"],
             args: vec![
                 ArgSpec {
                     name: "format",
@@ -315,6 +316,10 @@ impl IntoCommandSpec for ReposAddArgs {
             summary: "Add a new repository",
             syntax: Some("repos add <NAME> <URL-OR-PATH> [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec![
+                "fastskill repos add my-repo https://github.com/org/skills.git --repo-type git-marketplace",
+                "fastskill repos add local-skills ./skills --repo-type local",
+            ],
             args: vec![
                 ArgSpec {
                     name: "name",
@@ -502,6 +507,7 @@ impl IntoCommandSpec for ReposRemoveArgs {
             summary: "Remove a repository",
             syntax: Some("repos remove <NAME>"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos remove my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -538,6 +544,7 @@ impl IntoCommandSpec for ReposInfoArgs {
             summary: "Show repository details",
             syntax: Some("repos info <NAME> [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos info my-repo"],
             args: vec![
                 ArgSpec {
                     name: "name",
@@ -605,6 +612,7 @@ impl IntoCommandSpec for ReposUpdateArgs {
             summary: "Update repository metadata",
             syntax: Some("repos update <NAME> [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos update my-repo --branch main --priority 1"],
             args: vec![
                 ArgSpec {
                     name: "name",
@@ -675,6 +683,7 @@ impl IntoCommandSpec for ReposTestArgs {
             summary: "Test repository connectivity",
             syntax: Some("repos test <NAME>"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos test my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -711,6 +720,7 @@ impl IntoCommandSpec for ReposRefreshArgs {
             summary: "Refresh repository cache",
             syntax: Some("repos refresh [NAME]"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos refresh", "fastskill repos refresh my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -744,6 +754,10 @@ impl IntoCommandSpec for ReposSkillsArgs {
             summary: "List skills in repository catalog",
             syntax: Some("repos skills [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec![
+                "fastskill repos skills",
+                "fastskill repos skills --repository my-repo --all-versions",
+            ],
             args: vec![
                 ArgSpec {
                     name: "repository",
@@ -848,6 +862,10 @@ impl IntoCommandSpec for ReposShowArgs {
             summary: "Show skill details from catalog",
             syntax: Some("repos show <SKILL-ID> [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec![
+                "fastskill repos show pptx",
+                "fastskill repos show pptx --repository my-repo",
+            ],
             args: vec![
                 ArgSpec {
                     name: "skill-id",
@@ -902,6 +920,7 @@ impl IntoCommandSpec for ReposVersionsArgs {
             summary: "List available versions for a skill",
             syntax: Some("repos versions <SKILL-ID> [OPTIONS]"),
             category: Some("repositories"),
+            examples: vec!["fastskill repos versions pptx"],
             args: vec![
                 ArgSpec {
                     name: "skill-id",

@@ -45,6 +45,7 @@ impl IntoCommandSpec for DoctorArgs {
             summary: "Diagnose FastSkill configuration and environment",
             syntax: Some("doctor [OPTIONS]"),
             category: Some("setup"),
+            examples: vec!["fastskill doctor", "fastskill doctor --json"],
             args: vec![ArgSpec {
                 name: "json",
                 long: Some("json"),

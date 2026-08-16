@@ -27,6 +27,7 @@ impl IntoCommandSpec for RunArgs {
         CommandSpec {
             summary: "Run skill optimization from a config file",
             syntax: Some("optimize run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
+            examples: vec!["fastskill optimize run --config ./optimize.toml"],
             args: vec![
                 ArgSpec {
                     name: "config",

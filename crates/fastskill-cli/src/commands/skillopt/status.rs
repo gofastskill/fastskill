@@ -24,6 +24,10 @@ impl IntoCommandSpec for StatusArgs {
         CommandSpec {
             summary: "Show the status of a training run",
             syntax: Some("optimize status <run-dir> [--watch]"),
+            examples: vec![
+                "fastskill optimize status ./optimize-runs/run-1",
+                "fastskill optimize status ./optimize-runs/run-1 --watch",
+            ],
             args: vec![
                 ArgSpec {
                     name: "run-dir",

@@ -54,6 +54,7 @@ impl IntoCommandSpec for CacheInfoArgs {
             summary: "Show the skill content cache location, entry counts, and disk usage",
             syntax: Some("cache info [OPTIONS]"),
             category: Some("cache"),
+            examples: vec!["fastskill cache info", "fastskill cache info --json"],
             args: vec![
                 ArgSpec {
                     name: "format",
@@ -159,6 +160,10 @@ impl IntoCommandSpec for CacheCleanArgs {
             summary: "Remove cached skill content and print bytes reclaimed",
             syntax: Some("cache clean [--source <git|registry|local|zip>]"),
             category: Some("cache"),
+            examples: vec![
+                "fastskill cache clean",
+                "fastskill cache clean --source git",
+            ],
             args: vec![
                 ArgSpec {
                     name: "source",

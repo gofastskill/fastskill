@@ -57,6 +57,7 @@ impl IntoCommandSpec for ReadArgs {
             summary: "Read full SKILL.md content for a skill",
             syntax: Some("read <SKILL_ID> [OPTIONS]"),
             category: Some("discovery"),
+            examples: vec!["fastskill read pptx", "fastskill read pptx --meta --json"],
             args: vec![
                 ArgSpec {
                     name: "skill-id",

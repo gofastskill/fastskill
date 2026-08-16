@@ -83,6 +83,7 @@ impl IntoCommandSpec for ReindexArgs {
             summary: "Reindex the vector index for semantic search",
             syntax: Some("reindex [OPTIONS]"),
             category: Some("packages"),
+            examples: vec!["fastskill reindex", "fastskill reindex --force"],
             args: vec![
                 ArgSpec {
                     name: "skills-dir",

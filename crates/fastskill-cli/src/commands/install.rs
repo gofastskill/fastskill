@@ -55,6 +55,11 @@ impl IntoCommandSpec for InstallArgs {
             summary: "Apply manifest: install skills from skill-project.toml [dependencies]",
             syntax: Some("install [OPTIONS]"),
             category: Some("packages"),
+            examples: vec![
+                "fastskill install",
+                "fastskill install --lock",
+                "fastskill install --without dev",
+            ],
             args: vec![
                 ArgSpec {
                     name: "without",

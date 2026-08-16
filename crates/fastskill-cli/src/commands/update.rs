@@ -63,6 +63,11 @@ impl IntoCommandSpec for UpdateArgs {
             summary: "Update skills to latest versions",
             syntax: Some("update [SKILL_ID] [OPTIONS]"),
             category: Some("packages"),
+            examples: vec![
+                "fastskill update",
+                "fastskill update pptx",
+                "fastskill update --check",
+            ],
             args: vec![
                 ArgSpec {
                     name: "skill-id",
