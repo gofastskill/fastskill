@@ -2056,8 +2056,13 @@ mod tests {
 
         let before = compute_local_tree_hash(&src).unwrap();
 
-        // Touch the file's mtime only, content untouched.
-        let file = std::fs::File::open(src.join("nested/file.txt")).unwrap();
+        // Touch the file's mtime only, content untouched. Open for *write*:
+        // Windows refuses to set a file's modified time through a read-only
+        // handle ("Access is denied"), while unix is happy either way.
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(src.join("nested/file.txt"))
+            .unwrap();
         let new_time = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
         file.set_modified(new_time).unwrap();
 
