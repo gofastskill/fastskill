@@ -140,6 +140,21 @@ impl FastSkillService {
             // caching under a now-stale SHA.
             let temp_dir = crate::storage::git::clone_repository(url, branch, tag, None).await?;
             let actual_sha = git_head_commit(temp_dir.path()).await?;
+            // `.git` metadata is only ever needed transiently, to resolve the
+            // commit just cloned to (just done, above) — the content cache is
+            // only ever read back as skill *files* (`copy_dir_recursive`
+            // above), never as a git repository, so caching `.git` is pure
+            // bloat (and can dwarf the skill itself on a real repository).
+            // Strip it before publishing so the cache only ever holds skill
+            // content. Best-effort: if this fails, the clone (and thus the
+            // install) is still perfectly usable — it only means this one
+            // `put` below caches `.git` too, same as before this fix.
+            if let Err(e) = strip_git_dir(temp_dir.path()).await {
+                tracing::warn!(
+                    "failed to strip .git before publishing to the content cache: {}",
+                    e
+                );
+            }
 
             if let Err(e) = cache.put(
                 &CacheIdentity::Git {
@@ -1317,6 +1332,31 @@ async fn git_head_commit(repo_dir: &Path) -> Result<String, ServiceError> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Remove the top-level `.git` directory from a freshly-cloned repository
+/// root, if present. Called only after [`git_head_commit`] has already read
+/// it and only on the just-cloned root (never on a subdirectory), since
+/// `.git` always lives at the clone root regardless of `subdir`. A no-op if
+/// there is nothing at `.git` (e.g. called twice, or on content that was
+/// already stripped). Never follows a symlink for the removal (defense in
+/// depth, mirroring `copy_dir_recursive`'s SEC-4 stance elsewhere in this
+/// file) — a `.git` symlink is unlinked directly rather than dereferenced.
+async fn strip_git_dir(repo_root: &Path) -> Result<(), ServiceError> {
+    let git_dir = repo_root.join(".git");
+    let Ok(metadata) = tokio::fs::symlink_metadata(&git_dir).await else {
+        // Nothing there: already stripped, or never existed. Not an error.
+        return Ok(());
+    };
+    if metadata.is_dir() {
+        tokio::fs::remove_dir_all(&git_dir).await?;
+    } else {
+        // A symlink or a regular file (e.g. a `.git` gitlink file, as used
+        // by worktrees/submodules): unlink it directly either way, never
+        // following it.
+        tokio::fs::remove_file(&git_dir).await?;
+    }
+    Ok(())
+}
+
 /// Remove whatever currently sits at `path` (file, symlink, or directory), if
 /// anything, so a fresh move/copy/symlink can take its place.
 async fn remove_existing_storage_path(path: &Path) -> Result<(), ServiceError> {
@@ -1935,6 +1975,65 @@ mod tests {
         copy_dir_recursive(&src, &dst).await.unwrap();
         assert!(dst.join("SKILL.md").exists());
         assert!(dst.join("nested/file.txt").exists());
+    }
+
+    // ── strip_git_dir (cache-bloat bugfix) ────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_strip_git_dir_removes_a_directory_git() {
+        let tmp = TestTempDir::new().unwrap();
+        let root = tmp.path().join("clone");
+        std::fs::create_dir_all(root.join(".git/objects")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(root.join("SKILL.md"), "# skill\n").unwrap();
+
+        strip_git_dir(&root).await.unwrap();
+
+        assert!(!root.join(".git").exists(), ".git must be removed");
+        assert!(
+            root.join("SKILL.md").exists(),
+            "sibling skill content must be untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_strip_git_dir_is_a_noop_when_absent() {
+        let tmp = TestTempDir::new().unwrap();
+        let root = tmp.path().join("clone");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("SKILL.md"), "# skill\n").unwrap();
+
+        // Must not error just because there is nothing to strip.
+        strip_git_dir(&root).await.unwrap();
+        assert!(root.join("SKILL.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_strip_git_dir_unlinks_without_following_a_symlinked_git() {
+        use std::os::unix::fs::symlink;
+        let tmp = TestTempDir::new().unwrap();
+        let root = tmp.path().join("clone");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("SKILL.md"), "# skill\n").unwrap();
+
+        // A directory outside `root` that a symlinked `.git` could otherwise
+        // redirect a recursive removal into; it must survive untouched.
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("sentinel.txt"), "do not delete me").unwrap();
+        symlink(&outside, root.join(".git")).unwrap();
+
+        strip_git_dir(&root).await.unwrap();
+
+        assert!(
+            !root.join(".git").exists(),
+            "the symlink entry itself must be gone"
+        );
+        assert!(
+            outside.join("sentinel.txt").is_file(),
+            "must never follow the symlink to delete its target"
+        );
     }
 
     // ── compute_local_tree_hash / hash_bytes (US-004) ─────────────────────────
