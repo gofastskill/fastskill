@@ -47,7 +47,7 @@ pub enum SourcesError {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, TempDir};
 
     #[test]
     fn test_sources_config_parsing() {
@@ -75,8 +75,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_sources_manager() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let config_path = temp_file.path().to_path_buf();
+        // A TempDir, not a NamedTempFile: the latter keeps the file open, and
+        // Windows refuses to rewrite a file another handle still holds, so
+        // `manager.save()` fails there with access denied. The config file
+        // does not need to exist up front.
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("sources.toml");
 
         let mut manager = SourcesManager::new(config_path.clone());
 

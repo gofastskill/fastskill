@@ -239,12 +239,16 @@ mod tests {
         // Validate path component and get the safe return value
         let safe_component = validate_path_component("valid-name").unwrap();
 
-        // Build path using the validated return value
-        let path = root.join(&safe_component);
+        // Canonicalize the root FIRST, then join, so both sides of the
+        // containment check are in the same form. `path` does not exist, so
+        // `path.canonicalize()` fails and falls back to the raw path; on
+        // Windows `root.canonicalize()` meanwhile returns an extended-length
+        // path (`\\?\C:\...`), and a raw path never starts with that.
+        let canonical_root = root.canonicalize().unwrap_or(root.to_path_buf());
+        let path = canonical_root.join(&safe_component);
 
         // Verify the path is safe and doesn't escape root
         let canonical_path = path.canonicalize().unwrap_or(path);
-        let canonical_root = root.canonicalize().unwrap_or(root.to_path_buf());
         assert!(canonical_path.starts_with(&canonical_root));
 
         // Verify the validated string doesn't contain dangerous characters
