@@ -301,6 +301,8 @@ async fn newest_resolves_via_cached_index_then_downloads_the_resolved_version() 
                 entries: vec![SourceIndexEntry {
                     skill: SKILL_ID.to_string(),
                     versions: vec!["1.0.0".to_string(), "2.0.0".to_string()],
+                    name: SKILL_ID.to_string(),
+                    description: String::new(),
                 }],
             },
         )

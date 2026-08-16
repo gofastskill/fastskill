@@ -34,11 +34,23 @@ pub struct SourceIndex {
 }
 
 /// One skill's advertised versions within a [`SourceIndex`].
+///
+/// `name`/`description` (spec 008) are a representative snapshot for the
+/// skill id — the same simplification `RepositoryManager::refresh_index`
+/// already applies to `versions` (one set per id, not per-version metadata).
+/// Both are `#[serde(default)]` so an index written before spec 008 (just
+/// `skill` and `versions`) still deserializes: a pre-existing on-disk index
+/// is read back with empty strings until the next refresh or live fetch
+/// repopulates it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceIndexEntry {
     pub skill: String,
     #[serde(default)]
     pub versions: Vec<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// A single git ref resolution: the commit SHA `url+ref` resolved to, and
@@ -225,6 +237,8 @@ mod tests {
             entries: vec![SourceIndexEntry {
                 skill: "demo".to_string(),
                 versions: vec!["1.0.0".to_string(), "1.1.0".to_string()],
+                name: "Demo".to_string(),
+                description: "A demo skill".to_string(),
             }],
         };
 
@@ -232,6 +246,30 @@ mod tests {
         let read_back = read_source_index(root.path(), "acme").unwrap();
 
         assert_eq!(read_back, Some(idx));
+    }
+
+    /// spec 008: `name`/`description` were added to `SourceIndexEntry` after
+    /// the on-disk schema shipped (US-001/US-005). An index file written by
+    /// an older binary (`skill` + `versions` only) must still deserialize,
+    /// with the new fields defaulting to empty strings rather than failing to
+    /// parse.
+    #[test]
+    fn source_index_entry_without_name_or_description_still_deserializes() {
+        let root = TempDir::new().unwrap();
+        let index_dir = root.path().join("index");
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::write(
+            index_dir.join("acme.json"),
+            r#"{"fetched_at":"2026-01-01T00:00:00Z","entries":[{"skill":"demo","versions":["1.0.0"]}]}"#,
+        )
+        .unwrap();
+
+        let idx = read_source_index(root.path(), "acme").unwrap().unwrap();
+        assert_eq!(idx.entries.len(), 1);
+        assert_eq!(idx.entries[0].skill, "demo");
+        assert_eq!(idx.entries[0].versions, vec!["1.0.0".to_string()]);
+        assert_eq!(idx.entries[0].name, "");
+        assert_eq!(idx.entries[0].description, "");
     }
 
     #[test]

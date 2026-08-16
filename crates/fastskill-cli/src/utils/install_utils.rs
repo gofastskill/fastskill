@@ -423,7 +423,9 @@ async fn install_from_zip_url(
 }
 
 /// Create and initialize package resolver
-async fn create_package_resolver() -> CliResult<fastskill_core::core::resolver::PackageResolver> {
+async fn create_package_resolver(
+    skill_cache: &fastskill_core::core::cache::SkillCache,
+) -> CliResult<fastskill_core::core::resolver::PackageResolver> {
     use fastskill_core::core::resolver::PackageResolver;
     use std::sync::Arc;
 
@@ -432,7 +434,7 @@ async fn create_package_resolver() -> CliResult<fastskill_core::core::resolver::
         fastskill_core::core::repository::RepositoryManager::from_definitions(repositories);
 
     let sources_mgr = if let Some(sources_manager) =
-        create_sources_manager_from_repositories(&repo_manager)
+        create_sources_manager_from_repositories(&repo_manager, skill_cache)
             .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?
     {
         Arc::new(sources_manager)
@@ -487,7 +489,7 @@ async fn install_from_source(
 ) -> CliResult<SkillDefinition> {
     use fastskill_core::core::resolver::ConflictStrategy;
 
-    let resolver = create_package_resolver().await?;
+    let resolver = create_package_resolver(service.skill_cache()).await?;
     let version_constraint = version
         .map(|v| {
             fastskill_core::core::version::VersionConstraint::parse(v)
@@ -510,11 +512,18 @@ async fn install_from_source(
 
 /// Create SourcesManager from RepositoryManager for marketplace-based repositories
 /// This is needed because PackageResolver requires SourcesManager
+///
+/// spec 008: opts the manager into the on-disk index cache
+/// (`SourcesManager::with_skill_cache`) so a cold or offline `install`
+/// resolves a marketplace listing already known to `skill_cache` (via a
+/// prior `repos refresh` or live fetch) without a network round-trip.
 pub fn create_sources_manager_from_repositories(
     repo_manager: &RepositoryManager,
+    skill_cache: &fastskill_core::core::cache::SkillCache,
 ) -> CliResult<Option<SourcesManager>> {
     SourcesManager::from_repositories(repo_manager)
         .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))
+        .map(|opt| opt.map(|mgr| mgr.with_skill_cache(skill_cache.clone())))
 }
 
 #[cfg(test)]
@@ -830,10 +839,21 @@ mod tests {
         }
     }
 
+    /// A `SkillCache` rooted at a throwaway path (never written to by these
+    /// tests, which only assert on `SourcesManager` construction) —
+    /// `TempDir` is intentionally not kept alive since the directory itself
+    /// need not exist for this.
+    fn test_skill_cache() -> fastskill_core::core::cache::SkillCache {
+        fastskill_core::core::cache::SkillCache::at_root(
+            tempfile::TempDir::new().unwrap().path().to_path_buf(),
+        )
+    }
+
     #[test]
     fn test_create_sources_manager_from_marketplace_repo() {
         let repo_manager = RepositoryManager::from_definitions(vec![git_marketplace_repo("mp")]);
-        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        let result =
+            create_sources_manager_from_repositories(&repo_manager, &test_skill_cache()).unwrap();
         assert!(
             result.is_some(),
             "a marketplace repo yields a SourcesManager"
@@ -843,7 +863,8 @@ mod tests {
     #[test]
     fn test_create_sources_manager_from_http_registry_only_is_none() {
         let repo_manager = RepositoryManager::from_definitions(vec![http_registry_repo("reg")]);
-        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        let result =
+            create_sources_manager_from_repositories(&repo_manager, &test_skill_cache()).unwrap();
         assert!(
             result.is_none(),
             "http-registry-only repos produce no marketplace sources manager"
@@ -853,7 +874,8 @@ mod tests {
     #[test]
     fn test_create_sources_manager_from_empty_is_none() {
         let repo_manager = RepositoryManager::from_definitions(Vec::new());
-        let result = create_sources_manager_from_repositories(&repo_manager).unwrap();
+        let result =
+            create_sources_manager_from_repositories(&repo_manager, &test_skill_cache()).unwrap();
         assert!(result.is_none());
     }
 }

@@ -499,20 +499,36 @@ impl RepositoryManager {
         // Group by skill id, deduping versions — `list_skills()` currently
         // advertises one (the current/latest) version per skill for every
         // repository type, but this stays correct if that ever changes.
-        let mut by_id: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
-            std::collections::BTreeMap::new();
+        //
+        // `name`/`description` (spec 008) are recorded as a representative
+        // snapshot for the id — the first `SkillMetadata` seen for it — the
+        // same "one per id, not one per version" simplification `versions`
+        // already applies; `list_skills()`'s current one-version-per-skill
+        // behavior means this loses nothing in practice today.
+        let mut by_id: std::collections::BTreeMap<
+            String,
+            (std::collections::BTreeSet<String>, String, String),
+        > = std::collections::BTreeMap::new();
         for skill in &skills {
-            by_id
-                .entry(skill.id.to_string())
-                .or_default()
-                .insert(skill.version.clone());
+            let entry = by_id.entry(skill.id.to_string()).or_insert_with(|| {
+                (
+                    std::collections::BTreeSet::new(),
+                    skill.name.clone(),
+                    skill.description.clone(),
+                )
+            });
+            entry.0.insert(skill.version.clone());
         }
         let entries: Vec<crate::core::cache::SourceIndexEntry> = by_id
             .into_iter()
-            .map(|(skill, versions)| crate::core::cache::SourceIndexEntry {
-                skill,
-                versions: versions.into_iter().collect(),
-            })
+            .map(
+                |(skill, (versions, name, description))| crate::core::cache::SourceIndexEntry {
+                    skill,
+                    versions: versions.into_iter().collect(),
+                    name,
+                    description,
+                },
+            )
             .collect();
         let entry_count = entries.len();
 
@@ -589,6 +605,10 @@ mod refresh_index_tests {
         assert_eq!(skills, vec!["alpha", "beta"]);
         let alpha = idx.entries.iter().find(|e| e.skill == "alpha").unwrap();
         assert_eq!(alpha.versions, vec!["1.0.0".to_string()]);
+        // spec 008: name/description are captured from the listing too, not
+        // just id + versions.
+        assert_eq!(alpha.name, "alpha");
+        assert_eq!(alpha.description, "a skill");
     }
 
     #[tokio::test]

@@ -41,6 +41,19 @@ fn get_repository_manager(project_file_path: &std::path::Path) -> RepositoryMana
 /// local symlink/pre-create race. The returned `TempDir` owns that directory
 /// and MUST be kept alive by the caller for as long as the `SourcesManager` is
 /// used — dropping it deletes the backing file.
+///
+/// spec 008: deliberately does *not* opt this manager into the on-disk index
+/// cache (`SourcesManager::with_skill_cache`) — `refresh_sources` (`POST
+/// /api/v1/registry/refresh`) reuses this same helper via `list_all_skills`
+/// to serve its "post-refresh" listing, and that call must stay a real,
+/// live fetch (mirroring FR-4's requirement for `repos refresh`): a disk-
+/// first read-through here would let `/refresh` silently answer from a
+/// stale on-disk index instead of actually refreshing. The plain read-only
+/// browse endpoints (`list_all_skills`, `list_source_skills`,
+/// `get_marketplace`) therefore do not get spec 008's offline benefit either
+/// — out of scope for this change, which targets the CLI install path and
+/// `POST /api/manifest/skills` (`manifest.rs`), neither of which has this
+/// reuse hazard.
 async fn get_sources_manager_from_repos(
     repo_manager: &RepositoryManager,
 ) -> Result<(SourcesManager, tempfile::TempDir), String> {
