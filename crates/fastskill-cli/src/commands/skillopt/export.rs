@@ -23,6 +23,7 @@ impl IntoCommandSpec for ExportArgs {
         CommandSpec {
             summary: "Export the best skill document from a completed run",
             syntax: Some("optimize export <run-dir> --out <path>"),
+            examples: vec!["fastskill optimize export ./optimize-runs/run-1 --out ./SKILL.md"],
             args: vec![
                 ArgSpec {
                     name: "run-dir",

@@ -54,6 +54,10 @@ impl IntoCommandSpec for InitArgs {
             summary: "Initialize skill-project.toml in current skill directory",
             syntax: Some("init [OPTIONS]"),
             category: Some("project"),
+            examples: vec![
+                "fastskill init",
+                "fastskill init --yes --description \"My skill\"",
+            ],
             args: vec![
                 ArgSpec {
                     name: "yes",

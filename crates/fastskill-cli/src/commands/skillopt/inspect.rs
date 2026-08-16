@@ -35,6 +35,10 @@ impl IntoCommandSpec for InspectArgs {
         CommandSpec {
             summary: "Inspect per-step artifacts from a training run",
             syntax: Some("optimize inspect <run-dir> --step <n> [--show <mode>]"),
+            examples: vec![
+                "fastskill optimize inspect ./optimize-runs/run-1 --step 3",
+                "fastskill optimize inspect ./optimize-runs/run-1 --step 3 --show diffs",
+            ],
             args: vec![
                 ArgSpec {
                     name: "run-dir",

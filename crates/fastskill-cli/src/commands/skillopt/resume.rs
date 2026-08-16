@@ -21,6 +21,7 @@ impl IntoCommandSpec for ResumeArgs {
         CommandSpec {
             summary: "Resume an interrupted optimization run",
             syntax: Some("optimize resume <run-dir>"),
+            examples: vec!["fastskill optimize resume ./optimize-runs/run-1"],
             args: vec![ArgSpec {
                 name: "run-dir",
                 kind: ArgKind::Positional,

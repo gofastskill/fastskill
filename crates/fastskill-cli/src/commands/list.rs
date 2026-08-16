@@ -57,6 +57,7 @@ impl IntoCommandSpec for ListArgs {
             summary: "List locally installed skills",
             syntax: Some("list [OPTIONS]"),
             category: Some("discovery"),
+            examples: vec!["fastskill list", "fastskill list --details --format json"],
             args: vec![
                 ArgSpec {
                     name: "format",
