@@ -46,6 +46,28 @@ jobs:
       - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
 
+  # Windows unit-test coverage (Phase 1).
+  #
+  # release.yml ships an x86_64-pc-windows-msvc binary, but every other job
+  # here is ubuntu-only, so Windows-specific code has never executed anywhere.
+  # Most concretely: the `#[cfg(windows)]` rename-retry loop in
+  # `core::cache` (for a rename that transiently fails while a file is held
+  # open) has never even been compiled -- it cannot be built from Linux
+  # because `ring` and `onig_sys` need MSVC tooling to cross-compile.
+  #
+  # Scope is deliberately the fastskill-core library unit tests, with default
+  # features. The integration tests under crates/fastskill-core/tests/ are
+  # NOT included: they spin up a real `git daemon`, and one of them finds the
+  # daemon's child via /proc, which is Linux-only. Porting those is Phase 2.
+  test-windows:
+    name: Test (Windows, core unit tests)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-nextest --locked
+      - run: cargo nextest run -p fastskill-core --lib --retries 3
+
   test-all-features:
     name: Test (All Features)
     runs-on: ubuntu-latest
