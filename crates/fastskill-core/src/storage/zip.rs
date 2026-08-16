@@ -159,13 +159,20 @@ impl ZipHandler {
                 )));
             }
 
-            // Build the output path using the normalized entry name
-            let outpath = dest_dir.join(&normalized_entry_name);
+            // Build the output path from the *canonical* destination, not from
+            // `dest_dir`: the containment check below compares against
+            // `dest_canonical`, and on Windows `canonicalize()` returns an
+            // extended-length path (`\\?\C:\...`) while `dest_dir` does not.
+            // Joining the raw form and comparing against the canonical one made
+            // every ordinary entry look like an escape, so no ZIP could be
+            // extracted on Windows at all.
+            let outpath = dest_canonical.join(&normalized_entry_name);
 
-            // Ensure the normalized path is within the destination directory before any I/O
-            let outpath_str = outpath.to_string_lossy().to_string();
-            let dest_str = dest_canonical.to_string_lossy().to_string();
-            if !outpath_str.starts_with(&dest_str) {
+            // Ensure the normalized path is within the destination directory
+            // before any I/O. Compare by path component rather than by string
+            // prefix -- a string prefix also treats `/dest-evil/x` as living
+            // inside `/dest`.
+            if !outpath.starts_with(&dest_canonical) {
                 return Err(ServiceError::Validation(format!(
                     "Path traversal attempt detected in ZIP entry: '{}' would resolve outside extraction directory",
                     entry_name
