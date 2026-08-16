@@ -66,7 +66,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-nextest --locked
-      - run: cargo nextest run -p fastskill-core --lib --retries 3
+      # --no-fail-fast: this job is still being brought up, and stopping at the
+      # first failure would surface only one platform issue per CI round-trip.
+      - run: cargo nextest run -p fastskill-core --lib --retries 3 --no-fail-fast
 
   test-all-features:
     name: Test (All Features)
