@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Add a skill (from local path, zip, git URL, or registry ID)
@@ -27,3 +26,8 @@ Options:
   -V, --version                    Print version
 
 Syntax: add <SOURCE> [OPTIONS]
+
+Examples:
+  fastskill add pptx
+  fastskill add ./my-skill --editable
+  fastskill add https://github.com/org/skill-repo.git --branch main

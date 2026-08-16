@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Validate eval configuration and files
@@ -19,3 +18,6 @@ Options:
   -V, --version                  Print version
 
 Syntax: eval validate [OPTIONS]
+
+Examples:
+  fastskill eval validate --all

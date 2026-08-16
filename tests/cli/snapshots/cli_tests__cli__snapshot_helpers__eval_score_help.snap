@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Re-score saved eval artifacts without running the agent again
@@ -19,3 +18,6 @@ Options:
   -V, --version                  Print version
 
 Syntax: eval score [OPTIONS]
+
+Examples:
+  fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00

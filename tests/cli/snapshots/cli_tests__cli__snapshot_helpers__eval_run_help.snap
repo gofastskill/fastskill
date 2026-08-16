@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Run eval cases against an agent
@@ -27,3 +26,7 @@ Options:
   -V, --version                  Print version
 
 Syntax: eval run [OPTIONS]
+
+Examples:
+  fastskill eval run --agent claude --output-dir ./eval-runs
+  fastskill eval run --all --output-dir ./eval-runs --ci --threshold 0.9

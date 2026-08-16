@@ -1,5 +1,5 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 Resume an interrupted optimization run
@@ -17,3 +17,6 @@ Options:
   -V, --version                  Print version
 
 Syntax: optimize resume <run-dir>
+
+Examples:
+  fastskill optimize resume ./optimize-runs/run-1

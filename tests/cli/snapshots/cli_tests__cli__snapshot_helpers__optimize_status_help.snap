@@ -1,5 +1,5 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 Show the status of a training run
@@ -18,3 +18,7 @@ Options:
   -V, --version                  Print version
 
 Syntax: optimize status <run-dir> [--watch]
+
+Examples:
+  fastskill optimize status ./optimize-runs/run-1
+  fastskill optimize status ./optimize-runs/run-1 --watch

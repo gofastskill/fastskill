@@ -1,5 +1,5 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 expression: normalized
 ---
 Run skill optimization from a config file
@@ -17,3 +17,6 @@ Options:
   -V, --version                  Print version
 
 Syntax: optimize run --config <path> [--out-dir <dir>] [--resume <run-dir>]
+
+Examples:
+  fastskill optimize run --config ./optimize.toml

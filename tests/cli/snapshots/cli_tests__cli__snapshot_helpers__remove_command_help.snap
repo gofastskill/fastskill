@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Uninstall skills (removes from manifest and local installation)
@@ -21,3 +20,7 @@ Options:
   -V, --version                  Print version
 
 Syntax: remove <SKILL_ID>... [OPTIONS]
+
+Examples:
+  fastskill remove pptx
+  fastskill remove pptx docx --force
