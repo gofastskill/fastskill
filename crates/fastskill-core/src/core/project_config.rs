@@ -168,14 +168,17 @@ test-skill = "1.0.0"
         let temp_dir = TempDir::new().unwrap();
         let skills_path = temp_dir.path().join("skills");
 
-        // Create project-level skill-project.toml with absolute skills_directory
+        // Create project-level skill-project.toml with absolute skills_directory.
+        // Uses a TOML *literal* string (single quotes): a Windows path contains
+        // backslashes, which inside a basic string would be parsed as escape
+        // sequences (`\\U`, `\\A`, ...) and fail to parse.
         let content = format!(
             r#"
 [dependencies]
 test-skill = "1.0.0"
 
 [tool.fastskill]
-skills_directory = "{}"
+skills_directory = '{}'
         "#,
             skills_path.display()
         );
