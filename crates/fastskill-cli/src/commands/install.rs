@@ -263,8 +263,11 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Create SourcesManager from marketplace-based repositories for PackageResolver
-    let sources_manager = install_utils::create_sources_manager_from_repositories(&repo_manager)
-        .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
+    let sources_manager = install_utils::create_sources_manager_from_repositories(
+        &repo_manager,
+        service.skill_cache(),
+    )
+    .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
 
     // Determine effective depth limit and skip_transitive flag from config then CLI override
     let (config_depth, config_skip_transitive) = if project_file_result.found {

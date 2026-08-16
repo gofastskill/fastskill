@@ -254,9 +254,12 @@ pub async fn add_skill_to_manifest(
     let repositories = get_repositories(&project);
     let repo_manager = RepositoryManager::from_definitions(repositories);
 
-    // Get sources manager for marketplace-based repositories
+    // Get sources manager for marketplace-based repositories. spec 008: opts
+    // into the on-disk index cache so a cold/offline add resolves a listing
+    // already known to `state.service`'s cache without a network round-trip.
     let sources_manager = SourcesManager::from_repositories(&repo_manager)
-        .map_err(|e| HttpError::InternalServerError(e.to_string()))?;
+        .map_err(|e| HttpError::InternalServerError(e.to_string()))?
+        .map(|mgr| mgr.with_skill_cache(state.service.skill_cache().clone()));
 
     // Find the skill in sources
     let marketplace_skill = if let Some(sources_mgr) = &sources_manager {

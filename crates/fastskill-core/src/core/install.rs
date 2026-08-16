@@ -726,6 +726,12 @@ fn resolve_registry_version(
 /// branch to persist a listing call it already made live, so a
 /// same-invocation update can resolve through the index instead of needing a
 /// separate `repos refresh`.
+///
+/// `client.get_versions` (this function's only caller) has no `name`/
+/// `description` to offer, so an existing entry's `name`/`description`
+/// (spec 008) are left as they were rather than clobbered with blanks, and a
+/// newly-created entry gets empty strings until a `repos refresh` or a live
+/// marketplace fetch fills them in.
 fn upsert_source_index_entry(
     cache: &SkillCache,
     repo_name: &str,
@@ -745,6 +751,8 @@ fn upsert_source_index_entry(
         idx.entries.push(SourceIndexEntry {
             skill: skill.to_string(),
             versions: versions.to_vec(),
+            name: String::new(),
+            description: String::new(),
         });
     }
     cache.write_source_index(repo_name, &idx)

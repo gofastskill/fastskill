@@ -12,6 +12,19 @@ use super::marketplace::{
 };
 use super::model::{SkillInfo, SourceConfig, SourceDefinition, SourcesConfig};
 use super::SourcesError;
+use crate::core::cache::SkillCache;
+
+/// Number of times [`SourcesManager::try_fetch_marketplace`] actually issued
+/// an HTTP request for a `marketplace.json` (either candidate location).
+/// Instrumentation-only, kept for the same reason as
+/// `storage::git::CLONE_INVOCATIONS` / `registry::client::DOWNLOAD_INVOCATIONS`
+/// / `install::LOCAL_COPY_INVOCATIONS`: proving spec 008's "zero HTTP calls
+/// on a disk-index hit" claim is otherwise only observable by timing.
+/// Deliberately not gated behind `#[cfg(test)]` — integration tests are a
+/// separate compilation unit and cannot see items scoped that way.
+#[doc(hidden)] // test instrumentation, not supported public API
+pub static MARKETPLACE_FETCH_INVOCATIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 /// Sources manager for handling multiple sources
 pub struct SourcesManager {
@@ -19,6 +32,19 @@ pub struct SourcesManager {
     sources: HashMap<String, SourceDefinition>,
     marketplace_cache: Arc<RwLock<HashMap<String, CachedMarketplace>>>,
     cache_ttl_seconds: u64,
+    /// The on-disk index cache (spec 008 FR-1/FR-2), consulted on an
+    /// in-memory miss and refreshed on a successful live fetch.
+    ///
+    /// `None` by default (`new`/`with_cache_ttl`/`from_repositories` do not
+    /// set it) so every construction site keeps today's memory-only
+    /// behavior unless it opts in via [`Self::with_skill_cache`] — notably
+    /// `MarketplaceRepositoryClient::new` (`repository/client.rs`), whose
+    /// `SourcesManager` backs `RepositoryManager::refresh_index`'s listing
+    /// call and must stay a real, unconditional network fetch (FR-4: `repos
+    /// refresh`'s contract must not change). Giving that one a disk-first
+    /// read-through would let a stale on-disk index silently answer what is
+    /// supposed to be an explicit refresh.
+    skill_cache: Option<SkillCache>,
 }
 
 impl SourcesManager {
@@ -29,6 +55,7 @@ impl SourcesManager {
             sources: HashMap::new(),
             marketplace_cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_seconds: 300, // 5 minutes default TTL
+            skill_cache: None,
         }
     }
 
@@ -39,7 +66,20 @@ impl SourcesManager {
             sources: HashMap::new(),
             marketplace_cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_seconds,
+            skill_cache: None,
         }
+    }
+
+    /// Opt this manager into the on-disk index cache (spec 008 FR-1/FR-2):
+    /// `fetch_and_cache_marketplace` will consult it on an in-memory miss
+    /// before going to the network, and refresh it after a successful live
+    /// fetch. Without this, `SourcesManager` behaves exactly as it did
+    /// before spec 008 (memory-only, always live on a miss) — see the
+    /// `skill_cache` field's docs for why some construction sites must not
+    /// opt in.
+    pub fn with_skill_cache(mut self, skill_cache: SkillCache) -> Self {
+        self.skill_cache = Some(skill_cache);
+        self
     }
 
     /// Load sources from TOML file
@@ -272,6 +312,7 @@ impl SourcesManager {
         url: &str,
         base_repo_url: Option<&str>,
     ) -> Result<MarketplaceJson, SourcesError> {
+        MARKETPLACE_FETCH_INVOCATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let client = reqwest::Client::new();
         let response = client.get(url).send().await.map_err(|e| {
             SourcesError::Network(format!("Failed to fetch marketplace.json: {}", e))
@@ -363,8 +404,25 @@ impl SourcesManager {
     /// Check cache, fetch from the network if stale, update cache, and return the marketplace.
     ///
     /// This is the single place where cache reads, TTL checks, HTTP calls, and cache writes live.
+    ///
+    /// spec 008: on an in-memory miss, the on-disk index (keyed by
+    /// `source_name`) is consulted *before* the network (FR-1) — a genuine
+    /// bypass, not just a fallback, so a cold process with a previously
+    /// `repos refresh`-ed (or previously live-fetched) source resolves a
+    /// listing with zero HTTP calls. A successful live fetch still populates
+    /// the in-memory map as before, and additionally refreshes the on-disk
+    /// index for `source_name` so the two layers do not drift (FR-2). If
+    /// *neither* layer has anything yet, the network is attempted as a last
+    /// resort; if that fails too but the on-disk index gained a usable entry
+    /// in the meantime (e.g. a concurrent `repos refresh`), it is used with a
+    /// warning naming when it was recorded (FR-3) — mirroring
+    /// `install::resolve_git_sha` / `install::fetch_zip_url_cached`'s
+    /// offline-fallback shape. `self.skill_cache` is `None` for managers that
+    /// must never read the disk index this way (see its field docs), so all
+    /// of the above degrades to today's memory-only behavior for them.
     async fn fetch_and_cache_marketplace(
         &self,
+        source_name: &str,
         claude_plugin_url: &str,
         root_url: &str,
         base_url: &str,
@@ -384,8 +442,20 @@ impl SourcesManager {
             }
         }
 
+        // FR-1: consult the on-disk index before the network.
+        if let Some((marketplace, fetched_at)) = self.disk_index_marketplace(source_name).await {
+            tracing::warn!(
+                "using the on-disk index for source '{source_name}' (recorded {fetched_at}) \
+                 instead of a live marketplace fetch; run `fastskill repos refresh {source_name}` \
+                 for the latest listing"
+            );
+            self.cache_marketplace_in_memory(claude_plugin_url, &marketplace)
+                .await;
+            return Ok(marketplace);
+        }
+
         // Try Claude Code standard location first, fall back to root
-        let (marketplace, successful_url) = match self
+        let live_fetch = match self
             .try_fetch_marketplace(claude_plugin_url, Some(base_url))
             .await
         {
@@ -394,7 +464,7 @@ impl SourcesManager {
                     "Loaded marketplace.json from Claude Code standard location: {}",
                     claude_plugin_url
                 );
-                (m, claude_plugin_url.to_string())
+                Ok((m, claude_plugin_url.to_string()))
             }
             Err(e) => {
                 tracing::debug!(
@@ -405,31 +475,94 @@ impl SourcesManager {
                 match self.try_fetch_marketplace(root_url, Some(base_url)).await {
                     Ok(m) => {
                         tracing::debug!("Loaded marketplace.json from root location: {}", root_url);
-                        (m, root_url.to_string())
+                        Ok((m, root_url.to_string()))
                     }
-                    Err(e2) => {
-                        return Err(SourcesError::Network(format!(
-                            "Failed to fetch marketplace.json from both locations. Claude Code location (.claude-plugin/marketplace.json): {}. Root location (marketplace.json): {}",
-                            e, e2
-                        )));
-                    }
+                    Err(e2) => Err(SourcesError::Network(format!(
+                        "Failed to fetch marketplace.json from both locations. Claude Code location (.claude-plugin/marketplace.json): {}. Root location (marketplace.json): {}",
+                        e, e2
+                    ))),
                 }
             }
         };
 
-        {
-            let mut cache = self.marketplace_cache.write().await;
-            cache.insert(
-                successful_url,
-                CachedMarketplace {
-                    data: marketplace.clone(),
-                    fetched_at: Utc::now(),
-                    ttl_seconds: self.cache_ttl_seconds,
-                },
-            );
+        let (marketplace, successful_url) = match live_fetch {
+            Ok(ok) => ok,
+            Err(err) => {
+                // FR-3: both live locations failed. A last-resort re-check of
+                // the on-disk index (it found nothing above, but this guards
+                // a concurrent `repos refresh`/live-fetch landing in
+                // between) proceeds with a warning naming when it was
+                // recorded, rather than surfacing the network error.
+                if let Some((marketplace, fetched_at)) =
+                    self.disk_index_marketplace(source_name).await
+                {
+                    tracing::warn!(
+                        "could not fetch a live marketplace listing for source '{source_name}' \
+                         ({err}); using the on-disk index recorded {fetched_at} instead"
+                    );
+                    self.cache_marketplace_in_memory(claude_plugin_url, &marketplace)
+                        .await;
+                    return Ok(marketplace);
+                }
+                return Err(err);
+            }
+        };
+
+        self.cache_marketplace_in_memory(&successful_url, &marketplace)
+            .await;
+
+        // FR-2: refresh the on-disk index so it does not drift behind what
+        // was just fetched live. Best-effort: a write failure must not fail
+        // a fetch that has already succeeded.
+        if let Some(skill_cache) = &self.skill_cache {
+            if let Err(e) = skill_cache
+                .write_source_index(source_name, &marketplace_to_source_index(&marketplace))
+            {
+                tracing::warn!(
+                    "failed to refresh the on-disk index for source '{source_name}': {}",
+                    e
+                );
+            }
         }
 
         Ok(marketplace)
+    }
+
+    /// FR-1/FR-3's shared disk-index lookup: `None` when this manager has no
+    /// [`SkillCache`] configured, the index has never been written for
+    /// `source_name`, or it was written with zero entries. Otherwise a best-
+    /// effort [`MarketplaceJson`] reconstructed from it (see
+    /// [`source_index_to_marketplace`] for exactly what is and is not
+    /// recoverable from the on-disk shape), paired with the index's recorded
+    /// `fetched_at` so callers can name it in their warning (FR-3).
+    async fn disk_index_marketplace(
+        &self,
+        source_name: &str,
+    ) -> Option<(MarketplaceJson, chrono::DateTime<Utc>)> {
+        let skill_cache = self.skill_cache.as_ref()?;
+        let idx = skill_cache.read_source_index(source_name).ok()??;
+        if idx.entries.is_empty() {
+            return None;
+        }
+        let fetched_at = idx.fetched_at;
+        Some((source_index_to_marketplace(&idx), fetched_at))
+    }
+
+    /// Insert `marketplace` into the in-memory map under `key` (FR-5: this is
+    /// the seam the within-operation dedup relies on — every return point in
+    /// `fetch_and_cache_marketplace`, disk or network, goes through it, so a
+    /// second call in the same operation always hits the in-memory check at
+    /// the top rather than repeating a disk read or a fetch).
+    async fn cache_marketplace_in_memory(&self, key: &str, marketplace: &MarketplaceJson) {
+        let mut cache = self.marketplace_cache.write().await;
+        cache.insert(
+            key.to_string(),
+            CachedMarketplace {
+                data: marketplace.clone(),
+                fetched_at: Utc::now(),
+                ttl_seconds: self.cache_ttl_seconds,
+            },
+        );
     }
 
     /// Load marketplace.json from a URL.
@@ -446,7 +579,7 @@ impl SourcesManager {
         let root_url = Self::to_github_raw_url(base_url, branch_name, "marketplace.json");
 
         let marketplace = self
-            .fetch_and_cache_marketplace(&claude_plugin_url, &root_url, base_url)
+            .fetch_and_cache_marketplace(source_name, &claude_plugin_url, &root_url, base_url)
             .await?;
 
         Ok(marketplace
@@ -558,8 +691,96 @@ impl SourcesManager {
             Self::to_github_raw_url(base_url, branch, ".claude-plugin/marketplace.json");
         let root_url = Self::to_github_raw_url(base_url, branch, "marketplace.json");
 
-        self.fetch_and_cache_marketplace(&claude_plugin_url, &root_url, base_url)
+        self.fetch_and_cache_marketplace(source_name, &claude_plugin_url, &root_url, base_url)
             .await
+    }
+}
+
+/// FR-2: fold a freshly-fetched [`MarketplaceJson`] into the on-disk
+/// [`crate::core::cache::SourceIndex`] shape — group by skill id, dedup
+/// versions, keep a representative `name`/`description` per id (the first
+/// skill entry seen for it). Mirrors
+/// `RepositoryManager::refresh_index`'s grouping (`repository.rs`) applied to
+/// a [`MarketplaceSkill`] list instead of a `SkillMetadata` list.
+fn marketplace_to_source_index(marketplace: &MarketplaceJson) -> crate::core::cache::SourceIndex {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut by_id: BTreeMap<String, (BTreeSet<String>, String, String)> = BTreeMap::new();
+    for skill in &marketplace.skills {
+        let entry = by_id.entry(skill.id.clone()).or_insert_with(|| {
+            (
+                BTreeSet::new(),
+                skill.name.clone(),
+                skill.description.clone(),
+            )
+        });
+        entry.0.insert(skill.version.clone());
+    }
+
+    let entries = by_id
+        .into_iter()
+        .map(
+            |(skill, (versions, name, description))| crate::core::cache::SourceIndexEntry {
+                skill,
+                versions: versions.into_iter().collect(),
+                name,
+                description,
+            },
+        )
+        .collect();
+
+    crate::core::cache::SourceIndex {
+        fetched_at: Utc::now(),
+        entries,
+    }
+}
+
+/// FR-1/FR-3: the read-side inverse of [`marketplace_to_source_index`] —
+/// best-effort reconstruct a [`MarketplaceJson`] from a
+/// [`crate::core::cache::SourceIndex`] so a disk hit can stand in for a live
+/// fetch.
+///
+/// **Lossy**: `SourceIndexEntry` (owned by the on-disk index schema, shared
+/// with `RepositoryManager::refresh_index` and `install::resolve_repository_version`,
+/// which never needed more than `skill` + `versions`) has no `author` or
+/// `download_url` field — a skill reconstructed this way always gets
+/// `author: None, download_url: None`. In this codebase that is a narrow,
+/// display-only gap: the real skill-content fetch (`install_from_resolved_source`,
+/// `install.rs`) resolves bytes from a `SourceConfig` (git/zip-url/local),
+/// never from `MarketplaceSkill::download_url` — so it is never even read on
+/// the path that matters for *installing*. It does reach two read-only HTTP
+/// registry endpoints (`GET /api/v1/registry/skills`,
+/// `.../sources/:name/skills`) that surface `author`/`download_url` for
+/// display; those fields render blank when a listing came from the disk
+/// fallback instead of a live fetch, until the next live fetch or `repos
+/// refresh` repopulates them with real values.
+///
+/// One [`MarketplaceSkill`] is emitted per recorded version, all sharing the
+/// entry's representative `name`/`description` (the same "one per id, not
+/// one per version" approximation `marketplace_to_source_index` already made
+/// when writing the index).
+fn source_index_to_marketplace(idx: &crate::core::cache::SourceIndex) -> MarketplaceJson {
+    let skills = idx
+        .entries
+        .iter()
+        .flat_map(|entry| {
+            let id = entry.skill.clone();
+            let name = entry.name.clone();
+            let description = entry.description.clone();
+            entry.versions.iter().map(move |version| MarketplaceSkill {
+                id: id.clone(),
+                name: name.clone(),
+                description: description.clone(),
+                version: version.clone(),
+                author: None,
+                download_url: None,
+            })
+        })
+        .collect();
+
+    MarketplaceJson {
+        version: "1.0".to_string(),
+        skills,
     }
 }
 
