@@ -157,16 +157,16 @@ impl IntoCommandSpec for CacheCleanArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Remove cached skill content and print bytes reclaimed",
-            syntax: Some("cache clean [--source <git|registry|local>]"),
+            syntax: Some("cache clean [--source <git|registry|local|zip>]"),
             category: Some("cache"),
             args: vec![
                 ArgSpec {
                     name: "source",
                     kind: ArgKind::Option,
                     long: Some("source"),
-                    value_type: ArgValueType::Enum(vec!["git", "registry", "local"]),
+                    value_type: ArgValueType::Enum(vec!["git", "registry", "local", "zip"]),
                     cardinality: Cardinality::Optional,
-                    help: "Limit cleaning to one source kind: git, registry, or local \
+                    help: "Limit cleaning to one source kind: git, registry, local, or zip \
                            (default: all)",
                     ..Default::default()
                 },
