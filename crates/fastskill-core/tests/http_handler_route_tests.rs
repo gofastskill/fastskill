@@ -140,8 +140,11 @@ async fn fixture_for_install(enable_write: bool) -> Fixture {
     let project_file_path = project.path().join("skill-project.toml");
     fs::write(
         &project_file_path,
+        // TOML *literal* string (single quotes): a Windows path contains
+        // backslashes, which inside a basic string ("...") would be parsed
+        // as escape sequences and fail to parse.
         format!(
-            "[tool.fastskill]\nskills_directory = \"{}\"\n\n[dependencies]\n",
+            "[tool.fastskill]\nskills_directory = '{}'\n\n[dependencies]\n",
             store.display()
         ),
     )
@@ -662,8 +665,11 @@ async fn update_version_pin_happy_path_repository_origin() {
     let project_file_path = project.path().join("skill-project.toml");
     fs::write(
         &project_file_path,
+        // TOML literal string (single quotes) for the path: a Windows path
+        // contains backslashes, which a basic string ("...") would parse as
+        // escape sequences and fail to parse.
         format!(
-            "[tool.fastskill]\nskills_directory = \"{}\"\n\n[dependencies]\n\
+            "[tool.fastskill]\nskills_directory = '{}'\n\n[dependencies]\n\
              widget = {{ origin = {{ type = \"repository\", repo = \"myreg\", skill = \"widget\" }} }}\n",
             store.display()
         ),
@@ -1197,7 +1203,10 @@ async fn registry_skill_versions_unknown_id_is_empty_not_404() {
     fs::write(
         &f.project_file_path,
         format!(
-            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
+            // TOML literal string (single quotes) for the path: a Windows
+            // path contains backslashes, which a basic string ("...") would
+            // parse as escape sequences and fail to parse.
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = '{}'\npriority = 0\n",
             repo_dir.path().display()
         ),
     )
@@ -1227,7 +1236,10 @@ async fn registry_skill_versions_populated_and_sorted_descending() {
     fs::write(
         &f.project_file_path,
         format!(
-            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = \"{}\"\npriority = 0\n",
+            // TOML literal string (single quotes) for the path: a Windows
+            // path contains backslashes, which a basic string ("...") would
+            // parse as escape sequences and fail to parse.
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"localrepo\"\ntype = \"local\"\npath = '{}'\npriority = 0\n",
             repo_dir.path().display()
         ),
     )
