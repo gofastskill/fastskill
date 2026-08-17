@@ -28,6 +28,9 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod common;
+
+use common::{git_command, run_git, GitDaemonFixture};
 use fastskill_core::core::install::LOCAL_COPY_INVOCATIONS;
 use fastskill_core::core::registry::client::{IndexEntry, DOWNLOAD_INVOCATIONS};
 use fastskill_core::core::repository::{
@@ -37,12 +40,9 @@ use fastskill_core::core::version::VersionConstraint;
 use fastskill_core::core::{AddMode, GitRef, Origin};
 use fastskill_core::storage::git::CLONE_INVOCATIONS;
 use fastskill_core::{FastSkillService, ServiceConfig};
-use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use wiremock::matchers::{method, path as wm_path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -54,196 +54,12 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 const UNREACHABLE_GIT_URL: &str = "git://127.0.0.1:1/does-not-exist.git";
 const UNREACHABLE_INDEX_URL: &str = "http://127.0.0.1:1/index";
 
-// ── shared fixtures (mirror git_content_cache_test.rs / registry_content_cache_test.rs) ──
-
-struct GitDaemonFixture {
-    child: Child,
-    port: u16,
-    _base: TempDir,
-}
-
-impl GitDaemonFixture {
-    fn start(base: TempDir) -> Self {
-        // `free_loopback_port` can only *suggest* a port: it binds :0, reads the
-        // number, then drops the listener so `git daemon` can take it. Under a
-        // parallel test run another process can win that gap, and the daemon
-        // then dies immediately with "address already in use". Retry on a fresh
-        // port instead of failing the test for an unlucky race.
-        const MAX_ATTEMPTS: u32 = 10;
-        for attempt in 1..=MAX_ATTEMPTS {
-            let port = free_loopback_port();
-            let mut child = git_command()
-                .args([
-                    "daemon",
-                    "--reuseaddr",
-                    "--export-all",
-                    "--listen=127.0.0.1",
-                    &format!("--port={port}"),
-                    &format!("--base-path={}", base.path().display()),
-                ])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .expect("failed to start `git daemon`; is git installed with daemon support?");
-
-            if wait_for_port(port, &mut child) {
-                return Self {
-                    child,
-                    port,
-                    _base: base,
-                };
-            }
-
-            // Did not come up: reap this attempt before trying another port.
-            let _ = child.kill();
-            let _ = child.wait();
-            assert!(
-                attempt < MAX_ATTEMPTS,
-                "git daemon failed to start listening after {MAX_ATTEMPTS} attempts"
-            );
-        }
-        unreachable!("loop either returns or asserts on the final attempt")
-    }
-
-    fn repo_url(&self, repo_name: &str) -> String {
-        format!("git://127.0.0.1:{}/{repo_name}", self.port)
-    }
-
-    /// Kill the daemon -- including the `git-daemon` child it re-execs into,
-    /// which is what actually holds the listening socket, separate from the
-    /// pid `spawn` hands back (plain `child.kill()`, as every other fixture
-    /// in this repo uses, leaves that child running and the port still
-    /// accepting connections) -- and wait for the port to actually stop
-    /// accepting connections. This is the "network egress made to fail"
-    /// step for the git scenario: deterministic (polls a local condition,
-    /// no sleep-and-hope) and fast, with no reliance on the test
-    /// environment actually lacking internet access.
-    ///
-    /// Deliberately kills each descendant PID individually by exact number
-    /// (via `/proc/<pid>/task/<pid>/children`, Linux-only) rather than a
-    /// process-group-wide `kill -9 -PID`: this test process was not itself
-    /// given a fresh process group, so a group-wide signal risks hitting
-    /// far more than the daemon it is scoped to.
-    fn kill_and_wait(mut self) {
-        #[cfg(target_os = "linux")]
-        {
-            let mut victims = descendant_pids(self.child.id());
-            victims.push(self.child.id());
-            for pid in victims {
-                let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-            }
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = self.child.kill();
-        }
-        let _ = self.child.wait();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while TcpStream::connect(("127.0.0.1", self.port)).is_ok() {
-            if Instant::now() >= deadline {
-                panic!(
-                    "git daemon on port {} did not stop accepting connections",
-                    self.port
-                );
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-}
-
-/// Every descendant pid of `pid` (children, grandchildren, ...), read from
-/// procfs. Linux-only; `kill_and_wait`'s only caller falls back to a plain
-/// `child.kill()` everywhere else.
-#[cfg(target_os = "linux")]
-fn descendant_pids(pid: u32) -> Vec<u32> {
-    let mut result = Vec::new();
-    let mut frontier = vec![pid];
-    while let Some(p) = frontier.pop() {
-        let children_path = format!("/proc/{p}/task/{p}/children");
-        if let Ok(contents) = std::fs::read_to_string(&children_path) {
-            for token in contents.split_whitespace() {
-                if let Ok(child) = token.parse::<u32>() {
-                    result.push(child);
-                    frontier.push(child);
-                }
-            }
-        }
-    }
-    result
-}
-
-impl Drop for GitDaemonFixture {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-/// `git` exports these to its own subprocesses (hooks, `rebase --exec`) to pin
-/// them to the invoking repository. A test run *from* such a context — most
-/// obviously this repo's own `pre-push` hook — would otherwise inherit them,
-/// and every `git` below would retarget the real repo instead of the scratch
-/// one, firing the real hooks. Always spawn git through this.
-fn git_command() -> Command {
-    let mut cmd = Command::new("git");
-    for var in [
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_COMMON_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_PREFIX",
-        "GIT_NAMESPACE",
-        "GIT_CEILING_DIRECTORIES",
-    ] {
-        cmd.env_remove(var);
-    }
-    cmd
-}
-
-fn free_loopback_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
-    listener
-        .local_addr()
-        .expect("failed to read local addr")
-        .port()
-}
-
-/// Poll until `port` accepts connections. Returns `false` (rather than
-/// panicking) if the daemon exits first or the deadline passes, so the caller
-/// can retry on a different port.
-fn wait_for_port(port: u16, child: &mut Child) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return true;
-        }
-        // A daemon that already exited is never going to listen -- fail this
-        // attempt immediately instead of burning the whole deadline.
-        if matches!(child.try_wait(), Ok(Some(_))) {
-            return false;
-        }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn run_git(dir: &Path, args: &[&str]) {
-    let output = git_command()
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to execute `git {}`: {e}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "`git {}` failed: {}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
+// ── shared fixtures ──────────────────────────────────────────────────────
+//
+// `GitDaemonFixture` (incl. `kill_and_wait`, used below to prove the daemon
+// is genuinely dead before the offline re-run) and its supporting helpers
+// live in `tests/common/mod.rs`, shared with `git_content_cache_test.rs` and
+// `repo_index_refresh_git_test.rs`.
 
 const GIT_SKILL_MD: &str =
     "---\nname: offline-git-skill\nversion: \"1.0.0\"\ndescription: A test skill\n---\nBody\n";
