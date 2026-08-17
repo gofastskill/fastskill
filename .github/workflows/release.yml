@@ -149,6 +149,23 @@ jobs:
           mkdir -p release
           cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
 
+      # This CLI builds its command tree at RUNTIME (cli-framework AppBuilder::register /
+      # register_out in main()), not at compile time -- a duplicate command path or a bad
+      # CommandSpec is a panic when the binary starts, not a compiler error. Every job above
+      # only compiles the binary; nothing ever executes it. A shipped binary that fails to
+      # start (missing DLL, bad linkage, a runtime panic while building the command tree)
+      # would go completely undetected -- every CI job would still be green. So actually run
+      # the exact binary that gets archived, on every target in this matrix. See
+      # scripts/smoke-binary.sh for what it checks and why.
+      #
+      # All five (target, runner) pairs in this matrix are native: x86_64-unknown-linux-musl
+      # is cross-built via `cross`, but it is still a static x86_64 binary and runs fine
+      # directly on the ubuntu-latest (x86_64) runner -- no emulation needed. So there is
+      # nothing here to guard with an `if:`; every leg can execute its own binary.
+      - name: Smoke test the built binary
+        shell: bash
+        run: bash scripts/smoke-binary.sh "release/${{ matrix.binary-name }}"
+
       - name: Create README for release
         shell: bash
         run: |
