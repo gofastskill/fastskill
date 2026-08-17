@@ -116,11 +116,19 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     checks.push(project_file_check);
 
     // Check 3: Embedding configuration present
-    let embedding_check = if service.config().embedding.is_some() {
+    let embedding_check = if let Some(embedding) = service.config().embedding.as_ref() {
+        // Report the *effective* endpoint and model, not just that config
+        // exists. These are environment-overridable (see `config_file`), so
+        // "configuration found" alone cannot tell you whether you are talking to
+        // OpenAI or to an internal gateway — which is exactly the question you
+        // are asking when embeddings misbehave.
         DoctorCheckResult {
             check: "embedding_config".to_string(),
             status: DoctorStatus::Pass,
-            message: "Embedding configuration found.".to_string(),
+            message: format!(
+                "Embedding configuration found (endpoint: {}, model: {}).",
+                embedding.openai_base_url, embedding.embedding_model
+            ),
         }
     } else {
         DoctorCheckResult {

@@ -83,11 +83,14 @@ pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<Fa
     let tool_config = project.tool.and_then(|t| t.fastskill);
 
     if let Some(config) = tool_config {
-        // Convert EmbeddingConfigToml to EmbeddingConfig
-        let embedding = config.embedding.map(|e| EmbeddingConfig {
-            openai_base_url: e.openai_base_url,
-            embedding_model: e.embedding_model,
-            index_path: e.index_path,
+        // Convert EmbeddingConfigToml to EmbeddingConfig, then let the
+        // environment override the non-secret fields (K4).
+        let embedding = config.embedding.map(|e| {
+            embedding_with_env_overrides(EmbeddingConfig {
+                openai_base_url: e.openai_base_url,
+                embedding_model: e.embedding_model,
+                index_path: e.index_path,
+            })
         });
 
         // Convert HttpServerConfigToml to HttpServerConfig
@@ -108,6 +111,59 @@ pub fn load_config_from_skill_project(current_dir: &Path) -> CliResult<Option<Fa
     }
 }
 
+/// Environment override for [`EmbeddingConfig::openai_base_url`].
+///
+/// Named to match `OPENAI_API_KEY` and the variable the OpenAI SDKs themselves
+/// read, so pointing FastSkill at an OpenAI-compatible gateway uses the same
+/// spelling as every other tool in the stack.
+pub const ENV_OPENAI_BASE_URL: &str = "OPENAI_BASE_URL";
+
+/// Environment override for [`EmbeddingConfig::embedding_model`].
+///
+/// Deliberately *not* `OPENAI_EMBEDDING_MODEL`: there is no such OpenAI
+/// convention, and the value is frequently not an OpenAI model at all (a
+/// self-hosted gateway may serve something else entirely).
+pub const ENV_EMBEDDING_MODEL: &str = "FASTSKILL_EMBEDDING_MODEL";
+
+/// Apply environment overrides to the embedding config read from the manifest.
+///
+/// **Environment wins over the manifest.** `skill-project.toml` is committed and
+/// shared by everyone on the project; the environment is per-deployment. Pointing
+/// one machine (or one CI job) at a different embedding endpoint must not require
+/// editing — let alone committing — a tracked file.
+///
+/// This closes the asymmetry recorded as K4: the base URL and model were
+/// manifest-only while the API key was environment-only, so a gateway
+/// redirection had to be split across two mechanisms. Note the fix is to make the
+/// *non-secret* fields environment-overridable, **not** to add an API-key field
+/// to the manifest — a committed file is the wrong home for a secret.
+///
+/// Takes a lookup closure rather than reading the process environment directly so
+/// it can be tested without `set_var`, which is process-global and races with any
+/// other test running in parallel.
+fn apply_embedding_env_overrides(
+    mut embedding: EmbeddingConfig,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> EmbeddingConfig {
+    // An empty or whitespace-only value is treated as unset. `FOO=` in a shell
+    // profile or a CI matrix that leaves a variable blank should not silently
+    // blank out a working manifest setting.
+    let present = |name: &str| lookup(name).filter(|v| !v.trim().is_empty());
+
+    if let Some(base_url) = present(ENV_OPENAI_BASE_URL) {
+        embedding.openai_base_url = base_url.trim().to_string();
+    }
+    if let Some(model) = present(ENV_EMBEDDING_MODEL) {
+        embedding.embedding_model = model.trim().to_string();
+    }
+    embedding
+}
+
+/// [`apply_embedding_env_overrides`] against the real process environment.
+pub fn embedding_with_env_overrides(embedding: EmbeddingConfig) -> EmbeddingConfig {
+    apply_embedding_env_overrides(embedding, |name| std::env::var(name).ok())
+}
+
 /// Get OpenAI API key from environment
 pub fn get_openai_api_key() -> CliResult<String> {
     std::env::var("OPENAI_API_KEY")
@@ -120,5 +176,96 @@ pub fn load_auto_reindex_config() -> bool {
         config.auto_reindex
     } else {
         true
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+mod embedding_env_override_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn manifest_config() -> EmbeddingConfig {
+        EmbeddingConfig {
+            openai_base_url: "https://api.openai.com/v1".to_string(),
+            embedding_model: "text-embedding-3-small".to_string(),
+            index_path: None,
+        }
+    }
+
+    /// Build a lookup over a fixed map — no process env, so these tests are
+    /// safe to run in parallel with everything else.
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        move |name: &str| map.get(name).cloned()
+    }
+
+    #[test]
+    fn manifest_values_survive_when_no_env_is_set() {
+        let out = apply_embedding_env_overrides(manifest_config(), env_of(&[]));
+        assert_eq!(out.openai_base_url, "https://api.openai.com/v1");
+        assert_eq!(out.embedding_model, "text-embedding-3-small");
+    }
+
+    #[test]
+    fn env_overrides_base_url_and_model() {
+        let out = apply_embedding_env_overrides(
+            manifest_config(),
+            env_of(&[
+                (ENV_OPENAI_BASE_URL, "https://llm-gateway.example.ts.net/v1"),
+                (ENV_EMBEDDING_MODEL, "kalm-embed"),
+            ]),
+        );
+        assert_eq!(out.openai_base_url, "https://llm-gateway.example.ts.net/v1");
+        assert_eq!(out.embedding_model, "kalm-embed");
+    }
+
+    #[test]
+    fn each_override_is_independent() {
+        let out = apply_embedding_env_overrides(
+            manifest_config(),
+            env_of(&[(ENV_OPENAI_BASE_URL, "https://gateway.internal/v1")]),
+        );
+        assert_eq!(out.openai_base_url, "https://gateway.internal/v1");
+        assert_eq!(
+            out.embedding_model, "text-embedding-3-small",
+            "overriding the base URL must not disturb the model"
+        );
+    }
+
+    /// A blank value in a shell profile or CI matrix must not silently blank out
+    /// a working manifest setting — that failure is near-impossible to diagnose
+    /// from the resulting "connection refused to ''".
+    #[test]
+    fn blank_env_values_are_treated_as_unset() {
+        let out = apply_embedding_env_overrides(
+            manifest_config(),
+            env_of(&[(ENV_OPENAI_BASE_URL, ""), (ENV_EMBEDDING_MODEL, "   ")]),
+        );
+        assert_eq!(out.openai_base_url, "https://api.openai.com/v1");
+        assert_eq!(out.embedding_model, "text-embedding-3-small");
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_trimmed() {
+        let out = apply_embedding_env_overrides(
+            manifest_config(),
+            env_of(&[(ENV_EMBEDDING_MODEL, "  kalm-embed\n")]),
+        );
+        assert_eq!(out.embedding_model, "kalm-embed");
+    }
+
+    #[test]
+    fn index_path_is_never_touched_by_env() {
+        let mut cfg = manifest_config();
+        cfg.index_path = Some(PathBuf::from("/custom/index"));
+        let out = apply_embedding_env_overrides(
+            cfg,
+            env_of(&[(ENV_OPENAI_BASE_URL, "https://gateway.internal/v1")]),
+        );
+        assert_eq!(out.index_path, Some(PathBuf::from("/custom/index")));
     }
 }
