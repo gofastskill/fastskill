@@ -37,6 +37,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --all-features
 
+      # `cargo build --all-features` above already produces target/debug/fastskill, so
+      # this is nearly free and it's the only place release.yml's smoke step (tag-only,
+      # so it never runs in PR CI) gets exercised on Linux before a release. See
+      # scripts/smoke-binary.sh for what it checks and why.
+      - name: Smoke test fastskill binary
+        run: bash scripts/smoke-binary.sh target/debug/fastskill
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -74,6 +81,26 @@ jobs:
       # --no-fail-fast: this job is still being brought up, and stopping at the
       # first failure would surface only one platform issue per CI round-trip.
       - run: cargo nextest run -p fastskill-core --lib --test '*' --retries 3 --no-fail-fast
+
+      # fastskill-cli itself has never been compiled on Windows -- only fastskill-core
+      # is built/tested above. release.yml cross-builds and ships an
+      # x86_64-pc-windows-msvc *binary* of fastskill-cli, but only at tag time, so a
+      # Windows-only compile failure (or a runtime failure -- this CLI builds its
+      # command tree at RUNTIME via cli-framework's AppBuilder::register/register_out
+      # in main(), so a duplicate command path or bad CommandSpec panics on startup,
+      # not at compile time) would first be discovered mid-release instead of on a PR.
+      # Debug build is enough: the failure modes we're guarding against (missing
+      # symbols/DLLs, unix-only code paths, a panic while building the command tree)
+      # show up in debug just as well as release, for a fraction of the build time.
+      - name: Build fastskill-cli (debug)
+        run: cargo build -p fastskill-cli
+
+      # See scripts/smoke-binary.sh for what it checks and why. Deliberately includes
+      # check 3 (offline init + list) here, not just --version/--help: filesystem-write
+      # paths on Windows are exactly where this repo's real bugs have been.
+      - name: Smoke test fastskill-cli
+        shell: bash
+        run: bash scripts/smoke-binary.sh target/debug/fastskill.exe
 
   test-all-features:
     name: Test (All Features)
