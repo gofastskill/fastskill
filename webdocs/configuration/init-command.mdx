@@ -130,6 +130,43 @@ Set the API key via the environment; if it is unset, semantic search is silently
 export OPENAI_API_KEY="your-key-here"
 ```
 
+### Pointing at a different endpoint
+
+`skill-project.toml` is committed and shared by everyone on the project, so it is
+the wrong place to record that *your* machine — or one CI job — talks to a
+different embedding endpoint. Both non-secret fields can be overridden from the
+environment, and the environment wins:
+
+| Variable | Overrides | Example |
+|---|---|---|
+| `OPENAI_BASE_URL` | `openai_base_url` | `https://gateway.internal/v1` |
+| `FASTSKILL_EMBEDDING_MODEL` | `embedding_model` | `my-embed-model` |
+
+```bash
+export OPENAI_BASE_URL="https://gateway.internal/v1"
+export FASTSKILL_EMBEDDING_MODEL="my-embed-model"
+export OPENAI_API_KEY="your-gateway-key"
+```
+
+An empty or whitespace-only value counts as unset, so a blank variable in a shell
+profile or CI matrix will not silently blank out a working manifest setting.
+
+Run `fastskill doctor` to see which endpoint and model are actually in effect:
+
+```
+[PASS] embedding_config: Embedding configuration found
+       (endpoint: https://gateway.internal/v1, model: my-embed-model).
+```
+
+<Callout type="warn">
+**Changing the embedding model invalidates your index.** Vectors from different
+models are not comparable — and often not even the same length. After switching
+models, run `fastskill reindex` before searching, or results will be meaningless.
+</Callout>
+
+The API key stays environment-only on purpose: a committed manifest is the wrong
+home for a secret.
+
 ## Troubleshooting
 
 ### "skill-project.toml already exists. Use --force to overwrite."
