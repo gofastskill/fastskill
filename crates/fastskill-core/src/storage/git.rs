@@ -220,6 +220,16 @@ pub(crate) fn build_clone_args<'a>(
         "protocol.ext.allow=never",
         "-c",
         "protocol.file.allow=never",
+        // Check out exactly what the repository contains. Git for Windows
+        // defaults `core.autocrlf=true`, which rewrites LF to CRLF on
+        // checkout -- so the same skill installed on Windows would differ
+        // byte-for-byte from the published source, and from the same skill
+        // installed on that machine from a zip. A package manager should
+        // deliver the artifact as published, so opt out of the conversion.
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "core.eol=lf",
         "clone",
         "--depth=1",
         "--quiet",
@@ -782,6 +792,23 @@ pub fn validate_cloned_skill(cloned_path: &Path) -> Result<PathBuf, ServiceError
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_build_clone_args_disables_line_ending_translation() {
+        // Git for Windows defaults core.autocrlf=true, which would rewrite LF
+        // to CRLF on checkout and make an installed skill differ from the
+        // published source (and from the same skill installed from a zip).
+        let args = build_clone_args("https://example.com/r.git", "/dest", None, None);
+        assert!(args.windows(2).any(|w| w == ["-c", "core.autocrlf=false"]));
+        assert!(args.windows(2).any(|w| w == ["-c", "core.eol=lf"]));
+        // Config must precede the subcommand or git rejects it.
+        let clone_at = args.iter().position(|a| *a == "clone").unwrap();
+        let autocrlf_at = args
+            .iter()
+            .position(|a| *a == "core.autocrlf=false")
+            .unwrap();
+        assert!(autocrlf_at < clone_at);
+    }
 
     #[test]
     fn test_build_clone_args_includes_protocol_flags_and_end_of_options() {
