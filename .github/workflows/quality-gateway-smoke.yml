@@ -20,13 +20,13 @@ name: Quality Gateway Smoke
 # LLM_GATEWAY_EMBEDDING_MODEL must match what the key permits — changing either
 # pin means re-minting the key.
 
+# On demand only. This is a diagnostic you reach for when the quality tier fails
+# and you need to know whether the gateway path or the tier logic is at fault —
+# not something that should fire on every push. Verified green on
+# ci/gateway-connectivity-smoke (run 32073317516) before the push trigger was
+# removed.
 on:
   workflow_dispatch: {}
-  # Temporary: run on pushes to this branch so the wiring can be verified before
-  # merge. Remove this trigger once it has gone green once.
-  push:
-    branches:
-      - "ci/gateway-connectivity-smoke"
 
 permissions:
   contents: read
