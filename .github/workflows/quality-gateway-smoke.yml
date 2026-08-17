@@ -1,0 +1,89 @@
+name: Quality Gateway Smoke
+
+# Proves the LLM-gateway path used by the spec-005 quality tier actually works
+# from CI: Tailnet join → gateway reachable → key accepted → both pinned models
+# answer. Deliberately tiny and dependency-free (curl + python3, no Docker, no
+# Rust build) so it can be run on demand to isolate "is the gateway wiring OK?"
+# from "is the quality tier logic OK?".
+#
+# This is NOT the quality tier itself (that is spec 005 P4, `quality.yml`); it is
+# the connectivity prerequisite that tier assumes.
+#
+# Required repo secrets (all six, else the job skips rather than fails):
+#   TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET  — Tailscale OAuth client, tag:ci
+#   LLM_GATEWAY_URL                       — gateway base URL on the Tailnet
+#   LLM_GATEWAY_KEY                       — virtual key (sk-…), budget-scoped
+#   LLM_GATEWAY_MODEL                     — chat model pin
+#   LLM_GATEWAY_EMBEDDING_MODEL           — embedding model pin
+#
+# The virtual key is scoped to a model allow-list, so LLM_GATEWAY_MODEL and
+# LLM_GATEWAY_EMBEDDING_MODEL must match what the key permits — changing either
+# pin means re-minting the key.
+
+# On demand only. This is a diagnostic you reach for when the quality tier fails
+# and you need to know whether the gateway path or the tier logic is at fault —
+# not something that should fire on every push. Verified green on
+# ci/gateway-connectivity-smoke (run 32073317516) before the push trigger was
+# removed.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # Required by tailscale/github-action to mint an OIDC token for OAuth.
+  id-token: write
+
+concurrency:
+  group: quality-gateway-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Gateway reachable + both pinned models answer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify secrets are configured
+        id: guard
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          LLM_GATEWAY_URL: ${{ secrets.LLM_GATEWAY_URL }}
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+          LLM_GATEWAY_MODEL: ${{ secrets.LLM_GATEWAY_MODEL }}
+          LLM_GATEWAY_EMBEDDING_MODEL: ${{ secrets.LLM_GATEWAY_EMBEDDING_MODEL }}
+        run: |
+          missing=""
+          for v in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET LLM_GATEWAY_URL \
+                   LLM_GATEWAY_KEY LLM_GATEWAY_MODEL LLM_GATEWAY_EMBEDDING_MODEL; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::gateway secrets not configured — skipping:$missing"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout code
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/checkout@v6
+
+      - name: Connect to the Tailnet
+        if: steps.guard.outputs.run == 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          # Must be authorized in the Tailscale ACL `tagOwners`; the node is
+          # ephemeral and auto-removed when the job ends.
+          tags: tag:ci
+
+      - name: Probe the gateway
+        if: steps.guard.outputs.run == 'true'
+        env:
+          LLM_GATEWAY_URL: ${{ secrets.LLM_GATEWAY_URL }}
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+          LLM_GATEWAY_MODEL: ${{ secrets.LLM_GATEWAY_MODEL }}
+          LLM_GATEWAY_EMBEDDING_MODEL: ${{ secrets.LLM_GATEWAY_EMBEDDING_MODEL }}
+        run: python3 ci/quality/gateway_smoke.py
