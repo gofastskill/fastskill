@@ -470,12 +470,13 @@ mod tests {
     /// Build an in-memory zip containing the given (path, contents) entries.
     fn build_zip(entries: &[(&str, &str)]) -> Vec<u8> {
         use std::io::Write;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
         let mut buf = Vec::new();
         {
             let cursor = std::io::Cursor::new(&mut buf);
             let mut writer = zip::ZipWriter::new(cursor);
-            let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             for (name, contents) in entries {
                 writer.start_file(*name, opts).unwrap();
                 writer.write_all(contents.as_bytes()).unwrap();

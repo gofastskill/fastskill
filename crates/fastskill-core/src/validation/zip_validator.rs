@@ -38,7 +38,7 @@ mod tests {
     use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
 
     fn write_zip(entries: &[(&str, &[u8])]) -> (TempDir, PathBuf) {
@@ -46,7 +46,8 @@ mod tests {
         let zip_path = temp_dir.path().join("test.zip");
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         for (name, content) in entries {
             zip.start_file(*name, options).unwrap();
             zip.write_all(content).unwrap();
@@ -103,7 +104,8 @@ mod tests {
         let zip_path = temp_dir.path().join("many.zip");
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         for i in 0..(MAX_ENTRIES + 1) {
             zip.start_file(format!("f{i}.txt"), options).unwrap();
             zip.write_all(b"x").unwrap();

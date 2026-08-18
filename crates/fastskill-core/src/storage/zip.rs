@@ -267,7 +267,7 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use tempfile::TempDir;
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
 
     /// Helper to create a ZIP archive with specified entries
@@ -277,7 +277,8 @@ mod tests {
 
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
         for (name, content) in entries {
             if name.ends_with('/') {
@@ -451,7 +452,8 @@ mod tests {
         let zip_path = temp_dir.path().join("test.zip");
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         for (name, content) in entries {
             zip.start_file(*name, options).unwrap();
             zip.write_all(content).unwrap();
@@ -466,7 +468,8 @@ mod tests {
         let zip_path = temp_dir.path().join("many.zip");
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         for i in 0..n {
             zip.start_file(format!("f{}.txt", i), options).unwrap();
             zip.write_all(b"x").unwrap();
@@ -627,7 +630,8 @@ mod tests {
         {
             let file = File::create(&zip_path).unwrap();
             let mut zip = ZipWriter::new(file);
-            let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             zip.add_symlink("link", "/etc/passwd", options).unwrap();
             zip.finish().unwrap();
         }
@@ -698,15 +702,114 @@ mod tests {
 
     /// A file entry whose path already exists (duplicate entry) exercises the
     /// `outpath.exists()` canonicalize-existing branch.
+    ///
+    /// zip 2.x's `ZipWriter` rejects duplicate filenames at write time
+    /// (`InvalidArchive("Duplicate filename")`), so `create_test_zip` above can no
+    /// longer be used to build a fixture with two same-named entries. Nothing stops
+    /// an archive built by another tool from containing duplicate names though, and
+    /// real-world unzip semantics treat the last entry as authoritative, so this
+    /// hand-assembles the raw ZIP bytes to keep covering that read-path behavior.
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        for &b in data {
+            crc ^= b as u32;
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    fn build_duplicate_name_zip(name: &str, first: &[u8], second: &[u8]) -> Vec<u8> {
+        fn local_header(name: &[u8], data: &[u8]) -> Vec<u8> {
+            let mut h = Vec::new();
+            h.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+            h.extend_from_slice(&20u16.to_le_bytes()); // version needed
+            h.extend_from_slice(&0u16.to_le_bytes()); // flags
+            h.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+            h.extend_from_slice(&0u16.to_le_bytes()); // mod time
+            h.extend_from_slice(&0u16.to_le_bytes()); // mod date
+            h.extend_from_slice(&crc32(data).to_le_bytes());
+            h.extend_from_slice(&(data.len() as u32).to_le_bytes()); // compressed size
+            h.extend_from_slice(&(data.len() as u32).to_le_bytes()); // uncompressed size
+            h.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            h.extend_from_slice(&0u16.to_le_bytes()); // extra len
+            h.extend_from_slice(name);
+            h
+        }
+
+        fn central_header(offset: u32, name: &[u8], data: &[u8]) -> Vec<u8> {
+            let mut c = Vec::new();
+            c.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+            c.extend_from_slice(&20u16.to_le_bytes()); // version made by
+            c.extend_from_slice(&20u16.to_le_bytes()); // version needed
+            c.extend_from_slice(&0u16.to_le_bytes()); // flags
+            c.extend_from_slice(&0u16.to_le_bytes()); // method
+            c.extend_from_slice(&0u16.to_le_bytes()); // time
+            c.extend_from_slice(&0u16.to_le_bytes()); // date
+            c.extend_from_slice(&crc32(data).to_le_bytes());
+            c.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            c.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            c.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            c.extend_from_slice(&0u16.to_le_bytes()); // extra len
+            c.extend_from_slice(&0u16.to_le_bytes()); // comment len
+            c.extend_from_slice(&0u16.to_le_bytes()); // disk number
+            c.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+            c.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+            c.extend_from_slice(&offset.to_le_bytes());
+            c.extend_from_slice(name);
+            c
+        }
+
+        let name_bytes = name.as_bytes();
+        let mut bytes = Vec::new();
+
+        let offset1 = bytes.len() as u32;
+        bytes.extend_from_slice(&local_header(name_bytes, first));
+        bytes.extend_from_slice(first);
+
+        let offset2 = bytes.len() as u32;
+        bytes.extend_from_slice(&local_header(name_bytes, second));
+        bytes.extend_from_slice(second);
+
+        let cd_start = bytes.len() as u32;
+        let cd1 = central_header(offset1, name_bytes, first);
+        let cd2 = central_header(offset2, name_bytes, second);
+        bytes.extend_from_slice(&cd1);
+        bytes.extend_from_slice(&cd2);
+        let cd_size = (cd1.len() + cd2.len()) as u32;
+
+        bytes.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes()); // disk number
+        bytes.extend_from_slice(&0u16.to_le_bytes()); // disk with cd
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // entries this disk
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // total entries
+        bytes.extend_from_slice(&cd_size.to_le_bytes());
+        bytes.extend_from_slice(&cd_start.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes()); // comment len
+
+        bytes
+    }
+
     #[test]
     fn test_extract_duplicate_file_entry() {
-        let (_t, zip_path) = create_test_zip(&[("dup.txt", b"first"), ("dup.txt", b"second")]);
+        let bytes = build_duplicate_name_zip("dup.txt", b"first", b"second");
+        let temp_dir = TempDir::new().unwrap();
+        let zip_path = temp_dir.path().join("test.zip");
+        std::fs::write(&zip_path, &bytes).unwrap();
+
         let extract_dir = TempDir::new().unwrap();
         let handler = ZipHandler::new().unwrap();
         handler
             .extract_to_dir(&zip_path, extract_dir.path())
             .unwrap();
         assert!(extract_dir.path().join("dup.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(extract_dir.path().join("dup.txt")).unwrap(),
+            "second",
+            "last entry should win, matching real-world unzip semantics"
+        );
     }
 
     /// A directory entry that appears *after* a file already created it exercises

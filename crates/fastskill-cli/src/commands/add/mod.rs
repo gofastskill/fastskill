@@ -911,13 +911,13 @@ mod tests {
         let server = MockServer::start().await;
         let zip_bytes = {
             use std::io::Write;
-            use zip::write::FileOptions;
+            use zip::write::SimpleFileOptions;
             let mut buf = Vec::new();
             {
                 let cursor = std::io::Cursor::new(&mut buf);
                 let mut writer = zip::ZipWriter::new(cursor);
                 let opts =
-                    FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+                    SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
                 writer.start_file("zip-url-skill/SKILL.md", opts).unwrap();
                 writer
                     .write_all(

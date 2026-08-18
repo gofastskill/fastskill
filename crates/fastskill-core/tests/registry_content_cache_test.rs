@@ -40,12 +40,12 @@ fn skill_md(version: &str) -> String {
 
 fn build_zip(version: &str) -> Vec<u8> {
     use std::io::Write;
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
     let mut buf = Vec::new();
     {
         let cursor = std::io::Cursor::new(&mut buf);
         let mut writer = zip::ZipWriter::new(cursor);
-        let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         writer
             .start_file(format!("{SKILL_ID}/SKILL.md"), opts)
             .unwrap();
