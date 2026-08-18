@@ -1,0 +1,142 @@
+{
+  "model": "claude-sonnet-4-6",
+  "agreement": 0.7,
+  "agree": 7,
+  "disagree": 3,
+  "inconclusive": 0,
+  "errored": 0,
+  "baseline": 0.5,
+  "threshold": 0.8,
+  "cases": [
+    {
+      "id": "read_not_found",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is highly specific, actionable, and clean, providing the missing skill name, search context, and clear next steps.",
+        "The message is highly specific, actionable, clean, and correctly handles the non-zero exit code.",
+        "The message is highly specific, actionable, clean, and correctly handles the failure with a non-zero exit code."
+      ]
+    },
+    {
+      "id": "add_nonexistent_path",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is highly specific, actionable, clean, and uses a non-zero exit code for a handled validation failure.",
+        "The message is highly specific, actionable, clean, and associated with a non-crash exit code.",
+        "The message is highly specific, actionable, clean, and associated with a non-crash exit code."
+      ]
+    },
+    {
+      "id": "remove_not_found",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is highly specific, actionable, clean, and correctly handles the non-zero exit code.",
+        "The message is highly specific, actionable, clean, and uses a non-crash exit code.",
+        "The message is highly specific, actionable, clean, and correctly handles the failure with a non-zero exit code."
+      ]
+    },
+    {
+      "id": "install_missing_dependencies_section",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is highly specific, actionable, clean, and indicates a handled error.",
+        "The message is highly specific, clearly identifies the missing configuration section, and provides actionable steps for resolution.",
+        "The message is highly specific, clearly identifies the missing configuration section, and provides actionable steps for resolution."
+      ]
+    },
+    {
+      "id": "search_invalid_limit",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is highly specific, clearly identifies the invalid value and the expected type, and is completely clean.",
+        "The message is highly specific, actionable, clean, and correctly indicates a handled error.",
+        "The message is highly specific, actionable, clean, and correctly indicates a handled error."
+      ]
+    },
+    {
+      "id": "repos_skills_unknown_argument",
+      "expected_pass": false,
+      "got_pass": true,
+      "mean_score": 4.666666666666667,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is specific about the error type, highly actionable with a clear hint, and completely clean.",
+        "The message is specific, highly actionable, clean, and uses a non-crash exit code.",
+        "The message is specific about the type of error and provides a clear, actionable hint for the user."
+      ]
+    },
+    {
+      "id": "clap_duplicate_arg_panic",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 1.3333333333333333,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is a raw panic trace with a crash exit code, failing the cleanliness and exit code criteria.",
+        "The message identifies the specific argument conflict but is unusable due to the inclusion of a full stack trace and internal file paths.",
+        "The message is a raw panic trace containing internal file paths and stack information, failing the cleanliness requirement."
+      ]
+    },
+    {
+      "id": "unwrap_panic",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 2.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is a raw internal panic report that provides no actionable information for the end-user.",
+        "The message identifies the internal cause and location but is not clean, actionable for an end-user, and represents a crash.",
+        "The message is specific about the internal panic location but is not actionable for the user and contains excessive internal stack trace details."
+      ]
+    },
+    {
+      "id": "generic_invalid_input",
+      "expected_pass": false,
+      "got_pass": true,
+      "mean_score": 2.6666666666666665,
+      "inconclusive": true,
+      "error": null,
+      "justifications": [
+        "The message identifies a generic problem but does not provide specific details or actionable steps for the user.",
+        "The error message is vague and does not provide any context or guidance on how to fix the invalid input.",
+        "The message identifies a generic error type but does not provide specific details or guidance on how to correct the input."
+      ]
+    },
+    {
+      "id": "serde_error_leak",
+      "expected_pass": false,
+      "got_pass": true,
+      "mean_score": 3.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message identifies the type of data validation failure but lacks specific guidance on how the user should correct the input.",
+        "The message identifies the technical failure type but does not provide clear guidance on how the user should correct the input data.",
+        "The message identifies the type of data validation failure but does not provide any specific context or guidance on how the user should fix the issue."
+      ]
+    }
+  ]
+}

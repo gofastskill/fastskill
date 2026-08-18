@@ -1,0 +1,142 @@
+{
+  "model": "claude-haiku-4-5",
+  "agreement": 1.0,
+  "agree": 10,
+  "disagree": 0,
+  "inconclusive": 0,
+  "errored": 0,
+  "baseline": 0.5,
+  "threshold": 0.8,
+  "cases": [
+    {
+      "id": "read_not_found",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "Identifies the specific missing skill by name, shows exactly where was searched, and provides two actionable next steps (install or list available skills).",
+        "Identifies the specific missing skill by name, shows exactly where was searched, and provides two actionable next steps (install or list available skills).",
+        "Identifies the specific missing skill by name, shows exactly where was searched, and provides two actionable next steps (install or list available skills)."
+      ]
+    },
+    {
+      "id": "add_nonexistent_path",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The error message is highly specific (names the exact missing file and directory), actionable (explains the requirement and suggests the --recursive flag as an alternative), clean (no stack traces or internal details), and uses a proper exit code.",
+        "The error message is highly specific (names the exact missing file and directory), actionable (explains the requirement and suggests the --recursive flag as an alternative), clean (no stack traces or internal details), and uses a proper non-zero exit code.",
+        "The error message is highly specific (names the exact missing file and directory), actionable (explains the requirement and suggests the --recursive flag as an alternative), clean (no stack traces or internal details), and uses a proper exit code."
+      ]
+    },
+    {
+      "id": "remove_not_found",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "Identifies the specific missing skill ('ghost'), shows exactly where was searched, and provides actionable next steps (install or list available skills).",
+        "Identifies the specific missing skill ('ghost'), shows exactly where was searched, and provides actionable next steps (install or list available skills).",
+        "Identifies the specific missing skill ('ghost'), shows exactly where was searched, and provides actionable next steps (install or list available skills)."
+      ]
+    },
+    {
+      "id": "install_missing_dependencies_section",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 5.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "Highly specific (names the exact file and missing section), actionable (explains what section is needed and provides a command to add skills), clean (no stack traces or internal details), and proper exit code.",
+        "The error message is highly specific (names the exact file and missing section), actionable (tells user to add '[dependencies]' section and provides the command to use), clean (no stack traces or internal details), and uses exit code 1 (proper error handling).",
+        "The error message is highly specific (names the exact file and missing section), actionable (tells user to add '[dependencies]' section and provides the command to use), clean (no stack traces or internal details), and uses exit code 1 (proper error handling)."
+      ]
+    },
+    {
+      "id": "search_invalid_limit",
+      "expected_pass": true,
+      "got_pass": true,
+      "mean_score": 4.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "Specific problem identified (which argument, which value, what was expected) with clear actionability; minor deduction for using error code notation (E004) which adds jargon but doesn't obscure the message.",
+        "Specific about the problem (which argument, which value, what was expected) and actionable (user knows to provide an integer), with clean formatting and proper exit code; minor deduction for not suggesting a valid example value.",
+        "Specific problem identified (invalid value for limit argument, expected integer), actionable fix is clear (provide an integer), clean output with no internal leaks, but could be slightly more explicit about the valid range or format."
+      ]
+    },
+    {
+      "id": "repos_skills_unknown_argument",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 2.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The error is vague and generic\u2014it doesn't specify which argument is unknown or what the valid options are, making it unclear whether 'nosuchrepo' is invalid or if the command structure itself is wrong.",
+        "The error is vague and generic\u2014it doesn't specify which argument is unknown, what the valid arguments are, or what the user should do beyond consulting --help, making it difficult to diagnose the actual problem.",
+        "The error is vague and generic\u2014it doesn't specify which argument is unknown or what the valid options are, making it unclear whether 'nosuchrepo' is invalid or if the command structure itself is wrong."
+      ]
+    },
+    {
+      "id": "clap_duplicate_arg_panic",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 1.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "This is a raw panic with internal source paths and stack trace, indicating an unhandled crash rather than a graceful error message; while it identifies a duplicate 'version' argument problem, the exit code 101 confirms this is a crash that should have been caught during development.",
+        "This is a panic/crash (exit code 101) with internal source paths and stack trace, indicating a bug in the tool's argument definition rather than a handled user error.",
+        "This is a raw panic with internal source paths and stack trace, indicating an unhandled crash in the tool's argument parsing logic rather than a user-facing error message."
+      ]
+    },
+    {
+      "id": "unwrap_panic",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 1.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "This is an unhandled panic with exit code 101 (crash), exposing internal source paths and unwrap failures rather than a user-facing error message; the user has no idea what went wrong or how to fix it.",
+        "This is an unhandled panic with exit code 101 (crash), exposing internal source paths and unwrap failures rather than a user-facing error message.",
+        "This is an unhandled panic with exit code 101 (crash), exposing internal source paths and unwrap failures rather than a user-facing error message."
+      ]
+    },
+    {
+      "id": "generic_invalid_input",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 1.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The message is completely generic, does not identify which input is invalid or why, provides no actionable guidance, and leaves the user unable to determine what to fix.",
+        "The message is completely generic, does not identify which input is invalid or why, provides no actionable guidance, and leaves the user unable to determine what to fix.",
+        "The message is completely generic, does not identify which input is invalid or why, provides no actionable guidance, and leaves the user unable to determine what to fix."
+      ]
+    },
+    {
+      "id": "serde_error_leak",
+      "expected_pass": false,
+      "got_pass": false,
+      "mean_score": 1.0,
+      "inconclusive": false,
+      "error": null,
+      "justifications": [
+        "The error message exposes internal Rust type information (untagged enum DependencySpec) rather than explaining what data format was expected or which file/field caused the problem, making it impossible for a user to know what to fix.",
+        "The error message exposes internal Rust type information (untagged enum DependencySpec) rather than explaining what the user did wrong or how to fix it, making it useless for end-user troubleshooting.",
+        "The error message exposes internal Rust type information (untagged enum DependencySpec) rather than explaining what the user did wrong or how to fix it, making it useless for end-user troubleshooting."
+      ]
+    }
+  ]
+}
