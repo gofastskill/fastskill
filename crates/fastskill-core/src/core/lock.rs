@@ -4,7 +4,7 @@
 //! - `ProjectSkillsLock`: deterministic, timestamp-free, for `skills.lock` at project root
 //! - `GlobalSkillsLock`: operational, with timestamps, for `global-skills.lock` in user config dir
 
-use crate::core::origin::{Origin, Resolved};
+use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::skill_manager::SkillDefinition;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,14 @@ use std::path::{Path, PathBuf};
 /// (Phase 0). Lock files from before this version cannot be read — see
 /// [`LockError::UnsupportedVersion`].
 pub const LOCK_FORMAT_VERSION: &str = "3.0";
+
+/// The pre-`Origin` project lock format, which [`ProjectSkillsLock::load_from_file`] migrates.
+///
+/// Only the project lock is migrated. The global lock's legacy shape carried operational
+/// timestamps (`installed_at` and friends) that the 1.0.0 project entries never had, and no
+/// specimen of a legacy global lock was available to verify against — so it keeps the
+/// original hard rejection rather than a migration written from guesswork.
+const LEGACY_PROJECT_LOCK_VERSION: &str = "1.0.0";
 
 // ── Project Lock ─────────────────────────────────────────────────────────────
 
@@ -65,16 +73,34 @@ impl ProjectSkillsLock {
         }
     }
 
+    /// Load the project lock, migrating a [`LEGACY_PROJECT_LOCK_VERSION`] file in memory.
+    ///
+    /// Migrating rather than rejecting matters here specifically because a lock records
+    /// *pinned* versions. Telling someone with a working installation to delete it and
+    /// re-run `install` re-resolves every dependency against whatever is current now — a
+    /// silent upgrade they did not ask for. Reading never writes; the 3.0 form reaches disk
+    /// only when something saves the lock for its own reasons.
     pub fn load_from_file(path: &Path) -> Result<Self, LockError> {
         if !path.exists() {
             return Err(LockError::NotFound(path.to_path_buf()));
         }
         let safe_path = path.canonicalize().map_err(LockError::Io)?;
         let content = std::fs::read_to_string(&safe_path).map_err(LockError::Io)?;
-        check_lock_format_version(&content)?;
-        let lock: ProjectSkillsLock =
-            toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
-        Ok(lock)
+
+        match read_lock_format_version(&content)?.as_str() {
+            LOCK_FORMAT_VERSION => {
+                toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))
+            }
+            LEGACY_PROJECT_LOCK_VERSION => {
+                let legacy: LegacyProjectSkillsLock =
+                    toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
+                legacy.upgrade()
+            }
+            // Anything else — including a version newer than this build — is still refused.
+            found => Err(LockError::UnsupportedVersion {
+                found: found.to_string(),
+            }),
+        }
     }
 
     pub fn save_to_file(&self, path: &Path) -> Result<(), LockError> {
@@ -178,6 +204,191 @@ impl ProjectSkillsLock {
 
     fn sort_entries(&mut self) {
         self.skills.sort_by(|a, b| a.id.cmp(&b.id));
+    }
+}
+
+// ── Legacy project lock (format 1.0.0) ───────────────────────────────────────
+//
+// The pre-`Origin` project lock spelled provenance as flat `source_url`/`source_branch`
+// fields plus a nested `[skills.source]` table:
+//
+//     [[skills]]
+//     id = "example"
+//     version = "1.0.2"
+//     source_url = "https://github.com/org/repo"
+//     source_branch = "main"
+//     editable = false
+//     depth = 0
+//
+//     [skills.source]
+//     type = "git"
+//     url = "https://github.com/org/repo"
+//     branch = "main"
+//
+// Read-only support: nothing writes this shape, so there is no round trip to preserve.
+
+/// The nested `[skills.source]` table of a legacy entry.
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyLockSource {
+    r#type: String,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    zip_url: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    skill: Option<String>,
+    /// The requested constraint for a repository install. Distinct from the entry-level
+    /// `version`, which is the concrete version that was resolved.
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    editable: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyProjectLockedSkill {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    version: String,
+    #[serde(default)]
+    source: Option<LegacyLockSource>,
+    /// Flat fallbacks, present on every 1.0.0 entry even when `[skills.source]` is too.
+    #[serde(default)]
+    source_url: Option<String>,
+    #[serde(default)]
+    source_branch: Option<String>,
+    #[serde(default)]
+    dependencies: Vec<String>,
+    #[serde(default)]
+    groups: Vec<String>,
+    #[serde(default)]
+    editable: bool,
+    #[serde(default)]
+    depth: u32,
+    #[serde(default)]
+    parent_skill: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyProjectSkillsLock {
+    #[serde(default)]
+    skills: Vec<LegacyProjectLockedSkill>,
+}
+
+impl LegacyProjectLockedSkill {
+    fn upgrade(self) -> Result<ProjectLockedSkillEntry, LockError> {
+        let id = self.id;
+        let missing = |field: &str| {
+            LockError::Parse(format!(
+                "legacy lock entry '{id}' cannot be migrated: its source is '{field}' but that \
+             field is missing. Delete skills.lock and re-run `fastskill install` to rebuild it."
+            ))
+        };
+
+        // `[skills.source]` is authoritative; the flat `source_url`/`source_branch` fields are
+        // the fallback for entries that predate it.
+        let (kind, url, branch, path, zip_url, repo_name, repo_skill, src_editable, req_version) =
+            match self.source {
+                Some(s) => (
+                    s.r#type, s.url, s.branch, s.path, s.zip_url, s.name, s.skill, s.editable,
+                    s.version,
+                ),
+                None => (
+                    "git".to_string(),
+                    self.source_url.clone(),
+                    self.source_branch.clone(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            };
+
+        let origin = match kind.as_str() {
+            "git" => Origin::Git {
+                url: url.or(self.source_url).ok_or_else(|| missing("url"))?,
+                // No branch meant the repository default — NOT a branch named "main".
+                r#ref: match branch.or(self.source_branch) {
+                    Some(b) => GitRef::Branch(b),
+                    None => GitRef::Default,
+                },
+                subdir: None,
+            },
+            "local" => Origin::Local {
+                path: PathBuf::from(path.ok_or_else(|| missing("path"))?),
+                // The nested table won if it said anything; otherwise the entry-level flag.
+                editable: src_editable.unwrap_or(self.editable),
+            },
+            "zip-url" => Origin::ZipUrl {
+                url: zip_url.or(url).ok_or_else(|| missing("zip_url"))?,
+            },
+            // Legacy called a configured-repository install "source".
+            "source" | "repository" => Origin::Repository {
+                repo: repo_name.ok_or_else(|| missing("name"))?,
+                skill: repo_skill.unwrap_or_else(|| id.clone()),
+                // The legacy source table carried the requested constraint; dropping it
+                // would turn a pinned repository dependency into "newest allowed".
+                version: match req_version {
+                    Some(raw) => Some(
+                        crate::core::version::VersionConstraint::parse(&raw).map_err(|e| {
+                            LockError::Parse(format!(
+                                "legacy lock entry '{id}' has an unparseable version constraint '{raw}': {e}"
+                            ))
+                        })?,
+                    ),
+                    None => None,
+                },
+            },
+            other => {
+                return Err(LockError::Parse(format!(
+                    "legacy lock entry '{id}' has unknown source type '{other}'. Delete \
+                     skills.lock and re-run `fastskill install` to rebuild it."
+                )))
+            }
+        };
+
+        Ok(ProjectLockedSkillEntry {
+            name: self.name.unwrap_or_else(|| id.clone()),
+            id,
+            origin,
+            // 1.0.0 never recorded a commit hash or checksum, so there is nothing to carry
+            // over. The migrated lock is exactly as precise as the file it came from — just
+            // less precise than one produced by a fresh resolve.
+            resolved: Resolved {
+                version: self.version,
+                commit_hash: None,
+                checksum: None,
+            },
+            dependencies: self.dependencies,
+            groups: self.groups,
+            depth: self.depth,
+            parent_skill: self.parent_skill,
+        })
+    }
+}
+
+impl LegacyProjectSkillsLock {
+    fn upgrade(self) -> Result<ProjectSkillsLock, LockError> {
+        let mut skills = Vec::with_capacity(self.skills.len());
+        for entry in self.skills {
+            skills.push(entry.upgrade()?);
+        }
+        Ok(ProjectSkillsLock {
+            metadata: ProjectLockMetadata {
+                version: LOCK_FORMAT_VERSION.to_string(),
+                fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            },
+            skills,
+        })
     }
 }
 
@@ -346,6 +557,18 @@ pub enum LockError {
 /// missing `origin` field), which would otherwise surface as an opaque
 /// `LockError::Parse` instead of the actionable `UnsupportedVersion` guard.
 fn check_lock_format_version(content: &str) -> Result<(), LockError> {
+    let found = read_lock_format_version(content)?;
+    if found != LOCK_FORMAT_VERSION {
+        return Err(LockError::UnsupportedVersion { found });
+    }
+    Ok(())
+}
+
+/// Read `metadata.version` alone, without parsing the rest.
+///
+/// A legacy lock does not deserialize as the current shape, so the version has to be read
+/// in its own pass before deciding how to parse the file.
+fn read_lock_format_version(content: &str) -> Result<String, LockError> {
     #[derive(Deserialize)]
     struct VersionOnly {
         version: String,
@@ -357,12 +580,7 @@ fn check_lock_format_version(content: &str) -> Result<(), LockError> {
 
     let parsed: MetadataOnly =
         toml::from_str(content).map_err(|e| LockError::Parse(e.to_string()))?;
-    if parsed.metadata.version != LOCK_FORMAT_VERSION {
-        return Err(LockError::UnsupportedVersion {
-            found: parsed.metadata.version,
-        });
-    }
-    Ok(())
+    Ok(parsed.metadata.version)
 }
 
 // ── Routing helpers ───────────────────────────────────────────────────────────
@@ -648,5 +866,206 @@ depth = 0
         // Last write wins: the file is a complete copy of the second writer's content.
         let reloaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
         assert_eq!(reloaded.skills.len(), 1);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+mod legacy_lock_migration_tests {
+    use super::*;
+
+    const LEGACY: &str = r#"
+[metadata]
+version = "1.0.0"
+fastskill_version = "0.9.136"
+
+[[skills]]
+id = "adapt-to-ai"
+name = "adapt-to-ai"
+version = "1.0.2"
+source_url = "https://github.com/org/skills"
+source_branch = "main"
+dependencies = []
+groups = ["docs"]
+editable = false
+depth = 0
+
+[skills.source]
+type = "git"
+url = "https://github.com/org/skills"
+branch = "main"
+
+[[skills]]
+id = "pinned-default"
+name = "pinned-default"
+version = "2.0.0"
+source_url = "https://github.com/org/other"
+dependencies = []
+groups = []
+editable = false
+depth = 1
+
+[skills.source]
+type = "git"
+url = "https://github.com/org/other"
+
+[[skills]]
+id = "win"
+name = "win"
+version = "0.3.0"
+source_url = "/srv/skills/win"
+dependencies = []
+groups = []
+editable = true
+depth = 0
+
+[skills.source]
+type = "local"
+path = "/srv/skills/win"
+editable = true
+"#;
+
+    fn entry<'a>(lock: &'a ProjectSkillsLock, id: &str) -> &'a ProjectLockedSkillEntry {
+        lock.skills
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap_or_else(|| panic!("missing entry {id}"))
+    }
+
+    fn load(content: &str) -> ProjectSkillsLock {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(&path, content).unwrap();
+        ProjectSkillsLock::load_from_file(&path).expect("legacy lock must load")
+    }
+
+    #[test]
+    fn legacy_lock_is_migrated_instead_of_rejected() {
+        let lock = load(LEGACY);
+        assert_eq!(lock.metadata.version, LOCK_FORMAT_VERSION);
+        assert_eq!(lock.skills.len(), 3);
+    }
+
+    #[test]
+    fn pinned_versions_are_preserved() {
+        // The entire reason to migrate rather than tell people to delete the file.
+        let lock = load(LEGACY);
+        assert_eq!(entry(&lock, "adapt-to-ai").resolved.version, "1.0.2");
+        assert_eq!(entry(&lock, "pinned-default").resolved.version, "2.0.0");
+        assert_eq!(entry(&lock, "win").resolved.version, "0.3.0");
+    }
+
+    #[test]
+    fn git_branch_and_absent_branch_are_distinguished() {
+        let lock = load(LEGACY);
+        match &entry(&lock, "adapt-to-ai").origin {
+            Origin::Git { url, r#ref, .. } => {
+                assert_eq!(url, "https://github.com/org/skills");
+                assert_eq!(*r#ref, GitRef::Branch("main".to_string()));
+            }
+            other => panic!("expected git origin, got {other:?}"),
+        }
+        // No branch meant the repository default — treating it as a branch named "main"
+        // would silently re-point the dependency.
+        match &entry(&lock, "pinned-default").origin {
+            Origin::Git { r#ref, .. } => assert_eq!(*r#ref, GitRef::Default),
+            other => panic!("expected git origin, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_entries_keep_path_and_editable() {
+        let lock = load(LEGACY);
+        match &entry(&lock, "win").origin {
+            Origin::Local { path, editable } => {
+                assert_eq!(path, &PathBuf::from("/srv/skills/win"));
+                assert!(*editable);
+            }
+            other => panic!("expected local origin, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn groups_and_depth_survive() {
+        let lock = load(LEGACY);
+        assert_eq!(entry(&lock, "adapt-to-ai").groups, vec!["docs".to_string()]);
+        assert_eq!(entry(&lock, "pinned-default").depth, 1);
+    }
+
+    /// 1.0.0 never recorded these, so `None` is honest rather than lossy.
+    #[test]
+    fn commit_hash_and_checksum_are_absent_not_invented() {
+        let lock = load(LEGACY);
+        let e = entry(&lock, "adapt-to-ai");
+        assert!(e.resolved.commit_hash.is_none());
+        assert!(e.resolved.checksum.is_none());
+    }
+
+    #[test]
+    fn migrated_lock_round_trips_through_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(&path, LEGACY).unwrap();
+
+        let migrated = ProjectSkillsLock::load_from_file(&path).unwrap();
+        migrated.save_to_file(&path).unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            written.contains("version = \"3.0\""),
+            "not stamped:\n{written}"
+        );
+        assert!(
+            !written.contains("source_url"),
+            "legacy fields survived:\n{written}"
+        );
+
+        let reloaded = ProjectSkillsLock::load_from_file(&path).unwrap();
+        assert_eq!(reloaded.skills.len(), 3);
+        assert_eq!(entry(&reloaded, "win").resolved.version, "0.3.0");
+    }
+
+    /// Reading must not rewrite: a legacy lock keeps working until something saves it.
+    #[test]
+    fn loading_does_not_rewrite_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(&path, LEGACY).unwrap();
+        let _ = ProjectSkillsLock::load_from_file(&path).unwrap();
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            on_disk.contains("version = \"1.0.0\""),
+            "load rewrote the file"
+        );
+    }
+
+    /// A version we have never seen is still refused — migrating would be guesswork.
+    #[test]
+    fn unknown_lock_version_is_still_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(&path, "[metadata]\nversion = \"2.0\"\n").unwrap();
+        match ProjectSkillsLock::load_from_file(&path) {
+            Err(LockError::UnsupportedVersion { found }) => assert_eq!(found, "2.0"),
+            other => panic!("expected UnsupportedVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_source_type_is_reported_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(
+            &path,
+            "[metadata]\nversion = \"1.0.0\"\n\n[[skills]]\nid = \"weird\"\nname = \"weird\"\n\
+             version = \"1.0.0\"\n\n[skills.source]\ntype = \"telepathy\"\n",
+        )
+        .unwrap();
+        let err = ProjectSkillsLock::load_from_file(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("weird") && msg.contains("telepathy"),
+            "unhelpful: {msg}"
+        );
     }
 }
