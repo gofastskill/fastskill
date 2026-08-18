@@ -531,6 +531,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_update_invalid_strategy() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
         let temp_dir = TempDir::new().unwrap();
 
         // Get original directory immediately and handle potential errors
