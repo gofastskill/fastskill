@@ -92,7 +92,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Configuration
 config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
-inquire = "0.7"
 
 # URL parsing
 url = "2.5"
