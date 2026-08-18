@@ -74,7 +74,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip",
 cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "42cb312a6a21c01baf75ccb433e9f87a9adce423", default-features = false, features = ["api-server"] }
 
 # Request validation
-validator = { version = "0.20", features = ["derive"] }
+validator = { version = "0.21", features = ["derive"] }
 
 # SQLite for vector index
 rusqlite = { version = "0.40", features = ["bundled"] }
