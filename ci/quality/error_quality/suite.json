@@ -1,0 +1,73 @@
+{
+  "_comment": [
+    "Live error-message suite for the spec-005 nightly quality tier.",
+    "",
+    "Unlike cases.json (the calibration fixture, which carries captured output inline so",
+    "the judge could be calibrated before this runner existed), these cases carry only a",
+    "COMMAND. The runner executes each against the binary under test and judges whatever",
+    "comes back -- so a regression in an error message is caught even though no assertion",
+    "here mentions its wording.",
+    "",
+    "Seeded from the human-judgment error steps of docs/qa/smoke-test-plan.md, which is",
+    "where a person was previously asked 'is this message actually helpful?'.",
+    "",
+    "`setup` runs in the sandbox before the command. Keep it to file creation: the sandbox",
+    "is disposable but the tier must not need network to reach the point of judging.",
+    "",
+    "Every case must FAIL -- a zero exit means the command did not produce the error the",
+    "case exists to grade, and the runner reports that as a broken case rather than",
+    "quietly judging success output."
+  ],
+  "cases": [
+    {
+      "id": "read_not_found",
+      "plan_step": "1.4",
+      "command": ["read", "no-such-skill"],
+      "why": "The most common way a user meets an error: asking for something that isn't installed."
+    },
+    {
+      "id": "remove_not_found",
+      "plan_step": "3.x",
+      "command": ["remove", "ghost"],
+      "why": "Same class as read_not_found; catches the two paths drifting apart."
+    },
+    {
+      "id": "add_nonexistent_path",
+      "plan_step": "3.10",
+      "command": ["add", "./does-not-exist"],
+      "why": "A path typo — the message must name the path and the missing SKILL.md."
+    },
+    {
+      "id": "add_dir_without_skill_md",
+      "plan_step": "3.3",
+      "command": ["add", "./empty-dir"],
+      "setup": {"mkdir": ["empty-dir"]},
+      "why": "The directory exists but isn't a skill. Distinct from a missing path, and the message should say so."
+    },
+    {
+      "id": "add_by_id_without_repository",
+      "plan_step": "7.12",
+      "command": ["add", "someorg/someskill"],
+      "why": "Installing by skill id with no repository configured — must say what to configure, not just refuse."
+    },
+    {
+      "id": "repos_skills_unknown_repo",
+      "plan_step": "7.8",
+      "command": ["repos", "skills", "nosuchrepo"],
+      "why": "Known-poor today (K-class: says 'unknown argument' without naming it). Kept so the tier reports it until it is fixed, and notices if it regresses further."
+    },
+    {
+      "id": "search_invalid_limit",
+      "plan_step": "12.x",
+      "command": ["search", "--limit", "notanumber", "anything"],
+      "why": "Type error on a flag — the message should name the value, the flag, and the expected type."
+    },
+    {
+      "id": "install_without_dependencies_section",
+      "plan_step": "2.x",
+      "command": ["install"],
+      "setup": {"manifest": "minimal_no_dependencies"},
+      "why": "A manifest missing a required section. Exercises the config-validation path rather than the skill-lookup path."
+    }
+  ]
+}
