@@ -78,11 +78,38 @@ confirm/date them as the tester (or an agent) hits them.
 - **Severity:** N/A for the plan; flagged so that if a tester *does* try the http-registry path
   and it times out, it's a known-inconclusive, not necessarily a product bug.
 
+### K9 — `search` defaults to Remote scope, silently missing indexed local skills (Search)
+- **What:** `fastskill search "<query>"` with neither `--local` nor `--repository` defaults to
+  **`SearchScope::Remote`**, per the code comment "Default to remote search (even if --remote is
+  not explicit)". In a project with skills indexed locally (`.fastskill/index.db`) but no
+  registry/repository configured, this means `search` never consults the local index at all —
+  it prints `No skills found matching '<query>'` with no warning, no fallback to local, and no
+  hint to try `--local`. Confirmed 2026-08-18 against v0.9.176: with two skills indexed
+  (`k8s-debug`, `pdf-tools`, real embeddings), `search "why is my container restarting"` →
+  "No skills found matching...". `search --local --embedding true "why is my container
+  restarting"` → correct semantic ranking, `k8s-debug` (0.504), `pdf-tools` (0.311). The failure
+  is silent and misattributable: a user with no registry configured has every reason to assume
+  their skills aren't indexed or embeddings are broken, when the actual cause is scope
+  defaulting away from the only backend that has data.
+- **Source:** `determine_search_scope`, `crates/fastskill-cli/src/commands/search.rs:392-401`
+  (comment at line 398); dispatch confirmed at `crates/fastskill-core/src/search/mod.rs:91`
+  (`SearchScope::Remote => remote::execute_remote_search(...)`) — Remote scope never touches the
+  local index regardless of whether a registry is configured.
+- **Severity:** S2 (major) — this is not a doc-vs-implementation gap like K1/K5, it's a
+  functional dead end in the single most common zero-config workflow (index locally, search
+  locally, no registry ever set up). Falls short of S1 because there's a working workaround
+  (`--local`) and no data loss/corruption; still worse than the S3 friction items (K2/K4) because
+  the default behavior actively contradicts the tool's most-likely usage pattern and gives zero
+  signal that scope — not indexing/embeddings — is the cause.
+- **Expect the tester to notice at:** any local-index-only search flow (e.g. §Search / §Embedding
+  walk without a registry configured); most likely to surface as a false "search is broken" or
+  "embeddings aren't working" report before the tester thinks to check `--local`.
+
 ---
 
 ## Triage workflow for returned findings
 
-1. For each returned `F`/`G`, scan K1–K8 for a match.
+1. For each returned `F`/`G`, scan K1–K9 for a match.
 2. **Match** → tag "known-<Kn>", update that entry with "confirmed on <version> <date>".
 3. **No match** → new finding. Assign severity (S1/S2/S3), file/track it.
 4. Pay special attention to `G`s from the **Doc walk** (§D) and **12.4 spec-diff** — that's the
