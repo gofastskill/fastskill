@@ -47,6 +47,12 @@ on:
     # shared gateway at the same moment.
     - cron: "17 3 * * *"
   workflow_dispatch: {}
+  # TEMPORARY: workflow_dispatch requires the workflow file to already be on
+  # the default branch, which this PR branch is not yet. Scoped to this exact
+  # branch only, purely so the run can be verified green before merge; removed
+  # before this PR is finished (same procedure quality-gateway-smoke.yml used).
+  push:
+    branches: [ci/nightly-quality-workflow]
 
 permissions:
   contents: read
