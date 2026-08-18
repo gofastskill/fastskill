@@ -210,7 +210,7 @@ async fn conditional_200_redownloads_and_updates_recorded_hash() {
     let cache = SkillCache::at_root(cache_root.path());
     let validators = cache.read_zip_validators().unwrap();
     let recorded = validators.get(&url).expect("validator must be recorded");
-    let expected_hash = format!("{:x}", sha2::Sha256::digest(&zip_v2));
+    let expected_hash = fastskill_core::utils::to_hex_lower(&sha2::Sha256::digest(&zip_v2));
     assert_eq!(
         recorded.content_hash, expected_hash,
         "the recorded hash must be updated to the new content's hash"
@@ -331,7 +331,7 @@ async fn offline_install_with_a_cached_hash_succeeds() {
     let cache = SkillCache::at_root(cache_root.path());
 
     let zip_bytes = build_zip("v1");
-    let content_hash = format!("{:x}", sha2::Sha256::digest(&zip_bytes));
+    let content_hash = fastskill_core::utils::to_hex_lower(&sha2::Sha256::digest(&zip_bytes));
 
     // Prime the content cache with the previously-fetched, already-extracted
     // skill content under its recorded hash.

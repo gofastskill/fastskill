@@ -1,8 +1,29 @@
 //! Utility functions for the fastskill-core crate
 
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+/// Encode `bytes` as lowercase hex, e.g. for rendering a SHA-256 digest as a
+/// cache key / integrity checksum string.
+///
+/// This exists instead of a `format!("{:x}", digest)` call (which relied on
+/// `GenericArray`'s `LowerHex` impl) because `digest` 0.11 switched to
+/// `hybrid_array::Array`, which does **not** implement `LowerHex`. Pulling in
+/// the `hex` crate for one function was not worth a new dependency, so this
+/// is a small local equivalent — output is byte-for-byte identical to the
+/// old `{:x}` formatting (lowercase, no separators, two hex digits per byte),
+/// which matters because these strings are persisted as cache-identity keys
+/// (see `core::change_detection` and `core::install`).
+pub fn to_hex_lower(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        // `write!` to a `String` is infallible.
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
 
 /// Write `bytes` to `path` atomically: write to a **per-writer unique** temp file
 /// in the same directory → sync → atomic rename over `path`.
@@ -51,6 +72,36 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// Regression test for the sha2 0.10 -> 0.11 bump: `hybrid_array::Array`
+    /// (which `Sha256::digest`/`finalize` now return) does not implement
+    /// `LowerHex`, so every hashing call site switched from
+    /// `format!("{:x}", digest)` to `to_hex_lower(&digest)`. This pins the
+    /// exact output for a known input so a future change to the hex
+    /// encoding (case, padding, separators) fails loudly instead of quietly
+    /// invalidating every cache entry that uses this string as a key.
+    #[test]
+    fn test_to_hex_lower_matches_known_sha256() {
+        use sha2::{Digest, Sha256};
+
+        let digest = Sha256::digest(b"hello world");
+        let hex = to_hex_lower(&digest);
+
+        assert_eq!(
+            hex, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+            "hex encoding of a known SHA-256 digest must be stable"
+        );
+    }
+
+    #[test]
+    fn test_to_hex_lower_empty_input() {
+        assert_eq!(to_hex_lower(&[]), "");
+    }
+
+    #[test]
+    fn test_to_hex_lower_is_lowercase_and_zero_padded() {
+        assert_eq!(to_hex_lower(&[0x00, 0x0f, 0xab, 0xff]), "000fabff");
+    }
     use tempfile::TempDir;
 
     #[test]

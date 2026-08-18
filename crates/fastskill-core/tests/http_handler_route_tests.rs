@@ -681,7 +681,10 @@ async fn update_version_pin_happy_path_repository_origin() {
         "widget",
         "---\nname: widget\nversion: \"2.0.0\"\ndescription: A registry skill\n---\nBody\n",
     );
-    let cksum = format!("sha256:{:x}", sha2::Sha256::digest(&zip_bytes));
+    let cksum = format!(
+        "sha256:{}",
+        fastskill_core::utils::to_hex_lower(&sha2::Sha256::digest(&zip_bytes))
+    );
 
     let entries = [
         IndexEntry {

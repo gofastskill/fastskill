@@ -273,7 +273,10 @@ impl RegistryClient {
             .map_err(|e| ServiceError::Custom(format!("Failed to read package data: {}", e)))?;
 
         // Verify checksum
-        let calculated = format!("sha256:{:x}", sha2::Sha256::digest(&bytes));
+        let calculated = format!(
+            "sha256:{}",
+            crate::utils::to_hex_lower(&sha2::Sha256::digest(&bytes))
+        );
         if calculated != entry.cksum {
             return Err(ServiceError::Custom(format!(
                 "Checksum mismatch: expected {}, got {}",
@@ -534,7 +537,10 @@ mod tests {
     async fn test_download_success_verifies_checksum() {
         let server = MockServer::start().await;
         let payload = b"skill-package-bytes";
-        let cksum = format!("sha256:{:x}", sha2::Sha256::digest(payload));
+        let cksum = format!(
+            "sha256:{}",
+            crate::utils::to_hex_lower(&sha2::Sha256::digest(payload))
+        );
         let dl_url = format!("{}/dl", server.uri());
         let entries = vec![make_entry("d", "1.0.0", &dl_url, &cksum)];
         mount_index(&server, "d", &entries).await;

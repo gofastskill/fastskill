@@ -893,7 +893,10 @@ mod tests {
 
         let server = MockServer::start().await;
         let payload = b"pkg-bytes";
-        let cksum = format!("sha256:{:x}", sha2::Sha256::digest(payload));
+        let cksum = format!(
+            "sha256:{}",
+            crate::utils::to_hex_lower(&sha2::Sha256::digest(payload))
+        );
         let dl_url = format!("{}/dl", server.uri());
 
         let entry = IndexEntry {

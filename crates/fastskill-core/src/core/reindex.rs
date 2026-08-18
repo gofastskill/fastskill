@@ -230,7 +230,7 @@ fn calculate_file_hash(file_path: &Path) -> Result<String, ServiceError> {
     let mut hasher = Sha256::new();
     hasher.update(&content);
     let hash_bytes = hasher.finalize();
-    Ok(format!("{:x}", hash_bytes))
+    Ok(crate::utils::to_hex_lower(&hash_bytes))
 }
 
 #[cfg(test)]

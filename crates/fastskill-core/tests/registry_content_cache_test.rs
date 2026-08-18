@@ -58,7 +58,10 @@ fn build_zip(version: &str) -> Vec<u8> {
 /// Mount an index entry + download endpoint for `version` on `server`.
 async fn mount_version(server: &MockServer, version: &str) {
     let zip_bytes = build_zip(version);
-    let cksum = format!("sha256:{:x}", sha2::Sha256::digest(&zip_bytes));
+    let cksum = format!(
+        "sha256:{}",
+        fastskill_core::utils::to_hex_lower(&sha2::Sha256::digest(&zip_bytes))
+    );
     let entry = IndexEntry {
         name: SKILL_ID.to_string(),
         vers: version.to_string(),
