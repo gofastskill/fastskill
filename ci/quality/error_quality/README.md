@@ -17,9 +17,42 @@ assertion instead.
 
 | | |
 |---|---|
-| `cases.json` | Calibration fixture — human verdicts on real fastskill errors |
 | `judge.py` | Rubric, gateway client, majority vote |
+| `cases.json` | Calibration fixture — human verdicts on real fastskill errors |
 | `calibrate.py` | Scores the judge against the fixture. The go/no-go gate. |
+| `suite.json` | The live suite — **commands**, not captured output |
+| `run_suite.py` | Runs each command in a sandbox and judges what comes back |
+
+## Running the live suite
+
+```bash
+LLM_GATEWAY_URL=... LLM_GATEWAY_KEY=... LLM_GATEWAY_MODEL=... \
+    python3 ci/quality/error_quality/run_suite.py --json report.json
+```
+
+`--capture-only` runs the commands and prints what they emit **without calling the
+gateway** — use it to check the harness, add cases, or see what changed, for free.
+
+Each case runs in a disposable sandbox with a bare environment (`PATH` + `HOME` only), so
+a stray `OPENAI_API_KEY` or `FASTSKILL_*` on the machine cannot change which error path
+runs. Sandbox paths are rewritten to `<project>` so captures are stable across runs.
+
+**A case that exits 0 is reported as broken, not judged.** A command that succeeded did
+not produce the error the case exists to grade, and scoring its success output would
+quietly weaken the suite while still looking green.
+
+**This tier is soft.** A poor message exits 0 and appears in the report; only a broken
+harness (no binary, unreachable gateway) fails the run. Past `--max-requests` the
+remaining cases are skipped *and named* — silent truncation would read as full coverage.
+
+### First live run (2026-08-18, judge `claude-haiku-4-5`, 24 requests, ~$0.017)
+
+7 of 8 messages passed. The one flagged poor was `repos_skills_unknown_repo` —
+independently rediscovering the known K-class defect with no hard-coded knowledge of
+which case was bad:
+
+> The error is vague and generic — it doesn't specify which argument is unknown, what the
+> valid arguments are, or how to correct it.
 
 ## Running calibration
 
