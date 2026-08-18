@@ -1,0 +1,8 @@
+{
+  "docs": [
+    "webdocs/quickstart.mdx",
+    "webdocs/skill-management/validation.mdx",
+    "webdocs/configuration/init-command.mdx",
+    "webdocs/skill-management/reconciliation.mdx"
+  ]
+}
