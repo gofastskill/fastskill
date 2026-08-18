@@ -247,6 +247,122 @@ cargo insta test --check
 - Use snapshot redactions for dynamic content (paths, timestamps, etc.)
 - Keep snapshots focused on the essential output being tested
 
+## Nightly quality tier
+
+Some things a test cannot assert. "Is this error message actually *helpful*?" and "does
+this doc still work if you follow it literally?" were human-judgment steps in
+`docs/qa/smoke-test-plan.md`, run by a person each release. The nightly quality tier
+automates most of them using an LLM judge.
+
+**It is advisory and it will never fail your PR.** The PR gate is unchanged:
+`cargo fmt --check` + `cargo nextest run`, hard and deterministic. This tier runs
+separately, reports what it found, and exits 0 even when the findings are bad. Only a
+broken harness — no binary, unreachable gateway — fails the job.
+
+That split is deliberate and permanent. Anything with an LLM in the verdict path stays
+soft; if a check becomes stable enough to gate on, rewrite it as a deterministic
+assertion instead of promoting it.
+
+| | |
+|---|---|
+| Runs | `.github/workflows/quality.yml`, nightly at 03:17 UTC + `workflow_dispatch` |
+| Suites | error-message quality (`ci/quality/error_quality/`), doc-walk drift (`ci/quality/docwalk/`) |
+| Results | Job summary on the run page, plus a `quality-reports` artifact |
+| Cost | ~$0.02 per run for the error suite; single-digit dollars/month overall |
+
+### Seeing the results
+
+```shell
+gh run list --repo gofastskill/fastskill --workflow "Nightly Quality" --limit 5
+gh run download <run-id> --repo gofastskill/fastskill --name quality-reports
+```
+
+Open the run page for the rendered summary — a table of verdicts plus the full captured
+text of anything judged poor.
+
+> **A green check does not mean the suites ran.** When the gateway secrets are absent the
+> job skips with a warning and still succeeds, so forks stay green. To confirm real
+> execution, read the log:
+>
+> ```shell
+> gh run view <run-id> --repo gofastskill/fastskill --log | grep -A30 "error-message quality"
+> ```
+
+### Running it locally
+
+Both suites take the same flags: `--json OUT`, `--summary FILE`, `--max-requests N`,
+`--capture-only`, `--binary PATH`, `--trials N`.
+
+**`--capture-only` needs no credentials and costs nothing.** It runs the commands, or
+extracts and runs the doc blocks, and prints what happened without calling the gateway.
+Use it whenever you are adding cases or checking the harness:
+
+```shell
+cargo build --bin fastskill
+
+python3 ci/quality/error_quality/run_suite.py --capture-only
+python3 ci/quality/docwalk/run_docwalk.py --capture-only
+```
+
+For a real judged run you need gateway access:
+
+```shell
+export LLM_GATEWAY_URL=...     # gateway base URL on the Tailnet
+export LLM_GATEWAY_KEY=...     # a budget-scoped virtual key, not the master key
+export LLM_GATEWAY_MODEL=...   # the judge model pin
+
+python3 ci/quality/error_quality/run_suite.py --json /tmp/eq.json
+python3 ci/quality/docwalk/run_docwalk.py     --json /tmp/dw.json
+```
+
+If a run misbehaves, isolate the wiring from the logic first — the
+**Quality Gateway Smoke** workflow (`workflow_dispatch`) checks Tailnet join, gateway
+reachability, key acceptance, and that both pinned models are in the key's allow-list,
+in about 30 seconds:
+
+```shell
+gh workflow run quality-gateway-smoke.yml --repo gofastskill/fastskill
+```
+
+### Adding cases
+
+**Error-message suite** — add an entry to `ci/quality/error_quality/suite.json` with the
+command to run. You do not write the expected message; that is the point. Every case must
+produce a **non-zero exit**: a case that exits 0 is reported as broken rather than judged,
+because it did not produce the error it exists to grade.
+
+**Doc-walk** — the doc set in `ci/quality/docwalk/docs.json` is deliberately small
+(`quickstart.mdx`, `skill-management/validation.mdx`, `configuration/init-command.mdx`,
+`skill-management/reconciliation.mdx`). Expand it once the harness has proven itself on
+those. Blocks that cannot be run safely — placeholders, `$ `-prefixed transcripts,
+network installers — are **flagged for human review, never silently skipped**.
+
+### Changing the judge model
+
+The judge is calibrated against human verdicts, and **a model change must be re-calibrated
+before it is trusted**:
+
+```shell
+python3 ci/quality/error_quality/calibrate.py --trials 3
+```
+
+Exit 0 = calibrated, 1 = below threshold, 2 = could not run. This is not a formality. The
+two models measured so far differed by 30 points on the same fixture (see
+`ci/quality/error_quality/README.md` for the results and the specific failure mode), and
+the weaker one produced confident, well-written justifications for wrong verdicts.
+
+Two rules when working on the judge:
+
+- **Do not tune the prompt against the calibration fixture.** That fits the judge to those
+  cases and inflates the number without improving the judgement. If a model does not
+  calibrate, change the model.
+- **Keep the fixture balanced.** A fixture that is mostly `pass` can be gamed by a judge
+  that always answers `pass`. `calibrate.py` prints the always-answer-the-same-way baseline
+  and refuses to certify a judge that merely matches it.
+
+The virtual key is scoped **by model name**, so changing `LLM_GATEWAY_MODEL` to a model the
+key does not permit fails with a 400. Key and secret have to move together.
+
 ## Formatting
 
 ```shell
