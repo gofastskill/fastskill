@@ -29,7 +29,6 @@ aikit-skillopt.workspace = true
 
 # CLI-specific dependencies
 clap.workspace = true
-inquire.workspace = true
 
 # Async runtime
 tokio.workspace = true
