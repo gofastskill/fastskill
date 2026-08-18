@@ -1,0 +1,137 @@
+{
+  "_comment": [
+    "Calibration fixture for the spec-005 error-message-quality judge.",
+    "",
+    "Every `good` case is REAL output captured from fastskill 0.9.179 by running the",
+    "command shown. Nothing here is an invented example of what a good message might",
+    "look like -- the judge has to agree with humans about messages the product",
+    "actually emits, not about idealised prose.",
+    "",
+    "The `bad` cases are messages fastskill could realistically regress into. Two are",
+    "historical: `clap_duplicate_arg_panic` is the panic that `fastskill init` really",
+    "produced before PR #225 (an arg named `version` collided with clap's generated",
+    "--version), and `unwrap_panic` is the shape any stray .unwrap() produces. They are",
+    "reconstructed rather than captured because the bugs are fixed -- which is the point:",
+    "the judge exists to catch a return to them.",
+    "",
+    "`expected.pass` is the human verdict and is what calibration scores against.",
+    "`expected.score_range` is advisory -- exact scores vary between reasonable judges,",
+    "so agreement is measured on pass/fail, with score used only to spot a judge that",
+    "gets the verdict right for visibly wrong reasons.",
+    "",
+    "Keep this set BALANCED. A fixture that is mostly `pass` can be gamed by a judge",
+    "that always answers `pass`, and would report ~80% agreement while being useless."
+  ],
+  "cases": [
+    {
+      "id": "read_not_found",
+      "command": "fastskill read no-such-skill",
+      "exit_code": 1,
+      "output": "Error: Skill 'no-such-skill' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill install owner/repo\n  fastskill list                    # See available skills",
+      "expected": {
+        "pass": true,
+        "score_range": [4, 5],
+        "why": "Names the specific missing skill, shows where it looked so the user can tell whether the path was wrong, and offers two concrete next commands. Clean, no internals. Exit 1 is right."
+      }
+    },
+    {
+      "id": "add_nonexistent_path",
+      "command": "fastskill add ./does-not-exist",
+      "exit_code": 1,
+      "output": "Error: Validation error: No SKILL.md found in ./does-not-exist. A skill directory must contain a SKILL.md file. If this folder has multiple skills in subdirectories, use --recursive.",
+      "expected": {
+        "pass": true,
+        "score_range": [4, 5],
+        "why": "Names the path, states the requirement that was violated, and anticipates the most likely cause with a specific flag to fix it."
+      }
+    },
+    {
+      "id": "remove_not_found",
+      "command": "fastskill remove ghost",
+      "exit_code": 1,
+      "output": "Error: Skill 'ghost' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill install owner/repo\n  fastskill list                    # See available skills",
+      "expected": {
+        "pass": true,
+        "score_range": [4, 5],
+        "why": "Same shape as read_not_found. Included deliberately: a judge that scores identical messages inconsistently is not usable, so this is a self-consistency probe."
+      }
+    },
+    {
+      "id": "install_missing_dependencies_section",
+      "command": "fastskill install",
+      "exit_code": 1,
+      "output": "Installing skills...\n\nError: Configuration error: skill-project.toml validation failed: Project-level skill-project.toml (at project root) requires [dependencies] section. Add '[dependencies]' section to manage skill dependencies. Use 'fastskill add <skill-id>' to add skills.",
+      "expected": {
+        "pass": true,
+        "score_range": [3, 5],
+        "why": "Says exactly which section is missing from which file and gives both a manual fix and a command. Slightly jargon-heavy ('validation failed') and the nested prefixes are clumsy, so a 3 is defensible -- but it is actionable, which is what pass turns on."
+      }
+    },
+    {
+      "id": "search_invalid_limit",
+      "command": "fastskill search --limit notanumber x",
+      "exit_code": 1,
+      "output": "error[E004]: invalid value 'notanumber' for 'limit'; expected integer",
+      "expected": {
+        "pass": true,
+        "score_range": [3, 5],
+        "why": "Names the offending value, the field, and the expected type. Terse and offers no next command, but a user knows precisely what to change."
+      }
+    },
+    {
+      "id": "repos_skills_unknown_argument",
+      "command": "fastskill repos skills nosuchrepo",
+      "exit_code": 1,
+      "output": "error[E002]: unknown argument\n  hint: Use --help to see available arguments\nError: unknown argument",
+      "expected": {
+        "pass": false,
+        "score_range": [1, 2],
+        "why": "REAL current output and genuinely poor. Never says WHICH argument was unknown, though the CLI plainly knows. The hint is generic boilerplate, and the message is printed twice. A user is left guessing."
+      }
+    },
+    {
+      "id": "clap_duplicate_arg_panic",
+      "command": "fastskill init --yes",
+      "exit_code": 101,
+      "output": "thread 'main' panicked at /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/clap_builder-4.5.23/src/builder/debug_asserts.rs:99:13:\nCommand init: Argument names must be unique, but 'version' is in use by more than one argument or group\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "expected": {
+        "pass": false,
+        "score_range": [1, 1],
+        "why": "The panic `fastskill init` really produced before PR #225. Raw Rust panic with a vendored crate path and an internal invariant. Says nothing the user can act on -- it is not even their fault. Exit 101 signals a crash, not a usage error."
+      }
+    },
+    {
+      "id": "unwrap_panic",
+      "command": "fastskill list",
+      "exit_code": 101,
+      "output": "thread 'main' panicked at crates/fastskill-core/src/core/manifest.rs:412:38:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "expected": {
+        "pass": false,
+        "score_range": [1, 1],
+        "why": "The shape any stray .unwrap() produces. Leaks a source path and line, names no user-facing problem, offers no action."
+      }
+    },
+    {
+      "id": "generic_invalid_input",
+      "command": "fastskill add some/skill",
+      "exit_code": 1,
+      "output": "Error: invalid input",
+      "expected": {
+        "pass": false,
+        "score_range": [1, 2],
+        "why": "The canonical useless error. Correct exit code and no internals leaked, so a judge weighing only cleanliness might wave it through -- which is exactly the failure mode this case exists to detect. Zero specificity, zero actionability."
+      }
+    },
+    {
+      "id": "serde_error_leak",
+      "command": "fastskill install",
+      "exit_code": 1,
+      "output": "Error: data did not match any variant of untagged enum DependencySpec",
+      "expected": {
+        "pass": false,
+        "score_range": [1, 2],
+        "why": "REAL historical output: what a pre-Origin manifest produced before the migration hint. Technically accurate and completely unactionable -- it names an internal Rust type, not the file, line, or field the user must change."
+      }
+    }
+  ]
+}
