@@ -1,6 +1,8 @@
 //! Manifest (skill-project.toml) endpoint handlers
 
-use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+use crate::core::manifest::{
+    DependenciesSection, DependencySpec, SkillProjectToml, MANIFEST_SCHEMA_VERSION,
+};
 use crate::core::origin::Origin;
 use crate::core::repository::RepositoryManager;
 use crate::core::sources::{MarketplaceSkill, SourcesManager};
@@ -237,6 +239,7 @@ pub async fn add_skill_to_manifest(
         }
 
         SkillProjectToml {
+            schema_version: Some(MANIFEST_SCHEMA_VERSION.to_string()),
             metadata: None,
             dependencies: None,
             tool: None,

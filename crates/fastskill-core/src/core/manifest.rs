@@ -1,6 +1,6 @@
 //! Skills manifest management for declarative skill control
 
-use crate::core::origin::Origin;
+use crate::core::origin::{GitRef, Origin};
 use crate::core::version::VersionConstraint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -110,11 +110,29 @@ impl SkillsManifest {
 // Skill Project TOML structures (skill-project.toml format)
 // ============================================================================
 
+/// The current `skill-project.toml` schema version, written by [`SkillProjectToml::save_to_file`].
+///
+/// **A manifest with no `schema_version` key is the pre-`Origin` legacy format**, because that
+/// format shipped before this field existed — every manifest written before this feature is
+/// unversioned, so "absent" is the only correct interpretation of "legacy".
+///
+/// Bump this when the on-disk shape changes incompatibly, and teach
+/// [`SkillProjectToml::load_from_file`] to upgrade from the previous value.
+pub const MANIFEST_SCHEMA_VERSION: &str = "1";
+
 /// Root structure for skill-project.toml file
 /// Contains both project metadata and dependencies
 /// Works in both project-level (skill consumer) and skill-level (skill author) contexts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillProjectToml {
+    /// On-disk schema version. `None` means the file predates versioning (the legacy
+    /// pre-`Origin` format) — reading upgrades it in memory, and the next save stamps
+    /// [`MANIFEST_SCHEMA_VERSION`].
+    ///
+    /// Declared first so `toml` serializes it above the tables; a scalar emitted after a
+    /// table would land *inside* that table and change its meaning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version: Option<String>,
     /// Optional metadata section (required for skill-level, optional for project-level)
     #[serde(default)]
     pub metadata: Option<MetadataSection>,
@@ -169,6 +187,180 @@ pub enum DependencySpec {
         #[serde(default)]
         groups: Option<Vec<String>>,
     },
+}
+
+// ── Legacy (pre-`Origin`) manifest support ───────────────────────────────────
+//
+// The pre-`Origin` format spelled a dependency as a `source` discriminator plus flat
+// sibling fields:
+//
+//     [dependencies.codescene]
+//     source = "git"
+//     url = "https://github.com/org/repo"
+//     branch = "main"
+//
+// These types exist ONLY to read that shape and upgrade it. They are deliberately
+// private and never serialized — nothing writes the legacy format, so there is no
+// round-trip to preserve. Deleting them once no legacy manifests remain in the wild
+// is the intended end state.
+
+/// Legacy `source` discriminator. Mirrors the pre-`Origin` `DependencySource`.
+#[derive(Debug, Clone, Deserialize)]
+enum LegacyDependencySource {
+    #[serde(rename = "git")]
+    Git,
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "zip-url")]
+    ZipUrl,
+    /// Named `"source"` in the legacy format; it meant "a skill from a configured
+    /// repository", which is now [`Origin::Repository`].
+    #[serde(rename = "source")]
+    Source,
+}
+
+/// Flat sibling fields of a legacy dependency entry. Every field is optional because
+/// which ones are meaningful depends on `source`.
+#[derive(Debug, Clone, Deserialize)]
+struct LegacySourceFields {
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    skill: Option<String>,
+    #[serde(default)]
+    zip_url: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+}
+
+/// A dependency entry in the legacy format.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum LegacyDependencySpec {
+    /// A bare version string. Still valid today, so this arm carries through unchanged.
+    Version(String),
+    Inline {
+        source: LegacyDependencySource,
+        #[serde(flatten)]
+        fields: LegacySourceFields,
+        #[serde(default)]
+        groups: Option<Vec<String>>,
+        /// Legacy put `editable` beside `source`; `Origin::Local` now owns it.
+        #[serde(default)]
+        editable: Option<bool>,
+    },
+}
+
+/// A whole manifest in the legacy format. Only `dependencies` differs from the current
+/// shape, but the sections are re-declared rather than reused so a future change to the
+/// current types cannot silently alter how legacy files are read.
+#[derive(Debug, Clone, Deserialize)]
+struct LegacySkillProjectToml {
+    #[serde(default)]
+    metadata: Option<MetadataSection>,
+    #[serde(default)]
+    dependencies: Option<HashMap<String, LegacyDependencySpec>>,
+    #[serde(default, rename = "tool")]
+    tool: Option<ToolSection>,
+}
+
+impl LegacyDependencySpec {
+    /// Upgrade one legacy entry to the current shape.
+    ///
+    /// Returns an error rather than guessing when the required field for a `source` is
+    /// missing: a dependency silently resolving to the wrong place is far worse than a
+    /// migration that stops and says which entry is malformed.
+    fn upgrade(self, skill_id: &str) -> Result<DependencySpec, ManifestError> {
+        let (source, fields, groups, editable) = match self {
+            // A bare version string means the same thing in both formats.
+            LegacyDependencySpec::Version(v) => return Ok(DependencySpec::Version(v)),
+            LegacyDependencySpec::Inline {
+                source,
+                fields,
+                groups,
+                editable,
+            } => (source, fields, groups, editable),
+        };
+
+        let missing = |field: &str| {
+            ManifestError::Parse(format!(
+                "legacy dependency '{skill_id}' declares source but is missing required \
+                 field '{field}'; cannot migrate it automatically"
+            ))
+        };
+
+        let origin = match source {
+            LegacyDependencySource::Git => Origin::Git {
+                url: fields.url.ok_or_else(|| missing("url"))?,
+                // Legacy could only express a branch, never a tag or commit. An absent
+                // branch meant the repository default, which is `GitRef::Default`.
+                r#ref: match fields.branch {
+                    Some(branch) => GitRef::Branch(branch),
+                    None => GitRef::Default,
+                },
+                subdir: None,
+            },
+            LegacyDependencySource::Local => Origin::Local {
+                path: PathBuf::from(fields.path.ok_or_else(|| missing("path"))?),
+                editable: editable.unwrap_or(false),
+            },
+            LegacyDependencySource::ZipUrl => Origin::ZipUrl {
+                // Legacy accepted either spelling for the archive location.
+                url: fields
+                    .zip_url
+                    .or(fields.url)
+                    .ok_or_else(|| missing("zip_url"))?,
+            },
+            LegacyDependencySource::Source => Origin::Repository {
+                repo: fields.name.ok_or_else(|| missing("name"))?,
+                // The skill defaulted to the dependency's own key when unstated.
+                skill: fields.skill.unwrap_or_else(|| skill_id.to_string()),
+                version: match fields.version {
+                    Some(raw) => Some(VersionConstraint::parse(&raw).map_err(|e| {
+                        ManifestError::Parse(format!(
+                            "legacy dependency '{skill_id}' has an unparseable version \
+                             constraint '{raw}': {e}"
+                        ))
+                    })?),
+                    None => None,
+                },
+            },
+        };
+
+        Ok(DependencySpec::Inline { origin, groups })
+    }
+}
+
+impl LegacySkillProjectToml {
+    /// Upgrade a whole legacy manifest, stamping the current schema version.
+    fn upgrade(self) -> Result<SkillProjectToml, ManifestError> {
+        let dependencies = match self.dependencies {
+            Some(legacy) => {
+                let mut upgraded = HashMap::with_capacity(legacy.len());
+                for (id, spec) in legacy {
+                    let converted = spec.upgrade(&id)?;
+                    upgraded.insert(id, converted);
+                }
+                Some(DependenciesSection {
+                    dependencies: upgraded,
+                })
+            }
+            None => None,
+        };
+
+        Ok(SkillProjectToml {
+            schema_version: Some(MANIFEST_SCHEMA_VERSION.to_string()),
+            metadata: self.metadata,
+            dependencies,
+            tool: self.tool,
+        })
+    }
 }
 
 /// Tool section containing tool-specific configuration
@@ -379,7 +571,63 @@ impl SkillProjectToml {
 
         let content = std::fs::read_to_string(&safe_path).map_err(ManifestError::Io)?;
 
-        let project: SkillProjectToml = toml::from_str(&content).map_err(|e| {
+        Self::from_toml_str(&content)
+    }
+
+    /// Parse manifest content, upgrading a legacy (pre-`Origin`) file in memory.
+    ///
+    /// Dispatch is driven by the `schema_version` key, read in a cheap first pass (the same
+    /// approach `skills.lock` uses):
+    ///
+    /// * **Absent** — either a legacy manifest or a hand-written current one, since nothing
+    ///   stamped the field until now. Try the current shape first, and only on failure fall
+    ///   back to the legacy shape. Trying current-first matters: a hand-written modern file
+    ///   must not be mistaken for legacy and rewritten.
+    /// * **Equal to [`MANIFEST_SCHEMA_VERSION`]** — parse the current shape, and let a parse
+    ///   failure be a real error. A file that declares its version is taken at its word.
+    /// * **Anything else** — refuse. A newer version means a newer FastSkill wrote it, and
+    ///   guessing at a shape we do not know would corrupt it on the next save.
+    ///
+    /// Nothing is written to disk here. The upgrade is persisted only when something saves
+    /// the manifest for its own reasons — see [`SkillProjectToml::save_to_file`].
+    pub fn from_toml_str(content: &str) -> Result<Self, ManifestError> {
+        /// First pass: read only `schema_version`, ignoring everything else. A legacy file
+        /// does not parse as the current shape, so the version cannot be read from a full parse.
+        #[derive(Deserialize)]
+        struct SchemaVersionOnly {
+            #[serde(default)]
+            schema_version: Option<String>,
+        }
+
+        // A malformed file fails the full parse below with a better message than this peek
+        // could give, so a peek failure is deliberately ignored rather than reported.
+        let declared = toml::from_str::<SchemaVersionOnly>(content)
+            .ok()
+            .and_then(|v| v.schema_version);
+
+        match declared.as_deref() {
+            Some(MANIFEST_SCHEMA_VERSION) => Self::parse_current(content),
+            Some(unknown) => Err(ManifestError::Parse(format!(
+                "skill-project.toml declares schema_version '{unknown}', which this FastSkill \
+                 ({}) does not understand. It was probably written by a newer FastSkill — \
+                 upgrade, or remove the schema_version line if you set it by hand.",
+                env!("CARGO_PKG_VERSION")
+            ))),
+            None => match Self::parse_current(content) {
+                Ok(project) => Ok(project),
+                // Report the CURRENT-format error if the legacy attempt also fails: for a file
+                // that was simply malformed, the current-format diagnostic (with line numbers
+                // and the pre-Origin hint) is the more useful of the two.
+                Err(current_err) => match toml::from_str::<LegacySkillProjectToml>(content) {
+                    Ok(legacy) => legacy.upgrade(),
+                    Err(_) => Err(current_err),
+                },
+            },
+        }
+    }
+
+    fn parse_current(content: &str) -> Result<Self, ManifestError> {
+        let project: SkillProjectToml = toml::from_str(content).map_err(|e| {
             // T066: Enhanced TOML error message with line numbers
             let error_msg = e.to_string();
             // Extract line number if available
@@ -421,10 +669,28 @@ impl SkillProjectToml {
         Ok(project)
     }
 
-    /// Save skill-project.toml to file
+    /// Save skill-project.toml to file, stamping the current schema version.
+    ///
+    /// This is where a legacy manifest becomes a current one on disk. Reading never writes,
+    /// so an old file keeps working untouched until something changes it for its own reasons
+    /// (`add`, `remove`, `init`, a version bump) — at which point it is rewritten in the
+    /// current format, once, as a side effect of that change.
+    ///
+    /// Stamping here rather than at every call site means no writer can forget.
     pub fn save_to_file(&self, path: &Path) -> Result<(), ManifestError> {
-        let content =
-            toml::to_string_pretty(self).map_err(|e| ManifestError::Serialize(e.to_string()))?;
+        let stamped;
+        let to_write = if self.schema_version.as_deref() == Some(MANIFEST_SCHEMA_VERSION) {
+            self
+        } else {
+            stamped = SkillProjectToml {
+                schema_version: Some(MANIFEST_SCHEMA_VERSION.to_string()),
+                ..self.clone()
+            };
+            &stamped
+        };
+
+        let content = toml::to_string_pretty(to_write)
+            .map_err(|e| ManifestError::Serialize(e.to_string()))?;
 
         crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
 
@@ -609,10 +875,16 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// Was `pre_origin_manifest_gives_actionable_hint`, which asserted a pre-`Origin`
+    /// manifest FAILS with a hint telling the author to hand-edit it. That behaviour is
+    /// gone on purpose: a well-formed legacy manifest is now migrated automatically, so
+    /// there is nothing for the author to do and nothing to hint at.
+    ///
+    /// The hint itself still exists in `parse_current` and still fires for legacy-looking
+    /// input that cannot be migrated — see
+    /// `schema_version_tests::legacy_entry_missing_required_field_is_reported_not_guessed`.
     #[test]
-    fn pre_origin_manifest_gives_actionable_hint() {
-        // A pre-Origin `[dependencies]` entry (`source = "git"` + flat fields) no
-        // longer parses; the error must point the author at the `origin = {…}` shape.
+    fn pre_origin_manifest_is_migrated_rather_than_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("skill-project.toml");
         std::fs::write(
@@ -621,11 +893,34 @@ mod tests {
              [dependencies.old]\nsource = \"git\"\nurl = \"https://example.com/x.git\"\n",
         )
         .unwrap();
-        let err = SkillProjectToml::load_from_file(&path).unwrap_err();
-        let msg = err.to_string();
+
+        let project = SkillProjectToml::load_from_file(&path)
+            .expect("a well-formed pre-Origin manifest must now load, not error");
+
+        assert_eq!(
+            project.schema_version.as_deref(),
+            Some(MANIFEST_SCHEMA_VERSION),
+            "the loaded value must carry the current schema version"
+        );
+        match project
+            .dependencies
+            .as_ref()
+            .unwrap()
+            .dependencies
+            .get("old")
+        {
+            Some(DependencySpec::Inline {
+                origin: Origin::Git { url, .. },
+                ..
+            }) => assert_eq!(url, "https://example.com/x.git"),
+            other => panic!("expected a migrated git origin, got {other:?}"),
+        }
+
+        // Reading must not rewrite the file — migration is persisted only on save.
+        let on_disk = std::fs::read_to_string(&path).unwrap();
         assert!(
-            msg.contains("origin = { type"),
-            "expected migration hint, got: {msg}"
+            on_disk.contains("source = \"git\""),
+            "load_from_file must leave the file untouched, got:\n{on_disk}"
         );
     }
 
@@ -758,5 +1053,246 @@ mod tests {
             repo_def.repo_type,
             crate::core::repository::RepositoryType::GitMarketplace
         ));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
+mod schema_version_tests {
+    use super::*;
+
+    fn origin_of<'a>(p: &'a SkillProjectToml, id: &str) -> &'a Origin {
+        match p.dependencies.as_ref().unwrap().dependencies.get(id) {
+            Some(DependencySpec::Inline { origin, .. }) => origin,
+            other => panic!("expected inline origin for {id}, got {other:?}"),
+        }
+    }
+
+    /// The whole point: a manifest written before this feature existed must keep working.
+    #[test]
+    fn legacy_manifest_without_schema_version_is_upgraded_in_memory() {
+        let legacy = r#"
+[metadata]
+id = "ws"
+version = "1.0.0"
+
+[dependencies.codescene]
+source = "git"
+url = "https://github.com/org/repo"
+branch = "main"
+
+[dependencies.paper-trail]
+source = "local"
+path = "/srv/skills/paper-trail"
+editable = true
+
+[dependencies.newton]
+source = "git"
+url = "https://github.com/gonewton/skill"
+
+[dependencies.bundled]
+source = "zip-url"
+zip_url = "https://example.com/s.zip"
+
+[dependencies.from-repo]
+source = "source"
+name = "internal"
+skill = "helper"
+"#;
+        let parsed = SkillProjectToml::from_toml_str(legacy).expect("legacy manifest must parse");
+
+        assert_eq!(
+            parsed.schema_version.as_deref(),
+            Some(MANIFEST_SCHEMA_VERSION),
+            "upgrading must stamp the current schema version"
+        );
+
+        match origin_of(&parsed, "codescene") {
+            Origin::Git { url, r#ref, subdir } => {
+                assert_eq!(url, "https://github.com/org/repo");
+                assert_eq!(*r#ref, GitRef::Branch("main".to_string()));
+                assert!(subdir.is_none());
+            }
+            other => panic!("expected git origin, got {other:?}"),
+        }
+
+        // No branch in legacy meant "the repository default", not a branch literally named
+        // something. Getting this wrong would silently re-point a dependency.
+        match origin_of(&parsed, "newton") {
+            Origin::Git { r#ref, .. } => assert_eq!(*r#ref, GitRef::Default),
+            other => panic!("expected git origin, got {other:?}"),
+        }
+
+        // `editable` moved from beside `source` into `Origin::Local`.
+        match origin_of(&parsed, "paper-trail") {
+            Origin::Local { path, editable } => {
+                assert_eq!(path, &PathBuf::from("/srv/skills/paper-trail"));
+                assert!(*editable, "editable = true must survive the upgrade");
+            }
+            other => panic!("expected local origin, got {other:?}"),
+        }
+
+        match origin_of(&parsed, "bundled") {
+            Origin::ZipUrl { url } => assert_eq!(url, "https://example.com/s.zip"),
+            other => panic!("expected zip-url origin, got {other:?}"),
+        }
+
+        // Legacy `source = "source"` meant "from a configured repository".
+        match origin_of(&parsed, "from-repo") {
+            Origin::Repository { repo, skill, .. } => {
+                assert_eq!(repo, "internal");
+                assert_eq!(skill, "helper");
+            }
+            other => panic!("expected repository origin, got {other:?}"),
+        }
+    }
+
+    /// A modern file that nobody has stamped yet must NOT be mistaken for legacy.
+    #[test]
+    fn unstamped_current_format_is_parsed_as_current() {
+        let current = r#"
+[metadata]
+id = "ws"
+version = "1.0.0"
+
+[dependencies.a]
+origin = { type = "git", url = "https://github.com/org/repo" }
+"#;
+        let parsed = SkillProjectToml::from_toml_str(current).expect("current format must parse");
+        match origin_of(&parsed, "a") {
+            Origin::Git { url, .. } => assert_eq!(url, "https://github.com/org/repo"),
+            other => panic!("expected git origin, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_stamped_current_manifest_round_trips() {
+        let src = format!(
+            "schema_version = \"{MANIFEST_SCHEMA_VERSION}\"\n\n\
+             [metadata]\nid = \"ws\"\nversion = \"1.0.0\"\n\n\
+             [dependencies.a]\norigin = {{ type = \"local\", path = \"/x\" }}\n"
+        );
+        let parsed = SkillProjectToml::from_toml_str(&src).unwrap();
+        assert_eq!(
+            parsed.schema_version.as_deref(),
+            Some(MANIFEST_SCHEMA_VERSION)
+        );
+    }
+
+    /// A newer file must be refused, not guessed at — misreading it would corrupt it on save.
+    #[test]
+    fn unknown_schema_version_is_refused() {
+        let future = r#"
+schema_version = "99"
+
+[metadata]
+id = "ws"
+version = "1.0.0"
+"#;
+        let err = SkillProjectToml::from_toml_str(future)
+            .expect_err("a future schema version must not be silently accepted");
+        let msg = err.to_string();
+        assert!(msg.contains("99"), "error should name the version: {msg}");
+        assert!(
+            msg.contains("newer FastSkill"),
+            "error should explain the likely cause: {msg}"
+        );
+    }
+
+    /// Saving stamps the version even when the in-memory value never had one, so no writer
+    /// can forget to migrate.
+    #[test]
+    fn saving_stamps_the_schema_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skill-project.toml");
+
+        let unstamped = SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: None,
+            tool: None,
+        };
+        unstamped.save_to_file(&path).unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            written.contains(&format!("schema_version = \"{MANIFEST_SCHEMA_VERSION}\"")),
+            "save must stamp the schema version, got:\n{written}"
+        );
+        // And the scalar must precede the tables, or TOML would nest it inside one.
+        assert!(
+            written.trim_start().starts_with("schema_version"),
+            "schema_version must be written before any table, got:\n{written}"
+        );
+    }
+
+    /// End-to-end: read legacy -> save -> re-read yields the current format. This is the
+    /// "migrate at first write" behaviour as a user would experience it.
+    #[test]
+    fn legacy_file_becomes_current_after_a_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skill-project.toml");
+        std::fs::write(
+            &path,
+            "[metadata]\nid = \"ws\"\nversion = \"1.0.0\"\n\n\
+             [dependencies.codescene]\nsource = \"git\"\nurl = \"https://github.com/o/r\"\nbranch = \"main\"\n",
+        )
+        .unwrap();
+
+        let loaded = SkillProjectToml::load_from_file(&path).unwrap();
+        loaded.save_to_file(&path).unwrap();
+
+        let rewritten = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !rewritten.contains("source = \"git\""),
+            "legacy spelling must be gone:\n{rewritten}"
+        );
+        assert!(
+            rewritten.contains("schema_version"),
+            "must be stamped:\n{rewritten}"
+        );
+
+        // Re-reading the rewritten file must take the current path and preserve the origin.
+        let reloaded = SkillProjectToml::load_from_file(&path).unwrap();
+        match origin_of(&reloaded, "codescene") {
+            Origin::Git { url, r#ref, .. } => {
+                assert_eq!(url, "https://github.com/o/r");
+                assert_eq!(*r#ref, GitRef::Branch("main".to_string()));
+            }
+            other => panic!("expected git origin, got {other:?}"),
+        }
+    }
+
+    /// A legacy entry missing its required field must fail loudly. Silently resolving a
+    /// dependency to the wrong place is worse than refusing to migrate it.
+    #[test]
+    fn legacy_entry_missing_required_field_is_reported_not_guessed() {
+        let broken = r#"
+[metadata]
+id = "ws"
+version = "1.0.0"
+
+[dependencies.oops]
+source = "git"
+branch = "main"
+"#;
+        let err = SkillProjectToml::from_toml_str(broken).expect_err("must not silently migrate");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("oops") || msg.contains("url"),
+            "unhelpful error: {msg}"
+        );
+    }
+
+    /// A bare version string means the same in both formats and must pass through.
+    #[test]
+    fn bare_version_string_dependencies_survive() {
+        let legacy =
+            "[metadata]\nid = \"ws\"\nversion = \"1.0.0\"\n\n[dependencies]\na = \"1.2.3\"\n";
+        let parsed = SkillProjectToml::from_toml_str(legacy).unwrap();
+        match parsed.dependencies.as_ref().unwrap().dependencies.get("a") {
+            Some(DependencySpec::Version(v)) => assert_eq!(v, "1.2.3"),
+            other => panic!("expected a bare version, got {other:?}"),
+        }
     }
 }

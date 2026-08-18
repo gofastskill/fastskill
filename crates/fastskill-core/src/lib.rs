@@ -60,7 +60,7 @@ pub use core::context_resolver::{
     ResolvedSkill,
 };
 pub use core::embedding::{EmbeddingService, OpenAIEmbeddingService};
-pub use core::manifest::SkillProjectToml;
+pub use core::manifest::{SkillProjectToml, MANIFEST_SCHEMA_VERSION};
 pub use core::metadata::{
     parse_yaml_frontmatter, MetadataService, SkillFrontmatter, SkillMetadata,
 };

@@ -13,6 +13,7 @@ use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::manifest::{
     DependenciesSection, FastSkillToolConfig, MetadataSection, SkillProjectToml, ToolSection,
+    MANIFEST_SCHEMA_VERSION,
 };
 use fastskill_core::core::metadata::parse_yaml_frontmatter;
 use fastskill_core::core::validation::{
@@ -379,6 +380,7 @@ fn build_skill_project(meta: InitMetadata<'_>) -> CliResult<SkillProjectToml> {
     validate_project_structure(true, dependencies.is_some())
         .map_err(|e| CliError::ProjectTomlValidation(e.to_string()))?;
     Ok(SkillProjectToml {
+        schema_version: Some(MANIFEST_SCHEMA_VERSION.to_string()),
         metadata,
         dependencies,
         tool,

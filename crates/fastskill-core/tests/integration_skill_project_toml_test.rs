@@ -22,6 +22,7 @@ fn test_init_creates_skill_project_toml_with_both_sections() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("my-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -53,6 +54,7 @@ fn test_init_without_skill_md() {
     let project_path = temp_dir.path().join("skill-project.toml");
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -101,6 +103,7 @@ capabilities: [testing]
     // This test verifies that frontmatter extraction would work
     // The actual extraction logic is in init.rs
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("extracted-skill".to_string()),
             version: Some("2.0.0".to_string()), // From frontmatter
@@ -130,6 +133,7 @@ fn test_package_command_uses_metadata_section() {
     let project_path = temp_dir.path().join("skill-project.toml");
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("package-test".to_string()),
             version: Some("1.2.3".to_string()),
@@ -160,6 +164,7 @@ fn test_package_command_reads_metadata_from_skill_project_toml() {
 
     // Create skill-project.toml with metadata
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("package-test-skill".to_string()),
             version: Some("1.2.3".to_string()),
