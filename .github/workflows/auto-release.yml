@@ -38,8 +38,17 @@ permissions:
 # release) -- but it will keep recurring on every merge burst, and in principle could
 # strand a bump if the "later run" also loses its race.
 #
-# `cancel-in-progress: false` is deliberate: cancelling a queued run mid-flight could
-# drop its version bump instead of just delaying it, which is worse than making it wait.
+# `cancel-in-progress: false` is deliberate: cancelling a run mid-flight could drop its
+# version bump instead of just delaying it, which is worse than making it wait.
+#
+# Note what this does NOT prevent, because it is GitHub's behaviour and not something
+# `cancel-in-progress` controls: only ONE run per group may sit in the pending queue, so
+# when a third run arrives while one is running and one is pending, the *pending* one is
+# cancelled in favour of the newer arrival. A burst of N merges therefore yields the
+# first run plus the last, not N runs -- so it produces roughly one release covering the
+# whole burst rather than one release per merge (today's burst of four produced 0.9.173
+# through 0.9.176). That is a deliberate improvement, not a loss: the surviving run
+# checks out main's tip, so its release still contains every merged change.
 # The group is keyed on `github.ref` (this workflow only ever runs on push to `main`, so
 # in practice this is a single global lane) rather than `github.sha`, precisely so that
 # runs from *different* commits queue behind each other instead of racing.
