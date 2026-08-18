@@ -21,6 +21,43 @@ permissions:
   contents: write
   actions: read
 
+# When several PRs merge to main back-to-back, each merge push triggers its own run of
+# this workflow, and every run tries to commit+push a version bump to main. Without
+# serialization these race: run A pushes its bump commit, then run B -- which had already
+# fetched main before A's push landed -- tries to push its own bump on top of the
+# now-stale tip and gets a plain (non-force) `git push` rejection:
+#
+#   ! [rejected]        main -> main (non-fast-forward)
+#   error: failed to push some refs to 'https://github.com/gofastskill/fastskill'
+#   hint: Updates were rejected because the tip of your current branch is behind
+#
+# Real occurrence: run 32085196409, triggered by the push of PR #246, failed at
+# "Commit version bump" with exactly this error because PR #245's auto-release run
+# pushed its own bump commit in between this run's checkout and its push. A later run
+# still wins and the release happens, so today this is cosmetic (red CI, not a stuck
+# release) -- but it will keep recurring on every merge burst, and in principle could
+# strand a bump if the "later run" also loses its race.
+#
+# `cancel-in-progress: false` is deliberate: cancelling a queued run mid-flight could
+# drop its version bump instead of just delaying it, which is worse than making it wait.
+# The group is keyed on `github.ref` (this workflow only ever runs on push to `main`, so
+# in practice this is a single global lane) rather than `github.sha`, precisely so that
+# runs from *different* commits queue behind each other instead of racing.
+#
+# Serializing is only correct because this workflow's "Checkout code" step (below) does
+# NOT pin to the commit that triggered the run. It passes no `ref:`, so actions/checkout
+# resolves the push event's branch ref (`refs/heads/main`) and runs
+# `git checkout -B main refs/remotes/origin/main` -- i.e. it re-fetches and checks out
+# whatever main's tip *is at the time the step executes*, not a snapshot of `github.sha`
+# from when the run was queued (confirmed in run 32085196409's log: the "Checking out
+# the ref" group shows exactly that checkout command). So once runs are serialized, a
+# queued run's checkout happens strictly after the previous run's push, and it picks up
+# that bump commit as its new base -- no stale-ref fix (explicit `ref: main`, or a
+# pre-push `git pull --rebase`) is needed on top of the concurrency group.
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   auto-release:
     name: Auto Release
