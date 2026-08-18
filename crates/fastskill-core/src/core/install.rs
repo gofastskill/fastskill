@@ -1280,7 +1280,7 @@ fn compute_local_tree_hash(root: &Path) -> Result<String, ServiceError> {
         hasher.update((content.len() as u64).to_le_bytes());
         hasher.update(content);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::utils::to_hex_lower(&hasher.finalize()))
 }
 
 /// Recursively collect `(relative_path, content)` pairs for every regular
@@ -1319,7 +1319,7 @@ fn collect_tree_entries(dir: &Path, root: &Path) -> Result<Vec<(String, Vec<u8>)
 fn hash_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    crate::utils::to_hex_lower(&hasher.finalize())
 }
 
 /// Resolve `HEAD`'s commit SHA in a freshly-cloned git repository.

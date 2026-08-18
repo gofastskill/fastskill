@@ -175,7 +175,7 @@ pub fn calculate_skill_hash(skill_path: &Path) -> Result<String, ServiceError> {
         hasher.update(&content);
     }
 
-    let hash = format!("sha256:{:x}", hasher.finalize());
+    let hash = format!("sha256:{}", crate::utils::to_hex_lower(&hasher.finalize()));
     Ok(hash)
 }
 
@@ -235,6 +235,35 @@ mod tests {
     fn write_single_file_skill(dir: &Path, file_name: &str, content: &str) {
         fs::create_dir_all(dir).unwrap();
         fs::write(dir.join(file_name), content).unwrap();
+    }
+
+    // --- sha2 0.10 -> 0.11 bump: pin the exact cache-key string ---
+    //
+    // `calculate_skill_hash`'s result is persisted as a build-cache key
+    // (see `BuildCache`) and compared byte-for-byte across runs. The bump
+    // to sha2 0.11 changed `Sha256::finalize()`'s return type from
+    // `GenericArray<u8, N>` to `hybrid_array::Array<u8, N>`, which does not
+    // implement `LowerHex`, forcing the `format!("{:x}", ...)` call above to
+    // become `format!("sha256:{}", to_hex_lower(&hasher.finalize()))`. This
+    // test pins a known input's exact output (including the `sha256:`
+    // prefix) so a future change to the hex encoding — case, padding,
+    // truncation — fails loudly here instead of silently invalidating every
+    // cached entry that keys off this string.
+    #[test]
+    fn test_calculate_skill_hash_matches_known_value() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("known_skill");
+        write_single_file_skill(&dir, "a.txt", "hi");
+
+        let hash = calculate_skill_hash(&dir).unwrap();
+
+        // Independently computed (Python hashlib) from the same
+        // length-prefixed(path) + length-prefixed(content) scheme:
+        //   sha256(len("a.txt").to_le_bytes(8) + b"a.txt" + len("hi").to_le_bytes(8) + b"hi")
+        assert_eq!(
+            hash, "sha256:d94190b242cc00cb896909e8322401c230fef8ea9403e8b99073e759b5e80616",
+            "hash format/value for a known single-file skill must be stable"
+        );
     }
 
     #[test]
