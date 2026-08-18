@@ -57,6 +57,7 @@ fn test_resolve_project_file_returns_path_user_can_create_manifest() {
 
     let project_toml = result.path;
     let new_project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(fastskill_core::core::manifest::DependenciesSection {
             dependencies: std::collections::HashMap::new(),

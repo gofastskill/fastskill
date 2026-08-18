@@ -45,6 +45,7 @@ dev-tools = { origin = { type = "git", url = "https://github.com/org/dev-tools.g
 #[test]
 fn test_toml_serialization() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -66,6 +67,7 @@ fn test_toml_serialization() {
 #[test]
 fn test_context_detection_skill_level() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -91,6 +93,7 @@ fn test_context_detection_project_level() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: None,
@@ -103,6 +106,7 @@ fn test_context_detection_project_level() {
 #[test]
 fn test_context_detection_ambiguous() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: None,
         tool: None,
@@ -115,6 +119,7 @@ fn test_context_detection_ambiguous() {
 #[test]
 fn test_validation_skill_level() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -134,6 +139,7 @@ fn test_validation_skill_level() {
 #[test]
 fn test_validation_skill_level_missing_id() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: None,
             version: Some("1.0.0".to_string()),
@@ -160,6 +166,7 @@ fn test_validation_project_level() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: Some(ToolSection {
@@ -183,6 +190,7 @@ fn test_validation_project_level() {
 #[test]
 fn test_validation_project_level_missing_dependencies() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: None,
         tool: None,
@@ -339,6 +347,7 @@ fn test_ambiguous_context_detection() {
 
     // Empty project - should be ambiguous
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: None,
         tool: None,
@@ -349,6 +358,7 @@ fn test_ambiguous_context_detection() {
 
     // Project with empty metadata and empty dependencies - ambiguous
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: None,
             version: None,
@@ -376,6 +386,7 @@ fn test_content_based_context_resolution() {
 
     // Project with metadata.id - should resolve to Skill
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -398,6 +409,7 @@ fn test_content_based_context_resolution() {
         DependencySpec::Version("1.0.0".to_string()),
     );
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: None,
@@ -413,6 +425,7 @@ fn test_content_based_context_resolution() {
         DependencySpec::Version("1.0.0".to_string()),
     );
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: Some("test-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -613,6 +626,7 @@ fn test_all_dependency_source_types() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: None,
@@ -694,6 +708,7 @@ fn test_dependency_groups_and_editable_installs() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: None,

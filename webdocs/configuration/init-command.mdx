@@ -113,6 +113,53 @@ The commented block is written verbatim so you can uncomment and fill in embeddi
 - **Custom**: any path you pass via `--skills-dir` or the prompt
 - **Resolution at runtime**: `--skills-dir` flag > `--global` (`~/.config/fastskill/skills`) > `skills_directory` under `[tool.fastskill]` > walk up to an existing `.claude/skills/` > default `.claude/skills/`
 
+## Schema version and automatic migration
+
+`skill-project.toml` carries a `schema_version` at the top of the file:
+
+```toml
+schema_version = "1"
+
+[metadata]
+id = "my-project"
+```
+
+You never need to write or maintain it — FastSkill stamps it whenever it saves the file.
+
+**Older manifests keep working.** A file with no `schema_version` is treated as the
+pre-`Origin` legacy format (`source = "git"` plus flat `url`/`branch`/`path` fields).
+FastSkill reads it, upgrades it in memory, and carries on:
+
+```toml
+# Legacy — still reads fine
+[dependencies.my-skill]
+source = "git"
+url = "https://github.com/org/repo"
+branch = "main"
+```
+
+becomes, in memory:
+
+```toml
+[dependencies.my-skill]
+origin = { type = "git", url = "https://github.com/org/repo", ref = { branch = "main" } }
+```
+
+**Reading never rewrites your file.** The upgraded form is written to disk only the next
+time something changes the manifest for its own reasons — `add`, `remove`, `init`, a
+version bump. So a legacy project keeps working untouched until you modify it, and then
+migrates once, as a side effect.
+
+<Callout>
+A manifest declaring a `schema_version` **newer** than your FastSkill understands is
+rejected rather than guessed at — saving it would otherwise discard the parts this version
+cannot represent. Upgrade FastSkill, or remove the line if you added it by hand.
+</Callout>
+
+A legacy entry missing a field its `source` requires (a `git` entry with no `url`, say) is
+reported by name instead of migrated, since resolving a dependency to the wrong place
+silently would be worse than stopping.
+
 ## Embedding configuration
 
 Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `init` — add it when you need it):

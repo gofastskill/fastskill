@@ -11,6 +11,7 @@ use std::collections::HashMap;
 #[test]
 fn test_skill_project_toml_serialization_with_metadata_only() {
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("my-skill".to_string()),
             version: Some("1.0.0".to_string()),
@@ -53,6 +54,7 @@ fn test_skill_project_toml_serialization_with_dependencies_only() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: None,
         dependencies: Some(DependenciesSection { dependencies: deps }),
         tool: None,
@@ -78,6 +80,7 @@ fn test_skill_project_toml_serialization_with_both_sections() {
     );
 
     let project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(MetadataSection {
             id: Some("my-skill".to_string()),
             version: Some("1.0.0".to_string()),

@@ -213,7 +213,7 @@ impl RepositoryManager {
 
     /// Save repositories to skill-project.toml
     fn save_to_project_file(&self) -> Result<(), ServiceError> {
-        use crate::core::manifest::SkillProjectToml;
+        use crate::core::manifest::{SkillProjectToml, MANIFEST_SCHEMA_VERSION};
 
         // Ensure parent directory exists
         if let Some(parent) = self.config_path.parent() {
@@ -228,6 +228,7 @@ impl RepositoryManager {
         } else {
             // Create minimal project file
             SkillProjectToml {
+                schema_version: Some(MANIFEST_SCHEMA_VERSION.to_string()),
                 metadata: None,
                 dependencies: None,
                 tool: None,

@@ -284,6 +284,7 @@ test-skill = "1.0.0"
 
     // Test 5: Verify skill-project.toml with all sections
     let full_project = SkillProjectToml {
+        schema_version: None,
         metadata: Some(fastskill_core::core::manifest::MetadataSection {
             id: None,
             version: None,
