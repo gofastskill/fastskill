@@ -132,13 +132,11 @@ fn load_repository_definitions() -> Result<Vec<RepositoryDefinition>, SearchErro
 )]
 mod tests {
     use super::*;
-    use once_cell::sync::Lazy;
+    use crate::test_utils::DIR_MUTEX as CWD_LOCK;
     use std::fs;
     use std::path::Path;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::MutexGuard;
     use tempfile::TempDir;
-
-    static CWD_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     struct CurrentDirGuard {
         previous: std::path::PathBuf,
@@ -159,7 +157,7 @@ mod tests {
     }
 
     fn enter_temp_workspace() -> (MutexGuard<'static, ()>, TempDir, CurrentDirGuard) {
-        let lock = CWD_LOCK.lock().expect("failed to lock cwd mutex");
+        let lock = CWD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let guard = CurrentDirGuard::set(temp_dir.path());
         (lock, temp_dir, guard)
