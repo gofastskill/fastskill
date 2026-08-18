@@ -46,13 +46,12 @@ on:
     # nightly-agent-e2e slot (06:00 UTC) so the two don't contend for the same
     # shared gateway at the same moment.
     - cron: "17 3 * * *"
+  # Verified green on this branch before merge via a temporary push trigger, since
+  # workflow_dispatch requires the file to already be on the default branch. That
+  # trigger has been removed — run 32115238301 is the evidence: 8 cases judged over
+  # 24 gateway requests from inside the container, doc-walk correctly skipped as
+  # absent, job green with one poor finding (soft tier holding).
   workflow_dispatch: {}
-  # TEMPORARY: workflow_dispatch requires the workflow file to already be on
-  # the default branch, which this PR branch is not yet. Scoped to this exact
-  # branch only, purely so the run can be verified green before merge; removed
-  # before this PR is finished (same procedure quality-gateway-smoke.yml used).
-  push:
-    branches: [ci/nightly-quality-workflow]
 
 permissions:
   contents: read
