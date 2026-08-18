@@ -1,0 +1,170 @@
+name: Nightly Quality
+
+# The nightly SOFT quality tier (spec 005, P4): the LLM-judge error-message-quality
+# suite and the blind doc-walk suite, run in an ephemeral container built from HEAD,
+# reached over the Tailnet to the shared LLM gateway.
+#
+# This tier must NEVER fail the branch on a finding — a poor error message or doc
+# drift is a report, not a failure (spec 005). Only the harness itself breaking (no
+# binary, an unreachable gateway) fails the job; see ci/quality/entrypoint.sh for
+# exactly how that distinction is enforced. It sits entirely beside the PR gate
+# (test.yml, `cargo fmt --check` + `cargo nextest`), which stays hard and
+# deterministic and is not touched by this workflow.
+#
+# P4 may land before P3 (spec 005 doc-walk, ci/quality/docwalk/run_docwalk.py does
+# not exist yet). The container tolerates that file being absent and skips the
+# doc-walk step with a clear note in the summary rather than failing — see
+# ci/quality/entrypoint.sh. Do not add a stub of that file here; it belongs to a
+# different PR landing in parallel.
+#
+# Ephemeral container for the whole tier is mandatory, not merely prudent (spec 005
+# Q8): the doc-walk suite runs commands verbatim out of the shipped docs, which
+# contain `curl | bash`, `sudo`, and `~/.claude*` writes (pre-filtered by the
+# extractor and never actually run, but the container is still the blast-radius
+# boundary). fastskill is built from HEAD *inside* the image every run (Q1), so the
+# tier always exercises the binary this branch actually produces.
+#
+# Required repo secrets (all five, else the job SKIPS with a warning rather than
+# fails, so forks and repos without the secrets stay green):
+#   TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET  — Tailscale OAuth client, tag:ci
+#   LLM_GATEWAY_URL                       — gateway base URL on the Tailnet
+#   LLM_GATEWAY_KEY                       — virtual key (sk-…), budget-scoped
+#   LLM_GATEWAY_MODEL                     — judge model pin (currently
+#                                            claude-haiku-4-5 — spec 005 P2 found it
+#                                            both cheaper and better-calibrated than
+#                                            the local-model alias)
+#
+# Cost guards (spec 005 Q6/Q12): 300 gateway requests total per run, split
+# explicitly 120 (error-quality) / 180 (doc-walk) rather than first-suite-wins — see
+# ci/quality/entrypoint.sh for the budget reasoning. timeout-minutes: 60 below is the
+# outer backstop for the 60-job-minute cap; the per-suite --max-requests caps inside
+# the container are the primary guard and log exactly what gets skipped if hit.
+
+on:
+  schedule:
+    # 03:17 UTC nightly — off the hour, and deliberately not aikit's
+    # nightly-agent-e2e slot (06:00 UTC) so the two don't contend for the same
+    # shared gateway at the same moment.
+    - cron: "17 3 * * *"
+  # Verified green on this branch before merge via a temporary push trigger, since
+  # workflow_dispatch requires the file to already be on the default branch. That
+  # trigger has been removed — run 32115238301 is the evidence: 8 cases judged over
+  # 24 gateway requests from inside the container, doc-walk correctly skipped as
+  # absent, job green with one poor finding (soft tier holding).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # Required by tailscale/github-action to mint an OIDC token for OAuth.
+  id-token: write
+
+concurrency:
+  group: nightly-quality
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Nightly quality tier (error-message judge + doc-walk)
+    runs-on: ubuntu-latest
+    # Outer backstop for the 60-job-minute cost guard (spec 005 Q6/Q12).
+    timeout-minutes: 60
+    steps:
+      - name: Verify secrets are configured
+        id: guard
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          LLM_GATEWAY_URL: ${{ secrets.LLM_GATEWAY_URL }}
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+          LLM_GATEWAY_MODEL: ${{ secrets.LLM_GATEWAY_MODEL }}
+        run: |
+          missing=""
+          for v in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET LLM_GATEWAY_URL \
+                   LLM_GATEWAY_KEY LLM_GATEWAY_MODEL; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::gateway/Tailscale secrets not configured — skipping the nightly quality tier:$missing"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout code
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/checkout@v6
+
+      - name: Connect to the Tailnet
+        if: steps.guard.outputs.run == 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          # Must be authorized in the Tailscale ACL `tagOwners`; the node is
+          # ephemeral and auto-removed when the job ends.
+          tags: tag:ci
+
+      - name: Set up Docker Buildx
+        if: steps.guard.outputs.run == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the quality image (fastskill built from HEAD inside)
+        if: steps.guard.outputs.run == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ci/quality/Dockerfile
+          tags: fastskill-quality:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Prepare output directory
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          mkdir -p "${{ github.workspace }}/quality-out"
+          # 777: the container runs as a non-root user whose uid may not match
+          # the runner's; the bind mount needs to be writable regardless.
+          chmod 777 "${{ github.workspace }}/quality-out"
+
+      - name: Run the quality suites (ephemeral container, throwaway $HOME)
+        if: steps.guard.outputs.run == 'true'
+        env:
+          LLM_GATEWAY_URL: ${{ secrets.LLM_GATEWAY_URL }}
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+          LLM_GATEWAY_MODEL: ${{ secrets.LLM_GATEWAY_MODEL }}
+        run: |
+          # --network host: the container reuses the runner's Tailnet join
+          # (established on the host above) to reach the internal gateway —
+          # same pattern as aikit's nightly-agent-e2e.yml.
+          docker run --rm --network host \
+            -e LLM_GATEWAY_URL \
+            -e LLM_GATEWAY_KEY \
+            -e LLM_GATEWAY_MODEL \
+            -v "${{ github.workspace }}/quality-out:/out" \
+            fastskill-quality:ci
+
+      - name: Append findings to the job summary
+        # always(): still show whatever the container produced even if the run
+        # step above exited non-zero (infra failure) — the report is diagnostic
+        # evidence, not proof of success.
+        if: steps.guard.outputs.run == 'true' && always()
+        run: |
+          if [ -f "${{ github.workspace }}/quality-out/summary.md" ]; then
+            cat "${{ github.workspace }}/quality-out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Nightly quality tier"
+              echo ""
+              echo "_No summary was produced — the container likely failed before writing output; check the run logs._"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload quality reports
+        if: steps.guard.outputs.run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: quality-out/
+          if-no-files-found: warn
+          retention-days: 30
