@@ -178,11 +178,26 @@ fn is_placeholder(tok: &str) -> bool {
 /// `Installation: fastskill add acme/web-scraper` inside a plain output
 /// block), and including them would make extraction noisy.
 fn bash_fences(text: &str) -> Vec<&str> {
-    const OPEN: &str = "```bash\n";
+    const OPEN: &str = "```bash";
     let mut out = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find(OPEN) {
-        let after = &rest[start + OPEN.len()..];
+        let after_tag = &rest[start + OPEN.len()..];
+        // The tag must end the line, so ```bashful is not a bash fence. Accept a
+        // CRLF as well as a bare LF: Git for Windows checks out with
+        // core.autocrlf=true by default, so on a Windows runner every one of
+        // these files arrives with \r\n and an LF-only match finds nothing --
+        // which silently yielded zero commands rather than a real failure.
+        let after = match after_tag
+            .strip_prefix("\r\n")
+            .or_else(|| after_tag.strip_prefix('\n'))
+        {
+            Some(after) => after,
+            None => {
+                rest = after_tag;
+                continue;
+            }
+        };
         let Some(end) = after.find("```") else {
             break;
         };
@@ -425,4 +440,28 @@ fn cli_commands_are_documented() {
          [[implemented_but_undocumented]] with a `command` and a `reason`.\n",
     );
     panic!("{msg}");
+}
+
+// ---------------------------------------------------------------------------
+// Regression: the fence parser must be line-ending agnostic.
+// ---------------------------------------------------------------------------
+
+/// `bash_fences` originally matched the literal "```bash\n". Git for Windows
+/// checks out with `core.autocrlf=true` by default, so on a Windows runner
+/// every `.mdx` file arrives CRLF-terminated and that match found nothing --
+/// the parity test then extracted zero commands and failed with "extraction
+/// logic is likely broken" rather than reporting a real docs drift.
+#[test]
+fn bash_fences_is_line_ending_agnostic() {
+    let lf = "intro\n```bash\nfastskill list\n```\ntail\n";
+    let crlf = "intro\r\n```bash\r\nfastskill list\r\n```\r\ntail\r\n";
+
+    assert_eq!(bash_fences(lf), vec!["fastskill list\n"]);
+    assert_eq!(bash_fences(crlf), vec!["fastskill list\r\n"]);
+
+    // The tag must still end the line: ```bashful is not a bash fence.
+    assert!(bash_fences("```bashful\nnope\n```\n").is_empty());
+
+    // And an unterminated fence must not panic or loop forever.
+    assert!(bash_fences("```bash\nfastskill list\n").is_empty());
 }
