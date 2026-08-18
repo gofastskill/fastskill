@@ -36,12 +36,12 @@ fn skill_md(marker: &str) -> String {
 /// baked into the content so different builds are byte-distinguishable.
 fn build_zip(marker: &str) -> Vec<u8> {
     use std::io::Write;
-    use zip::write::FileOptions;
+    use zip::write::SimpleFileOptions;
     let mut buf = Vec::new();
     {
         let cursor = std::io::Cursor::new(&mut buf);
         let mut writer = zip::ZipWriter::new(cursor);
-        let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         writer
             .start_file(format!("{SKILL_ID}/SKILL.md"), opts)
             .unwrap();

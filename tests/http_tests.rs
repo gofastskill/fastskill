@@ -19,7 +19,7 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 
 fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
     let start = Instant::now();
@@ -51,7 +51,8 @@ fn create_test_publish_zip() -> Vec<u8> {
     let mut cursor = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut cursor);
-        let options = FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         zip.start_file("SKILL.md", options).expect("start SKILL.md");
         zip.write_all(b"---\nname: demo-skill\ndescription: Demo\n---\n\n# Demo")

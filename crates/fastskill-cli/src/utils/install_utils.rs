@@ -580,12 +580,13 @@ mod tests {
     /// Build an in-memory zip containing a single skill under `test-skill/`.
     fn build_skill_zip() -> Vec<u8> {
         use std::io::Write;
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
         let mut buf = Vec::new();
         {
             let cursor = std::io::Cursor::new(&mut buf);
             let mut writer = zip::ZipWriter::new(cursor);
-            let opts = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
             writer.start_file("test-skill/SKILL.md", opts).unwrap();
             writer.write_all(VALID_SKILL_MD.as_bytes()).unwrap();
             writer.finish().unwrap();
