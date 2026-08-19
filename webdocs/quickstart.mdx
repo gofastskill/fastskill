@@ -20,25 +20,52 @@ fastskill -V
 
 ### 2. Create a manifest
 
-Create `skill-project.toml` at your project root:
+Create the skill you'll manage, then a `skill-project.toml` at your project root:
+```bash
+mkdir -p skills/demo-skill
+cat > skills/demo-skill/SKILL.md << 'EOF'
+---
+name: demo-skill
+description: A demo skill for the quickstart
+---
+
+This is a demo skill.
+EOF
+```
+
 ```toml skill-project.toml
 [dependencies]
-demo-skill = { source = "local", path = "./skills/demo-skill", editable = true, groups = ["dev"] }
+demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable = true }, groups = ["dev"] }
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
 ```
+
+<Callout type="info">
+`[tool.fastskill].skills_directory` is required for a project-level manifest — without it, `install`/`search`/etc. fail with a `Configuration error`. `fastskill init --skills-dir <path>` writes this for you; the manifest above is the hand-written equivalent.
+</Callout>
 
 ### 3. Add a skill
 
 Pick the source that matches your workflow:
 ```bash
-# From a public registry ID
+# From a public registry ID (requires a configured repository — see 'fastskill repos add'
+# below, or /registry/overview)
 fastskill add pptx@1.0.0
 
 # From a local folder (editable for dev)
 fastskill add ./skills/demo-skill -e --group dev
 
-# From git with a branch
-fastskill add https://github.com/org/skill.git --branch main
+# From git with a branch (replace with a real repository URL)
+fastskill add https://github.com/your-org/your-skill.git --branch main
 ```
+
+<Callout type="warn">
+Skills added with `-e`/`editable = true` (like `demo-skill` above) are symlinked in
+place rather than copied, and currently aren't discovered by `list`, `search`, or
+`reindex`. Install without `-e` if you want a skill to show up in those commands
+right away.
+</Callout>
 
 ### 4. Install & index
 
@@ -50,11 +77,14 @@ fastskill reindex
 ### 5. Search & verify
 
 ```bash
-fastskill search "text processing" --local --format json
+fastskill search "demo" --local --format json
 ```
 
 <Callout type="success">
-You should see JSON results for installed skills. If empty, run `fastskill install`, then `fastskill reindex`, and search again.
+You should see a JSON result for `demo-skill`, as long as it was installed without
+`-e` (see the note in step 3 — editable/symlinked skills aren't indexed yet). If
+empty and your skill wasn't installed with `-e`, run `fastskill install`, then
+`fastskill reindex`, and search again.
 </Callout>
 
 ### 6. Optional: serve UI
@@ -72,16 +102,20 @@ The HTTP API is available under `/api/v1/…`, e.g.:
 ## Use-case quick recipes
 
 - **Install skills from different sources**
-  - Public registry ID: `fastskill add pptx@1.0.0`
+  - Public registry ID: `fastskill add pptx@1.0.0` (requires a configured repository)
   - Local folder (editable): `fastskill add ./skills/my-skill -e --group dev`
-  - Git repo with branch: `fastskill add https://github.com/org/skill.git --branch main`
+  - Git repo with branch: `fastskill add https://github.com/your-org/your-skill.git --branch main`
   - Private Git marketplace:
     ```bash
-    fastskill repos add team --repo-type git-marketplace https://github.com/org/skills.git --priority 1
+    fastskill repos add team --repo-type git-marketplace https://github.com/your-org/your-skills.git --priority 1
     fastskill install
     ```
 
 - **Add standard-compliant skills (SKILL.md only)**
+
+  This assumes you're inside a project that already has a `skill-project.toml`
+  with `[tool.fastskill].skills_directory` set (e.g. from the walkthrough above,
+  or `fastskill init`) — `fastskill add` needs one to know where to install into.
   ```bash
   # Create minimal skill
   mkdir my-first-skill
@@ -103,10 +137,12 @@ The HTTP API is available under `/api/v1/…`, e.g.:
   FastSkill will:
   - Extract the skill ID from SKILL.md (`name` or `metadata.id`)
   - Extract version from SKILL.md (`metadata.version` or `version`, defaulting to `1.0.0`)
-  - Display a warning suggesting `fastskill init` to add `skill-project.toml`
+  - Warn if SKILL.md is missing optional fields (e.g. `compatibility`) — harmless, not an error
 
 ## Troubleshooting
 
 - **No skills found**: ensure `skill-project.toml` exists at project root and rerun `fastskill install`.
-- **Search returns nothing**: run `fastskill reindex` after adding or installing skills.
+- **`Configuration error: ... requires [tool.fastskill] with skills_directory`**: your manifest is missing that field. Run `fastskill init --skills-dir <path>` at the project root, or add `[tool.fastskill]` / `skills_directory = "..."` by hand (see step 2).
+- **Search or `list` doesn't show a skill you added with `-e`**: editable/symlinked local skills aren't currently discovered by `list`, `search`, or `reindex` (see the note in step 3). Reinstall without `-e` if you need it to show up there.
+- **Search returns nothing** (and the skill wasn't installed with `-e`): run `fastskill reindex` after adding or installing skills.
 - **Binary not on PATH**: reinstall or move the binary to a directory in PATH (e.g., `~/.local/bin`).
