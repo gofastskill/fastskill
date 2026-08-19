@@ -54,7 +54,7 @@
       "id": "repos_skills_unknown_repo",
       "plan_step": "7.8",
       "command": ["repos", "skills", "nosuchrepo"],
-      "why": "Known-poor today (K-class: says 'unknown argument' without naming it). Kept so the tier reports it until it is fixed, and notices if it regresses further."
+      "why": "Was known-poor (hit clap's generic E002 unknown-argument path, unnamed, printed twice). `repos skills` now accepts REPOSITORY positionally, so this exercises the domain 'Repository not found' error instead — kept to guard against the parser path regressing."
     },
     {
       "id": "search_invalid_limit",

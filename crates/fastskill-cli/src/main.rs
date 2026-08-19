@@ -200,7 +200,15 @@ async fn main() {
     match app.run_with_args(raw).await {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            eprintln!("Error: {}", e);
+            // `run_with_args` already writes a structured diagnostic to stderr
+            // (via `DiagnosticReporter`) for usage errors — parse failures,
+            // validation failures, unknown nested commands — before returning
+            // `Err(UsageError(..))`. Printing `e` again here would duplicate
+            // that message. Mirror `cli_framework::app::App::run()`'s own
+            // handling: only print when the error was *not* already reported.
+            if e.downcast_ref::<cli_framework::app::UsageError>().is_none() {
+                eprintln!("Error: {}", e);
+            }
             std::process::exit(1);
         }
     }

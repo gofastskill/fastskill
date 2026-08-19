@@ -7,12 +7,14 @@
     "look like -- the judge has to agree with humans about messages the product",
     "actually emits, not about idealised prose.",
     "",
-    "The `bad` cases are messages fastskill could realistically regress into. Two are",
+    "The `bad` cases are messages fastskill could realistically regress into. Three are",
     "historical: `clap_duplicate_arg_panic` is the panic that `fastskill init` really",
     "produced before PR #225 (an arg named `version` collided with clap's generated",
-    "--version), and `unwrap_panic` is the shape any stray .unwrap() produces. They are",
-    "reconstructed rather than captured because the bugs are fixed -- which is the point:",
-    "the judge exists to catch a return to them.",
+    "--version), `unwrap_panic` is the shape any stray .unwrap() produces, and",
+    "`repos_skills_unknown_argument` is what `repos skills nosuchrepo` really produced",
+    "before it gained a positional REPOSITORY arg. They are reconstructed rather than",
+    "captured because the bugs are fixed -- which is the point: the judge exists to catch",
+    "a return to them.",
     "",
     "`expected.pass` is the human verdict and is what calibration scores against.",
     "`expected.score_range` is advisory -- exact scores vary between reasonable judges,",
@@ -86,7 +88,7 @@
       "expected": {
         "pass": false,
         "score_range": [1, 2],
-        "why": "REAL current output and genuinely poor. Never says WHICH argument was unknown, though the CLI plainly knows. The hint is generic boilerplate, and the message is printed twice. A user is left guessing."
+        "why": "HISTORICAL, not current: this was the real output before `repos skills` grew a positional REPOSITORY arg (fastskill-cli/src/commands/repos.rs) and main.rs stopped double-printing already-reported UsageErrors. `nosuchrepo` now resolves to `Repository 'nosuchrepo' not found`. Kept, like clap_duplicate_arg_panic below, as a regression fixture -- the judge should still fail this exact shape if the parser path regresses."
       }
     },
     {

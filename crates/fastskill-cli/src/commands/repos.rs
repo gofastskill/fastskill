@@ -752,19 +752,33 @@ impl IntoCommandSpec for ReposSkillsArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "List skills in repository catalog",
-            syntax: Some("repos skills [OPTIONS]"),
+            syntax: Some("repos skills [REPOSITORY] [OPTIONS]"),
             category: Some("repositories"),
             examples: vec![
                 "fastskill repos skills",
+                "fastskill repos skills my-repo --all-versions",
                 "fastskill repos skills --repository my-repo --all-versions",
             ],
             args: vec![
+                ArgSpec {
+                    name: "repo",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    conflicts_with: vec!["repository"],
+                    help: "Repository name to list skills from (positional shorthand for --repository)",
+                    ..Default::default()
+                },
                 ArgSpec {
                     name: "repository",
                     kind: ArgKind::Option,
                     long: Some("repository"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
+                    // Not declared on this side too: `validate_typed_args` walks every
+                    // arg's `conflicts_with` independently, so a two-way declaration
+                    // would emit the E005 diagnostic twice (once per direction) for a
+                    // single conflict. The positional `repo` arg above owns the check.
                     help: "Repository name to list skills from",
                     ..Default::default()
                 },
@@ -822,13 +836,19 @@ impl IntoCommandSpec for ReposSkillsArgs {
 impl FromArgValueMap for ReposSkillsArgs {
     fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
         Self {
-            repository: map.get("repository").and_then(|v| {
-                if let ArgValue::Str(s) = v {
-                    Some(s.clone())
-                } else {
-                    None
-                }
-            }),
+            // `--repository <name>` and the positional `<REPOSITORY>` shorthand are
+            // mutually exclusive (see `conflicts_with` above), so at most one is ever
+            // present; either satisfies the `repository` field.
+            repository: map
+                .get("repository")
+                .or_else(|| map.get("repo"))
+                .and_then(|v| {
+                    if let ArgValue::Str(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                }),
             scope: map.get("scope").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(s.clone())
