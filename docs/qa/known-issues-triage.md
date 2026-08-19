@@ -70,6 +70,20 @@ confirm/date them as the tester (or an agent) hits them.
 - **Source:** `tests/cli/repos_integration_tests.rs:131`.
 - **Severity:** informational — triage "clear error" reports as not-a-bug; but if the *message*
   is confusing, that's a legit S3.
+- **FIXED (2026-08-18):** the sibling defect under the same plan step —
+  `repos skills nosuchrepo` (bare positional, no `--repository`) — used to miss this
+  domain logic entirely and fail during arg *parsing* instead: cli-framework's clap
+  adapter had no positional declared for `repos skills`, so it hit the generic
+  `error[E002]: unknown argument` path (never names the argument; boilerplate hint),
+  and fastskill's `main.rs` then printed the error a second time because it didn't
+  recognize the already-reported `UsageError`. `repos skills` now declares an optional
+  positional `REPOSITORY` arg (shorthand for `--repository`,
+  `crates/fastskill-cli/src/commands/repos.rs`), so `repos skills nosuchrepo` reaches
+  this K7 code path and correctly reports `Repository 'nosuchrepo' not found`; the
+  double-print in `main.rs` is fixed for all `UsageError`s, not just this command.
+  Tracked live in `ci/quality/error_quality/suite.json` (`repos_skills_unknown_repo`);
+  the old E002 output is kept as a regression fixture in `cases.json`
+  (`repos_skills_unknown_argument`).
 
 ### K8 — `api.fastskill.io` registry reachability unverified (Repos, network)
 - **What:** The documented http-registry `https://api.fastskill.io/index` has real DNS

@@ -224,6 +224,95 @@ fn test_repos_help_does_not_advertise_search() {
     assert!(repos_help.stdout.contains("versions"));
 }
 
+/// `repos skills <name>` (bare positional, no `--repository`) used to miss the
+/// `execute_list_skills` domain logic entirely and fail during clap arg parsing
+/// instead: no positional was declared, so it hit the generic
+/// `error[E002]: unknown argument` path (never names the argument, generic
+/// boilerplate hint) and printed the error twice (once from cli-framework's
+/// `DiagnosticReporter`, once from fastskill's own top-level `Err` handler).
+/// `repos skills` now declares an optional positional `REPOSITORY` arg as
+/// shorthand for `--repository`, so the bare-positional form reaches the same
+/// domain error as the flag form (see `test_repos_complete_workflow_matrix`'s
+/// `repos skills --repository matrix-local` case) and prints it exactly once.
+#[test]
+fn test_repos_skills_positional_repository_reaches_domain_error() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+
+    let skills = run_fastskill_command(&["repos", "skills", "nosuchrepo"], Some(temp_dir.path()));
+
+    assert!(
+        !skills.success,
+        "repos skills nosuchrepo should fail: {}{}",
+        skills.stdout, skills.stderr
+    );
+    assert!(
+        skills.stderr.contains("Repository 'nosuchrepo' not found"),
+        "expected a domain-specific 'not found' error, got: {}",
+        skills.stderr
+    );
+    assert!(
+        !skills.stderr.contains("unknown argument"),
+        "must not fall back to the generic clap unknown-argument path: {}",
+        skills.stderr
+    );
+    // The E002 double-print regression: the diagnostic must appear once, not twice.
+    let not_found_occurrences = skills.stderr.matches("not found").count();
+    assert_eq!(
+        not_found_occurrences, 1,
+        "error message must be printed exactly once, got: {}",
+        skills.stderr
+    );
+}
+
+/// Passing both the positional shorthand and the explicit `--repository` flag
+/// is ambiguous; the command should reject it with a clear conflict error
+/// rather than silently preferring one.
+#[test]
+fn test_repos_skills_positional_and_flag_conflict() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+
+    let skills = run_fastskill_command(
+        &["repos", "skills", "foo", "--repository", "bar"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!skills.success);
+    assert!(
+        skills.stderr.contains("conflicts with"),
+        "expected a conflict diagnostic, got: {}",
+        skills.stderr
+    );
+}
+
+/// General regression test for the double-print bug (independent of the
+/// positional-`REPOSITORY` fix above): fastskill's `main.rs` used to
+/// unconditionally `eprintln!("Error: {}", e)` on any `Err` from
+/// `app.run_with_args(..)`, even though cli-framework's `DiagnosticReporter`
+/// had already written the same diagnostic to stderr for `UsageError`s (parse
+/// failures, unknown-nested-command, arg validation). An actually-unknown
+/// flag — not covered by the positional shorthand — must still print its
+/// `error[E002]` diagnostic exactly once.
+#[test]
+fn test_unknown_flag_diagnostic_is_not_printed_twice() {
+    let temp_dir = TempDir::new().unwrap();
+    write_project_manifest(temp_dir.path());
+
+    let skills = run_fastskill_command(
+        &["repos", "skills", "--this-flag-does-not-exist"],
+        Some(temp_dir.path()),
+    );
+
+    assert!(!skills.success);
+    let occurrences = skills.stderr.matches("unknown argument").count();
+    assert_eq!(
+        occurrences, 1,
+        "error[E002] diagnostic must be printed exactly once, got: {}",
+        skills.stderr
+    );
+}
+
 // ── PRD 006 "Local Skill Cache", US-005: `repos refresh` real semantics ────
 
 /// `refresh <name>` for a repository that was never added must fail with an

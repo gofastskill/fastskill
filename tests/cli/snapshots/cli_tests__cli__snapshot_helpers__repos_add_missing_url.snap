@@ -4,4 +4,3 @@ expression: normalized
 ---
 error[E003]: missing required argument <url-or-path>
   hint: Use --help to see required arguments
-Error: missing required argument <url-or-path>
