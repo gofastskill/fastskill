@@ -304,6 +304,13 @@ mod tests {
         dir
     }
 
+    // Unix-gated on purpose: builds the test fixture with
+    // std::os::unix::fs::symlink. The product code's rejection path
+    // (FileType::is_symlink()) is itself cross-platform, but creating a
+    // symlink on Windows CI needs Developer Mode or elevated privileges
+    // (std::os::windows::fs::symlink_file), which isn't reliably available
+    // on hosted windows-latest runners. Left as a follow-up rather than a
+    // shaky Windows test — see PR body.
     #[cfg(unix)]
     #[tokio::test]
     async fn test_copy_dir_recursive_rejects_symlink() {
@@ -339,7 +346,9 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    // Not unix-gated: this exercises only tokio::fs directory/file copying,
+    // no unix-specific API (unlike the symlink-rejection test above it), so
+    // it runs cross-platform, including Windows.
     #[tokio::test]
     async fn test_copy_dir_recursive_copies_regular_tree() {
         let tmp = TempDir::new().unwrap();
@@ -427,6 +436,11 @@ version = "1.0.0"
         fs::write(dir.join("skill-project.toml"), skill_project_content).unwrap();
     }
 
+    // Unix-gated on purpose: exercises install_skill's editable path, which
+    // on Windows calls std::os::windows::fs::symlink_dir — that requires
+    // Developer Mode or elevated privileges, not reliably available on
+    // hosted windows-latest runners. Left as a follow-up rather than a
+    // shaky Windows test — see PR body.
     #[cfg(unix)]
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]

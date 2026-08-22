@@ -542,8 +542,25 @@ mod tests {
 
     #[test]
     fn test_safe_subdir_join_rejects_absolute() {
+        // This exercises the *nix-style* absolute-path branch: on Windows,
+        // std::path also accepts `/` as a separator and parses a leading `/`
+        // with no drive letter into a `Component::RootDir`, which hits the
+        // same catch-all rejection arm in `safe_subdir_join` as on Unix — so
+        // this assertion holds unchanged cross-platform, no cfg needed.
         let root = tempfile::tempdir().unwrap();
         let result = safe_subdir_join(root.path(), Path::new("/etc/passwd"));
+        assert!(matches!(result, Err(CliError::InvalidSource(_))));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_safe_subdir_join_rejects_windows_drive_absolute() {
+        // Windows has a second absolute-path shape the Unix-style test above
+        // never exercises: a drive-letter prefix (`Component::Prefix`, e.g.
+        // `C:\...`), rather than a bare root (`Component::RootDir`). Assert
+        // it hits the same rejection arm.
+        let root = tempfile::tempdir().unwrap();
+        let result = safe_subdir_join(root.path(), Path::new(r"C:\Windows\System32"));
         assert!(matches!(result, Err(CliError::InvalidSource(_))));
     }
 
@@ -617,6 +634,11 @@ mod tests {
         assert!(!dst.is_symlink());
     }
 
+    // Unix-gated on purpose: exercises create_editable_symlink's Windows arm
+    // (std::os::windows::fs::symlink_dir) would require Developer Mode or
+    // elevated privileges, not reliably available on hosted windows-latest
+    // runners. Left as a follow-up rather than a shaky Windows test — see
+    // PR body.
     #[cfg(unix)]
     #[tokio::test]
     async fn test_setup_skill_in_storage_editable_symlink() {
@@ -675,6 +697,9 @@ mod tests {
         assert!(def.skill_file.exists());
     }
 
+    // Unix-gated on purpose: exercises the same editable-symlink code path
+    // as test_setup_skill_in_storage_editable_symlink above; same Windows
+    // privilege caveat applies. Left as a follow-up — see PR body.
     #[cfg(unix)]
     #[tokio::test]
     async fn test_install_skill_from_entry_local_editable() {

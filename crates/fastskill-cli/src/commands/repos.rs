@@ -1138,7 +1138,9 @@ skills_directory = ".claude/skills"
         let add = ReposCommand::Add {
             name: "test".to_string(),
             repo_type: "local".to_string(),
-            url_or_path: "/tmp".to_string(),
+            // Value is incidental: this is a compile-time discriminant test,
+            // no I/O touches this field, so a platform-neutral string is fine.
+            url_or_path: "test-path".to_string(),
             priority: None,
             branch: None,
             tag: None,
