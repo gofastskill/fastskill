@@ -37,9 +37,33 @@ def run_doc_blocks(binary: str, blocks: list[Block]) -> None:
     self-correction the whole design exists to avoid — if a doc's own steps do not
     create a directory it later depends on, that is a real finding, not a harness bug.
     """
-    with tempfile.TemporaryDirectory(prefix="fs-docwalk-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="fs-docwalk-") as tmp, tempfile.TemporaryDirectory(
+        prefix="fs-docwalk-bin-"
+    ) as bin_tmp:
         root = pathlib.Path(tmp)
-        env = {"PATH": os.environ.get("PATH", ""), "HOME": str(root), "TERM": "dumb"}
+
+        # Docs invoke `fastskill` by NAME, so `binary` has to reach the subprocess as
+        # that name or the resolved build is never actually exercised. Expose it via a
+        # shim directory placed FIRST on PATH.
+        #
+        # A shim rather than prepending the binary's own directory, because `--binary`
+        # may point at a differently-named file (`fastskill-custom`, a release artifact)
+        # and the docs would still say `fastskill`.
+        #
+        # The shim lives OUTSIDE the sandbox on purpose: the doc-walk judges what a
+        # doc's own steps create, so an extra directory inside the working tree would
+        # corrupt exactly the signal this harness exists to produce.
+        shim_dir = pathlib.Path(bin_tmp)
+        shim = shim_dir / "fastskill"
+        shim.symlink_to(pathlib.Path(binary).resolve())
+
+        # PATH is still inherited beyond the shim: docs legitimately use `ls`, `cat`,
+        # `curl`. Only `fastskill` itself is pinned.
+        env = {
+            "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HOME": str(root),
+            "TERM": "dumb",
+        }
 
         for block in blocks:
             if block.kind == "file":
