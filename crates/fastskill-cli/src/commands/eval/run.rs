@@ -303,9 +303,12 @@ mod tests {
 
     fn base_map() -> HashMap<String, ArgValue> {
         let mut m = HashMap::new();
+        // Value is incidental: it's parsed into a PathBuf field but no test in
+        // this module performs filesystem I/O on it, so a platform-neutral
+        // relative path is fine (avoids a Unix-only absolute path).
         m.insert(
             "output-dir".to_string(),
-            ArgValue::Str("/tmp/out".to_string()),
+            ArgValue::Str("eval-out".to_string()),
         );
         m
     }

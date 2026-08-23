@@ -111,6 +111,18 @@ jobs:
       - name: Test fastskill-cli (Windows-safe subset)
         run: cargo nextest run -p fastskill-cli -E 'binary(all_commands_help_test) + binary(lock_determinism_test) + binary(lock_migration_test) + binary(lock_scope_routing_test) + binary(mcp_stdio_protocol_test) + binary(spec_docs_parity_test)' --retries 3 --no-fail-fast
 
+      # Phase 3 PR A: the ~228 #[cfg(test)] unit tests compiled INTO the
+      # `fastskill` binary crate itself (`-p fastskill-cli --bin fastskill`),
+      # as opposed to the separate integration-test binaries filtered in
+      # above. Audited: zero insta-snapshot assertions in this tree, so none
+      # of the binary-path-normalization blocker that's holding back the
+      # rest of fastskill-cli's suite applies here. The handful of tests
+      # that previously hardcoded Unix-only paths or relied on Unix-only
+      # symlink privileges have been fixed or left honestly #[cfg(unix)]-gated
+      # (see PR history) -- this step should be fully green, not partial.
+      - name: Test fastskill-cli bin unit tests (Windows)
+        run: cargo nextest run -p fastskill-cli --bin fastskill --retries 3 --no-fail-fast
+
       # See scripts/smoke-binary.sh for what it checks and why. Deliberately includes
       # check 3 (offline init + list) here, not just --version/--help: filesystem-write
       # paths on Windows are exactly where this repo's real bugs have been.

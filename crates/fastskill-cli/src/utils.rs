@@ -366,14 +366,16 @@ description: A test skill
     #[test]
     fn test_service_error_to_cli_non_not_found_passthrough() {
         let e = fastskill_core::ServiceError::Custom("boom".to_string());
-        let cli = service_error_to_cli(e, Path::new("/tmp/storage"), false);
+        // Path value is incidental here: it's only stored/echoed, never touched
+        // by filesystem I/O, so a platform-neutral relative path is fine.
+        let cli = service_error_to_cli(e, Path::new("test-storage"), false);
         assert!(matches!(cli, CliError::Service(_)));
     }
 
     #[test]
     fn test_service_error_to_cli_not_found_maps_to_rich_message() {
         let e = fastskill_core::ServiceError::SkillNotFound("missing-skill".to_string());
-        let cli = service_error_to_cli(e, Path::new("/tmp/storage"), false);
+        let cli = service_error_to_cli(e, Path::new("test-storage"), false);
         assert!(matches!(cli, CliError::SkillNotFound(_)));
     }
 }
