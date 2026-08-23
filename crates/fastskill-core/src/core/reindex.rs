@@ -478,6 +478,9 @@ Test skill content"#,
     /// elsewhere (the develop-in-place / editable workflow) must still be
     /// found by `collect_skill_files`/`find_skill_files` and reindexed —
     /// not silently skipped just because the top-level entry is a symlink.
+    // Unix-only: creating a symlink on Windows CI needs a privilege the
+    // runners don't hold, matching the crate's other symlink tests.
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_reindex_finds_symlinked_skill_dir() {
         let temp_dir = TempDir::new().unwrap();
@@ -495,10 +498,7 @@ Test skill content"#,
         // The skill really lives elsewhere; only a symlink sits in the skills dir.
         let real_target = temp_dir.path().join("dev-checkout");
         create_test_skill_at(&real_target, "Linked Skill", "A symlinked skill");
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&real_target, skills_dir.join("linked-skill")).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&real_target, skills_dir.join("linked-skill")).unwrap();
 
         let config = ServiceConfig {
             skill_storage_path: skills_dir.clone(),
@@ -543,6 +543,9 @@ Test skill content"#,
     /// Spec 010: a self-referential (looping) symlink at the top level of the
     /// skills dir must be skipped, not turned into a hard failure of the
     /// whole reindex pass — the rest of the skills must still be reindexed.
+    // Unix-only: relies on creating a self-referential symlink, which needs a
+    // privilege the Windows CI runners don't hold.
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_reindex_skips_cyclic_symlink_without_failing_whole_index() {
         let temp_dir = TempDir::new().unwrap();
@@ -552,7 +555,6 @@ Test skill content"#,
         create_test_skill(&skills_dir, "good-skill", "Good Skill", "A regular skill");
 
         // Self-referential symlink: skills_dir/looping-skill -> itself.
-        #[cfg(unix)]
         std::os::unix::fs::symlink(
             skills_dir.join("looping-skill"),
             skills_dir.join("looping-skill"),
