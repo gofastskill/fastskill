@@ -39,7 +39,7 @@
 
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -48,6 +48,17 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--version") {
         std::process::exit(0);
     }
+
+    // Drain stdin to EOF before anything else. aikit-sdk's runner writes the
+    // eval prompt to the child's stdin and then drops the handle. A trivial
+    // fake agent exits far faster than a real agent CLI (no interpreter
+    // startup, no model call), so it can be gone before that write lands --
+    // the parent then hits a broken pipe and reports the whole invocation as
+    // an error, overriding this process's own exit code. That made the
+    // counter-mode trials fail nondeterministically. Holding the read end
+    // open until the parent finishes writing closes the race.
+    let mut discarded = String::new();
+    let _ = std::io::stdin().read_to_string(&mut discarded);
 
     match env::var("FAKE_AGENT_MODE").as_deref() {
         Ok("counter") => run_counter(),
