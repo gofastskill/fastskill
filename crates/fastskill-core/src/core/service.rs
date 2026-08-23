@@ -543,23 +543,25 @@ impl FastSkillService {
 
     /// Auto-index skills from the filesystem by scanning for SKILL.md files
     async fn auto_index_skills_from_filesystem(&self) -> Result<(), ServiceError> {
-        use walkdir::WalkDir;
+        use crate::core::skill_walk::walk_skill_storage;
 
         let mut indexed_count = 0;
 
-        // Walk the skills directory recursively
-        for entry in WalkDir::new(&self.config.skill_storage_path)
-            .into_iter()
-            .filter_entry(|e| {
-                !e.file_name()
-                    .to_str()
-                    .map(should_skip_directory)
-                    .unwrap_or(false)
-            })
-        {
-            let entry = entry.map_err(|e| {
-                ServiceError::Custom(format!("Failed to read directory entry: {}", e))
-            })?;
+        // Walk the skills directory. `walk_skill_storage` resolves exactly one
+        // hop for a top-level entry that is itself a symlink to a directory
+        // (the develop-in-place / editable workflow, spec 010), and never
+        // follows a symlink encountered any deeper. A bad/looping top-level
+        // symlink surfaces as a single `Err` for that entry — skip it with a
+        // warning rather than failing the whole index, since one broken link
+        // must not hide every other skill.
+        for entry in walk_skill_storage(&self.config.skill_storage_path, should_skip_directory) {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    tracing::warn!("Skipping unreadable skill storage entry: {}", e);
+                    continue;
+                }
+            };
 
             // Look for SKILL.md or skill.md files
             if entry.file_type().is_file() {
@@ -650,10 +652,115 @@ impl FastSkillService {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
+
+    /// Non-hidden storage root under `tmp`. `TempDir`'s own directory name
+    /// begins with `.tmp`, and the auto-indexer's `should_skip_directory`
+    /// filter skips any directory starting with `.` — so the storage root
+    /// used by these tests must be a non-hidden child of the temp dir.
+    fn skills_root(tmp: &TempDir) -> PathBuf {
+        let root = tmp.path().join("store");
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn write_skill_md(dir: &std::path::Path, name: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!(
+                "---\nname: {name}\ndescription: a test skill\nversion: 1.0.0\n---\n# {name}\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// Spec 010: a skill directory installed as a symlink to a checkout
+    /// elsewhere (the develop-in-place / editable workflow) must still be
+    /// discovered by the filesystem auto-indexer that backs `list`/`search` —
+    /// not silently skipped just because the top-level entry is a symlink.
+    #[tokio::test]
+    async fn test_auto_index_finds_symlinked_skill_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = skills_root(&temp_dir);
+
+        // A regular (non-symlink) skill, to confirm no regression alongside
+        // the symlink fix.
+        write_skill_md(&storage.join("regular-skill"), "Regular Skill");
+
+        // The skill really lives elsewhere; only a symlink sits in storage.
+        let real_target = temp_dir.path().join("dev-checkout");
+        write_skill_md(&real_target, "Linked Skill");
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_target, storage.join("linked-skill")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&real_target, storage.join("linked-skill")).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: storage,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let skills = service.skill_manager().list_skills().await.unwrap();
+        let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+
+        assert!(
+            ids.contains(&"regular-skill"),
+            "regular skill dir must still be indexed; found: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"linked-skill"),
+            "symlinked skill dir must be discovered by the auto-indexer; found: {ids:?}"
+        );
+    }
+
+    /// Spec 010: a self-referential (looping) symlink at the top level of
+    /// `skill_storage_path` must be skipped, not turned into a hard failure
+    /// of the whole auto-index pass — the rest of the skills must still be
+    /// indexed.
+    #[tokio::test]
+    async fn test_auto_index_skips_cyclic_symlink_without_failing_whole_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = skills_root(&temp_dir);
+
+        write_skill_md(&storage.join("good-skill"), "Good Skill");
+
+        // Self-referential symlink: storage/looping-skill -> storage/looping-skill.
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(storage.join("looping-skill"), storage.join("looping-skill"))
+            .unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: storage,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+
+        // The looping symlink must not abort initialization.
+        service
+            .initialize()
+            .await
+            .expect("a cyclic symlink must be skipped, not fail the whole index");
+
+        let skills = service.skill_manager().list_skills().await.unwrap();
+        let ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+
+        assert!(
+            ids.contains(&"good-skill"),
+            "unrelated skill must still be indexed despite a sibling cyclic symlink; found: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"looping-skill"),
+            "the cyclic symlink itself must not be indexed as a skill"
+        );
+    }
 
     #[tokio::test]
     async fn test_service_creation() {
@@ -700,5 +807,125 @@ mod tests {
         assert!(SkillId::try_from("valid-id".to_string()).is_ok());
         assert!(SkillId::try_from("".to_string()).is_err());
         assert!(SkillId::try_from("bad/id".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_skill_id_new_rejects_too_long() {
+        let too_long = "a".repeat(256);
+        assert!(SkillId::new(too_long).is_err());
+
+        let exactly_max = "a".repeat(255);
+        assert!(SkillId::new(exactly_max).is_ok());
+    }
+
+    #[test]
+    fn test_skill_id_into_string_and_from_conversions() {
+        let id = SkillId::new("my-skill".to_string()).unwrap();
+        assert_eq!(id.clone().into_string(), "my-skill");
+
+        let s: String = id.into();
+        assert_eq!(s, "my-skill");
+    }
+
+    #[test]
+    fn test_skill_id_as_ref() {
+        let id = SkillId::new("my-skill".to_string()).unwrap();
+        assert_eq!(id.as_ref(), "my-skill");
+    }
+
+    #[test]
+    fn test_skill_id_serde_roundtrip() {
+        let id = SkillId::new("my-skill".to_string()).unwrap();
+
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, "\"my-skill\"");
+
+        let round_tripped: SkillId = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_tripped.as_str(), "my-skill");
+    }
+
+    #[test]
+    fn test_skill_id_deserialize_rejects_invalid_value() {
+        // An id embedding a forward slash fails SkillId::new's validation,
+        // and Deserialize must surface that as a deserialize error rather
+        // than panicking or silently accepting it.
+        let result: Result<SkillId, _> = serde_json::from_str("\"bad/id\"");
+        assert!(result.is_err());
+    }
+
+    /// `initialize()` guards on `self.initialized` and must be a no-op the
+    /// second time it is called (no re-running of storage init / auto-index).
+    #[tokio::test]
+    async fn test_service_initialize_is_idempotent() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        assert!(service.is_initialized());
+
+        // Calling it again must short-circuit on the `self.initialized` guard
+        // and still return Ok, not re-run initialization.
+        service.initialize().await.unwrap();
+        assert!(service.is_initialized());
+    }
+
+    /// With hot reload enabled, `initialize()` constructs a `HotReloadManager`
+    /// and enables it, and `shutdown()` disables it — exercising the
+    /// otherwise-untested `Some(hot_reload)` branches.
+    #[tokio::test]
+    async fn test_service_hot_reload_enabled_lifecycle() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            hot_reload: HotReloadConfig {
+                enabled: true,
+                watch_paths: vec![],
+                debounce_ms: 100,
+                auto_reload: true,
+            },
+            ..Default::default()
+        };
+
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        assert!(service.is_initialized());
+
+        service.shutdown().await.unwrap();
+        assert!(!service.is_initialized());
+    }
+
+    /// Re-running the filesystem auto-indexer over skills it already indexed
+    /// must not error: `try_index_skill_from_file` maps
+    /// `ServiceError::AlreadyIndexed` back to `Ok(())` rather than propagating
+    /// it, so a rescan is idempotent.
+    #[tokio::test]
+    async fn test_auto_index_rerun_is_idempotent_for_already_indexed_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = skills_root(&temp_dir);
+        write_skill_md(&storage.join("my-skill"), "My Skill");
+
+        let config = ServiceConfig {
+            skill_storage_path: storage,
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+
+        let skills = service.skill_manager().list_skills().await.unwrap();
+        assert_eq!(skills.len(), 1);
+
+        // Re-run the private auto-indexer directly (initialize() itself is
+        // guarded against a second run) to exercise the AlreadyIndexed path.
+        service
+            .auto_index_skills_from_filesystem()
+            .await
+            .expect("re-indexing an already-indexed skill must not error");
+
+        let skills = service.skill_manager().list_skills().await.unwrap();
+        assert_eq!(skills.len(), 1, "rescanning must not duplicate the skill");
     }
 }

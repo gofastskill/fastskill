@@ -26,6 +26,7 @@ pub mod resolver;
 pub mod routing;
 pub mod service;
 pub mod skill_manager;
+pub(crate) mod skill_walk;
 pub mod sources;
 pub mod update;
 pub mod validation;
