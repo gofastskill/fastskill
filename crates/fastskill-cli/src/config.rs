@@ -177,6 +177,23 @@ pub fn create_service_config(
             eprintln!("warning: {}", warning_msg);
             tracing::warn!("{}", warning_msg);
         }
+
+        // `--skills-dir` is a claim the user typed, not a location we chose --
+        // validate it exists rather than silently creating it. (The default/
+        // config-resolved path below is ours to create; a fresh install must
+        // still work with no flags at all.) Without this check, service
+        // startup (`FilesystemStorage::new`) creates any missing directory
+        // unconditionally, so a typo'd or stale `--skills-dir` path would
+        // silently produce an empty skills directory instead of an error.
+        if !override_dir.exists() {
+            return Err(CliError::Config(format!(
+                "Skills directory does not exist: {}\n\n\
+                 --skills-dir must point to an existing directory. Create it first, \
+                 or omit --skills-dir to use the default location.",
+                override_dir.display()
+            )));
+        }
+
         debug!(
             "Using skills directory from --skills-dir override: {}",
             override_dir.display()

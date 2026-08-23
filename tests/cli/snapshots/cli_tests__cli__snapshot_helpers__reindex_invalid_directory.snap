@@ -1,6 +1,8 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 331
 expression: normalized
 ---
-Error: Service error: Custom error: Failed to create storage directory: Permission denied (os error 13)
+Error: Configuration error: Skills directory does not exist: [TEMP_DIR]
+
+--skills-dir must point to an existing directory. Create it first, or omit --skills-dir to use the default location.

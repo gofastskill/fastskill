@@ -253,16 +253,29 @@ embedding_model = "text-embedding-3-small"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), config_content).unwrap();
 
+    // A path that is genuinely absent but *creatable* (unlike the old
+    // `/nonexistent/path`, which only "failed" on Linux because writing under
+    // `/` hits a permission error at the filesystem root -- that proved
+    // permissions, not validation, and passed for the wrong reason). This
+    // path lives inside the TempDir, so if fastskill silently created it
+    // (the bug this test guards against), the command would exit 0 instead
+    // of erroring.
+    let missing_dir = temp_dir.path().join("does-not-exist-yet");
+
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
     let result = run_fastskill_command_with_env(
-        &["reindex", "--skills-dir", "/nonexistent/path"],
+        &["reindex", "--skills-dir", missing_dir.to_str().unwrap()],
         &env_vars,
         Some(temp_dir.path()),
     );
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("not found"));
+    assert!(
+        !missing_dir.exists(),
+        "reindex must not create a missing --skills-dir; it should validate and error instead"
+    );
 
     assert_snapshot_with_settings(
         "reindex_invalid_directory",

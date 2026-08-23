@@ -10,9 +10,34 @@ use super::local::scan_local_source;
 use super::marketplace::{
     CachedMarketplace, ClaudeCodeMarketplaceJson, MarketplaceJson, MarketplaceSkill,
 };
-use super::model::{SkillInfo, SourceConfig, SourceDefinition, SourcesConfig};
+use super::model::{SkillInfo, SourceAuth, SourceConfig, SourceDefinition, SourcesConfig};
 use super::SourcesError;
 use crate::core::cache::SkillCache;
+
+/// Reject a configured `auth` on a git source loudly rather than silently
+/// ignoring it. Git sources authenticate via the system git credential
+/// helper or SSH agent -- fastskill has no PAT/basic credential-injection
+/// machinery for git operations. Before this check, a user who configured
+/// `auth` for a git source believed their private repo was authenticated
+/// when it was not: the source "worked" only when ambient git credentials
+/// happened to exist, and otherwise failed with a confusing, unrelated
+/// error and no hint that the `auth` block was never applied.
+fn reject_configured_git_auth(
+    source_name: &str,
+    auth: &Option<SourceAuth>,
+) -> Result<(), SourcesError> {
+    if auth.is_some() {
+        return Err(SourcesError::Git(format!(
+            "Source '{source_name}' has `auth` configured, but git sources authenticate via \
+             the system git credential helper or SSH agent, not via an `auth` block -- \
+             fastskill does not inject PAT/basic credentials into git operations. Remove \
+             `auth` from this source and either: (1) configure a git credential helper (e.g. \
+             `git config credential.helper store`, or `gh auth login`), or (2) use an SSH \
+             remote (e.g. `git@github.com:org/repo.git`) with a key loaded in your SSH agent."
+        )));
+    }
+    Ok(())
+}
 
 /// Number of times [`SourcesManager::try_fetch_marketplace`] actually issued
 /// an HTTP request for a `marketplace.json` (either candidate location).
@@ -192,7 +217,11 @@ impl SourcesManager {
         source_def: &SourceDefinition,
     ) -> Result<Vec<SkillInfo>, SourcesError> {
         match &source_def.source {
-            SourceConfig::Git { url, branch, .. } => {
+            SourceConfig::Git {
+                url, branch, auth, ..
+            } => {
+                reject_configured_git_auth(source_name, auth)?;
+
                 // Try to load marketplace.json from Git source
                 // Pass branch info for proper URL construction
                 self.load_marketplace_from_url_with_branch(url, branch.as_deref(), source_name)
@@ -676,7 +705,10 @@ impl SourcesManager {
             .ok_or_else(|| SourcesError::SourceNotFound(source_name.to_string()))?;
 
         let (base_url, branch) = match &source_def.source {
-            SourceConfig::Git { url, branch, .. } => {
+            SourceConfig::Git {
+                url, branch, auth, ..
+            } => {
+                reject_configured_git_auth(source_name, auth)?;
                 (url.as_str(), branch.as_deref().unwrap_or("main"))
             }
             SourceConfig::ZipUrl { base_url, .. } => (base_url.as_str(), ""),
