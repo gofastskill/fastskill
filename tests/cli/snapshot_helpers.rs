@@ -150,37 +150,70 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
     }
 
     if settings.normalize_paths {
+        // Strip the `\\?\` extended-length-path prefix that
+        // `Path::canonicalize()` emits on Windows (e.g. `\\?\C:\Users\...`).
+        // It's a plain literal, not a regex, so a plain string replace is
+        // enough -- and it must run first, or the prefix survives into the
+        // snapshot and every pattern below (which all assume a normal-looking
+        // drive path) fails to match.
+        result = result.replace(r"\\?\", "");
+
         // Normalize the path of the binary under test. `argv[0]` shows up in
         // usage lines, and its absolute path depends on where the repo happens
         // to be checked out -- `/home/me/src/fastskill/...` locally versus
-        // `/home/runner/work/fastskill/...` on CI. Masking only the home
-        // directory leaves the differing remainder, so match the whole path.
+        // `/home/runner/work/fastskill/...` on CI, or
+        // `C:\Users\runneradmin\...\target\debug\fastskill.exe` on Windows.
+        // Masking only the home directory leaves the differing remainder, so
+        // match the whole path.
         //
         // Anchor on the profile directory rather than `/target/`: under
         // `cargo llvm-cov` the binary is built into `target/llvm-cov-target/
         // debug/`, so requiring a literal `/target/debug/` would miss the
         // coverage job and reintroduce an environment-dependent snapshot.
-        result = regex::Regex::new(r"\S*/(?:debug|release)/fastskill\b")
+        //
+        // `[/\\]` accepts either path separator and the trailing `(?:\.exe)?`
+        // accepts the Windows executable suffix, so the SAME placeholder
+        // covers both platforms with one pattern. This must run before the
+        // temp/home patterns below: a Windows binary path also contains
+        // `Users\<name>`, and the (less specific) home-dir pattern would
+        // otherwise chew up just that prefix, leaving
+        // `\target\debug\fastskill.exe` behind unmatched.
+        result = regex::Regex::new(r"\S*[/\\](?:debug|release)[/\\]fastskill(?:\.exe)?\b")
             .unwrap()
             .replace_all(&result, "[FASTSKILL_BIN]")
             .to_string();
 
-        // Normalize user home directory
-        result = regex::Regex::new(r"/home/[^\s/]+")
-            .unwrap()
-            .replace_all(&result, "[HOME_DIR]")
-            .to_string();
-
-        // Normalize temporary directory paths
+        // Normalize temporary directory paths (Unix).
         result = regex::Regex::new(r"/tmp/[^\s]+")
             .unwrap()
             .replace_all(&result, "[TEMP_DIR]")
             .to_string();
 
-        // Normalize Windows paths if any
-        result = regex::Regex::new(r"C:\\[^\s]+")
+        // Normalize temporary directory paths (Windows), e.g.
+        // `C:\Users\RUNNER~1\AppData\Local\Temp\...`. Must run before the
+        // home-dir pattern below: a Windows temp path also contains
+        // `Users\<name>`, and the home pattern would otherwise mask only
+        // that prefix and leave `\AppData\Local\Temp\...` -- a different,
+        // still environment-specific suffix -- behind.
+        result = regex::Regex::new(r"(?i)[A-Za-z]:\\(?:[^\\\s]+\\)*Temp\\[^\s]+")
             .unwrap()
-            .replace_all(&result, "[WINDOWS_PATH]")
+            .replace_all(&result, "[TEMP_DIR]")
+            .to_string();
+
+        // Normalize user home directory (Unix).
+        result = regex::Regex::new(r"/home/[^\s/]+")
+            .unwrap()
+            .replace_all(&result, "[HOME_DIR]")
+            .to_string();
+
+        // Normalize user home directory (Windows), e.g. `C:\Users\alice`.
+        // Deliberately narrower than a bare `C:\\[^\s]+` catch-all (the old
+        // `[WINDOWS_PATH]` placeholder that used to live here): that
+        // shadowed the more specific binary/temp placeholders above and
+        // doesn't appear in any checked-in snapshot, so it was pure noise.
+        result = regex::Regex::new(r"[A-Za-z]:\\Users\\[^\\\s]+")
+            .unwrap()
+            .replace_all(&result, "[HOME_DIR]")
             .to_string();
 
         // Normalize port numbers in URLs (after version normalization)
@@ -343,6 +376,80 @@ mod tests {
         assert_eq!(
             normalize_snapshot_output(home_input, &settings),
             "[HOME_DIR]/skills/my-skill"
+        );
+    }
+
+    #[test]
+    fn test_normalize_windows_paths() {
+        // Windows inputs must fold to the SAME canonical placeholders as
+        // their Linux counterparts above, so one set of `.snap` files can
+        // serve both platforms without a Windows-only snapshot fork.
+        let settings = SnapshotSettings {
+            normalize_paths: true,
+            normalize_versions: false,
+            normalize_timestamps: false,
+        };
+
+        // Ordinary Windows binary path (backslashes, `.exe` suffix).
+        let input = r"Usage: C:\Users\RUNNER~1\work\fastskill\fastskill\target\debug\fastskill.exe <command>";
+        let expected = "Usage: [FASTSKILL_BIN] <command>";
+        assert_eq!(normalize_snapshot_output(input, &settings), expected);
+
+        // Release-profile build normalizes the same way.
+        let release_input = r"Usage: C:\Users\RUNNER~1\work\fastskill\fastskill\target\release\fastskill.exe <command>";
+        assert_eq!(
+            normalize_snapshot_output(release_input, &settings),
+            expected
+        );
+
+        // `Path::canonicalize()` on Windows returns the `\\?\` extended-length
+        // prefix -- it must be stripped before path matching, not leak into
+        // the snapshot as a literal `\\?\`.
+        let extended_input =
+            r"\\?\C:\Users\RUNNER~1\work\fastskill\fastskill\target\release\fastskill.exe";
+        assert_eq!(
+            normalize_snapshot_output(extended_input, &settings),
+            "[FASTSKILL_BIN]"
+        );
+
+        // Windows temp dir, including the 8.3 short name (`RUNNER~1`) GitHub
+        // Actions runners use, must collapse to the same [TEMP_DIR]
+        // placeholder as `/tmp/...` does on Linux.
+        let temp_input =
+            r"Installing skill to C:\Users\RUNNER~1\AppData\Local\Temp\skl_abc123\skill";
+        assert_eq!(
+            normalize_snapshot_output(temp_input, &settings),
+            "Installing skill to [TEMP_DIR]"
+        );
+
+        // Windows home dir must collapse to the same [HOME_DIR] placeholder
+        // as `/home/<user>` does on Linux, leaving the remainder of the path
+        // intact (mirrors the Linux `[HOME_DIR]/skills/my-skill` case).
+        let home_input = r"Reading config from C:\Users\alice\skills\my-skill";
+        assert_eq!(
+            normalize_snapshot_output(home_input, &settings),
+            r"Reading config from [HOME_DIR]\skills\my-skill"
+        );
+
+        // A Windows path that is neither the binary, a temp dir, nor a home
+        // dir (no `Users\` segment) is left alone -- proving the old
+        // `[WINDOWS_PATH]` catch-all (`C:\\[^\s]+`) is gone and nothing else
+        // over-matches in its place.
+        let unrelated_input = r"See D:\a\fastskill\fastskill\README.md for details";
+        assert_eq!(
+            normalize_snapshot_output(unrelated_input, &settings),
+            unrelated_input
+        );
+
+        // CRLF line endings around a Windows path don't get swallowed into
+        // the match: `\S`/path-segment classes stop at `\r` since it's
+        // whitespace, so captured Windows output with `\r\n` line endings
+        // normalizes the same as `\n`-only output.
+        let crlf_input =
+            "Usage: C:\\Users\\RUNNER~1\\work\\fastskill\\fastskill\\target\\debug\\fastskill.exe\r\n<command>\r\n";
+        assert_eq!(
+            normalize_snapshot_output(crlf_input, &settings),
+            "Usage: [FASTSKILL_BIN]\r\n<command>\r\n"
         );
     }
 
