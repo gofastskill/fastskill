@@ -141,9 +141,6 @@ jobs:
       #   - reindex_invalid_directory_error: an invalid-directory path that the
       #     command rejects on Linux is accepted on Windows -- a real product
       #     behavior difference worth investigating on its own.
-      #   - read_meta_json_flag: emits a JSON path with mixed `/` and `\`
-      #     separators on Windows; not cleanly normalizable without masking a
-      #     genuine output inconsistency.
       #   - list_version_mismatch: the table's dynamic column width shifts
       #     because Windows absolute paths are longer than `/tmp/...`.
       - name: Test fastskill-cli cli_tests (Windows)
@@ -157,7 +154,6 @@ jobs:
           and not test(=cli::eval_tests::test_eval_validate_agent_flag)
           and not test(=cli::serve_e2e_tests::test_serve_port_already_in_use_error)
           and not test(=cli::reindex_e2e_tests::test_reindex_invalid_directory_error)
-          and not test(=cli::read_e2e_tests::test_read_meta_json_flag)
           and not test(=cli::list_e2e_tests::test_list_version_mismatch)'
 
       # Phase 3 PR A: the ~228 #[cfg(test)] unit tests compiled INTO the

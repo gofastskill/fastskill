@@ -86,6 +86,25 @@ pub fn load_project_config(start_path: &Path) -> Result<ProjectConfig, String> {
         }
     };
 
+    // skills_directory is a plain string in skill-project.toml (e.g.
+    // `skills_directory = ".claude/skills"`, which is what `fastskill init`
+    // writes) and serde deserializes it straight into a PathBuf without
+    // splitting on '/'. On Windows that leaves a single path component whose
+    // OsStr *contains* a literal '/' character. `Path::join()` only inserts
+    // a native separator *between* components -- it never touches the bytes
+    // already inside a component -- so that embedded '/' survives verbatim
+    // into every path built from it (e.g. `.tmpXXXX\.claude/skills\SKILL.md`
+    // in `read --meta --json` output).
+    //
+    // Re-parsing via `.components()` fixes this: Windows accepts either '/'
+    // or '\' when *parsing* a path into components, so this splits
+    // ".claude/skills" into two components regardless of platform. Collecting
+    // them back into a PathBuf re-emits each with `PathBuf::push()`, which
+    // always inserts the platform's native separator. On Unix this is a
+    // no-op (the native separator is already '/'), so behavior there is
+    // unchanged.
+    let skills_directory: PathBuf = skills_directory.components().collect();
+
     // Step 6: Resolve skills_directory (relative to project root if not absolute)
     let project_root = project_file_path
         .parent()
@@ -256,6 +275,46 @@ skills_directory = ".claude/skills"
         assert_eq!(
             config.skills_directory,
             temp_dir.path().join(".claude/skills")
+        );
+    }
+
+    #[test]
+    fn test_load_project_config_resolves_skills_directory_component_wise() {
+        // Regression test for the mixed-separator bug this file's
+        // `.components().collect()` normalization fixes: a `skills_directory`
+        // value like ".claude/skills" must resolve identically to joining
+        // ".claude" and "skills" as two separate path components, not to a
+        // single unsplit ".claude/skills" segment carried through from the
+        // TOML string. On Windows, carrying it through unsplit leaves a
+        // literal '/' embedded inside one path component, which survives
+        // every later `.join()` verbatim and produces a path with mixed `\`
+        // and `/` separators (e.g. `\.claude/skills\meta-skill\SKILL.md`).
+        //
+        // `PathBuf` equality can't distinguish the two forms on Unix, where
+        // '/' is already the native separator, so this only proves the
+        // normalization logic runs and produces the right component
+        // structure. The actual separator-mixing symptom is Windows-only;
+        // see `tests/cli/snapshot_helpers.rs::
+        // test_normalize_windows_temp_dir_in_json_output` and
+        // `cli::read_e2e_tests::test_read_meta_json_flag` (fastskill-cli)
+        // for end-to-end coverage of the real bug.
+        let temp_dir = TempDir::new().unwrap();
+        let content = r#"
+[dependencies]
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+        "#;
+        fs::write(temp_dir.path().join("skill-project.toml"), content).unwrap();
+
+        let config = load_project_config(temp_dir.path()).unwrap();
+
+        let expected = temp_dir.path().join(".claude").join("skills");
+        assert_eq!(config.skills_directory, expected);
+        assert_eq!(
+            config.skills_directory.components().count(),
+            temp_dir.path().components().count() + 2,
+            "skills_directory should resolve to exactly two extra components (.claude, skills)"
         );
     }
 }
