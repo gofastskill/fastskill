@@ -122,10 +122,14 @@ jobs:
       # Users\...` home dirs, `C:\Users\...\AppData\Local\Temp\...` temp
       # dirs including the 8.3 `RUNNER~1` short name) and folds them to the
       # SAME placeholders Linux input produces -- one `.snap` file per test
-      # serves both platforms, no Windows-only snapshot fork. All ~249 tests
-      # in this binary run here; none are excluded.
+      # serves both platforms, no Windows-only snapshot fork.
+      #
+      # `install_e2e_tests` are excluded to match the Linux `Test` job (see the
+      # `-E 'not test(install_e2e_tests)'` there): those tests clone real git
+      # repos and are documented as having "environment-specific git
+      # authentication behavior," so they belong to neither platform's gate.
       - name: Test fastskill-cli cli_tests (Windows)
-        run: cargo nextest run -p fastskill-cli -E 'binary(cli_tests)' --retries 3 --no-fail-fast
+        run: cargo nextest run -p fastskill-cli -E 'binary(cli_tests) and not test(install_e2e_tests)' --retries 3 --no-fail-fast
 
       # Phase 3 PR A: the ~228 #[cfg(test)] unit tests compiled INTO the
       # `fastskill` binary crate itself (`-p fastskill-cli --bin fastskill`),

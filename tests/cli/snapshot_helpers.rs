@@ -183,6 +183,18 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
             .replace_all(&result, "[FASTSKILL_BIN]")
             .to_string();
 
+        // Normalize clap's program name in `Usage:` / help output. clap derives
+        // it from `argv[0]`'s file stem, which is a bare `fastskill.exe` on
+        // Windows but `fastskill` on Linux, so every `--help` snapshot's usage
+        // line differs by that suffix. This is the *bare* command name, not a
+        // path (path-carrying occurrences were already folded into
+        // `[FASTSKILL_BIN]` just above), so strip the `.exe` to match Linux.
+        // No-op on Linux, where `fastskill.exe` never appears.
+        result = regex::Regex::new(r"\bfastskill\.exe\b")
+            .unwrap()
+            .replace_all(&result, "fastskill")
+            .to_string();
+
         // Normalize temporary directory paths (Unix).
         result = regex::Regex::new(r"/tmp/[^\s]+")
             .unwrap()
@@ -439,6 +451,23 @@ mod tests {
         assert_eq!(
             normalize_snapshot_output(unrelated_input, &settings),
             unrelated_input
+        );
+
+        // clap's bare program name in a usage line carries `.exe` on Windows
+        // (`Usage: fastskill.exe add ...`); it must fold to `fastskill` so the
+        // help snapshots match Linux. This is the bare name, not a path -- a
+        // pathful `...\debug\fastskill.exe` still becomes [FASTSKILL_BIN].
+        let usage_input = "Usage: fastskill.exe eval report [OPTIONS] --run-dir <run-dir>";
+        assert_eq!(
+            normalize_snapshot_output(usage_input, &settings),
+            "Usage: fastskill eval report [OPTIONS] --run-dir <run-dir>"
+        );
+        // The pathful form is still masked as the binary placeholder, not just
+        // stripped of its suffix.
+        let pathful = r"C:\Users\RUNNER~1\work\fastskill\fastskill\target\debug\fastskill.exe";
+        assert_eq!(
+            normalize_snapshot_output(pathful, &settings),
+            "[FASTSKILL_BIN]"
         );
 
         // CRLF line endings around a Windows path don't get swallowed into
