@@ -18,7 +18,7 @@ path = "src/main.rs"
 fastskill-core = { path = "../fastskill-core", default-features = false, features = ["filesystem-storage", "hot-reload"] }
 
 # CLI framework for AppBuilder, command registry, MCP server, and doctor
-cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor", "testkit"] }
+cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor"] }
 fastskill-evals = { path = "../fastskill-evals" }
 
 # aikit-sdk for agent integration

@@ -51,6 +51,15 @@ pub enum GitError {
 
     #[error("Ref '{ref_name}' not found on {url}")]
     RefNotFound { url: String, ref_name: String },
+
+    #[error(
+        "Git sources authenticate via the system git credential helper or SSH agent, not via \
+         `auth` config -- fastskill does not inject PAT/basic credentials into git operations. \
+         Configure a git credential helper (e.g. `git config credential.helper store`, or `gh \
+         auth login`) or use an SSH remote (e.g. `git@github.com:org/repo.git`) with a key \
+         loaded in your SSH agent instead."
+    )]
+    AuthNotSupported,
 }
 
 impl From<GitError> for ServiceError {
@@ -581,7 +590,9 @@ fn resolve_sha_from_refs(
 /// * `url` - Git repository URL (HTTPS, SSH, or GitHub tree URL)
 /// * `branch` - Optional branch name to checkout after clone
 /// * `tag` - Optional tag name to checkout after clone (mutually exclusive with `branch`)
-/// * `auth` - **Deprecated**: Ignored, system git handles authentication automatically
+/// * `auth` - Not supported: git sources authenticate via the system git credential
+///   helper or SSH agent. Passing `Some` returns `GitError::AuthNotSupported` instead
+///   of silently proceeding unauthenticated.
 ///
 /// # Returns
 ///
@@ -621,12 +632,14 @@ pub async fn clone_repository(
 ) -> Result<TempDir, ServiceError> {
     CLONE_INVOCATIONS.fetch_add(1, Ordering::SeqCst);
 
-    // Log deprecation warning if auth is provided
+    // Fail loudly rather than silently ignoring a configured `auth`: a user
+    // who configured it believes their private repo is authenticated, when
+    // it would otherwise only "work" by ambient git-credential accident.
+    // fastskill has no PAT/basic credential-injection machinery for git
+    // operations -- see `GitError::AuthNotSupported` for the actionable
+    // alternative (credential helper / SSH remote).
     if auth.is_some() {
-        warn!(
-            "SourceAuth parameter is deprecated. System git handles authentication automatically. \
-             Please configure git credentials (SSH keys or credential helper) instead."
-        );
+        return Err(GitError::AuthNotSupported.into());
     }
 
     // Check git version first
