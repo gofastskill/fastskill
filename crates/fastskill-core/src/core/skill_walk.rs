@@ -113,6 +113,9 @@ mod tests {
         assert_eq!(found, vec![root.join("my-skill").join("SKILL.md")]);
     }
 
+    // Unix-only: creating a symlink on Windows CI needs a privilege the
+    // runners don't hold, matching the crate's other symlink tests.
+    #[cfg(unix)]
     #[test]
     fn finds_skill_md_through_a_top_level_symlinked_directory() {
         let tmp = TempDir::new().unwrap();
@@ -128,6 +131,8 @@ mod tests {
         assert_eq!(found, vec![root.join("linked-skill").join("SKILL.md")]);
     }
 
+    // Unix-only: exercises symlink behavior that Windows CI can't set up.
+    #[cfg(unix)]
     #[test]
     fn does_not_follow_a_symlink_nested_below_the_top_level() {
         let tmp = TempDir::new().unwrap();
@@ -147,6 +152,9 @@ mod tests {
         assert_eq!(found, vec![skill_dir.join("SKILL.md")]);
     }
 
+    // Unix-only: relies on creating a self-referential symlink, which needs a
+    // privilege the Windows CI runners don't hold.
+    #[cfg(unix)]
     #[test]
     fn a_self_referential_top_level_symlink_surfaces_as_a_single_err_not_a_hang() {
         let tmp = TempDir::new().unwrap();

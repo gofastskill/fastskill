@@ -683,6 +683,9 @@ mod tests {
     /// elsewhere (the develop-in-place / editable workflow) must still be
     /// discovered by the filesystem auto-indexer that backs `list`/`search` —
     /// not silently skipped just because the top-level entry is a symlink.
+    // Unix-only: creating a symlink on Windows CI needs a privilege the
+    // runners don't hold, matching the crate's other symlink tests.
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_auto_index_finds_symlinked_skill_dir() {
         let temp_dir = TempDir::new().unwrap();
@@ -696,10 +699,7 @@ mod tests {
         let real_target = temp_dir.path().join("dev-checkout");
         write_skill_md(&real_target, "Linked Skill");
 
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&real_target, storage.join("linked-skill")).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&real_target, storage.join("linked-skill")).unwrap();
 
         let config = ServiceConfig {
             skill_storage_path: storage,
@@ -725,6 +725,9 @@ mod tests {
     /// `skill_storage_path` must be skipped, not turned into a hard failure
     /// of the whole auto-index pass — the rest of the skills must still be
     /// indexed.
+    // Unix-only: relies on creating a self-referential symlink, which needs a
+    // privilege the Windows CI runners don't hold.
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_auto_index_skips_cyclic_symlink_without_failing_whole_index() {
         let temp_dir = TempDir::new().unwrap();
@@ -733,7 +736,6 @@ mod tests {
         write_skill_md(&storage.join("good-skill"), "Good Skill");
 
         // Self-referential symlink: storage/looping-skill -> storage/looping-skill.
-        #[cfg(unix)]
         std::os::unix::fs::symlink(storage.join("looping-skill"), storage.join("looping-skill"))
             .unwrap();
 
