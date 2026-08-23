@@ -207,7 +207,16 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         // `Users\<name>`, and the home pattern would otherwise mask only
         // that prefix and leave `\AppData\Local\Temp\...` -- a different,
         // still environment-specific suffix -- behind.
-        result = regex::Regex::new(r"(?i)[A-Za-z]:\\(?:[^\\\s]+\\)*Temp\\[^\s]+")
+        //
+        // `\\+` (one or more backslashes) rather than a single `\\`: this
+        // normalization runs on the raw command output, and `--json` output
+        // is JSON text, where a real path separator (`\`) is itself escaped
+        // as `\\`. A pattern that only matches exactly one backslash never
+        // lines up with a JSON-escaped Windows path -- see
+        // `test_normalize_windows_paths_in_json_output` below -- so it would
+        // leave the whole (environment-specific, temp-dir-containing) path
+        // in the snapshot instead of folding it to `[TEMP_DIR]`.
+        result = regex::Regex::new(r"(?i)[A-Za-z]:\\+(?:[^\\\s]+\\+)*Temp\\+[^\s]+")
             .unwrap()
             .replace_all(&result, "[TEMP_DIR]")
             .to_string();
@@ -479,6 +488,32 @@ mod tests {
         assert_eq!(
             normalize_snapshot_output(crlf_input, &settings),
             "Usage: [FASTSKILL_BIN]\r\n<command>\r\n"
+        );
+    }
+
+    #[test]
+    fn test_normalize_windows_temp_dir_in_json_output() {
+        // `--json` output is JSON text: serde_json escapes every real `\`
+        // path separator as `\\` in the emitted string. A Windows temp path
+        // embedded in a JSON field therefore never appears with single
+        // backslashes -- it's always doubled. Regression test for the
+        // `\\+` (one-or-more) fix above: a pattern hardcoded to exactly one
+        // backslash silently fails to match this shape and leaves the
+        // environment-specific temp path in the snapshot.
+        let settings = SnapshotSettings {
+            normalize_paths: true,
+            normalize_versions: false,
+            normalize_timestamps: false,
+        };
+
+        let json_input = r#"{"skill_file":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\.tmpTDm8o0\\.claude\\skills\\meta-skill\\SKILL.md"}"#;
+        // The trailing `[^\s]+` is greedy and JSON has no whitespace before
+        // the closing quote/brace, so (as with any other no-trailing-space
+        // input to this same pattern) the match swallows them too -- this
+        // assertion documents that pre-existing behavior, not something new.
+        assert_eq!(
+            normalize_snapshot_output(json_input, &settings),
+            r#"{"skill_file":"[TEMP_DIR]"#
         );
     }
 
