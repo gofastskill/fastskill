@@ -7,6 +7,46 @@ use super::snapshot_helpers::{
     run_fastskill_command_with_env,
 };
 
+/// Path to the compiled fake-agent test helper (see
+/// `crates/fastskill-cli/src/bin/fake_agent.rs`), auto-discovered by Cargo
+/// as a `[[bin]]` target of this same package via the `CARGO_BIN_EXE_<name>`
+/// env var Cargo sets for integration tests.
+///
+/// Using a real compiled binary here -- instead of a bash script, as earlier
+/// versions of these fixtures did -- means the exact same fixture works
+/// unmodified on Windows and Unix: no shebang for a non-existent
+/// interpreter, no Windows PATHEXT gap (a bash script has no `.exe`/`.cmd`
+/// extension, so Windows can neither find nor execute it), and no
+/// Unix-only `:` PATH-separator assumption.
+fn fake_agent_binary() -> &'static std::path::Path {
+    std::path::Path::new(env!("CARGO_BIN_EXE_fake_agent"))
+}
+
+/// Installs the compiled fake-agent helper into `bin_dir` under
+/// `logical_name` (e.g. `"agent"` or `"codex"`), applying the platform's
+/// executable naming convention (a `.exe` suffix on Windows, so
+/// aikit-sdk's PATH+PATHEXT probing in `command_resolve.rs` finds it) and
+/// returns a PATH value with `bin_dir` prepended using the OS-correct
+/// path-list separator (`std::env::join_paths`), ready to hand to
+/// `run_fastskill_command_with_env`.
+fn install_fake_agent(bin_dir: &std::path::Path, logical_name: &str) -> String {
+    std::fs::create_dir_all(bin_dir).unwrap();
+    let file_name = if cfg!(windows) {
+        format!("{logical_name}.exe")
+    } else {
+        logical_name.to_string()
+    };
+    std::fs::copy(fake_agent_binary(), bin_dir.join(&file_name)).unwrap();
+
+    let existing_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut entries = vec![bin_dir.to_path_buf()];
+    entries.extend(std::env::split_paths(&existing_path));
+    std::env::join_paths(entries)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[test]
 fn test_eval_help() {
     let result = run_fastskill_command(&["eval", "--help"], None);
@@ -484,7 +524,6 @@ fn test_eval_run_persists_event_trace_jsonl() {
 #[test]
 fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
     use serde_json::Value;
-    use std::env;
     use std::fs;
     use tempfile::TempDir;
 
@@ -503,30 +542,17 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
     )
     .unwrap();
 
-    // Fake agent that passes the first 3 invocations, then fails.
+    // Fake agent (see `install_fake_agent`) that passes the first 3
+    // invocations, then fails -- driven by `FAKE_AGENT_MODE=counter`.
     let bin_dir = dir.path().join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let agent_path = bin_dir.join("agent");
-    fs::write(
-        &agent_path,
-        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nstate_dir=\"${FASTSKILL_TEST_STATE_DIR:?}\"\nmkdir -p \"$state_dir\"\nlock=\"$state_dir/lock\"\ncount_file=\"$state_dir/count\"\nexec 9>\"$lock\"\nflock 9\ncount=0\nif [[ -f \"$count_file\" ]]; then count=$(cat \"$count_file\" || echo 0); fi\ncount=$((count+1))\necho \"$count\" > \"$count_file\"\nflock -u 9\n# Emit a raw_json line so trace persists and command_count=1.\necho '{\"event\":\"ok\"}'\nif [[ $count -le 3 ]]; then exit 0; else exit 1; fi\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&agent_path, perms).unwrap();
-    }
-
     let output_dir = dir.path().join("out");
-    let path = env::var("PATH").unwrap_or_default();
-    let merged_path = format!("{}:{}", bin_dir.display(), path);
     let state_dir = dir.path().join("state");
+    let merged_path = install_fake_agent(&bin_dir, "agent");
     let env_vars = vec![
         ("PATH", merged_path.as_str()),
         ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+        ("FAKE_AGENT_MODE", "counter"),
+        ("FAKE_AGENT_PASS_LIMIT", "3"),
     ];
 
     // Threshold 0.6 should pass for 3/5.
@@ -623,7 +649,6 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
 /// windows can ever overlap, so the assertion would correctly fail.
 #[test]
 fn test_eval_run_parallelism_produces_overlapping_trial_windows() {
-    use std::env;
     use std::fs;
     use tempfile::TempDir;
 
@@ -642,34 +667,19 @@ fn test_eval_run_parallelism_produces_overlapping_trial_windows() {
     )
     .unwrap();
 
+    // Fake agent (see `install_fake_agent`) that, per invocation, sleeps
+    // 500ms and then records its own "<start_ns> <end_ns>" wall-clock
+    // window to a shared, lock-guarded intervals file --
+    // `FAKE_AGENT_MODE=interval`.
     let bin_dir = dir.path().join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let agent_path = bin_dir.join("agent");
     let state_dir = dir.path().join("state");
     fs::create_dir_all(&state_dir).unwrap();
-    // Each invocation appends "<start_ns> <end_ns>" as one line to a shared
-    // intervals file, guarded by flock so concurrent writers don't interleave
-    // partial lines. `date +%s%N` gives nanosecond-resolution wall-clock
-    // timestamps independent of this test process's own clock reads.
-    fs::write(
-        &agent_path,
-        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\nstate_dir=\"${FASTSKILL_TEST_STATE_DIR:?}\"\nlock=\"$state_dir/lock\"\nintervals=\"$state_dir/intervals.txt\"\nstart_ns=$(date +%s%N)\nsleep 0.5\nend_ns=$(date +%s%N)\nexec 9>\"$lock\"\nflock 9\necho \"$start_ns $end_ns\" >> \"$intervals\"\nflock -u 9\necho '{\"event\":\"ok\"}'\nexit 0\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&agent_path, perms).unwrap();
-    }
-
+    let merged_path = install_fake_agent(&bin_dir, "agent");
     let output_dir = dir.path().join("out");
-    let path = env::var("PATH").unwrap_or_default();
-    let merged_path = format!("{}:{}", bin_dir.display(), path);
     let env_vars = vec![
         ("PATH", merged_path.as_str()),
         ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+        ("FAKE_AGENT_MODE", "interval"),
     ];
 
     let result = run_fastskill_command_with_env(
@@ -979,7 +989,6 @@ fn test_eval_validate_all_flag() {
 #[test]
 fn test_eval_run_json_output_contains_agent_field() {
     use serde_json::Value;
-    use std::env;
     use std::fs;
     use tempfile::TempDir;
 
@@ -999,24 +1008,8 @@ fn test_eval_run_json_output_contains_agent_field() {
     .unwrap();
 
     let bin_dir = dir.path().join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let agent_path = bin_dir.join("agent");
-    fs::write(
-        &agent_path,
-        "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then echo \"agent 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&agent_path, perms).unwrap();
-    }
-
+    let merged_path = install_fake_agent(&bin_dir, "agent");
     let output_dir = dir.path().join("out");
-    let path = env::var("PATH").unwrap_or_default();
-    let merged_path = format!("{}:{}", bin_dir.display(), path);
     let env_vars = vec![("PATH", merged_path.as_str())];
 
     let result = run_fastskill_command_with_env(
@@ -1077,25 +1070,7 @@ fn test_eval_validate_agent_flag() {
     // while a CI runner does not, which would make this test pass locally and
     // fail in CI. Same approach as the fake `agent` binary used above.
     let bin_dir = dir.path().join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let agent_path = bin_dir.join("codex");
-    fs::write(
-        &agent_path,
-        "#!/usr/bin/env bash\nif [[ \"$1\" == \"--version\" ]]; then echo \"codex 0.1\"; exit 0; fi\nexit 0\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&agent_path, perms).unwrap();
-    }
-    let merged_path = format!(
-        "{}:{}",
-        bin_dir.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
+    let merged_path = install_fake_agent(&bin_dir, "codex");
 
     let result = run_fastskill_command_with_env(
         &["eval", "validate", "--agent", "codex"],
