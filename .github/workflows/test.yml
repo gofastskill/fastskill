@@ -105,11 +105,60 @@ jobs:
       # Windows automatically. Running this subset now gets 20 real CLI-surface tests
       # (help-text/clap-panic sweep, lock-file determinism/migration/scope-routing, MCP
       # stdio protocol, docs-vs-spec parity) exercising Windows for close to zero extra
-      # cost, since the build above already compiled the crate. The remaining
-      # fastskill-cli integration-test binaries are excluded until the insta-snapshot
-      # path normalization work lands.
+      # cost, since the build above already compiled the crate. `cli_tests` (the big
+      # insta-snapshot CLI suite) is run in its own step below now that the
+      # binary-path-normalization blocker is fixed.
       - name: Test fastskill-cli (Windows-safe subset)
         run: cargo nextest run -p fastskill-cli -E 'binary(all_commands_help_test) + binary(lock_determinism_test) + binary(lock_migration_test) + binary(lock_scope_routing_test) + binary(mcp_stdio_protocol_test) + binary(spec_docs_parity_test)' --retries 3 --no-fail-fast
+
+      # Phase 3 PR B: `cli_tests` (~249 tests, including its own
+      # `snapshot_helpers::tests` unit tests) is the big insta-snapshot CLI
+      # suite and was Linux-only until now. `normalize_snapshot_output()` in
+      # `tests/cli/snapshot_helpers.rs` used Unix-only regexes (forward
+      # slashes, `/home/...`, `/tmp/...`), so on Windows the same command
+      # output would normalize differently and every snapshot would mismatch.
+      # That function now also recognizes Windows path shapes (`\`
+      # separators, `.exe` suffix, the `\\?\` extended-length prefix, `C:\
+      # Users\...` home dirs, `C:\Users\...\AppData\Local\Temp\...` temp
+      # dirs including the 8.3 `RUNNER~1` short name) and folds them to the
+      # SAME placeholders Linux input produces -- one `.snap` file per test
+      # serves both platforms, no Windows-only snapshot fork.
+      #
+      # `install_e2e_tests` are excluded to match the Linux `Test` job (see the
+      # `-E 'not test(install_e2e_tests)'` there): those tests clone real git
+      # repos and are documented as having "environment-specific git
+      # authentication behavior," so they belong to neither platform's gate.
+      #
+      # Eight more tests are excluded on Windows because they fail for genuine
+      # cross-platform *behavior/environment* differences, NOT snapshot
+      # normalization -- forcing them green would hide real signal. All eight
+      # pass on Linux and are tracked as Windows follow-ups:
+      #   - eval_tests (4): the Windows build registers only the `aikit` eval
+      #     runtime, so `--agent codex`/`agent` return RUNTIME_UNKNOWN_ID.
+      #     A build/registration difference, not a test bug.
+      #   - serve_port_already_in_use_error: the OS "address in use" message and
+      #     errno differ (Linux `os error 98` vs Windows `os error 10048`).
+      #   - reindex_invalid_directory_error: an invalid-directory path that the
+      #     command rejects on Linux is accepted on Windows -- a real product
+      #     behavior difference worth investigating on its own.
+      #   - read_meta_json_flag: emits a JSON path with mixed `/` and `\`
+      #     separators on Windows; not cleanly normalizable without masking a
+      #     genuine output inconsistency.
+      #   - list_version_mismatch: the table's dynamic column width shifts
+      #     because Windows absolute paths are longer than `/tmp/...`.
+      - name: Test fastskill-cli cli_tests (Windows)
+        run: >-
+          cargo nextest run -p fastskill-cli --retries 3 --no-fail-fast
+          -E 'binary(cli_tests)
+          and not test(install_e2e_tests)
+          and not test(=cli::eval_tests::test_eval_run_json_output_contains_agent_field)
+          and not test(=cli::eval_tests::test_eval_run_parallelism_produces_overlapping_trial_windows)
+          and not test(=cli::eval_tests::test_eval_run_trials_threshold_and_ci_exit_semantics)
+          and not test(=cli::eval_tests::test_eval_validate_agent_flag)
+          and not test(=cli::serve_e2e_tests::test_serve_port_already_in_use_error)
+          and not test(=cli::reindex_e2e_tests::test_reindex_invalid_directory_error)
+          and not test(=cli::read_e2e_tests::test_read_meta_json_flag)
+          and not test(=cli::list_e2e_tests::test_list_version_mismatch)'
 
       # Phase 3 PR A: the ~228 #[cfg(test)] unit tests compiled INTO the
       # `fastskill` binary crate itself (`-p fastskill-cli --bin fastskill`),
