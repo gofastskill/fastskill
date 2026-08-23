@@ -170,9 +170,21 @@ fn find_skill_files(skills_dir: &Path) -> Result<Vec<PathBuf>, ServiceError> {
         )));
     }
 
-    let skill_files = walkdir::WalkDir::new(skills_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
+    // `walk_skill_storage` resolves exactly one hop for a top-level entry
+    // that is itself a symlink to a directory (the develop-in-place /
+    // editable workflow, spec 010), and never follows a symlink encountered
+    // any deeper. A bad/looping top-level symlink surfaces as a single `Err`
+    // for that entry, which `.filter_map(|e| e.ok())` already drops (as it
+    // did before this change) — one broken link is skipped, not fatal to the
+    // rest of the scan.
+    let skill_files = crate::core::skill_walk::walk_skill_storage(skills_dir, |_| false)
+        .filter_map(|e| match e {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                tracing::warn!("Skipping unreadable skill storage entry: {}", e);
+                None
+            }
+        })
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.file_name() == "SKILL.md")
         .map(|e| e.path().to_path_buf())
@@ -279,8 +291,15 @@ mod tests {
     }
 
     fn create_test_skill(skills_dir: &Path, skill_id: &str, name: &str, description: &str) {
-        let skill_dir = skills_dir.join(skill_id);
-        fs::create_dir_all(&skill_dir).unwrap();
+        create_test_skill_at(&skills_dir.join(skill_id), name, description);
+    }
+
+    /// Like `create_test_skill`, but `skill_dir` is the skill's own directory
+    /// rather than a parent to join a `skill_id` under — used to build a
+    /// "develop-in-place" checkout that a test then symlinks into a skills
+    /// dir under a different name (spec 010).
+    fn create_test_skill_at(skill_dir: &Path, name: &str, description: &str) {
+        fs::create_dir_all(skill_dir).unwrap();
         let skill_content = format!(
             r#"---
 name: {}
@@ -453,6 +472,131 @@ Test skill content"#,
         assert!(outcome.reindexed);
         assert_eq!(outcome.count, 0);
         assert!(outcome.reason.is_none());
+    }
+
+    /// Spec 010: a skill directory installed as a symlink to a checkout
+    /// elsewhere (the develop-in-place / editable workflow) must still be
+    /// found by `collect_skill_files`/`find_skill_files` and reindexed —
+    /// not silently skipped just because the top-level entry is a symlink.
+    #[tokio::test]
+    async fn test_reindex_finds_symlinked_skill_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Regular skill, to confirm no regression alongside the symlink fix.
+        create_test_skill(
+            &skills_dir,
+            "regular-skill",
+            "Regular Skill",
+            "A regular skill",
+        );
+
+        // The skill really lives elsewhere; only a symlink sits in the skills dir.
+        let real_target = temp_dir.path().join("dev-checkout");
+        create_test_skill_at(&real_target, "Linked Skill", "A symlinked skill");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_target, skills_dir.join("linked-skill")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&real_target, skills_dir.join("linked-skill")).unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                embedding_model: "text-embedding-3-small".to_string(),
+                index_path: None,
+            }),
+            ..Default::default()
+        };
+
+        let mock_embedding = Arc::new(MockEmbeddingService::new());
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_embedding_service(mock_embedding);
+        service.initialize().await.unwrap();
+
+        let outcome = service.reindex(Some(&skills_dir), None).await.unwrap();
+
+        assert_eq!(
+            outcome.count, 2,
+            "both the regular and the symlinked skill dir must be reindexed"
+        );
+
+        let vector_index = service.vector_index_service().unwrap();
+        assert!(vector_index
+            .get_skill_by_id("regular-skill")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(
+            vector_index
+                .get_skill_by_id("linked-skill")
+                .await
+                .unwrap()
+                .is_some(),
+            "symlinked skill dir must land in the vector index"
+        );
+    }
+
+    /// Spec 010: a self-referential (looping) symlink at the top level of the
+    /// skills dir must be skipped, not turned into a hard failure of the
+    /// whole reindex pass — the rest of the skills must still be reindexed.
+    #[tokio::test]
+    async fn test_reindex_skips_cyclic_symlink_without_failing_whole_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        create_test_skill(&skills_dir, "good-skill", "Good Skill", "A regular skill");
+
+        // Self-referential symlink: skills_dir/looping-skill -> itself.
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            skills_dir.join("looping-skill"),
+            skills_dir.join("looping-skill"),
+        )
+        .unwrap();
+
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                embedding_model: "text-embedding-3-small".to_string(),
+                index_path: None,
+            }),
+            ..Default::default()
+        };
+
+        let mock_embedding = Arc::new(MockEmbeddingService::new());
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_embedding_service(mock_embedding);
+        service.initialize().await.unwrap();
+
+        let outcome = service
+            .reindex(Some(&skills_dir), None)
+            .await
+            .expect("a cyclic symlink must be skipped, not fail the whole reindex");
+
+        assert_eq!(
+            outcome.count, 1,
+            "the unrelated skill must still be reindexed despite a sibling cyclic symlink"
+        );
+
+        let vector_index = service.vector_index_service().unwrap();
+        assert!(vector_index
+            .get_skill_by_id("good-skill")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(vector_index
+            .get_skill_by_id("looping-skill")
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
