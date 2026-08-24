@@ -120,6 +120,8 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
         .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: invalid config: {e}")))?;
 
     // 8. Resume training
+    // aikit-skillopt now takes the eval runner explicitly (post goaikit/aikit#148).
+    let runner = fastskill_evals::runner::AikitEvalRunner;
     let outcome = aikit_skillopt::resume_skill(
         args.run_dir.clone(),
         initial_skill_md,
@@ -127,6 +129,7 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
         suite,
         checks,
         run_config,
+        &runner,
     )
     .await
     .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
