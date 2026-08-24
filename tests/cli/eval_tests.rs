@@ -547,7 +547,7 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
     let bin_dir = dir.path().join("bin");
     let output_dir = dir.path().join("out");
     let state_dir = dir.path().join("state");
-    let merged_path = install_fake_agent(&bin_dir, "agent");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
     let env_vars = vec![
         ("PATH", merged_path.as_str()),
         ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
@@ -561,7 +561,7 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
             "eval",
             "run",
             "--agent",
-            "agent",
+            "codex",
             "--output-dir",
             output_dir.to_str().unwrap(),
             "--case",
@@ -595,7 +595,7 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
             "eval",
             "run",
             "--agent",
-            "agent",
+            "codex",
             "--output-dir",
             output_dir.to_str().unwrap(),
             "--case",
@@ -674,7 +674,7 @@ fn test_eval_run_parallelism_produces_overlapping_trial_windows() {
     let bin_dir = dir.path().join("bin");
     let state_dir = dir.path().join("state");
     fs::create_dir_all(&state_dir).unwrap();
-    let merged_path = install_fake_agent(&bin_dir, "agent");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
     let output_dir = dir.path().join("out");
     let env_vars = vec![
         ("PATH", merged_path.as_str()),
@@ -687,7 +687,7 @@ fn test_eval_run_parallelism_produces_overlapping_trial_windows() {
             "eval",
             "run",
             "--agent",
-            "agent",
+            "codex",
             "--output-dir",
             output_dir.to_str().unwrap(),
             "--case",
@@ -1008,7 +1008,7 @@ fn test_eval_run_json_output_contains_agent_field() {
     .unwrap();
 
     let bin_dir = dir.path().join("bin");
-    let merged_path = install_fake_agent(&bin_dir, "agent");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
     let output_dir = dir.path().join("out");
     let env_vars = vec![("PATH", merged_path.as_str())];
 
@@ -1017,7 +1017,7 @@ fn test_eval_run_json_output_contains_agent_field() {
             "eval",
             "run",
             "--agent",
-            "agent",
+            "codex",
             "--output-dir",
             output_dir.to_str().unwrap(),
             "--json",
@@ -1040,7 +1040,7 @@ fn test_eval_run_json_output_contains_agent_field() {
     );
     assert_eq!(
         summary["agent"].as_str().unwrap(),
-        "agent",
+        "codex",
         "JSON 'agent' field must match the requested agent"
     );
 }

@@ -147,13 +147,13 @@ fn test_mcp_list_exits_zero() {
 // Source of truth verified against aikit_sdk::mcp_deploy (goaikit/aikit,
 // crate `aikit-sdk`, pinned rev in this workspace's Cargo.lock):
 //   - claude       -> project_root/.mcp.json               top-level "mcpServers"
-//   - cursor-agent -> project_root/.cursor/mcp.json         top-level "mcpServers"
+//   - cursor       -> project_root/.cursor/mcp.json         top-level "mcpServers"
 //   - gemini       -> project_root/.gemini/settings.json    top-level "mcpServers"
 //   - copilot      -> project_root/.vscode/mcp.json         top-level "servers" (VS Code shape)
 //   - opencode     -> project_root/opencode.json            top-level "mcp"
 //   - codex        -> project_root/.codex/config.toml       TOML "[mcp_servers.NAME]"
-// `--agent cursor` is a documented alias that normalizes to "cursor-agent"
-// (aikit_sdk::normalize_mcp_agent_key).
+// `cursor` is the single canonical agent key (aikit ADR 0015); the older
+// `cursor-agent` key is no longer accepted.
 // ---------------------------------------------------------------------------
 
 /// One row per supported `mcp install --agent` target: the flag value, the
@@ -173,7 +173,7 @@ const AGENT_TARGETS: &[AgentTarget] = &[
         json_bucket_key: Some("mcpServers"),
     },
     AgentTarget {
-        agent_flag: "cursor-agent",
+        agent_flag: "cursor",
         config_relpath: ".cursor/mcp.json",
         json_bucket_key: Some("mcpServers"),
     },
@@ -299,11 +299,16 @@ fn test_mcp_install_writes_expected_config_for_every_agent_target() {
 }
 
 #[test]
-fn test_mcp_install_cursor_alias_matches_cursor_agent() {
-    let alias_dir = TempDir::new().unwrap();
+fn test_mcp_install_cursor_is_canonical_and_cursor_agent_is_rejected() {
+    // aikit ADR 0015 collapsed the cursor keys onto a single canonical
+    // `cursor`; the older `cursor-agent` key is no longer accepted. fastskill
+    // defers agent keys entirely to aikit-sdk, so it inherits that contract:
+    // `cursor` installs to `.cursor/mcp.json`, and `cursor-agent` now fails
+    // cleanly rather than silently working.
     let canonical_dir = TempDir::new().unwrap();
+    let removed_dir = TempDir::new().unwrap();
 
-    let alias_result = run_fastskill_command(
+    let canonical = run_fastskill_command(
         &[
             "mcp",
             "install",
@@ -314,15 +319,23 @@ fn test_mcp_install_cursor_alias_matches_cursor_agent() {
             "project",
             "--overwrite",
         ],
-        Some(alias_dir.path()),
+        Some(canonical_dir.path()),
     );
     assert!(
-        alias_result.success,
+        canonical.success,
         "--agent cursor should exit 0; stderr: {}",
-        alias_result.stderr
+        canonical.stderr
+    );
+    assert!(
+        canonical_dir
+            .path()
+            .join(".cursor")
+            .join("mcp.json")
+            .exists(),
+        "--agent cursor should write to .cursor/mcp.json"
     );
 
-    let canonical_result = run_fastskill_command(
+    let removed = run_fastskill_command(
         &[
             "mcp",
             "install",
@@ -333,31 +346,16 @@ fn test_mcp_install_cursor_alias_matches_cursor_agent() {
             "project",
             "--overwrite",
         ],
-        Some(canonical_dir.path()),
+        Some(removed_dir.path()),
     );
     assert!(
-        canonical_result.success,
-        "--agent cursor-agent should exit 0; stderr: {}",
-        canonical_result.stderr
-    );
-
-    let alias_path = alias_dir.path().join(".cursor").join("mcp.json");
-    let canonical_path = canonical_dir.path().join(".cursor").join("mcp.json");
-    assert!(
-        alias_path.exists(),
-        "--agent cursor should write to .cursor/mcp.json (cursor-agent's path)"
+        !removed.success,
+        "--agent cursor-agent must be rejected (aikit ADR 0015 dropped the alias); stdout: {}",
+        removed.stdout
     );
     assert!(
-        canonical_path.exists(),
-        "--agent cursor-agent should write to .cursor/mcp.json"
-    );
-
-    let alias_json: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&alias_path).unwrap()).unwrap();
-    let canonical_json: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&canonical_path).unwrap()).unwrap();
-    assert_eq!(
-        alias_json, canonical_json,
-        "--agent cursor and --agent cursor-agent should produce identical config content"
+        removed.stderr.contains("cursor-agent"),
+        "rejection should name the unknown key; stderr: {}",
+        removed.stderr
     );
 }
