@@ -291,7 +291,7 @@ mkdir -p "$SBX/mcp" && cd "$SBX/mcp"
 |---|---|---|---|---|---|
 | 6.1 | `fastskill mcp list` | Lists the 6 supported agent targets: claude, cursor(-agent), gemini, copilot, opencode, codex. | 🤖 | cli-framework MCP | ☐P ☐F ☐G |
 | 6.2 | `fastskill mcp install --agent claude --scope project` | Writes `./.mcp.json` (key `mcpServers`), prints the path. | ⚙️ | " | ☐P ☐F ☐G |
-| 6.3 | `fastskill mcp install --agent cursor --scope project` | Writes `./.cursor/mcp.json` (alias `cursor`→`cursor-agent`). | ⚙️ | " | ☐P ☐F ☐G |
+| 6.3 | `fastskill mcp install --agent cursor --scope project` | Writes `./.cursor/mcp.json` (`cursor` is the canonical key; `cursor-agent` was removed, aikit ADR 0015). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.4 | `fastskill mcp install --agent gemini --scope project` | Writes `./.gemini/settings.json`. | ⚙️ | " | ☐P ☐F ☐G |
 | 6.5 | `fastskill mcp install --agent copilot --scope project` | Writes `./.vscode/mcp.json` (key `servers`, VS Code shape). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.6 | `fastskill mcp install --agent opencode --scope project` | Writes `./opencode.json` (root `mcp` map). | ⚙️ | " | ☐P ☐F ☐G |
