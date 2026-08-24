@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,11 +58,11 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
 dependencies = [
  "aikit-sdk",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "num_cpus",
  "serde",
  "serde_json",
@@ -75,15 +75,18 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
 dependencies = [
  "aikit-agent",
+ "claude-agent-sdk",
  "dirs 6.0.0",
  "glob",
  "jsonschema",
+ "nix",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "toml",
  "tracing",
@@ -95,7 +98,7 @@ dependencies = [
 [[package]]
 name = "aikit-skillopt"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -108,7 +111,7 @@ dependencies = [
 [[package]]
 name = "aikit-textgrad"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=435a1132859bbfaf2977c0fb0ce070c795525132#435a1132859bbfaf2977c0fb0ce070c795525132"
+source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -425,6 +428,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -676,9 +685,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "claude-agent-sdk"
+version = "0.1.0"
+source = "git+https://github.com/aroff/claude-agent-sdk-rust?rev=aa01a48#aa01a48e1a869d8306a08a6edbcb7adbda575db9"
+dependencies = [
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+ "which",
+]
+
+[[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=e0f6bb73f50355744e36c314c19fa5f055f1fbc9#e0f6bb73f50355744e36c314c19fa5f055f1fbc9"
+source = "git+https://github.com/aroff/cli-framework?rev=95368d120e2182fd50616d0a974d7afa740b71a3#95368d120e2182fd50616d0a974d7afa740b71a3"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",
@@ -1238,6 +1263,12 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "either"
+version = "1.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "email_address"
@@ -1870,6 +1901,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "home"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2674,6 +2714,18 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+dependencies = [
+ "bitflags 2.11.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
 
 [[package]]
 name = "normalize-line-endings"
@@ -5155,6 +5207,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5474,6 +5538,12 @@ checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wiremock"

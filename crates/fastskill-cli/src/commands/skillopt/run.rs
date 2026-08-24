@@ -191,7 +191,10 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
         run_dir: run_dir.clone(),
     };
 
-    let outcome = aikit_skillopt::train_skill(inputs)
+    // aikit-skillopt now takes the eval runner explicitly (post goaikit/aikit#148).
+    // fastskill drives real agents through the same runner its `eval` command uses.
+    let runner = fastskill_evals::runner::AikitEvalRunner;
+    let outcome = aikit_skillopt::train_skill(inputs, &runner)
         .await
         .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
 
