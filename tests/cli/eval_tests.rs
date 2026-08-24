@@ -390,7 +390,6 @@ fn test_eval_report_nonexistent_run_dir() {
 #[test]
 fn test_eval_run_persists_event_trace_jsonl() {
     use serde_json::Value;
-    use std::env;
     use std::fs;
     use tempfile::TempDir;
 
@@ -409,28 +408,14 @@ fn test_eval_run_persists_event_trace_jsonl() {
     )
     .unwrap();
 
-    // Create a fake `codex` executable (a supported agent key) so
-    // aikit_sdk::is_agent_available("codex") succeeds; the fake shadows any real
-    // codex on PATH via the prepended bin dir.
+    // Cross-platform fake `codex` (a supported agent key): install_fake_agent
+    // copies the compiled fake_agent binary — which emits a generic
+    // `{"event":"ok"}` line — and returns PATH with its dir prepended, so
+    // aikit_sdk::is_agent_available("codex") finds it (shadowing any real codex)
+    // on both Unix and Windows.
     let bin_dir = dir.path().join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let agent_path = bin_dir.join("codex");
-    fs::write(
-        &agent_path,
-        "#!/usr/bin/env bash\nif [[ \"$1\" == \"--version\" ]]; then echo \"codex 0.1\"; exit 0; fi\necho '{\"event\":\"ok\"}'\nexit 0\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&agent_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&agent_path, perms).unwrap();
-    }
-
+    let merged_path = install_fake_agent(&bin_dir, "codex");
     let output_dir = dir.path().join("out");
-    let path = env::var("PATH").unwrap_or_default();
-    let merged_path = format!("{}:{}", bin_dir.display(), path);
     let env_vars = vec![("PATH", merged_path.as_str())];
 
     let result = run_fastskill_command_with_env(
