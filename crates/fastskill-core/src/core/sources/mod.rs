@@ -41,6 +41,9 @@ pub enum SourcesError {
 
     #[error("Git error: {0}")]
     Git(String),
+
+    #[error("Zip URL error: {0}")]
+    ZipUrl(String),
 }
 
 #[cfg(test)]
