@@ -1,5 +1,6 @@
 //! `fastskill optimize inspect` subcommand
 
+use super::config::{resolve_step_versions, StepVersions};
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
@@ -223,39 +224,59 @@ fn show_rollouts(step_dir: &std::path::Path) -> CliResult<()> {
 /// (`aikit-textgrad`'s `save_accepted_artifact`), not `skill_before.md`/
 /// `skill_after.md` in the step directory — those never existed.
 ///
-/// Mapping decision: version numbers only advance when a step is *accepted*
-/// (`save_accepted_artifact` is only called in that branch), so they are not
-/// guaranteed to equal the step index once any earlier step in the run was
-/// rejected. Reconstructing the true accepted-version-count for an arbitrary
-/// step would require scanning every prior step's `gate.json`. We instead take
-/// the direct, obvious mapping — step N's before/after documents are
-/// `skill_v{N:04}.md` and `skill_v{N+1:04}.md` — which is exact for step 0 (the
-/// initial artifact is always written as `skill_v0000.md` before any step runs)
-/// and for any run where every step up to N was accepted. When a version file is
-/// missing (e.g. the step was rejected, so no new version was ever written), we
-/// print an explanatory message naming the missing file instead of erroring or
-/// fabricating a diff against stale or absent content.
+/// Version numbers advance only when a step is *accepted* (`save_accepted_artifact` runs
+/// solely in that branch), so a step index is **not** a version index once any earlier
+/// step has been rejected. We therefore resolve the bracketing versions from
+/// `history.json` via [`resolve_step_versions`], counting accepted steps before this one,
+/// rather than assuming `step -> v{step}/v{step+1}`.
+///
+/// That assumption is not merely imprecise, it is wrong in a silent way: with step 0
+/// rejected and steps 1 and 2 accepted, step 1's real diff is `v0000 -> v0001`, but the
+/// naive mapping resolves `v0001 -> v0002` — step 2's diff, rendered under step 1's name.
+///
+/// When history cannot tell us (step absent, or `history.json` missing/unreadable) we say
+/// so rather than falling back to a guess.
 fn show_diffs(run_dir: &std::path::Path, step: u32) -> CliResult<()> {
     let skills_dir = run_dir.join("skills");
-    let before_name = format!("skill_v{step:04}.md");
-    let after_name = format!("skill_v{:04}.md", step + 1);
+
+    let (before, after) = match resolve_step_versions(run_dir, step) {
+        StepVersions::Accepted { before, after } => (before, after),
+        StepVersions::Rejected => {
+            crate::outln!(
+                "(no diff: step {step} was rejected, so no new skill version was written — \
+                 run `optimize inspect --step {step} --show gate` for the scores)"
+            );
+            return Ok(());
+        }
+        StepVersions::Unknown => {
+            crate::outln!(
+                "(no diff: step {} is not recorded in {}/history.json, so its skill \
+                 versions cannot be resolved)",
+                step,
+                run_dir.display()
+            );
+            return Ok(());
+        }
+    };
+
+    let before_name = format!("skill_v{before:04}.md");
+    let after_name = format!("skill_v{after:04}.md");
     let before_path = skills_dir.join(&before_name);
     let after_path = skills_dir.join(&after_name);
 
-    if !before_path.exists() {
+    if !before_path.exists() || !after_path.exists() {
+        let missing = if before_path.exists() {
+            &after_name
+        } else {
+            &before_name
+        };
         crate::outln!(
-            "(no diff available: {} not found under {})",
-            before_name,
-            skills_dir.display()
-        );
-        return Ok(());
-    }
-    if !after_path.exists() {
-        crate::outln!(
-            "(no diff available: {} does not exist — step {} likely was not accepted, so no new version was written; run `optimize inspect --step {} --show gate` to check)",
-            after_name,
+            "(no diff available: step {} resolves to {} -> {}, but {} is missing under {})",
             step,
-            step
+            before_name,
+            after_name,
+            missing,
+            skills_dir.display()
         );
         return Ok(());
     }

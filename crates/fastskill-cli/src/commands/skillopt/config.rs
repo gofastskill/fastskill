@@ -316,9 +316,16 @@ fn parse_suite_csv_with_splits(content: &str) -> Result<SuiteSplits, String> {
             tags.push(split_val.clone());
         }
 
-        // Match aikit-textgrad's split_cases: anything that isn't exactly "selection"
-        // or "test" is a train case, including untagged rows and unrecognized values.
-        match split_val.as_str() {
+        // Count using aikit-textgrad's `split_cases` algorithm applied to the SAME
+        // final tag vector the training loop will see -- not `split_val`.
+        //
+        // These can differ. `tags.retain` above only strips `split:`-prefixed tags, so a
+        // bare recognized tag in the `tags` column (e.g. `tags=selection,split=train`)
+        // survives and, because it was pushed first, is what upstream's `find` returns.
+        // Counting `split_val` there would score the row `train` while the loop trains it
+        // as `selection` -- letting a suite with no effective train cases slip past
+        // OPTIMIZE_NO_TRAIN_CASES into exactly the silent no-op that guard exists to stop.
+        match effective_split(&tags) {
             "selection" => selection_count += 1,
             "test" => {}
             _ => train_count += 1,
@@ -360,6 +367,61 @@ pub fn count_history_steps(run_dir: &Path) -> usize {
         .unwrap_or(0)
 }
 
+/// One `history.json` record, narrowed to the fields needed to locate skill versions.
+#[derive(Debug, Deserialize)]
+struct HistoryStep {
+    global_step: u32,
+    accepted: bool,
+}
+
+/// Which `skills/skill_v{NNNN}.md` documents bracket a given step.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StepVersions {
+    /// The step was accepted; diff these two version indices.
+    Accepted { before: u32, after: u32 },
+    /// The step ran and was rejected, so no new version was written.
+    Rejected,
+    /// The step is absent from `history.json`, or history is missing/unreadable.
+    Unknown,
+}
+
+/// Resolve the skill-version indices bracketing `step` by reading `history.json`.
+///
+/// Version numbers advance only on **accepted** steps (upstream writes a new
+/// `skill_v{NNNN}.md` solely in the accept branch), so a step index is *not* a version
+/// index once any earlier step has been rejected. Assuming `step -> v{step}/v{step+1}`
+/// silently renders a different step's diff: with step 0 rejected and steps 1 and 2
+/// accepted, step 1's real diff is `v0000 -> v0001`, but the naive mapping shows
+/// `v0001 -> v0002` — which is step 2's diff, displayed under step 1's name.
+///
+/// Counting accepted steps before `step` gives the exact "before" index instead.
+pub fn resolve_step_versions(run_dir: &Path, step: u32) -> StepVersions {
+    let Some(history) = std::fs::read_to_string(run_dir.join("history.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<HistoryStep>>(&s).ok())
+    else {
+        return StepVersions::Unknown;
+    };
+
+    let Some(record) = history.iter().find(|r| r.global_step == step) else {
+        return StepVersions::Unknown;
+    };
+
+    if !record.accepted {
+        return StepVersions::Rejected;
+    }
+
+    let accepted_before = history
+        .iter()
+        .filter(|r| r.global_step < step && r.accepted)
+        .count() as u32;
+
+    StepVersions::Accepted {
+        before: accepted_before,
+        after: accepted_before + 1,
+    }
+}
+
 /// Build the run-completion stdout line and an optional stderr warning.
 ///
 /// A real run with at least one recorded training step prints the documented
@@ -387,6 +449,25 @@ pub fn completion_output(step_count: usize, best_artifact_path: &Path) -> (Strin
             format!("Run complete. Best skill: {}", best_artifact_path.display()),
             None,
         )
+    }
+}
+
+/// Resolve a case's effective split exactly as `aikit-textgrad`'s `split_cases` does
+/// (`aikit-textgrad/src/training/mod.rs`, pinned `a34e1e47`): the first tag that is
+/// *exactly* `train`, `selection` or `test`, else `train`.
+///
+/// This must stay a mirror of upstream. Any divergence means fastskill's split counts
+/// describe a different partition than the one the training loop actually runs, which is
+/// how a zero-train suite can pass validation and then silently do nothing.
+fn effective_split(tags: &[String]) -> &'static str {
+    match tags
+        .iter()
+        .find(|t| t.as_str() == "train" || t.as_str() == "selection" || t.as_str() == "test")
+        .map(|s| s.as_str())
+    {
+        Some("selection") => "selection",
+        Some("test") => "test",
+        _ => "train",
     }
 }
 
@@ -470,6 +551,56 @@ mod tests {
         let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
         assert_eq!(splits.train_count, 1);
         assert_eq!(splits.selection_count, 0);
+    }
+
+    /// A bare recognized tag in the `tags` column wins over the `split` column, because
+    /// `tags.retain` only strips `split:`-prefixed entries and upstream's `split_cases`
+    /// takes the *first* recognized tag. Counting the `split` column instead would call
+    /// this row `train` while the training loop treats it as `selection` — letting a
+    /// suite with no effective train cases slip past OPTIMIZE_NO_TRAIN_CASES.
+    #[test]
+    fn parse_suite_prefers_bare_tag_over_split_column_like_upstream() {
+        let csv = "id,prompt,should_trigger,tags,split\n\
+                    c1,hello,true,selection,train\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(
+            splits.selection_count, 1,
+            "bare `selection` tag must win over split=train, matching split_cases"
+        );
+        assert_eq!(
+            splits.train_count, 0,
+            "row must not be double-counted as train"
+        );
+    }
+
+    /// The whole-suite consequence of the above: every row resolves to `selection`, so
+    /// there are zero train cases and `optimize run` must reject the suite.
+    #[test]
+    fn parse_suite_reports_zero_train_when_tags_override_split_column() {
+        let csv = "id,prompt,should_trigger,tags,split\n\
+                    c1,hello,true,selection,train\n\
+                    c2,world,true,,selection\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(splits.train_count, 0);
+        assert_eq!(splits.selection_count, 2);
+    }
+
+    #[test]
+    fn effective_split_mirrors_upstream_precedence() {
+        assert_eq!(effective_split(&["train".to_string()]), "train");
+        assert_eq!(effective_split(&["selection".to_string()]), "selection");
+        assert_eq!(effective_split(&["test".to_string()]), "test");
+        assert_eq!(effective_split(&[]), "train");
+        assert_eq!(effective_split(&["bogus".to_string()]), "train");
+        // First recognized tag wins, regardless of what follows it.
+        assert_eq!(
+            effective_split(&["selection".to_string(), "train".to_string()]),
+            "selection"
+        );
+        assert_eq!(
+            effective_split(&["bogus".to_string(), "test".to_string()]),
+            "test"
+        );
     }
 
     #[test]

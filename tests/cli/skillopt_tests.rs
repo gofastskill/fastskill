@@ -403,6 +403,20 @@ fn write_inspect_fixture_step0(run_dir: &std::path::Path) {
         "# Greeting Helper\n\n1. Read the audience.\n2. Pick a tone.\n3. Produce one greeting line.\n",
     )
     .unwrap();
+
+    // history.json must agree with gate.json: step 0 was rejected, so no skill_v0001.md
+    // was written. `--show diffs` resolves versions from history, so an incoherent
+    // fixture would test a state the optimizer can never actually produce.
+    fs::write(
+        run_dir.join("history.json"),
+        r#"[{"global_step": 0, "accepted": false, "epoch": 0, "score_current": 0.0, "score_candidate": 0.0}]"#,
+    )
+    .unwrap();
+}
+
+/// Rewrite the fixture's history so `step` is recorded as accepted.
+fn mark_step_accepted(run_dir: &std::path::Path, records: &str) {
+    fs::write(run_dir.join("history.json"), records).unwrap();
 }
 
 #[test]
@@ -533,9 +547,12 @@ fn test_skillopt_inspect_show_diffs_missing_next_version_prints_message() {
         "must not fabricate a diff hunk when skill_v0001.md is missing, got: {}",
         result.stdout
     );
+    // history.json records step 0 as rejected, so the reason is known definitively —
+    // no need to infer it from an absent file. The message must say so and point at
+    // `--show gate`.
     assert!(
-        result.stdout.contains("skill_v0001.md"),
-        "expected an explanatory message naming the missing version file, got: {}",
+        result.stdout.contains("rejected") && result.stdout.contains("--show gate"),
+        "expected a definitive rejected-step explanation, got: {}",
         result.stdout
     );
 }
@@ -544,6 +561,11 @@ fn test_skillopt_inspect_show_diffs_missing_next_version_prints_message() {
 fn test_skillopt_inspect_show_diffs_renders_diff_when_both_versions_exist() {
     let dir = TempDir::new().unwrap();
     write_inspect_fixture_step0(dir.path());
+    // Step 0 accepted, so a v0001 exists.
+    mark_step_accepted(
+        dir.path(),
+        r#"[{"global_step": 0, "accepted": true, "epoch": 0, "score_current": 0.0, "score_candidate": 1.0}]"#,
+    );
     fs::write(
         dir.path().join("skills").join("skill_v0001.md"),
         "# Greeting Helper\n\n1. Read the audience.\n2. Pick a tone.\n3. Produce one greeting line.\n\n## Output\nReturn ONLY the greeting line.\n",
@@ -575,6 +597,72 @@ fn test_skillopt_inspect_show_diffs_renders_diff_when_both_versions_exist() {
     assert!(
         result.stdout.contains("+## Output"),
         "expected the added line from skill_v0001.md to appear in the diff, got: {}",
+        result.stdout
+    );
+}
+
+/// Regression: step index is NOT version index once an earlier step was rejected.
+///
+/// Step 0 rejected, step 1 accepted. Only one new version was ever written, so step 1's
+/// real diff is `v0000 -> v0001`. The naive `step -> v{step}/v{step+1}` mapping would
+/// resolve `v0001 -> v0002` and — if a v0002 happened to exist from a later accepted
+/// step — silently render a different step's diff under step 1's name.
+#[test]
+fn test_skillopt_inspect_diffs_after_rejected_step_uses_accepted_version_count() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+
+    let step1 = dir.path().join("steps").join("step_0001");
+    fs::create_dir_all(&step1).unwrap();
+    fs::write(
+        step1.join("gate.json"),
+        r#"{"accepted": true, "best_score": 1.0, "score": 1.0}"#,
+    )
+    .unwrap();
+
+    mark_step_accepted(
+        dir.path(),
+        r#"[{"global_step": 0, "accepted": false, "epoch": 0, "score_current": 0.0, "score_candidate": 0.0},
+            {"global_step": 1, "accepted": true, "epoch": 0, "score_current": 0.0, "score_candidate": 1.0}]"#,
+    );
+
+    fs::write(
+        dir.path().join("skills").join("skill_v0001.md"),
+        "# Greeting Helper\n\n1. Read the audience.\n2. Pick a tone.\n3. Produce one greeting line.\n\n## Output\nReturn ONLY the greeting line.\n",
+    )
+    .unwrap();
+    // A decoy: if the naive mapping were used it would diff v0001 -> v0002 and show this.
+    fs::write(
+        dir.path().join("skills").join("skill_v0002.md"),
+        "# Greeting Helper\n\nDECOY VERSION THAT MUST NOT APPEAR FOR STEP 1\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "1",
+            "--show",
+            "diffs",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show diffs failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("skill_v0000.md") && result.stdout.contains("skill_v0001.md"),
+        "step 1 must diff v0000 -> v0001 (one accepted step before it), got: {}",
+        result.stdout
+    );
+    assert!(
+        !result.stdout.contains("DECOY"),
+        "step 1 must not render the v0001 -> v0002 diff, got: {}",
         result.stdout
     );
 }

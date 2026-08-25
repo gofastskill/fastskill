@@ -89,19 +89,24 @@ skipped for timeout or error.
 ### Diffs and skill versions
 
 Versioned skill documents live at `<run>/skills/skill_v{NNNN}.md`, not in the step
-directory. `--show diffs` for step N diffs `skill_v{N}.md` against `skill_v{N+1}.md`.
+directory.
 
-**A new version is only written when a step is accepted.** So for a rejected step there is
-no "after" document to diff against, and `inspect` says so rather than inventing one:
+**A new version is written only when a step is accepted**, so version numbers count
+*accepted steps*, not steps. Once any step has been rejected they no longer line up with
+step indices: if step 0 is rejected and step 1 accepted, step 1's diff is
+`skill_v0000.md → skill_v0001.md`, not `v0001 → v0002`.
+
+`--show diffs` therefore resolves the bracketing versions from `history.json` — counting
+accepted steps before the one you asked for — rather than assuming step N maps to version
+N. For a rejected step it reports that directly:
 
 ```
-(no diff available: skill_v0001.md does not exist — step 0 likely was not accepted, so no
-new version was written; run `optimize inspect --step 0 --show gate` to check)
+(no diff: step 0 was rejected, so no new skill version was written — run
+`optimize inspect --step 0 --show gate` for the scores)
 ```
 
-This also means version numbers stop tracking step numbers one-for-one once any step in the
-run has been rejected. The mapping is exact for step 0, and for any run where every step up
-to N was accepted.
+If the step isn't recorded in `history.json` at all, `inspect` says that instead of
+guessing.
 
 ### Rollouts
 
@@ -187,7 +192,7 @@ Top-level run files:
 | `runtime_state.json` | Config snapshot, current/best score, epoch, global step, optimizer strategy |
 | `history.json` | Array of step records — one per attempted step, accepted or not |
 | `best_skill.md` | The best skill document seen across the run |
-| `skills/skill_{NNNN}.md` | Versioned skill documents; a new one is written per accepted step |
+| `skills/skill_v{NNNN}.md` | Versioned skill documents; a new one is written per accepted step |
 | `epoch_{NN}/` | Per-epoch artifacts (`meta_skill.json`, `slow_update.json`) |
 
 A `history.json` record looks like:
