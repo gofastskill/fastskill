@@ -313,6 +313,10 @@ fn resolve_download_url(args: &InitArgs) -> CliResult<Option<String>> {
     Ok(None)
 }
 
+/// Default project-level skills directory, used both when the interactive
+/// prompt gets an empty answer and when `--yes` skips the prompt entirely.
+const DEFAULT_PROJECT_SKILLS_DIRECTORY: &str = ".claude/skills";
+
 fn resolve_skills_directory(is_skill_level: bool, args: &InitArgs) -> CliResult<Option<String>> {
     if is_skill_level {
         return Ok(args.skills_dir.clone());
@@ -321,13 +325,16 @@ fn resolve_skills_directory(is_skill_level: bool, args: &InitArgs) -> CliResult<
         return Ok(Some(dir.clone()));
     }
     if !args.yes {
-        let dir = prompt_for_field("Skills directory", Some(".claude/skills"))?
-            .or(Some(".claude/skills".to_string()));
+        let dir = prompt_for_field("Skills directory", Some(DEFAULT_PROJECT_SKILLS_DIRECTORY))?
+            .or(Some(DEFAULT_PROJECT_SKILLS_DIRECTORY.to_string()));
         return Ok(dir);
     }
-    Err(CliError::Config(
-        "Project-level init requires --skills-dir <path>. Provide --skills-dir or remove --yes to be prompted.".to_string()
-    ))
+    // `--yes` means "use defaults", matching this command's own `--help`
+    // examples (`fastskill init --yes --description "My skill"`) and the
+    // README quick start -- neither passes `--skills-dir`. The interactive
+    // path above already defaults an empty answer to ".claude/skills"; `--yes`
+    // must take that same default rather than erroring.
+    Ok(Some(DEFAULT_PROJECT_SKILLS_DIRECTORY.to_string()))
 }
 
 struct InitMetadata<'a> {
@@ -752,5 +759,63 @@ mod tests {
 
             fs::remove_file("skill-project.toml").ok();
         }
+    }
+
+    /// Regression test for spec 013 minor #2: `fastskill init --yes` (no
+    /// `--skills-dir`) at project level must succeed using the same default
+    /// the interactive path uses (`.claude/skills`), not error -- this is the
+    /// exact invocation shown in the command's own `--help` examples
+    /// (`fastskill init --yes --description "My skill"`) and the README
+    /// quick start. Verified against the real binary: before this fix, this
+    /// reproduces `Error: Configuration error: Project-level init requires
+    /// --skills-dir <path>`, while plain interactive `init` (stdin from
+    /// `/dev/null`, so it takes the empty-input default) succeeds with
+    /// `.claude/skills`.
+    #[tokio::test]
+    async fn test_execute_init_yes_without_skills_dir_defaults_like_interactive() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+        struct DirGuard(Option<std::path::PathBuf>);
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(dir) = &self.0 {
+                    let _ = std::env::set_current_dir(dir);
+                }
+            }
+        }
+        let _guard = DirGuard(original_dir);
+        // A subdirectory with a valid identifier name: `resolve_skill_id`
+        // derives the skill id from the current directory's name, and
+        // `TempDir`'s own directories start with a `.`, which is not a valid
+        // identifier -- unrelated to what this test checks, so avoid it.
+        let project_dir = temp_dir.path().join("my-project");
+        fs::create_dir_all(&project_dir).unwrap();
+        std::env::set_current_dir(&project_dir).unwrap();
+
+        // No SKILL.md in this directory, so this is project-level context.
+        let args = InitArgs {
+            yes: true,
+            force: false,
+            version: None,
+            description: Some("My skill".to_string()),
+            author: None,
+            download_url: None,
+            skills_dir: None,
+        };
+
+        let result = execute_init(args).await;
+        assert!(
+            result.is_ok(),
+            "init --yes at project level must not require --skills-dir: {:?}",
+            result
+        );
+        let content = fs::read_to_string("skill-project.toml").unwrap();
+        assert!(
+            content.contains("skills_directory = \".claude/skills\""),
+            "must default to the same directory the interactive path uses: {content}"
+        );
     }
 }

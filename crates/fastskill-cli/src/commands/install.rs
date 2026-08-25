@@ -423,6 +423,10 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         }
     }
 
+    // Capture the count before the loop below drains `installed_skills`: it's
+    // the only honest signal of whether skills.lock was actually touched.
+    let installed_count = installed_skills.len();
+
     // Update lock file with all installed skills including depth and parent info
     for (skill_def, groups, depth, parent_skill) in installed_skills {
         manifest_utils::update_lock_file_with_depth(
@@ -436,8 +440,17 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     }
 
     crate::outln!();
-    crate::outln!("{}", messages::ok("Installation complete"));
-    crate::outln!("   Updated skills.lock");
+    if installed_count > 0 {
+        crate::outln!("{}", messages::ok("Installation complete"));
+        crate::outln!("   Updated skills.lock");
+    } else {
+        // Every skill failed to install (see the errors above): skills.lock
+        // was never opened, let alone written. Saying otherwise here is
+        // exactly the "claims a write that did not occur" bug (spec 013
+        // minor #1) -- don't repeat it for the empty-success case.
+        crate::outln!("{}", messages::error("No skills were installed"));
+        crate::outln!("   skills.lock was not modified");
+    }
 
     // Return error if any skills failed to install
     if !failed_skills.is_empty() {
@@ -634,5 +647,63 @@ test-skill = { origin = { type = "local", path = "source-skill" } }
         let result = execute_install(args).await;
         // May succeed or fail depending on lock file, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
+    }
+
+    /// Regression test for spec 013 minor #1: when every dependency fails to
+    /// install (here, an editable local dependency whose source directory was
+    /// never created), `execute_install` must not claim `skills.lock` was
+    /// updated -- it never touched the file. Verified against the real binary:
+    /// this exact manifest reproduces `[OK] Installation complete` /
+    /// `Updated skills.lock` printed immediately before the command exits
+    /// with an error and no `skills.lock` anywhere on disk.
+    #[tokio::test]
+    async fn test_execute_install_all_failed_does_not_claim_lock_updated() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().ok();
+
+        let _guard = DirGuard(original_dir);
+
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Deliberately never created: "./skills/demo-skill" does not exist,
+        // matching the reported repro's manifest.
+        let manifest_content = r#"[dependencies]
+demo-skill = { source = "local", path = "./skills/demo-skill", editable = true }
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+"#;
+        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
+
+        let args = InstallArgs {
+            without: None,
+            only: None,
+            lock: false,
+            depth: None,
+            reindex: false,
+            no_reindex: false,
+        };
+
+        // nextest runs each test in its own process, so this is safe to set
+        // once here without affecting other tests in the suite.
+        crate::output::init(crate::output::Mode::Capture);
+        let (result, output) = crate::output::capture(execute_install(args)).await;
+
+        assert!(
+            result.is_err(),
+            "install should fail: the dependency's local path never exists"
+        );
+        assert!(
+            !temp_dir.path().join("skills.lock").exists(),
+            "skills.lock must not exist: nothing was successfully installed"
+        );
+        assert!(
+            !output.contains("Updated skills.lock"),
+            "output must not claim the lock was updated when it was not written: {output:?}"
+        );
     }
 }
