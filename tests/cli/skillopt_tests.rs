@@ -137,6 +137,60 @@ timeout_seconds = 30
     );
 }
 
+/// Spec 013 finding #3: a suite written with only `selection` + `test` rows (the
+/// undocumented-but-accepted shape a user reaches by reading the aikit source
+/// directly) passes the pre-existing `selection_count > 0` check but has zero
+/// `train` cases for the training loop to step over. `optimize run` must fail loudly
+/// with a distinct error code instead of silently no-opping.
+#[test]
+fn test_skillopt_run_no_train_cases() {
+    let dir = TempDir::new().unwrap();
+    let base = dir.path();
+
+    fs::write(base.join("SKILL.md"), "# Test Skill").unwrap();
+
+    // Only selection + test rows — no train cases anywhere.
+    let suite_csv = "id,prompt,should_trigger,split\n\
+                      sel-1,hello,true,selection\n\
+                      test-1,world,true,test\n";
+    fs::write(base.join("suite.csv"), suite_csv).unwrap();
+
+    let toml = r#"
+skill = "SKILL.md"
+skill_name = "test-skill"
+suite = "suite.csv"
+out_dir = ".skillopt/runs"
+target_agent = "claude"
+optimizer_agent = "claude"
+n_epochs = 1
+batch_size = 1
+accumulation = 1
+aggregate_group_size = 2
+lr_0 = 2
+pass_threshold = 0.5
+gate_metric = "hard"
+gate_trials = 1
+gate_epsilon = 0.0
+slow_update_mode = "gated"
+protected_soft_cap_chars = 500
+timeout_seconds = 30
+"#;
+    let config_path = base.join("skillopt.toml");
+    fs::write(&config_path, toml).unwrap();
+
+    let result = run_fastskill_command(
+        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        None,
+    );
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("OPTIMIZE_NO_TRAIN_CASES"),
+        "Expected OPTIMIZE_NO_TRAIN_CASES in: {}",
+        combined
+    );
+}
+
 #[test]
 fn test_skillopt_run_mixed_weight_missing() {
     let dir = TempDir::new().unwrap();
@@ -219,6 +273,53 @@ timeout_seconds = 30
 }
 
 // ── Resume and export ─────────────────────────────────────────────────────────
+
+/// `optimize resume` loads the suite from the stored config the same way `run`
+/// does — the same OPTIMIZE_NO_TRAIN_CASES gate from spec 013 finding #3 must apply
+/// there too, not just on the initial `run`.
+#[test]
+fn test_skillopt_resume_no_train_cases() {
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path();
+
+    fs::write(run_dir.join("SKILL.md"), "# Test Skill").unwrap();
+
+    let suite_csv = "id,prompt,should_trigger,split\n\
+                      sel-1,hello,true,selection\n\
+                      test-1,world,true,test\n";
+    fs::write(run_dir.join("suite.csv"), suite_csv).unwrap();
+
+    let toml = r#"
+skill = "SKILL.md"
+skill_name = "test-skill"
+suite = "suite.csv"
+out_dir = ".skillopt/runs"
+target_agent = "claude"
+optimizer_agent = "claude"
+n_epochs = 1
+batch_size = 1
+accumulation = 1
+aggregate_group_size = 2
+lr_0 = 2
+pass_threshold = 0.5
+gate_metric = "hard"
+gate_trials = 1
+gate_epsilon = 0.0
+slow_update_mode = "gated"
+protected_soft_cap_chars = 500
+timeout_seconds = 30
+"#;
+    fs::write(run_dir.join("optimize.toml"), toml).unwrap();
+
+    let result = run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("OPTIMIZE_NO_TRAIN_CASES"),
+        "Expected OPTIMIZE_NO_TRAIN_CASES in: {}",
+        combined
+    );
+}
 
 #[test]
 fn test_skillopt_resume_missing_run_dir() {
