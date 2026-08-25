@@ -54,7 +54,7 @@ impl IntoCommandSpec for InspectArgs {
                     long: Some("step"),
                     value_type: ArgValueType::Int,
                     cardinality: Cardinality::Required,
-                    help: "Step number to inspect",
+                    help: "Step number to inspect (0-based, matching `optimize status`)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -101,6 +101,16 @@ impl FromArgValueMap for InspectArgs {
     }
 }
 
+/// `--step N` is 0-based, matching both `aikit-skillopt`'s `global_step` counter
+/// (the writer: `ensure_step_dir(run_dir, global_step)` writes `steps/step_{global_step:04}`)
+/// and what `optimize status` prints in its `step` column (`status.rs` renders
+/// `StepRecordView.global_step` verbatim, starting at 0 for the first step). Using
+/// the same number the user just read off `status` means there is no off-by-one
+/// translation for them to get wrong.
+fn step_dir_for(run_dir: &std::path::Path, step: u32) -> PathBuf {
+    run_dir.join("steps").join(format!("step_{step:04}"))
+}
+
 pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
     if !args.run_dir.exists() {
         return Err(CliError::Config(format!(
@@ -109,7 +119,7 @@ pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
         )));
     }
 
-    let step_dir = args.run_dir.join(format!("step-{}", args.step));
+    let step_dir = step_dir_for(&args.run_dir, args.step);
     if !step_dir.exists() {
         return Err(CliError::Config(format!(
             "OPTIMIZE_STEP_NOT_FOUND: no artifacts for step {} in: {}",
@@ -120,65 +130,141 @@ pub async fn execute_inspect(args: InspectArgs) -> CliResult<()> {
 
     match args.show {
         ShowMode::Patches => show_patches(&step_dir)?,
-        ShowMode::Diffs => show_diffs(&step_dir)?,
+        ShowMode::Diffs => show_diffs(&args.run_dir, args.step)?,
         ShowMode::Gate => show_gate(&step_dir)?,
         ShowMode::Skips => show_skips(&step_dir)?,
         ShowMode::All => {
             crate::outln!("=== patches ===");
             show_patches(&step_dir)?;
             crate::outln!("\n=== diffs ===");
-            show_diffs(&step_dir)?;
+            show_diffs(&args.run_dir, args.step)?;
             crate::outln!("\n=== gate ===");
             show_gate(&step_dir)?;
             crate::outln!("\n=== skips ===");
             show_skips(&step_dir)?;
+            crate::outln!("\n=== rollouts ===");
+            show_rollouts(&step_dir)?;
         }
     }
 
     Ok(())
 }
 
-fn pretty_print_json(path: &std::path::Path, label: &str) -> CliResult<()> {
+fn read_json(path: &std::path::Path) -> CliResult<Option<serde_json::Value>> {
     if !path.exists() {
-        crate::outln!("(no {} artifact)", label);
-        return Ok(());
+        return Ok(None);
     }
     let bytes = std::fs::read(path).map_err(CliError::Io)?;
-    let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
-    crate::outln!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+    Ok(Some(
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    ))
+}
+
+fn pretty_print_json(path: &std::path::Path, label: &str) -> CliResult<()> {
+    match read_json(path)? {
+        None => crate::outln!("(no {} artifact)", label),
+        Some(val) => crate::outln!("{}", serde_json::to_string_pretty(&val).unwrap_or_default()),
+    }
     Ok(())
 }
 
+/// `aikit-skillopt` (pinned `a34e1e47`, `aikit-textgrad/src/training/step.rs`) writes
+/// the patch pool it selected for this step to `patch.json` under the step directory.
 fn show_patches(step_dir: &std::path::Path) -> CliResult<()> {
     pretty_print_json(&step_dir.join("patch.json"), "patch.json")
 }
 
+/// The writer's step directory holds `gate.json` (accept/reject decision and
+/// scores), not the `gate_scores.json` this reader used to look for.
 fn show_gate(step_dir: &std::path::Path) -> CliResult<()> {
-    pretty_print_json(&step_dir.join("gate_scores.json"), "gate_scores.json")
+    pretty_print_json(&step_dir.join("gate.json"), "gate.json")
 }
 
+/// There is no `skips.json` artifact anywhere in the writer. The closest thing —
+/// which fields of the proposed patch pool got dropped for exceeding the step's
+/// edit budget — lives in `update.json`'s `skipped_count`/`chosen`/`budget` fields.
+/// Render that data plainly, but say where it came from so the output cannot be
+/// mistaken for a dedicated skips report that doesn't exist.
 fn show_skips(step_dir: &std::path::Path) -> CliResult<()> {
-    pretty_print_json(&step_dir.join("skips.json"), "skips.json")
+    let path = step_dir.join("update.json");
+    match read_json(&path)? {
+        None => crate::outln!("(no update.json artifact — skip information unavailable)"),
+        Some(val) => {
+            crate::outln!(
+                "Skip info (there is no dedicated skips.json artifact; derived from update.json):"
+            );
+            let budget = val
+                .get("budget")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let chosen = val
+                .get("chosen")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            let skipped_count = val
+                .get("skipped_count")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            crate::outln!("  budget:        {}", budget);
+            crate::outln!("  chosen:        {}", chosen);
+            crate::outln!("  skipped_count: {}", skipped_count);
+        }
+    }
+    Ok(())
 }
 
-fn show_diffs(step_dir: &std::path::Path) -> CliResult<()> {
-    let before_path = step_dir.join("skill_before.md");
-    let after_path = step_dir.join("skill_after.md");
+/// `rollouts.json` (per-case scores for this step's trajectories) is real writer
+/// output that no `--show` mode previously surfaced at all.
+fn show_rollouts(step_dir: &std::path::Path) -> CliResult<()> {
+    pretty_print_json(&step_dir.join("rollouts.json"), "rollouts.json")
+}
 
-    let before = if before_path.exists() {
-        std::fs::read_to_string(&before_path).map_err(CliError::Io)?
-    } else {
-        String::new()
-    };
+/// Versioned skill documents live at `<run>/skills/skill_v{NNNN}.md`
+/// (`aikit-textgrad`'s `save_accepted_artifact`), not `skill_before.md`/
+/// `skill_after.md` in the step directory — those never existed.
+///
+/// Mapping decision: version numbers only advance when a step is *accepted*
+/// (`save_accepted_artifact` is only called in that branch), so they are not
+/// guaranteed to equal the step index once any earlier step in the run was
+/// rejected. Reconstructing the true accepted-version-count for an arbitrary
+/// step would require scanning every prior step's `gate.json`. We instead take
+/// the direct, obvious mapping — step N's before/after documents are
+/// `skill_v{N:04}.md` and `skill_v{N+1:04}.md` — which is exact for step 0 (the
+/// initial artifact is always written as `skill_v0000.md` before any step runs)
+/// and for any run where every step up to N was accepted. When a version file is
+/// missing (e.g. the step was rejected, so no new version was ever written), we
+/// print an explanatory message naming the missing file instead of erroring or
+/// fabricating a diff against stale or absent content.
+fn show_diffs(run_dir: &std::path::Path, step: u32) -> CliResult<()> {
+    let skills_dir = run_dir.join("skills");
+    let before_name = format!("skill_v{step:04}.md");
+    let after_name = format!("skill_v{:04}.md", step + 1);
+    let before_path = skills_dir.join(&before_name);
+    let after_path = skills_dir.join(&after_name);
 
-    let after = if after_path.exists() {
-        std::fs::read_to_string(&after_path).map_err(CliError::Io)?
-    } else {
-        String::new()
-    };
+    if !before_path.exists() {
+        crate::outln!(
+            "(no diff available: {} not found under {})",
+            before_name,
+            skills_dir.display()
+        );
+        return Ok(());
+    }
+    if !after_path.exists() {
+        crate::outln!(
+            "(no diff available: {} does not exist — step {} likely was not accepted, so no new version was written; run `optimize inspect --step {} --show gate` to check)",
+            after_name,
+            step,
+            step
+        );
+        return Ok(());
+    }
 
-    crate::outln!("--- skill_before.md");
-    crate::outln!("+++ skill_after.md");
+    let before = std::fs::read_to_string(&before_path).map_err(CliError::Io)?;
+    let after = std::fs::read_to_string(&after_path).map_err(CliError::Io)?;
+
+    crate::outln!("--- {}", before_name);
+    crate::outln!("+++ {}", after_name);
     render_unified_diff(&before, &after);
 
     Ok(())
