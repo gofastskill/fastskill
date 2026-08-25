@@ -85,6 +85,13 @@ This quickstart reduces contributor drop-off by getting you productive in under 
 - Add tests with behavior changes and keep docs aligned with new usage.
 - Prefer small, reviewable pull requests with clear problem statements.
 
+## Source File Size
+
+Keep non-test Rust source files under 1000 lines. Move large inline test modules
+to sibling or child test modules, such as `foo/tests.rs`, before splitting
+production code. Keep comments that explain security, compatibility, public API,
+or platform invariants. Move long design history to `specs/` or this file.
+
 ## Setup
 
 [Rust](https://rustup.rs/) nightly is required to build fastskill. The exact version and components are pinned in `rust-toolchain.toml` to ensure consistent builds across contributors, CI, and releases.

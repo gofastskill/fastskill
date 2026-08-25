@@ -3,7 +3,7 @@
 //! These tests execute the CLI binary end-to-end and validate the repos
 //! workflow matrix required by spec 026a.
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::snapshot_helpers::{run_fastskill_command, run_fastskill_command_with_env};
 use std::fs;

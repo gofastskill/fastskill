@@ -29,6 +29,8 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+static DOWNLOAD_COUNTER_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const SKILL_ID: &str = "widget";
 const REPO_NAME: &str = "myreg";
 
@@ -137,6 +139,7 @@ async fn make_service(
 /// shared content cache (US-003 acceptance criterion).
 #[tokio::test]
 async fn two_installs_of_the_same_pinned_version_download_exactly_once() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     mount_version(&server, "1.0.0").await;
 
@@ -206,6 +209,7 @@ async fn two_installs_of_the_same_pinned_version_download_exactly_once() {
 /// network at all -- the registry is unreachable and is never contacted.
 #[tokio::test]
 async fn offline_install_of_a_pinned_cached_version_needs_no_network() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
     // Nothing listens here; any HTTP request fails fast.
     let unreachable_index_url = "http://127.0.0.1:1/index".to_string();
 
@@ -254,6 +258,7 @@ async fn offline_install_of_a_pinned_cached_version_needs_no_network() {
 /// call or failing with an opaque error.
 #[tokio::test]
 async fn newest_without_a_fresh_index_fails_naming_repos_refresh() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
     // No mocks mounted at all: a live listing call would fail loudly (connection
     // refused / no matching route), so a passing assertion here cannot be
     // accidentally satisfied by an unintended network fallback.
@@ -288,6 +293,7 @@ async fn newest_without_a_fresh_index_fails_naming_repos_refresh() {
 /// cached-content path for that resolved version.
 #[tokio::test]
 async fn newest_resolves_via_cached_index_then_downloads_the_resolved_version() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     mount_version(&server, "2.0.0").await;
 
@@ -339,6 +345,7 @@ async fn newest_resolves_via_cached_index_then_downloads_the_resolved_version() 
 /// own version resolution never calls the network directly.
 #[tokio::test]
 async fn update_flow_preflight_implicitly_refreshes_the_index_for_newest() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     mount_version(&server, "1.0.0").await;
 
