@@ -76,22 +76,15 @@ pub enum RepositoryConfig {
 }
 
 /// Unified authentication configuration
+///
+/// `Pat` is the only variant: it is the only auth method the on-disk manifest
+/// format (`manifest::AuthType`) can represent, so it is the only one that
+/// ever survives a save/load round-trip. See `convert_to_manifest_repo` below.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RepositoryAuth {
     #[serde(rename = "pat")]
     Pat { env_var: String },
-    #[serde(rename = "ssh-key")]
-    SshKey { path: PathBuf },
-    #[serde(rename = "ssh")]
-    Ssh { key_path: PathBuf },
-    #[serde(rename = "basic")]
-    Basic {
-        username: String,
-        password_env: String,
-    },
-    #[serde(rename = "api_key")]
-    ApiKey { env_var: String },
 }
 
 /// Storage backend configuration
@@ -317,14 +310,14 @@ impl RepositoryManager {
             },
         };
 
-        // Convert auth - manifest format only supports PAT currently
-        let auth = repo.auth.as_ref().and_then(|a| match a {
-            RepositoryAuth::Pat { env_var } => Some(AuthConfig {
+        // RepositoryAuth has exactly one variant (`Pat`), so this conversion
+        // is total.
+        let auth = repo.auth.as_ref().map(|a| {
+            let RepositoryAuth::Pat { env_var } = a;
+            AuthConfig {
                 r#type: AuthType::Pat,
                 env_var: Some(env_var.clone()),
-            }),
-            // Other auth types not supported in manifest format yet
-            _ => None,
+            }
         });
 
         crate::core::manifest::RepositoryDefinition {

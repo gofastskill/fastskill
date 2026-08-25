@@ -214,7 +214,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-type"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Authentication type: pat, ssh-key, ssh, basic, or api_key",
+                    help: "Authentication type: pat (the only supported type)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -223,7 +223,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-env"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Environment variable for PAT, basic password, or API key",
+                    help: "Environment variable holding the PAT",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -232,7 +232,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-key-path"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "SSH key path (for ssh-key or ssh auth)",
+                    help: "No longer supported; use an SSH remote with an SSH agent instead",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -241,7 +241,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-username"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Username (for basic auth)",
+                    help: "No longer supported; use --auth-type pat --auth-env <VAR>",
                     ..Default::default()
                 },
             ],

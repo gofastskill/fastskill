@@ -67,23 +67,11 @@ async fn get_sources_manager_from_repos(
         let source_config = match &repo.repo_type {
             RepositoryType::GitMarketplace => {
                 if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
-                    let auth = repo.auth.as_ref().and_then(|a| match a {
-                        crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
+                    let auth = repo.auth.as_ref().map(|a| {
+                        let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
+                        SourceAuth::Pat {
+                            env_var: env_var.clone(),
                         }
-                        crate::core::repository::RepositoryAuth::SshKey { path } => {
-                            Some(SourceAuth::SshKey { path: path.clone() })
-                        }
-                        crate::core::repository::RepositoryAuth::Basic {
-                            username,
-                            password_env,
-                        } => Some(SourceAuth::Basic {
-                            username: username.clone(),
-                            password_env: password_env.clone(),
-                        }),
-                        _ => None,
                     });
 
                     Some(SourceConfig::Git {
@@ -98,20 +86,11 @@ async fn get_sources_manager_from_repos(
             }
             RepositoryType::ZipUrl => {
                 if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                    let auth = repo.auth.as_ref().and_then(|a| match a {
-                        crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
+                    let auth = repo.auth.as_ref().map(|a| {
+                        let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
+                        SourceAuth::Pat {
+                            env_var: env_var.clone(),
                         }
-                        crate::core::repository::RepositoryAuth::Basic {
-                            username,
-                            password_env,
-                        } => Some(SourceAuth::Basic {
-                            username: username.clone(),
-                            password_env: password_env.clone(),
-                        }),
-                        _ => None,
                     });
 
                     Some(SourceConfig::ZipUrl {
