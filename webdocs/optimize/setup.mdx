@@ -8,7 +8,7 @@ description: "Prepare the suite CSV and checks TOML that drive skill optimizatio
 Before you run `fastskill optimize`, you need two data files:
 
 1. **Suite CSV** — the eval cases the optimizer learns from.
-2. **Checks TOML** — the grading rules that score each response. _(Optional but strongly recommended.)_
+2. **Checks TOML** — the grading rules that score each response. _(Optional, but without it there is no real grading signal — see below.)_
 
 ## 1. Create the suite CSV
 
@@ -18,69 +18,107 @@ The suite is a CSV file with one row per eval case. Required columns:
 |---|---|---|
 | `id` | Yes | Unique stable identifier for the case. Used in progress reporting and step artifacts. |
 | `prompt` | Yes | The user message sent to the target agent. |
-| `should_trigger` | Yes | `true` if the skill should activate on this prompt, `false` if not. |
-| `split` | No | `train` or `test`. Defaults to `train` if absent. |
-| `tags` | No | Comma-separated tags. You can encode split as `split:train` here instead. |
+| `should_trigger` | Yes | `true` if the skill should activate on this prompt, `false` if not. This column is required by the CSV loader, but **no scorer reads it** — see [`should_trigger` is not the grading signal](#should_trigger-is-not-the-grading-signal) below. |
+| `split` | No | `train`, `selection`, or `test`. Defaults to `train` if absent or empty. Any value that isn't exactly `selection` or `test` is also treated as `train`. |
+| `tags` | No | Space-separated tags. You can encode the split here instead of a `split` column, as a `split:<value>` tag. |
 
-**Example `suite.csv`:**
+### The three splits
+
+The optimizer uses **three** splits, not two:
+
+| Split | Used for |
+|---|---|
+| `train` | The cases the training loop actually steps over each epoch to produce patch proposals. |
+| `selection` | The accept/reject gate — before and after each candidate patch, the gate re-scores this set to decide whether to accept it. |
+| `test` | Held out entirely. Never used to pick or gate patches; only useful for your own out-of-loop evaluation of the final skill. |
+
+A row's split comes from the `split` column if present, or a `split:<value>` tag if not, and defaults to `train` if neither is given. **Any unrecognized split value also falls back to `train`** — so a typo like `split = "trian"` silently becomes a training case rather than erroring.
+
+**Rule: a suite needs at least one `train` row AND at least one `selection` row.**
+
+- Zero `selection` rows → `fastskill optimize run` exits with:
+  ```
+  OPTIMIZE_NO_SELECTION_CASES: suite has zero cases tagged 'selection'
+  ```
+- Zero `train` rows → it exits with:
+  ```
+  OPTIMIZE_NO_TRAIN_CASES: suite has zero cases tagged 'train'. The training
+  loop only steps over 'train' cases (an absent or empty split column also
+  counts as 'train') — add rows with split = "train", or leave the split
+  column empty, so there is something for the optimizer to train on.
+  ```
+
+These are two independent checks — a suite that has plenty of `train` rows but no `selection` row is just as broken as one with no `train` rows, because the gate has nothing to score.
+
+**Example `suite.csv`** (has both `train` and `selection` rows, plus a held-out `test` row):
 
 ```csv
 id,prompt,should_trigger,split
 case-001,Deploy the app to production,true,train
 case-002,Show me the logs for the last hour,true,train
 case-003,What is the capital of France?,false,train
-case-004,Restart the web service,true,test
+case-004,Restart the web service,true,selection
 case-005,Write me a poem,false,test
 ```
-
-### Train vs test split
-
-The optimizer trains only on `train` rows. The `test` split is held out and used for gating final epoch updates. This prevents the optimizer from over-fitting to the exact prompts it learned from.
-
-**Rule:** You must have at least one `train` case (the `selection` set). If the suite has zero training cases, `fastskill optimize run` will exit with error `SKILLOPT_NO_SELECTION_CASES`.
 
 ### Tips for writing cases
 
 - Keep prompts realistic — use the same phrasing a real user would.
-- Include both positive cases (`should_trigger: true`) and negative cases (`should_trigger: false`). A mix prevents the optimizer from making the skill trigger on everything.
-- Aim for 20–50 training cases for a focused skill, more for broader skills.
-- Assign 10–20% of cases to `test` for a meaningful hold-out gate.
+- Include both positive cases (`should_trigger: true`) and negative cases (`should_trigger: false`) in your `train` and `selection` sets. A mix helps you notice via checks if the skill starts triggering on everything.
+- Aim for 20–50 `train` cases for a focused skill, more for broader skills.
+- Keep the `selection` set small but representative — it gets re-run on every candidate patch, so it directly drives token spend per step.
+- Optionally hold out a `test` slice entirely — it's never used by the loop, so it's only useful if you score it yourself afterward.
 
 ---
 
 ## 2. Create the checks TOML (grading)
 
-Checks define what a "pass" looks like for each eval response. Without checks, the optimizer uses only `should_trigger` match as the signal, which is a weak grading signal.
+Checks are the **only** grading signal the optimizer uses. Pass/fail for each case comes entirely from `checks.toml` — see [`should_trigger` is not the grading signal](#should_trigger-is-not-the-grading-signal) below for why that CSV column doesn't do what it looks like it does.
+
+The checks file is loaded by `aikit_evals::checks::ChecksToml`: an array of `[[check]]` tables, each identified by a `name` field. There are exactly four check types:
+
+| `name` | Fields | Description |
+|---|---|---|
+| `trigger_expectation` | `pattern` (string), `expected` (bool), `required` (bool, default `true`) | Passes if `pattern` appearing in the captured output matches `expected` (found == expected). |
+| `command_contains` | `pattern` (string), `required` (bool, default `true`) | Passes if `pattern` appears anywhere in the captured stdout/trace. |
+| `file_exists` | `path` (string), `required` (bool, default `true`) | Passes if `path` exists under the run's working directory after execution. |
+| `max_command_count` | `limit` (int), `required` (bool, default `true`) | Passes if the number of tool invocations the agent made does not exceed `limit`. (Internally this is the `max_tool_calls` check; `max_command_count` is accepted as an alias.) |
+
+There is **no** `type`, `id`, or `weight` field, and there is no LLM-judge/rubric check type — scoring is purely deterministic pattern/file/count matching against the captured transcript.
 
 **Example `checks.toml`:**
 
 ```toml
 [[check]]
-id = "trigger-match"
-type = "skill_triggered"
-weight = 1.0
+name = "trigger_expectation"
+pattern = "Launching skill: my-skill"
+expected = true
 
 [[check]]
-id = "no-hallucination"
-type = "llm_rubric"
-prompt = "Does the response avoid making up facts? Answer yes or no."
-weight = 0.5
+name = "command_contains"
+pattern = "deploy.sh"
+required = true
 
 [[check]]
-id = "concise"
-type = "llm_rubric"
-prompt = "Is the response concise and under 200 words? Answer yes or no."
-weight = 0.3
+name = "max_command_count"
+limit = 10
 ```
 
-Check types:
+### How checks become a score
 
-| Type | Description |
-|---|---|
-| `skill_triggered` | Passes if the skill triggered on a `should_trigger: true` case (or correctly didn't trigger on a `false` case). This is the primary signal. |
-| `llm_rubric` | Asks a judge model the `prompt` question and parses a yes/no answer. Use for quality dimensions beyond trigger accuracy. |
+Every check in the file runs against every case's captured output. The gate then reduces each case's list of pass/fail results to a single number using `gate_metric` (configured in `optimize.toml` — see the [configuration reference](/optimize/configuration#gate)):
 
-Checks are scored and the weighted sum determines the per-case pass rate used by the gate.
+- `hard` — 1.0 if every check passed for that case, else 0.0.
+- `soft` — the fraction of checks that passed for that case.
+- `mixed` — a weighted blend of the hard and soft scores.
+
+There is no per-check weighting — every check counts equally within a case.
+
+### `should_trigger` is not the grading signal
+
+`should_trigger` is a **required CSV column**, but it is not read by any scorer. Pass/fail is determined entirely by `checks.toml`. If you want the optimizer to actually check that a case did or didn't trigger the skill, encode that as a `trigger_expectation` check with `expected` set to match — the CSV column alone does nothing.
+
+**If you omit `checks` from `optimize.toml` entirely, there is no grading signal at all**: with zero checks configured, every case's result list is empty, and an empty list scores `1.0` under every `gate_metric` (vacuously — "zero required checks passed" is trivially true). In that configuration every candidate patch looks perfect, so the gate has nothing meaningful to accept or reject on. Always configure `checks` for a real run.
 
 ---
 
