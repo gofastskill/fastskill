@@ -363,6 +363,251 @@ fn test_skillopt_export_missing_best_skill() {
     );
 }
 
+// ── inspect: real writer layout (steps/step_NNNN, gate/patch/rollouts/update.json) ──
+
+/// Builds a run-dir fixture mirroring the real `aikit-skillopt` writer layout for
+/// a single step 0, as preserved at
+/// `.worktrees/_evidence/real-optimize-run/` (a real completed run captured
+/// 2026-08-25). Content is copied verbatim from that run.
+fn write_inspect_fixture_step0(run_dir: &std::path::Path) {
+    let step_dir = run_dir.join("steps").join("step_0000");
+    fs::create_dir_all(&step_dir).unwrap();
+    fs::create_dir_all(run_dir.join("skills")).unwrap();
+
+    fs::write(
+        step_dir.join("gate.json"),
+        r#"{"accepted": false, "best_score": 0.0, "score": 0.0}"#,
+    )
+    .unwrap();
+
+    fs::write(
+        step_dir.join("patch.json"),
+        r#"[{"op": "replace", "target": "3. Produce one greeting line.", "content": "3. Produce one greeting line.\n\n## Output\nReturn ONLY the greeting line.", "impact": 0.9}]"#,
+    )
+    .unwrap();
+
+    fs::write(
+        step_dir.join("rollouts.json"),
+        r#"[{"case_id": "tr-001", "score": 0.0}, {"case_id": "tr-002", "score": 0.0}]"#,
+    )
+    .unwrap();
+
+    fs::write(
+        step_dir.join("update.json"),
+        r#"{"budget": 1, "chosen": [0], "skipped_count": 0}"#,
+    )
+    .unwrap();
+
+    fs::write(
+        run_dir.join("skills").join("skill_v0000.md"),
+        "# Greeting Helper\n\n1. Read the audience.\n2. Pick a tone.\n3. Produce one greeting line.\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_skillopt_inspect_show_patches_reads_real_layout() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "patches",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show patches failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("\"impact\"") && result.stdout.contains("0.9"),
+        "expected patch.json content in output, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_skillopt_inspect_show_gate_reads_real_layout() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "gate",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show gate failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("\"accepted\": false") && result.stdout.contains("\"score\": 0.0"),
+        "expected gate.json content in output, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_skillopt_inspect_show_skips_reads_update_json() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "skips",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show skips failed: {}{}",
+        result.stdout, result.stderr
+    );
+    // Must be honest about the source: no dedicated skips.json artifact exists,
+    // this is derived from update.json's skipped_count/chosen/budget.
+    assert!(
+        result.stdout.contains("update.json"),
+        "expected output to disclose it is derived from update.json, got: {}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("skipped_count") && result.stdout.contains('0'),
+        "expected skipped_count value from update.json, got: {}",
+        result.stdout
+    );
+    assert!(
+        !result.stdout.contains("(no skips.json artifact)"),
+        "must not silently claim a nonexistent skips.json was checked, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_skillopt_inspect_show_diffs_missing_next_version_prints_message() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+    // No skills/skill_v0001.md — step 0 was rejected in this fixture, exactly
+    // like the real preserved run. Must not error and must not fabricate a diff.
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "diffs",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show diffs must not error when the next version is absent: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        !result.stdout.contains("@@"),
+        "must not fabricate a diff hunk when skill_v0001.md is missing, got: {}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("skill_v0001.md"),
+        "expected an explanatory message naming the missing version file, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_skillopt_inspect_show_diffs_renders_diff_when_both_versions_exist() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+    fs::write(
+        dir.path().join("skills").join("skill_v0001.md"),
+        "# Greeting Helper\n\n1. Read the audience.\n2. Pick a tone.\n3. Produce one greeting line.\n\n## Output\nReturn ONLY the greeting line.\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "diffs",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show diffs failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("skill_v0000.md") && result.stdout.contains("skill_v0001.md"),
+        "expected diff header naming the real version files, got: {}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("+## Output"),
+        "expected the added line from skill_v0001.md to appear in the diff, got: {}",
+        result.stdout
+    );
+}
+
+#[test]
+fn test_skillopt_inspect_show_all_includes_rollouts() {
+    let dir = TempDir::new().unwrap();
+    write_inspect_fixture_step0(dir.path());
+
+    let result = run_fastskill_command(
+        &[
+            "optimize",
+            "inspect",
+            dir.path().to_str().unwrap(),
+            "--step",
+            "0",
+            "--show",
+            "all",
+        ],
+        None,
+    );
+    assert!(
+        result.success,
+        "inspect --show all failed: {}{}",
+        result.stdout, result.stderr
+    );
+    assert!(
+        result.stdout.contains("tr-001") && result.stdout.contains("tr-002"),
+        "expected per-case rollout scores in --show all output, got: {}",
+        result.stdout
+    );
+}
+
 #[test]
 fn test_skillopt_export_byte_identical() {
     use sha2::{Digest, Sha256};

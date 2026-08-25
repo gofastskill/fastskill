@@ -11,7 +11,7 @@ Arguments:
 
 Options:
       --skills-dir <skills-dir>  Override the skills directory path
-      --step <step>              Step number to inspect
+      --step <step>              Step number to inspect (0-based, matching `optimize status`)
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --show <show>              What to show: patches, diffs, gate, skips, or all [possible:
                                  patches|diffs|gate|skips|all] [default: all]
