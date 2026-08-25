@@ -194,11 +194,25 @@ pub fn build_run_config(
     Ok(serde_json::from_value(config_json)?)
 }
 
-/// Load a suite CSV, resolve split tags, and return the cases plus a selection count.
+/// Cases parsed from a suite CSV plus counts of each recognized split tag.
+///
+/// `train_count` and `selection_count` mirror `aikit-textgrad`'s training-loop
+/// semantics (`aikit-textgrad/src/training/mod.rs`'s `split_cases`): a case counts as
+/// `train` unless its resolved split is exactly `selection` or `test` — including
+/// untagged rows and any unrecognized split value, both of which the loop silently
+/// treats as `train`.
+#[derive(Debug)]
+pub struct SuiteSplits {
+    pub cases: Vec<EvalCase>,
+    pub train_count: usize,
+    pub selection_count: usize,
+}
+
+/// Load a suite CSV, resolve split tags, and return the cases plus split counts.
 ///
 /// The CSV may have a dedicated `split` column or embed split info as `split:<value>`
 /// in the `tags` column. If neither is present a row is assigned `train`.
-pub fn load_suite_with_splits(suite_path: &Path) -> Result<(Vec<EvalCase>, usize), String> {
+pub fn load_suite_with_splits(suite_path: &Path) -> Result<SuiteSplits, String> {
     if !suite_path.exists() {
         return Err(format!(
             "SKILLOPT_SUITE_NOT_FOUND: suite CSV not found: {}",
@@ -212,7 +226,7 @@ pub fn load_suite_with_splits(suite_path: &Path) -> Result<(Vec<EvalCase>, usize
     parse_suite_csv_with_splits(&content)
 }
 
-fn parse_suite_csv_with_splits(content: &str) -> Result<(Vec<EvalCase>, usize), String> {
+fn parse_suite_csv_with_splits(content: &str) -> Result<SuiteSplits, String> {
     let mut lines = content.lines();
 
     let header_line = lines
@@ -232,6 +246,7 @@ fn parse_suite_csv_with_splits(content: &str) -> Result<(Vec<EvalCase>, usize), 
     let split_col_idx = find_col_idx(&headers, "split");
 
     let mut cases: Vec<EvalCase> = Vec::new();
+    let mut train_count: usize = 0;
     let mut selection_count: usize = 0;
 
     for line in lines {
@@ -301,8 +316,12 @@ fn parse_suite_csv_with_splits(content: &str) -> Result<(Vec<EvalCase>, usize), 
             tags.push(split_val.clone());
         }
 
-        if split_val == "selection" {
-            selection_count += 1;
+        // Match aikit-textgrad's split_cases: anything that isn't exactly "selection"
+        // or "test" is a train case, including untagged rows and unrecognized values.
+        match split_val.as_str() {
+            "selection" => selection_count += 1,
+            "test" => {}
+            _ => train_count += 1,
         }
 
         let workspace_subdir = workspace_subdir_idx
@@ -320,7 +339,55 @@ fn parse_suite_csv_with_splits(content: &str) -> Result<(Vec<EvalCase>, usize), 
         });
     }
 
-    Ok((cases, selection_count))
+    Ok(SuiteSplits {
+        cases,
+        train_count,
+        selection_count,
+    })
+}
+
+/// Count entries recorded in `run_dir/history.json`, one `StepRecord` per training
+/// step attempted (accepted or rejected).
+///
+/// A missing or unparseable file counts as zero steps rather than erroring — this is
+/// a defensive, best-effort signal used only to decide whether to warn the user that
+/// no training occurred, not a hard invariant.
+pub fn count_history_steps(run_dir: &Path) -> usize {
+    std::fs::read_to_string(run_dir.join("history.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+        .map(|steps| steps.len())
+        .unwrap_or(0)
+}
+
+/// Build the run-completion stdout line and an optional stderr warning.
+///
+/// A real run with at least one recorded training step prints the documented
+/// `Run complete. Best skill: <path>` line and no warning. A run that completed with
+/// zero recorded steps (e.g. every case fell into a split the training loop doesn't
+/// step over) must not print that same success-shaped line — it gets a distinct
+/// stdout message plus a stderr warning so the zero-step outcome is never silent.
+pub fn completion_output(step_count: usize, best_artifact_path: &Path) -> (String, Option<String>) {
+    if step_count == 0 {
+        (
+            format!(
+                "No training steps were executed. Best skill (unchanged from input): {}",
+                best_artifact_path.display()
+            ),
+            Some(
+                "OPTIMIZE_ZERO_STEPS_WARN: training completed with zero recorded steps in \
+                 history.json; no optimization occurred. Check that the suite has cases \
+                 tagged 'train' and that n_epochs/batch_size/accumulation produce at least \
+                 one step."
+                    .to_string(),
+            ),
+        )
+    } else {
+        (
+            format!("Run complete. Best skill: {}", best_artifact_path.display()),
+            None,
+        )
+    }
 }
 
 fn find_col_idx(headers: &[String], name: &str) -> Option<usize> {
@@ -354,4 +421,101 @@ fn parse_csv_line(line: &str) -> Vec<String> {
     }
     fields.push(current);
     fields
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_suite_counts_train_selection_and_test_splits() {
+        let csv = "id,prompt,should_trigger,split\n\
+                    c1,hello,true,train\n\
+                    c2,world,true,selection\n\
+                    c3,again,true,test\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(splits.cases.len(), 3);
+        assert_eq!(splits.train_count, 1);
+        assert_eq!(splits.selection_count, 1);
+    }
+
+    /// A suite with only `selection` + `test` rows — the undocumented-but-accepted
+    /// shape from spec 013 finding #3 — must report zero train cases even though it
+    /// passes the pre-existing `selection_count > 0` check.
+    #[test]
+    fn parse_suite_reports_zero_train_when_only_selection_and_test() {
+        let csv = "id,prompt,should_trigger,split\n\
+                    c1,hello,true,selection\n\
+                    c2,world,true,test\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(splits.train_count, 0);
+        assert_eq!(splits.selection_count, 1);
+    }
+
+    /// An absent `split` column defaults every row to `train`, matching
+    /// `aikit-textgrad`'s own fallback for untagged cases.
+    #[test]
+    fn parse_suite_defaults_untagged_rows_to_train() {
+        let csv = "id,prompt,should_trigger\nc1,hello,true\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(splits.train_count, 1);
+        assert_eq!(splits.selection_count, 0);
+    }
+
+    /// An unrecognized split value (neither train/selection/test) falls through to
+    /// `train`, mirroring aikit-textgrad's `split_cases` match fallback arm.
+    #[test]
+    fn parse_suite_counts_unrecognized_split_value_as_train() {
+        let csv = "id,prompt,should_trigger,split\nc1,hello,true,bogus\n";
+        let splits = parse_suite_csv_with_splits(csv).expect("parse should succeed");
+        assert_eq!(splits.train_count, 1);
+        assert_eq!(splits.selection_count, 0);
+    }
+
+    #[test]
+    fn count_history_steps_is_zero_for_missing_file() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        assert_eq!(count_history_steps(dir.path()), 0);
+    }
+
+    #[test]
+    fn count_history_steps_is_zero_for_empty_array() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(dir.path().join("history.json"), b"[]").expect("write");
+        assert_eq!(count_history_steps(dir.path()), 0);
+    }
+
+    #[test]
+    fn count_history_steps_counts_recorded_entries() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        std::fs::write(
+            dir.path().join("history.json"),
+            br#"[{"global_step":0},{"global_step":1}]"#,
+        )
+        .expect("write");
+        assert_eq!(count_history_steps(dir.path()), 2);
+    }
+
+    #[test]
+    fn completion_output_zero_steps_warns_and_uses_distinct_stdout_line() {
+        let path = Path::new("/tmp/out/best_skill.md");
+        let (stdout_line, warning) = completion_output(0, path);
+        assert_ne!(
+            stdout_line, "Run complete. Best skill: /tmp/out/best_skill.md",
+            "a zero-step run must not print the same success-shaped line as a real run"
+        );
+        let warning = warning.expect("zero-step run must emit a stderr warning");
+        assert!(warning.starts_with("OPTIMIZE_ZERO_STEPS_WARN:"));
+    }
+
+    #[test]
+    fn completion_output_nonzero_steps_prints_documented_line_with_no_warning() {
+        let path = Path::new("/tmp/out/best_skill.md");
+        let (stdout_line, warning) = completion_output(3, path);
+        assert_eq!(
+            stdout_line,
+            "Run complete. Best skill: /tmp/out/best_skill.md"
+        );
+        assert!(warning.is_none());
+    }
 }
