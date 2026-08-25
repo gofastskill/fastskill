@@ -45,7 +45,6 @@ fn create_test_repo_definition_with_auth(
 ) -> RepositoryDefinition {
     let auth = match auth_type {
         "pat" => Some(RepositoryAuth::Pat { env_var }),
-        "api_key" => Some(RepositoryAuth::ApiKey { env_var }),
         _ => None,
     };
 

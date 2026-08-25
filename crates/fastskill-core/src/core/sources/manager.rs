@@ -667,7 +667,7 @@ impl SourcesManager {
                     RepositoryType::GitMarketplace => {
                         if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config
                         {
-                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
+                            let auth = repo.auth.as_ref().map(repo_auth_to_source_auth);
                             Some(SourceConfig::Git {
                                 url: url.clone(),
                                 branch: branch.clone(),
@@ -680,7 +680,7 @@ impl SourcesManager {
                     }
                     RepositoryType::ZipUrl => {
                         if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
+                            let auth = repo.auth.as_ref().map(repo_auth_to_source_auth);
                             Some(SourceConfig::ZipUrl {
                                 base_url: base_url.clone(),
                                 auth,
@@ -846,27 +846,18 @@ fn source_index_to_marketplace(idx: &crate::core::cache::SourceIndex) -> Marketp
     }
 }
 
+/// Total: `RepositoryAuth` has exactly one variant, so every configured
+/// repository auth maps to a `SourceAuth`. This previously returned `Option`
+/// and answered `None` for `ApiKey`, which is how a configured credential
+/// could vanish without a word.
 fn repo_auth_to_source_auth(
     auth: &crate::core::repository::RepositoryAuth,
-) -> Option<super::model::SourceAuth> {
+) -> super::model::SourceAuth {
     use super::model::SourceAuth;
     use crate::core::repository::RepositoryAuth;
-    match auth {
-        RepositoryAuth::Pat { env_var } => Some(SourceAuth::Pat {
-            env_var: env_var.clone(),
-        }),
-        RepositoryAuth::SshKey { path } => Some(SourceAuth::SshKey { path: path.clone() }),
-        RepositoryAuth::Ssh { key_path } => Some(SourceAuth::SshKey {
-            path: key_path.clone(),
-        }),
-        RepositoryAuth::Basic {
-            username,
-            password_env,
-        } => Some(SourceAuth::Basic {
-            username: username.clone(),
-            password_env: password_env.clone(),
-        }),
-        RepositoryAuth::ApiKey { .. } => None,
+    let RepositoryAuth::Pat { env_var } = auth;
+    SourceAuth::Pat {
+        env_var: env_var.clone(),
     }
 }
 

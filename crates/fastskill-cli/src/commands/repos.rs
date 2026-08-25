@@ -56,16 +56,16 @@ pub enum ReposCommand {
         /// Tag for git-marketplace
         #[arg(long)]
         tag: Option<String>,
-        /// Authentication type: pat, ssh-key, ssh, basic, or api_key
+        /// Authentication type: pat (the only supported type)
         #[arg(long)]
         auth_type: Option<String>,
-        /// Environment variable for PAT, basic password, or API key
+        /// Environment variable holding the PAT
         #[arg(long)]
         auth_env: Option<String>,
-        /// SSH key path (for ssh-key or ssh auth)
+        /// No longer supported; use an SSH remote with an SSH agent instead
         #[arg(long)]
         auth_key_path: Option<PathBuf>,
-        /// Username (for basic auth)
+        /// No longer supported; use --auth-type pat --auth-env <VAR>
         #[arg(long)]
         auth_username: Option<String>,
     },

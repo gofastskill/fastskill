@@ -69,25 +69,12 @@ impl MarketplaceRepositoryClient {
         // Convert RepositoryConfig to SourceConfig
         let source_config = match &repo.config {
             RepositoryConfig::GitMarketplace { url, branch, tag } => {
-                // Convert auth
-                let auth = repo.auth.as_ref().and_then(|a| {
-                    match a {
-                        crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                            Some(crate::core::sources::SourceAuth::Pat {
-                                env_var: env_var.clone(),
-                            })
-                        }
-                        crate::core::repository::RepositoryAuth::SshKey { path } => {
-                            Some(crate::core::sources::SourceAuth::SshKey { path: path.clone() })
-                        }
-                        crate::core::repository::RepositoryAuth::Basic {
-                            username,
-                            password_env,
-                        } => Some(crate::core::sources::SourceAuth::Basic {
-                            username: username.clone(),
-                            password_env: password_env.clone(),
-                        }),
-                        _ => None, // Other auth types not supported for marketplace
+                // Convert auth. `RepositoryAuth` has exactly one variant, so
+                // this conversion is total and cannot silently drop anything.
+                let auth = repo.auth.as_ref().map(|a| {
+                    let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
+                    crate::core::sources::SourceAuth::Pat {
+                        env_var: env_var.clone(),
                     }
                 });
 
@@ -99,20 +86,11 @@ impl MarketplaceRepositoryClient {
                 }
             }
             RepositoryConfig::ZipUrl { base_url } => {
-                let auth = repo.auth.as_ref().and_then(|a| match a {
-                    crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                        Some(crate::core::sources::SourceAuth::Pat {
-                            env_var: env_var.clone(),
-                        })
+                let auth = repo.auth.as_ref().map(|a| {
+                    let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
+                    crate::core::sources::SourceAuth::Pat {
+                        env_var: env_var.clone(),
                     }
-                    crate::core::repository::RepositoryAuth::Basic {
-                        username,
-                        password_env,
-                    } => Some(crate::core::sources::SourceAuth::Basic {
-                        username: username.clone(),
-                        password_env: password_env.clone(),
-                    }),
-                    _ => None,
                 });
 
                 SourceConfig::ZipUrl {
@@ -274,30 +252,15 @@ impl CratesRegistryClient {
             )));
         }
 
-        // Convert auth
+        // Convert auth. Total over `RepositoryAuth`'s single variant. This
+        // previously carried a `_ =>` fallback that substituted a hardcoded
+        // `GITHUB_TOKEN` env var for any variant it did not understand --
+        // a silent wrong default that could authenticate against an entirely
+        // different credential than the one the user configured.
         let auth = repo.auth.as_ref().map(|a| {
-            match a {
-                crate::core::repository::RepositoryAuth::Pat { env_var } => {
-                    crate::core::registry::config::AuthConfig::Pat {
-                        env_var: env_var.clone(),
-                    }
-                }
-                crate::core::repository::RepositoryAuth::Ssh { key_path } => {
-                    crate::core::registry::config::AuthConfig::Ssh {
-                        key_path: key_path.clone(),
-                    }
-                }
-                crate::core::repository::RepositoryAuth::ApiKey { env_var } => {
-                    crate::core::registry::config::AuthConfig::ApiKey {
-                        env_var: env_var.clone(),
-                    }
-                }
-                _ => {
-                    // Fallback to PAT for unsupported types
-                    crate::core::registry::config::AuthConfig::Pat {
-                        env_var: "GITHUB_TOKEN".to_string(),
-                    }
-                }
+            let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
+            crate::core::registry::config::AuthConfig::Pat {
+                env_var: env_var.clone(),
             }
         });
 
@@ -636,28 +599,26 @@ mod tests {
         ))
         .is_ok());
 
-        // ZIP URL + Basic auth.
+        // ZIP URL + Pat auth. (This case previously used `Basic`, which no
+        // longer exists: it was accepted here and then dropped on save.)
         assert!(MarketplaceRepositoryClient::new(&marketplace(
             RepositoryConfig::ZipUrl {
                 base_url: "https://example.com/base".to_string(),
             },
-            Some(RepositoryAuth::Basic {
-                username: "u".to_string(),
-                password_env: "P".to_string(),
+            Some(RepositoryAuth::Pat {
+                env_var: "TOK".to_string(),
             }),
         ))
         .is_ok());
 
-        // Git marketplace + SshKey auth.
+        // Git marketplace with no auth configured.
         assert!(MarketplaceRepositoryClient::new(&marketplace(
             RepositoryConfig::GitMarketplace {
                 url: "https://github.com/org/mp".to_string(),
                 branch: None,
                 tag: None,
             },
-            Some(RepositoryAuth::SshKey {
-                path: "/tmp/key".into(),
-            }),
+            None,
         ))
         .is_ok());
     }
@@ -754,21 +715,15 @@ mod tests {
 
     #[test]
     fn test_crates_new_success_and_auth_variants() {
+        // Previously this looped over Ssh/ApiKey/Basic as well. `Basic` was
+        // annotated "unsupported here → falls back to a PAT default", i.e. the
+        // test asserted the silent substitution of a hardcoded GITHUB_TOKEN
+        // for the credential the user asked for. Both the fallback and the
+        // variants are gone.
         for auth in [
             None,
             Some(RepositoryAuth::Pat {
                 env_var: "T".to_string(),
-            }),
-            Some(RepositoryAuth::Ssh {
-                key_path: "/tmp/k".into(),
-            }),
-            Some(RepositoryAuth::ApiKey {
-                env_var: "K".to_string(),
-            }),
-            // Basic is unsupported here → falls back to a PAT default.
-            Some(RepositoryAuth::Basic {
-                username: "u".to_string(),
-                password_env: "P".to_string(),
             }),
         ] {
             assert!(
