@@ -5,7 +5,11 @@ description: "Operational guide for running, reporting, and scoring FastSkill ev
 
 # Run Evals
 
-This workflow is the day-to-day path for quality checks.
+This workflow is the day-to-day path for quality checks. If you haven't authored a suite yet — the `[tool.fastskill.eval]` table, prompts CSV, and checks TOML — start with [Eval setup](/evals-quality/setup) first; pass/fail behavior (especially the `should_trigger` column and the `claude`-agent `trigger_expectation` caveat) is documented there.
+
+<Callout type="warn">
+`--output-dir` is required on every `eval run` invocation — there is no default output location. All examples below include it. Each run lands under `<output-dir>/<timestamp>/<agent>/` (a numeric suffix is appended if that timestamp directory already exists) — that per-agent directory, not `<output-dir>` itself, is what `--run-dir` expects below.
+</Callout>
 
 ## Run the suite
 
@@ -23,7 +27,7 @@ fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --case logi
 ## Summarize the run
 
 ```bash
-fastskill eval report --run-dir ./.fastskill/eval-runs/<run-id>
+fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex
 ```
 
 Use this for release notes and quick stakeholder review.
@@ -31,7 +35,7 @@ Use this for release notes and quick stakeholder review.
 ## Re-score without re-running agent
 
 ```bash
-fastskill eval score --run-dir ./.fastskill/eval-runs/<run-id>
+fastskill eval score --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex
 ```
 
 Use this when scoring logic changed and you want consistency across previous runs.
@@ -41,7 +45,7 @@ Use this when scoring logic changed and you want consistency across previous run
 ```bash
 fastskill eval validate --agent codex
 fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
-fastskill eval report --run-dir ./.fastskill/eval-runs/<run-id> --json
+fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex --json
 ```
 
 ## Practical gating policy
