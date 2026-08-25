@@ -279,6 +279,16 @@ pub fn normalize_snapshot_output(output: &str, settings: &SnapshotSettings) -> S
         )
         .to_string();
 
+    result = regex::Regex::new(
+        r"HTTP status client error \([^)]+\) for url \(([^)]+)\)",
+    )
+    .unwrap()
+    .replace_all(
+        &result,
+        "error sending request for url ($1): error trying to connect: tcp connect error: [NETWORK_ERROR]",
+    )
+    .to_string();
+
     // reqwest URL parser errors may now return only "builder error" without detail.
     result = regex::Regex::new(r"builder error(?:\: invalid port number)?")
         .unwrap()
@@ -540,6 +550,19 @@ mod tests {
 
         let input = "Created at 2023-12-01T10:30:45Z";
         let expected = "Created at [TIMESTAMP]";
+        assert_eq!(normalize_snapshot_output(input, &settings), expected);
+    }
+
+    #[test]
+    fn test_normalize_http_status_network_errors() {
+        let settings = SnapshotSettings {
+            normalize_paths: false,
+            normalize_versions: false,
+            normalize_timestamps: false,
+        };
+
+        let input = "Failed to download 'https://example.com/skill.zip': HTTP status client error (404 Not Found) for url (https://example.com/skill.zip)";
+        let expected = "Failed to download 'https://example.com/skill.zip': error sending request for url (https://example.com/skill.zip): error trying to connect: tcp connect error: [NETWORK_ERROR]";
         assert_eq!(normalize_snapshot_output(input, &settings), expected);
     }
 }

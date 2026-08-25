@@ -20,7 +20,7 @@
 //! `marketplace create` command tree, which is out of scope for `repos`
 //! coverage, so that test was dropped rather than ported.
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::snapshot_helpers::run_fastskill_command;
 

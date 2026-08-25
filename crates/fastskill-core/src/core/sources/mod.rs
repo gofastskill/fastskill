@@ -47,7 +47,7 @@ pub enum SourcesError {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use tempfile::{NamedTempFile, TempDir};
+    use tempfile::TempDir;
 
     #[test]
     fn test_sources_config_parsing() {

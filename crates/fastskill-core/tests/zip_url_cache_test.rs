@@ -24,6 +24,8 @@ use std::sync::atomic::Ordering;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+static ZIP_BODY_COUNTER_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const SKILL_ID: &str = "zip-cached-skill";
 
 fn skill_md(marker: &str) -> String {
@@ -101,6 +103,7 @@ async fn install_into_fresh_project(cache_root: &Path, url: &str) -> String {
 /// content (spec 007 design + FR-3).
 #[tokio::test]
 async fn second_install_gets_a_304_and_downloads_zero_bytes() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     let zip_bytes = build_zip("v1");
     let etag = "\"etag-v1\"";
@@ -156,6 +159,7 @@ async fn second_install_gets_a_304_and_downloads_zero_bytes() {
 /// content hash, rather than reusing the stale cached entry.
 #[tokio::test]
 async fn conditional_200_redownloads_and_updates_recorded_hash() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     let zip_v1 = build_zip("v1");
     let zip_v2 = build_zip("v2");
@@ -224,6 +228,7 @@ async fn conditional_200_redownloads_and_updates_recorded_hash() {
 /// still dedup -- see spec 007's design notes).
 #[tokio::test]
 async fn no_validator_server_still_dedups_identical_bytes_to_one_entry() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     let zip_bytes = build_zip("shared");
 
@@ -264,6 +269,7 @@ async fn no_validator_server_still_dedups_identical_bytes_to_one_entry() {
 /// download rather than failing.
 #[tokio::test]
 async fn a_304_with_evicted_content_falls_back_to_a_full_download() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     let zip_bytes = build_zip("v1");
     let etag = "\"etag-v1\"";
@@ -323,6 +329,7 @@ async fn a_304_with_evicted_content_falls_back_to_a_full_download() {
 /// resolution fallback shipped in PR #227).
 #[tokio::test]
 async fn offline_install_with_a_cached_hash_succeeds() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     // Nothing listens here; the request fails fast without touching the real
     // network.
     let unreachable_url = "http://127.0.0.1:1/pkg.zip";
@@ -383,6 +390,7 @@ async fn offline_install_with_a_cached_hash_succeeds() {
 /// (no silent staleness, no panic) -- the transport error is surfaced as-is.
 #[tokio::test]
 async fn offline_install_with_nothing_cached_fails_with_the_transport_error() {
+    let _counter_guard = ZIP_BODY_COUNTER_MUTEX.lock().await;
     let unreachable_url = "http://127.0.0.1:1/pkg.zip";
     let cache_root = tempfile::TempDir::new().unwrap();
     let project = tempfile::TempDir::new().unwrap();

@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --all -- --check
+      - run: bash scripts/check-source-size.sh
 
   clippy:
     name: Clippy Lints

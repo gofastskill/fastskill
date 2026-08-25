@@ -24,6 +24,8 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+static FETCH_COUNTER_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// An address nothing listens on: a connection attempt fails fast (refused)
 /// without touching the real network — mirrors the same technique
 /// `zip_url_cache_test.rs` uses for its offline-fallback tests.
@@ -64,6 +66,7 @@ fn claude_marketplace_json(count: usize) -> serde_json::Value {
 /// matches what was recorded.
 #[tokio::test]
 async fn cold_sources_manager_resolves_listing_from_disk_index_with_zero_http_calls() {
+    let _counter_guard = FETCH_COUNTER_MUTEX.lock().await;
     let cache_root = TempDir::new().unwrap();
     let cache = SkillCache::at_root(cache_root.path());
     cache
@@ -121,6 +124,7 @@ async fn cold_sources_manager_resolves_listing_from_disk_index_with_zero_http_ca
 /// behavior for a manager that never opted in.
 #[tokio::test]
 async fn without_a_skill_cache_configured_behavior_is_unchanged_network_on_miss() {
+    let _counter_guard = FETCH_COUNTER_MUTEX.lock().await;
     let sources_dir = TempDir::new().unwrap();
     let mut manager = SourcesManager::new(sources_toml_path(&sources_dir));
     manager.load().unwrap();
@@ -149,6 +153,7 @@ async fn without_a_skill_cache_configured_behavior_is_unchanged_network_on_miss(
 /// first draft nearly deleted).
 #[tokio::test]
 async fn resolving_n_skills_from_one_marketplace_performs_exactly_one_fetch() {
+    let _counter_guard = FETCH_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/.claude-plugin/marketplace.json"))
@@ -203,6 +208,7 @@ async fn resolving_n_skills_from_one_marketplace_performs_exactly_one_fetch() {
 /// same listing offline (FR-2: the two layers must not drift).
 #[tokio::test]
 async fn a_successful_live_fetch_refreshes_the_on_disk_index() {
+    let _counter_guard = FETCH_COUNTER_MUTEX.lock().await;
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/.claude-plugin/marketplace.json"))
@@ -278,6 +284,7 @@ impl CapturedLog {
 /// (`install::resolve_git_sha` / `install::fetch_zip_url_cached`).
 #[tokio::test]
 async fn offline_resolution_of_a_refreshed_index_succeeds_and_warns_with_the_recorded_time() {
+    let _counter_guard = FETCH_COUNTER_MUTEX.lock().await;
     let cache_root = TempDir::new().unwrap();
     let cache = SkillCache::at_root(cache_root.path());
     let recorded_at = chrono::Utc::now();

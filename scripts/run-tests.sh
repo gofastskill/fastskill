@@ -114,6 +114,9 @@ cd "$NEWTON_DIR"
 echo -e "${YELLOW}Running format check (cargo fmt --all -- --check)...${NC}" >&2
 cargo fmt --all -- --check
 
+echo -e "${YELLOW}Checking source file size...${NC}" >&2
+bash scripts/check-source-size.sh
+
 # Run tests and capture output
 echo -e "${YELLOW}Running tests with cargo-nextest...${NC}" >&2
 
