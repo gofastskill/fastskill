@@ -11,7 +11,7 @@ version = "0.9.198"
 edition = "2021"
 authors = ["aroff"]
 license = "Apache-2.0"
-repository = "https://github.com/aroff/fastskill"
+repository = "https://github.com/gofastskill/fastskill"
 
 [workspace.dependencies]
 # NOTE: the git URL and rev below must match cli-framework's own aikit-sdk
