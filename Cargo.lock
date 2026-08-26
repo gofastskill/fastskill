@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
+source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
+source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
 dependencies = [
  "aikit-sdk",
  "async-trait",
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
+source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
 dependencies = [
  "aikit-agent",
  "claude-agent-sdk",
@@ -98,7 +98,7 @@ dependencies = [
 [[package]]
 name = "aikit-skillopt"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
+source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -111,7 +111,7 @@ dependencies = [
 [[package]]
 name = "aikit-textgrad"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=a34e1e476a5616e4c66b8a89fd8a73915d9f6783#a34e1e476a5616e4c66b8a89fd8a73915d9f6783"
+source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -506,7 +506,7 @@ version = "3.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dee98b0db6a962de883bf5d20362dee4d7ca0d12fe39a7c6c73c844e1cd7c1f"
 dependencies = [
- "darling 0.23.0",
+ "darling 0.20.11",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -703,7 +703,7 @@ dependencies = [
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=95368d120e2182fd50616d0a974d7afa740b71a3#95368d120e2182fd50616d0a974d7afa740b71a3"
+source = "git+https://github.com/aroff/cli-framework?rev=2ef8be676c348236304528acae1f146458e38520#2ef8be676c348236304528acae1f146458e38520"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",
@@ -2505,9 +2505,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.185"
+version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
+checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libredox"
@@ -2717,9 +2717,9 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nix"
-version = "0.29.0"
+version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
 dependencies = [
  "bitflags 2.11.1",
  "cfg-if",
