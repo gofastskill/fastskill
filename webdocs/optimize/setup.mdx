@@ -82,7 +82,7 @@ The checks file is loaded by `aikit_evals::checks::ChecksToml`: an array of `[[c
 | `trigger_expectation` | `pattern` (string), `expected` (bool), `required` (bool, default `true`) | Passes if `pattern` appearing in the captured output matches `expected` (found == expected). |
 | `command_contains` | `pattern` (string), `required` (bool, default `true`) | Passes if `pattern` appears anywhere in the captured stdout/trace. |
 | `file_exists` | `path` (string), `required` (bool, default `true`) | Passes if `path` exists under the run's working directory after execution. |
-| `max_command_count` | `limit` (int), `required` (bool, default `true`) | Passes if the number of tool invocations the agent made does not exceed `limit`. (Internally this is the `max_tool_calls` check; `max_command_count` is accepted as an alias.) |
+| `max_tool_calls` | `limit` (int), `required` (bool, default `true`) | Passes if the number of tool invocations the agent made does not exceed `limit`. A tool invocation is a structured `tool_use` trace event or a `raw_json` trace line; assistant text and token-usage events are not counted. `max_command_count` is accepted as a legacy alias, but results always report `max_tool_calls`. |
 
 There is **no** `type`, `id`, or `weight` field, and there is no LLM-judge/rubric check type — scoring is purely deterministic pattern/file/count matching against the captured transcript.
 
@@ -100,7 +100,7 @@ pattern = "deploy.sh"
 required = true
 
 [[check]]
-name = "max_command_count"
+name = "max_tool_calls"
 limit = 10
 ```
 
