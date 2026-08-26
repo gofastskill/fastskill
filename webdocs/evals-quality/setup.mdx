@@ -169,11 +169,11 @@ required = true
 
 Passes if `path` exists under the case's working directory (project root, or `project_root / workspace_subdir` when the case sets one).
 
-### `max_command_count`
+### `max_tool_calls` (alias: `max_command_count`)
 
 ```toml
 [[check]]
-name = "max_command_count"
+name = "max_tool_calls"
 limit = 20
 required = true
 ```
@@ -183,7 +183,18 @@ required = true
 | `limit` | integer | yes | — |
 | `required` | bool | no | `true` |
 
-Passes if the number of `raw_json`-typed trace events is `<= limit`.
+Passes if the number of **tool invocations** the agent made is `<= limit`.
+
+A tool invocation is a structured `tool_use` trace event, plus any `raw_json` trace line — the
+latter covers backends that still emit tool calls as raw JSON instead of decoded tool events.
+Assistant text output, token-usage events, and unmodelled SDK event variants are **not** counted.
+
+<Callout type="info">
+`max_tool_calls` is the canonical name; `max_command_count` is a legacy alias that still parses
+and behaves identically. Note that results are always reported under the canonical name — a
+check written as `max_command_count` appears in `result.json` with
+`"check_name": "max_tool_calls"`, so grep for the canonical name when reading artifacts.
+</Callout>
 
 <Callout type="info">
 **`required` is accepted but not currently enforced differently.** All four check types accept `required` for schema compatibility, but nothing in the scoring path (`aikit_evals::checks::suite_passes`) currently branches on it — a case fails if **any** loaded check fails, `required = true` or not. Don't rely on `required = false` to make a check advisory-only today.
