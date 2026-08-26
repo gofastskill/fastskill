@@ -1075,12 +1075,16 @@ fn test_eval_run_empty_suite_errors() {
     .unwrap();
 
     let output_dir = dir.path().join("out");
+    // `--agent aikit`: the in-process runtime is the only one guaranteed to
+    // exist everywhere (CI has no external agent CLIs installed, and runtime
+    // validation runs before suite loading — an uninstalled agent would fail
+    // with RUNTIME_UNKNOWN_ID before the guard under test is ever reached).
     let result = run_fastskill_command(
         &[
             "eval",
             "run",
             "--agent",
-            "codex",
+            "aikit",
             "--output-dir",
             output_dir.to_str().unwrap(),
         ],
