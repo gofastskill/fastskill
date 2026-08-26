@@ -12,13 +12,18 @@ FastSkill quality work has two complementary tracks:
 
 Use both. Evals tell you if skills behave correctly. Analysis tells you if your skill set is healthy.
 
+<Callout type="info">
+New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — the `[tool.fastskill.eval]` table, the prompts CSV schema, and the checks TOML schema — before you touch `eval run`.
+</Callout>
+
 ## Recommended quality flow
 
-1. Validate config and skill structure
-2. Run eval suites and inspect failures
-3. Score and report results for release decisions
-4. Analyze cluster and duplicates to improve skill portfolio quality
-5. Gate CI on thresholds
+1. Author a suite: `[tool.fastskill.eval]`, a prompts CSV, and (usually) a checks TOML — see [Eval setup](/evals-quality/setup)
+2. Validate config and skill structure
+3. Run eval suites and inspect failures
+4. Score and report results for release decisions
+5. Analyze cluster and duplicates to improve skill portfolio quality
+6. Gate CI on thresholds
 
 ## Quality commands map
 

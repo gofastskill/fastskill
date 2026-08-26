@@ -17,6 +17,27 @@ FastSkill validates your config, creates a timestamped run directory under `out_
 Run complete. Best skill: .skillopt/runs/2026-06-03T14-22-01Z/best_skill.md
 ```
 
+### Zero-step runs
+
+A run that finishes without recording a single training step does **not** print the line
+above. It prints a distinct message on stdout and a warning on stderr:
+
+```
+No training steps were executed. Best skill (unchanged from input): .skillopt/runs/<timestamp>/best_skill.md
+```
+
+```
+OPTIMIZE_ZERO_STEPS_WARN: training completed with zero recorded steps in history.json;
+no optimization occurred. Check that the suite has cases tagged 'train' and that
+n_epochs/batch_size/accumulation produce at least one step.
+```
+
+The usual cause is a suite with no `train` rows, which `optimize run` now rejects up front
+with `OPTIMIZE_NO_TRAIN_CASES` (see [Setup](/optimize/setup)). This warning is the
+backstop for every other way a run can end up doing nothing — for example a loop
+configuration that yields no steps. Treat it as a failed run, not a successful one:
+`best_skill.md` is the seed document, unchanged.
+
 ### Override the output directory
 
 ```bash
@@ -48,26 +69,26 @@ fastskill optimize status .skillopt/runs/2026-06-03T14-22-01Z
 This prints the current best score, epoch/step position, and a per-step table:
 
 ```
-Run: .skillopt/runs/2026-06-03T14-22-01Z
-Best score: 0.82  |  Epoch 2/5  |  Global step 14
+Run: .skillopt/runs/2026-06-03T14-22-01Z  |  epoch: 0  global_step: 1  best_score: 0.0000
 
-Step  Gate      Score(S)  Score(S')  Delta    Tokens
-1     accepted   0.60       0.67     +0.07    4,210
-2     rejected   0.67       0.61     -0.06    3,890
-3     accepted   0.67       0.74     +0.07    4,102
-...
+step    gate        score(S)    score(S')   delta     tokens
+--------------------------------------------------------------
+0       rejected    0.0000      0.0000      +0.0000   0
 ```
 
 Column meanings:
 
 | Column | Description |
 |---|---|
-| `Step` | Global step index (1-based across all epochs). |
-| `Gate` | Whether the patch was accepted or rejected. |
-| `Score(S)` | Score before the patch. |
-| `Score(S')` | Score after the patch. |
-| `Delta` | `Score(S') - Score(S)`. Positive means improvement. |
-| `Tokens` | Tokens consumed in this step (target + optimizer calls). |
+| `step` | Global step index, **0-based** across all epochs. This is the value to pass to `optimize inspect --step`. |
+| `gate` | Whether the patch was accepted or rejected. |
+| `score(S)` | Score before the patch. |
+| `score(S')` | Score after the patch. |
+| `delta` | `score(S') - score(S)`. Positive means improvement. |
+| `tokens` | Tokens consumed in this step (target + optimizer calls); `0` when the underlying run did not report usage. |
+
+An **empty table** under a finished run means no training steps were recorded — see
+[zero-step runs](#zero-step-runs) below.
 
 ### Live watch mode
 
@@ -118,20 +139,30 @@ Every run creates a self-contained directory:
 
 ```
 .skillopt/runs/2026-06-03T14-22-01Z/
-├── optimize.toml          # stored config (provenance copy)
-├── runtime_state.json     # live state: best_score, epoch, global_step
-├── history.json           # array of step records
-├── best_skill.md          # best skill document seen so far
-├── step-1/
-│   ├── patch.json         # proposed patch
-│   ├── gate_scores.json   # before/after scores for gate decision
-│   ├── skips.json         # cases skipped this step
-│   ├── skill_before.md    # skill before this step's patch
-│   └── skill_after.md     # skill after this step's patch
-├── step-2/
-│   └── ...
-└── ...
+├── optimize.toml           # stored config (provenance copy)
+├── runtime_state.json      # live state: config, best_score, epoch, global_step
+├── history.json            # array of step records (one per attempted step)
+├── best_skill.md           # best skill document seen so far
+├── skills/
+│   ├── skill_v0000.md      # seed document
+│   └── skill_v0001.md      # one new version per *accepted* step
+├── steps/
+│   ├── step_0000/
+│   │   ├── patch.json      # edits the optimizer proposed
+│   │   ├── gate.json       # accept/reject decision, score, best_score
+│   │   ├── rollouts.json   # per-case scores for this step
+│   │   └── update.json     # edit-budget accounting: budget, chosen, skipped_count
+│   └── step_0001/
+│       └── ...
+└── epoch_00/
+    ├── meta_skill.json     # optimizer strategy for the epoch
+    └── slow_update.json    # epoch-boundary decision
 ```
+
+Step directories are `steps/step_{NNNN}` — zero-padded and **0-based**, matching the `step`
+column in `optimize status` and the `--step` argument to `optimize inspect`. Skill versions
+are numbered by *accepted* steps, not by step index, so they diverge from step numbers once
+any step has been rejected.
 
 The run directory is safe to copy, archive, or share. Resume and inspect commands only need this directory.
 

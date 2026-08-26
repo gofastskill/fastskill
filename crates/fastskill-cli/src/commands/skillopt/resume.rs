@@ -1,6 +1,9 @@
 //! `fastskill optimize resume` subcommand
 
-use super::config::{build_run_config, load_suite_with_splits, validate_config, SkillOptToml};
+use super::config::{
+    build_run_config, completion_output, count_history_steps, load_suite_with_splits,
+    validate_config, SkillOptToml,
+};
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
@@ -88,7 +91,17 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
 
     // 4. Parse suite and checks
     let suite_path = base_dir.join(&cfg.suite);
-    let (suite, _) = load_suite_with_splits(&suite_path).map_err(CliError::Config)?;
+    let splits = load_suite_with_splits(&suite_path).map_err(CliError::Config)?;
+    if splits.train_count == 0 {
+        return Err(CliError::Config(
+            "OPTIMIZE_NO_TRAIN_CASES: suite has zero cases tagged 'train'. The training \
+             loop only steps over 'train' cases (an absent or empty split column also \
+             counts as 'train') — add rows with split = \"train\", or leave the split \
+             column empty, so there is something for the optimizer to train on."
+                .to_string(),
+        ));
+    }
+    let suite = splits.cases;
 
     let checks = if let Some(ref checks_path) = cfg.checks {
         let checks_path = base_dir.join(checks_path);
@@ -134,6 +147,12 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     .await
     .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
 
-    crate::outln!("{}", outcome.best_artifact_path.display());
+    // Zero-step defensive check, same as `optimize run` (spec 013 finding #3).
+    let step_count = count_history_steps(&args.run_dir);
+    let (stdout_line, warning) = completion_output(step_count, &outcome.best_artifact_path);
+    if let Some(warning) = warning {
+        eprintln!("{warning}");
+    }
+    crate::outln!("{stdout_line}");
     Ok(())
 }
