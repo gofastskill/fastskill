@@ -107,8 +107,12 @@ The gate decides whether to accept a patch by comparing scores before and after.
 | `soft` | Fraction of that case's checks that passed, allowing partial credit. |
 | `mixed` | `mixed_hard_weight * hard + (1 - mixed_hard_weight) * soft`. |
 
-A case with zero configured checks scores `1.0` under all three metrics (vacuously) — this is
-the same "no signal without `checks`" gap described in [Setup](/optimize/setup).
+All three metrics reduce over **required** checks only; `required = false` checks are reported
+but never scored.
+
+A case with zero configured checks — or one where every check is `required = false` — scores
+`1.0` under all three metrics (vacuously). This is the same "no signal without `checks`" gap
+described in [Setup](/optimize/setup).
 
 ---
 

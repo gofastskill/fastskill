@@ -114,7 +114,30 @@ Empty lines are skipped.
 
 ## 3. Checks: `checks.toml` (optional)
 
-Point `checks` at a TOML file with one or more `[[check]]` tables, keyed by the required `name` field. There are exactly four check types (`aikit_evals::checks::CheckDefinition`):
+Point `checks` at a TOML file with one or more `[[check]]` tables, keyed by the required `name` field. There are exactly five check types (`aikit_evals::checks::CheckDefinition`):
+
+<Callout type="info">
+**Checks score the canonical trace, never raw stdout.** Every check below matches against the run's `trace.jsonl` — the parsed, structured event stream. Raw stdout is deliberately excluded: with the `claude` agent it opens with a `system`/`init` event listing **every skill installed in the environment**, which used to make any skill-name pattern pass vacuously. Assistant text still reaches the trace as message events, so matching on what the agent actually said continues to work.
+</Callout>
+
+### `skill_invoked`
+
+The check you almost certainly want for "did my skill fire?".
+
+```toml
+[[check]]
+name = "skill_invoked"
+skill = "my-skill"
+expected = true
+```
+
+| Field | Type | Required | Default |
+|---|---|---|---|
+| `skill` | string | no | — (omit to match *any* skill invocation) |
+| `expected` | bool | no | `true` (`false` asserts the skill did **not** run) |
+| `required` | bool | no | `true` |
+
+Matches a **structured `Skill` tool invocation** in the trace, not a substring of prose. When `skill` is given, that name must appear in the invocation's serialized input. This is the robust way to assert triggering — and, with `expected = false`, the only reliable way to assert non-triggering.
 
 ### `trigger_expectation`
 
@@ -131,11 +154,7 @@ expected = true
 | `expected` | bool | yes | — (`true` = pattern must appear, `false` = must NOT appear) |
 | `required` | bool | no | `true` |
 
-Matches `pattern` as a **plain substring** against the agent's captured stdout and its JSONL trace, concatenated together.
-
-<Callout type="warn">
-**Known sharp edge — vacuous passes on the `claude` agent.** `trigger_expectation` does a naive substring search over raw stdout + trace combined. With the `claude` agent, raw stdout includes a `system`/`init` event that lists **every skill installed in the environment** by name, whether or not it ran. If your pattern is just your skill's own name, it is present in that listing on literally every run — the check reports `passed: true` even when the skill never fired. This is a real upstream defect in `aikit-evals` (tracked in `specs/013-author-loop-release-blockers.md`, finding #1; the fix belongs in `goaikit/aikit` and isn't in yet). **Until it's fixed:** don't pattern-match your skill's bare name. Match text that only appears when the skill actually executes — for example a distinctive line your skill's own instructions cause the agent to print, illustrated above as `"Launching skill: my-skill"` (substitute whatever your skill genuinely emits on invocation).
-</Callout>
+Matches `pattern` as a **plain substring** against the JSONL trace. Prefer [`skill_invoked`](#skill_invoked) for asserting that a skill ran; treat `trigger_expectation` as the escape hatch for matching arbitrary text the agent produced.
 
 ### `command_contains`
 
@@ -151,7 +170,7 @@ required = true
 | `pattern` | string | yes | — |
 | `required` | bool | no | `true` |
 
-Same combined stdout + trace substring search as `trigger_expectation`, without the pass/fail inversion — passes if the pattern is found anywhere.
+Same trace substring search as `trigger_expectation`, without the pass/fail inversion — passes if the pattern is found anywhere in the trace.
 
 ### `file_exists`
 
@@ -193,17 +212,28 @@ Assistant text output, token-usage events, and unmodelled SDK event variants are
 `max_tool_calls` is the canonical name; `max_command_count` is a legacy alias that still parses
 and behaves identically. Note that results are always reported under the canonical name — a
 check written as `max_command_count` appears in `result.json` with
-`"check_name": "max_tool_calls"`, so grep for the canonical name when reading artifacts.
+`"check_name": "max_tool_calls"`, so grep for the canonical name when reading artifacts. The
+per-case artifact field counting these events keeps its original name, `command_count`.
 </Callout>
 
-<Callout type="info">
-**`required` is accepted but not currently enforced differently.** All four check types accept `required` for schema compatibility, but nothing in the scoring path (`aikit_evals::checks::suite_passes`) currently branches on it — a case fails if **any** loaded check fails, `required = true` or not. Don't rely on `required = false` to make a check advisory-only today.
-</Callout>
+### Making a check advisory with `required`
+
+Every check type accepts `required` (default `true`). Setting `required = false` makes the check **advisory**: it still runs, and its result still appears in the run artifacts with its own `passed` value, but a failure does not fail the case.
+
+```toml
+[[check]]
+name = "command_contains"
+pattern = "cache hit"
+required = false   # nice to have; don't fail the case over it
+```
+
+Use it for signal you want visible in reports without gating the suite on it.
 
 ### How a case's pass/fail is decided
 
 - No `checks` file configured (or it loads zero checks): the case **passes** iff the agent process exits `0`.
-- Any checks loaded: the case **passes** only if **every** check's `passed` is `true`. There is no partial credit and no threshold on failing checks — `checks.toml` is all-or-nothing per case.
+- Any checks loaded: the case **passes** only if every **required** check's `passed` is `true`. Checks marked `required = false` are reported but never fail the case. Among required checks there is no partial credit and no threshold — they are all-or-nothing per case.
+- A case whose checks are **all** advisory (`required = false`) has nothing that can fail it, so it passes as long as it does not time out. That is intentional, but it means an all-optional `checks.toml` is not a safety net.
 - A trial that times out is always `error`, independent of checks.
 - Across trials, `pass_threshold` decides the case's aggregated status: pass rate across trials must be `>= pass_threshold`.
 
@@ -235,7 +265,7 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 - [ ] `[tool.fastskill.eval]` present with a `prompts` path that resolves.
 - [ ] Prompts CSV has `id`, `prompt`, `should_trigger` headers (plus `tags` / `workspace_subdir` if you use them).
 - [ ] You are **not** relying on `should_trigger` to gate pass/fail — it doesn't.
-- [ ] `checks.toml` exists if you want real scoring signal, and its `trigger_expectation` patterns are not your skill's bare name (claude vacuous-pass caveat above).
+- [ ] `checks.toml` exists if you want real scoring signal, and uses `skill_invoked` (not a bare-name `trigger_expectation`) to assert that your skill fired.
 - [ ] `fastskill eval validate --all` passes and lists the agent you intend to run against as available.
 - [ ] Output directory convention agreed for `--output-dir` (local + CI).
 
