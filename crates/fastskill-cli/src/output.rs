@@ -56,6 +56,10 @@ pub type Sink = Arc<Mutex<String>>;
 
 tokio::task_local! {
     static SINK: Sink;
+    /// The mode in force for the current [`capture`] scope, overriding the
+    /// process-wide [`MODE`]. Set by [`capture`] so that capturing is a
+    /// property of the scope rather than of the whole process.
+    static SCOPED_MODE: Mode;
 }
 
 /// Fix the output mode for this process. The first call wins; later calls are
@@ -64,10 +68,23 @@ pub fn init(mode: Mode) {
     let _ = MODE.set(mode);
 }
 
-/// The active mode, defaulting to [`Mode::Direct`] when [`init`] was never
-/// called (unit tests, and any path that never reaches `main`).
-pub fn mode() -> Mode {
+/// The process-wide mode, defaulting to [`Mode::Direct`] when [`init`] was
+/// never called (unit tests, and any path that never reaches `main`).
+fn process_mode() -> Mode {
     MODE.get().copied().unwrap_or(Mode::Direct)
+}
+
+/// The active mode: the enclosing [`capture`] scope's mode if there is one,
+/// otherwise the process-wide mode set by [`init`].
+///
+/// Scoping the mode this way keeps [`capture`] self-contained -- it captures
+/// because it is `capture`, not because the process happened to be initialised
+/// a certain way. Tests can therefore exercise capturing without reaching for
+/// [`init`], which is a one-shot global they could never undo.
+pub fn mode() -> Mode {
+    SCOPED_MODE
+        .try_with(|m| *m)
+        .unwrap_or_else(|_| process_mode())
 }
 
 /// Emit one line of user-visible output.
@@ -93,9 +110,12 @@ pub fn emit(line: &str) {
     }
 }
 
-/// Run `fut` with `sink` installed as the task-local output buffer.
+/// Run `fut` with `sink` installed as the task-local output buffer, and
+/// [`Mode::Capture`] in force for the duration.
 async fn with_sink<F: std::future::Future>(sink: Sink, fut: F) -> F::Output {
-    SINK.scope(sink, fut).await
+    SCOPED_MODE
+        .scope(Mode::Capture, SINK.scope(sink, fut))
+        .await
 }
 
 /// Run `fut` with a fresh buffer, returning its output alongside everything
@@ -120,16 +140,33 @@ mod tests {
 
     #[test]
     fn mode_defaults_to_direct_when_uninitialised() {
-        // `MODE` is a process-wide `OnceLock`; this test only asserts the
-        // default read, it must not call `init`.
+        // `MODE` is a process-wide `OnceLock` that nothing can reset, so this
+        // test is only meaningful while no other test in this binary calls
+        // `init`. Keep it that way: `capture` scopes its own mode, so tests
+        // never need `init` to exercise capturing.
+        assert_eq!(
+            Mode::Direct,
+            mode(),
+            "the uninitialised default must be Direct; a `Capture` here means \
+             something in this test binary called `output::init`, which is a \
+             process-wide one-shot and cannot be undone"
+        );
+    }
+
+    #[tokio::test]
+    async fn capture_sets_capture_mode_for_its_scope() {
+        // The property that lets tests capture without pinning the global.
         assert_eq!(Mode::Direct, mode());
+        let (inner, _) = capture(async { mode() }).await;
+        assert_eq!(Mode::Capture, inner);
+        assert_eq!(Mode::Direct, mode(), "the scope must not leak");
     }
 
     #[tokio::test]
     async fn capture_collects_emitted_lines() {
         let (_, text) = capture(async {
-            emit_as_capture("first");
-            emit_as_capture("second");
+            emit("first");
+            emit("second");
         })
         .await;
         assert_eq!(text, "first\nsecond\n");
@@ -146,14 +183,14 @@ mod tests {
     async fn concurrent_captures_do_not_interleave() {
         // The property that rules out a plain global buffer.
         let a = capture(async {
-            emit_as_capture("a1");
+            emit("a1");
             tokio::task::yield_now().await;
-            emit_as_capture("a2");
+            emit("a2");
         });
         let b = capture(async {
-            emit_as_capture("b1");
+            emit("b1");
             tokio::task::yield_now().await;
-            emit_as_capture("b2");
+            emit("b2");
         });
         let ((_, ta), (_, tb)) = tokio::join!(a, b);
         assert_eq!(ta, "a1\na2\n");
@@ -166,7 +203,7 @@ mod tests {
         // task-local, so its output is absent from the tool result rather than
         // being written to stdout, where it would corrupt JSON-RPC.
         let (_, text) = capture(async {
-            emit_as_capture("parent");
+            emit("parent");
             tokio::spawn(async { assert!(SINK.try_with(|_| ()).is_err()) })
                 .await
                 .unwrap();
@@ -178,22 +215,11 @@ mod tests {
     #[tokio::test]
     async fn capture_survives_await_points() {
         let (_, text) = capture(async {
-            emit_as_capture("before");
+            emit("before");
             tokio::task::yield_now().await;
-            emit_as_capture("after");
+            emit("after");
         })
         .await;
         assert_eq!(text, "before\nafter\n");
-    }
-
-    /// `emit` consults the process-wide mode, which unit tests must not pin.
-    /// This writes to the task-local sink directly so the capture behaviour can
-    /// be tested independently of `MODE`.
-    fn emit_as_capture(line: &str) {
-        SINK.with(|s| {
-            let mut buf = s.lock().unwrap();
-            buf.push_str(line);
-            buf.push('\n');
-        });
     }
 }

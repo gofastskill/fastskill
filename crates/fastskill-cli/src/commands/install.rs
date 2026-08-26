@@ -688,9 +688,8 @@ skills_directory = ".claude/skills"
             no_reindex: false,
         };
 
-        // nextest runs each test in its own process, so this is safe to set
-        // once here without affecting other tests in the suite.
-        crate::output::init(crate::output::Mode::Capture);
+        // `capture` scopes `Mode::Capture` to its own future, so this collects
+        // the command's output without touching the process-wide mode.
         let (result, output) = crate::output::capture(execute_install(args)).await;
 
         assert!(
@@ -700,6 +699,12 @@ skills_directory = ".claude/skills"
         assert!(
             !temp_dir.path().join("skills.lock").exists(),
             "skills.lock must not exist: nothing was successfully installed"
+        );
+        // Positive assertion first: without it the negative one below would
+        // pass vacuously if `capture` ever stopped capturing.
+        assert!(
+            output.contains("skills.lock was not modified"),
+            "the failure path must say the lock was left alone: {output:?}"
         );
         assert!(
             !output.contains("Updated skills.lock"),
