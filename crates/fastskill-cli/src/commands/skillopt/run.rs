@@ -12,6 +12,15 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Canonical run_dir-relative names for the archived copies of the run's
+/// inputs. Fixed names (rather than the originals' basenames) cannot collide
+/// with each other, with the provenance `optimize.toml`, or with anything the
+/// training loop itself writes (`best_skill.md`, `history.json`,
+/// `runtime_state.json`, `skills/`, `steps/`).
+const ARCHIVED_SKILL: &str = "skill.md";
+const ARCHIVED_SUITE: &str = "suite.csv";
+const ARCHIVED_CHECKS: &str = "checks.toml";
+
 /// Arguments for `fastskill optimize run`
 #[derive(Debug)]
 pub struct RunArgs {
@@ -187,8 +196,46 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
         ))
     })?;
 
-    // 8. Copy config for provenance (before calling train_skill)
-    std::fs::write(run_dir.join("optimize.toml"), &config_str).map_err(CliError::Io)?;
+    // 8. Archive the resolved inputs and config into the run dir (before
+    // calling train_skill). `optimize resume` resolves the stored
+    // optimize.toml against the run dir itself, so its skill/suite/checks
+    // paths must point at copies that live there — without them every real
+    // resume died at validate_config with SKILLOPT_SKILL_NOT_FOUND before the
+    // loop. Archiving also pins the exact inputs this run trained on, immune
+    // to later edits of the originals.
+    let archive_input = |src: &std::path::Path, name: &str| -> CliResult<()> {
+        std::fs::copy(src, run_dir.join(name))
+            .map(|_| ())
+            .map_err(|e| {
+                CliError::Config(format!(
+                    "OPTIMIZE_OUT_DIR_UNWRITABLE: cannot archive {} into run dir: {e}",
+                    src.display()
+                ))
+            })
+    };
+    archive_input(&skill_path, ARCHIVED_SKILL)?;
+    archive_input(&suite_path, ARCHIVED_SUITE)?;
+    if let Some(ref checks_rel) = cfg.checks {
+        archive_input(&config_dir.join(checks_rel), ARCHIVED_CHECKS)?;
+    }
+
+    // The provenance config's paths are rewritten to those run_dir-relative
+    // copies so resume validates against exactly what was archived.
+    let mut provenance: toml::Value = toml::from_str(&config_str)
+        .map_err(|e| CliError::Config(format!("OPTIMIZE_INVALID_TOML: {e}")))?;
+    if let Some(table) = provenance.as_table_mut() {
+        table.insert("skill".to_string(), toml::Value::from(ARCHIVED_SKILL));
+        table.insert("suite".to_string(), toml::Value::from(ARCHIVED_SUITE));
+        if cfg.checks.is_some() {
+            table.insert("checks".to_string(), toml::Value::from(ARCHIVED_CHECKS));
+        }
+    }
+    let provenance_str = toml::to_string_pretty(&provenance).map_err(|e| {
+        CliError::Config(format!(
+            "OPTIMIZE_INVALID_TOML: cannot serialize provenance config: {e}"
+        ))
+    })?;
+    std::fs::write(run_dir.join("optimize.toml"), provenance_str).map_err(CliError::Io)?;
 
     // 9. Build RunConfig via serde_json (avoids direct GateMetric/SlowUpdateMode imports)
     let run_config = build_run_config(&cfg, &optimizer_agent)
