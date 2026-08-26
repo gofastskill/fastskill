@@ -403,17 +403,32 @@ pub fn resolve_step_versions(run_dir: &Path, step: u32) -> StepVersions {
         return StepVersions::Unknown;
     };
 
-    let Some(record) = history.iter().find(|r| r.global_step == step) else {
+    // Collapse to one outcome per step, last write winning.
+    //
+    // `append_history` (upstream `training/state.rs`) blindly pushes, and history is reset
+    // to `[]` only when a run is *initialized* — not on resume. If a process dies between
+    // the history append and the `runtime_state.json` save, resume re-runs that step and
+    // appends a second record for the same `global_step`. Taking the first match would
+    // then report the abandoned attempt, and counting raw records would inflate the
+    // accepted-step count. The most recent record for a step is the real outcome.
+    //
+    // A BTreeMap also makes this independent of record order in the file.
+    let mut outcomes: std::collections::BTreeMap<u32, bool> = std::collections::BTreeMap::new();
+    for record in &history {
+        outcomes.insert(record.global_step, record.accepted);
+    }
+
+    let Some(&accepted) = outcomes.get(&step) else {
         return StepVersions::Unknown;
     };
 
-    if !record.accepted {
+    if !accepted {
         return StepVersions::Rejected;
     }
 
-    let accepted_before = history
+    let accepted_before = outcomes
         .iter()
-        .filter(|r| r.global_step < step && r.accepted)
+        .filter(|(&global_step, &accepted)| global_step < step && accepted)
         .count() as u32;
 
     StepVersions::Accepted {
@@ -625,6 +640,88 @@ mod tests {
         )
         .expect("write");
         assert_eq!(count_history_steps(dir.path()), 2);
+    }
+
+    fn write_history(dir: &Path, json: &str) {
+        std::fs::write(dir.join("history.json"), json).expect("write");
+    }
+
+    #[test]
+    fn resolve_step_versions_counts_accepted_steps_before_target() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        // Step 0 rejected, step 1 accepted -> step 1 is the FIRST accepted step,
+        // so it maps to v0000 -> v0001, not v0001 -> v0002.
+        write_history(
+            dir.path(),
+            r#"[{"global_step":0,"accepted":false},{"global_step":1,"accepted":true}]"#,
+        );
+        assert_eq!(
+            resolve_step_versions(dir.path(), 1),
+            StepVersions::Accepted {
+                before: 0,
+                after: 1
+            }
+        );
+        assert_eq!(resolve_step_versions(dir.path(), 0), StepVersions::Rejected);
+        assert_eq!(resolve_step_versions(dir.path(), 7), StepVersions::Unknown);
+    }
+
+    #[test]
+    fn resolve_step_versions_is_unknown_without_history() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        assert_eq!(resolve_step_versions(dir.path(), 0), StepVersions::Unknown);
+        write_history(dir.path(), "not json");
+        assert_eq!(resolve_step_versions(dir.path(), 0), StepVersions::Unknown);
+    }
+
+    /// `append_history` never resets on resume, so a crash between the history append
+    /// and the runtime-state save can leave two records for one `global_step`. The
+    /// later record is the real outcome, and the duplicate must not inflate the
+    /// accepted-step count used to locate versions.
+    #[test]
+    fn resolve_step_versions_takes_last_record_for_duplicated_step() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        write_history(
+            dir.path(),
+            r#"[{"global_step":0,"accepted":false},
+                {"global_step":0,"accepted":true},
+                {"global_step":1,"accepted":true}]"#,
+        );
+        // Step 0's retry accepted, so it is no longer Rejected...
+        assert_eq!(
+            resolve_step_versions(dir.path(), 0),
+            StepVersions::Accepted {
+                before: 0,
+                after: 1
+            }
+        );
+        // ...and step 1 sees exactly one accepted step before it, not two.
+        assert_eq!(
+            resolve_step_versions(dir.path(), 1),
+            StepVersions::Accepted {
+                before: 1,
+                after: 2
+            }
+        );
+    }
+
+    /// Records are keyed by `global_step`, so file order does not matter.
+    #[test]
+    fn resolve_step_versions_ignores_record_order() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        write_history(
+            dir.path(),
+            r#"[{"global_step":2,"accepted":true},
+                {"global_step":0,"accepted":true},
+                {"global_step":1,"accepted":false}]"#,
+        );
+        assert_eq!(
+            resolve_step_versions(dir.path(), 2),
+            StepVersions::Accepted {
+                before: 1,
+                after: 2
+            }
+        );
     }
 
     #[test]
