@@ -92,6 +92,11 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
     // 4. Parse suite and checks
     let suite_path = base_dir.join(&cfg.suite);
     let splits = load_suite_with_splits(&suite_path).map_err(CliError::Config)?;
+    if splits.selection_count == 0 {
+        return Err(CliError::Config(
+            "OPTIMIZE_NO_SELECTION_CASES: suite has zero cases tagged 'selection'".to_string(),
+        ));
+    }
     if splits.train_count == 0 {
         return Err(CliError::Config(
             "OPTIMIZE_NO_TRAIN_CASES: suite has zero cases tagged 'train'. The training \

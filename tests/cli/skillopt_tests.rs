@@ -454,6 +454,55 @@ timeout_seconds = 30
     );
 }
 
+/// Parity with `run`'s split gates: `run` checks selection_count before
+/// train_count, and `resume` must apply the same OPTIMIZE_NO_SELECTION_CASES
+/// guard rather than falling through to the training loop's later, differently
+/// worded failure.
+#[test]
+fn test_skillopt_resume_no_selection_cases() {
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path();
+
+    fs::write(run_dir.join("SKILL.md"), "# Test Skill").unwrap();
+
+    // Only train rows — no selection cases anywhere.
+    let suite_csv = "id,prompt,should_trigger,split\n\
+                      tr-1,hello,true,train\n\
+                      tr-2,world,true,train\n";
+    fs::write(run_dir.join("suite.csv"), suite_csv).unwrap();
+
+    let toml = r#"
+skill = "SKILL.md"
+skill_name = "test-skill"
+suite = "suite.csv"
+out_dir = ".skillopt/runs"
+target_agent = "claude"
+optimizer_agent = "claude"
+n_epochs = 1
+batch_size = 1
+accumulation = 1
+aggregate_group_size = 2
+lr_0 = 2
+pass_threshold = 0.5
+gate_metric = "hard"
+gate_trials = 1
+gate_epsilon = 0.0
+slow_update_mode = "gated"
+protected_soft_cap_chars = 500
+timeout_seconds = 30
+"#;
+    fs::write(run_dir.join("optimize.toml"), toml).unwrap();
+
+    let result = run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("OPTIMIZE_NO_SELECTION_CASES"),
+        "Expected OPTIMIZE_NO_SELECTION_CASES in: {}",
+        combined
+    );
+}
+
 #[test]
 fn test_skillopt_resume_missing_run_dir() {
     let result = run_fastskill_command(
