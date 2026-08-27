@@ -29,7 +29,7 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 - **Install skills** from a local folder, a git repo (branch/tag/subdirectory), a zip URL, or a registry ID.
 - **Keep installs reproducible** with `skill-project.toml` + `skills.lock`; split optional vs production skills into groups.
 - **Discover skills** by meaning with semantic search (remote catalogs by default, `--local` for installed skills).
-- **Test skill quality** with eval suites (`fastskill eval`) before you ship.
+- **Test skill quality** with eval suites (`fastskill eval`) before you ship — each case runs isolated in a scratch workspace with only your skill, so trigger rates are reproducible across machines.
 - **Improve skills automatically** with the text-gradient optimizer (`fastskill optimize`).
 - **Analyze a collection** for near-duplicates, clusters, and similarity (`fastskill analyze`).
 - **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill serve`), plus an MCP server that exposes every command to your agent (`fastskill mcp`).
