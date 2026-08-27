@@ -1,21 +1,17 @@
-# Contributing to evals-core
+# Contributing to fastskill-evals
 
-`evals-core` is the reusable evaluation engine crate in this workspace. Keep changes focused on deterministic eval execution, stable artifacts, and clear public APIs.
+`fastskill-evals` is a thin adapter over the upstream `aikit-evals` engine. Keep it thin.
 
 ## Scope
 
-- In scope: suite/check parsing, runner interfaces, artifact generation, trace normalization, eval config resolution.
-- Out of scope: CLI UX, HTTP handlers, registry publishing, workspace-level command wiring.
+- In scope: config resolution from `skill-project.toml` (`config_adapter`), and the re-export surface that the rest of the workspace imports.
+- Out of scope: the eval engine itself. Suite parsing, checks, the runner, isolation, traces, and artifacts live upstream in [`aikit-evals`](https://github.com/goaikit/aikit) — change them there, then bump the pin here (note: the pin travels aikit → cli-framework → fastskill; all three must move together).
+- Also out of scope: CLI UX, HTTP handlers, registry publishing (those live in `fastskill-cli` / `fastskill-core`).
 
 ## Crate layout
 
-- `src/lib.rs`: public exports and crate-level API surface.
-- `src/suite.rs`: suite/case loading and validation.
-- `src/checks.rs`: check definitions and scoring logic.
-- `src/runner.rs`: runner traits and case execution.
-- `src/artifacts.rs`: filesystem outputs for results and summaries.
-- `src/trace.rs`: trace conversion and serialization helpers.
-- `src/config.rs`: config input resolution.
+- `src/lib.rs`: re-exports from `aikit_evals` plus the crate-boundary rules.
+- `src/config_adapter.rs`: `[tool.fastskill.eval]` → `EvalConfig` resolution.
 
 ## Development workflow
 
@@ -23,21 +19,12 @@ From workspace root:
 
 ```bash
 cargo fmt --all
-cargo clippy -p evals-core --all-targets --all-features -- -D warnings
-cargo test -p evals-core
+cargo clippy -p fastskill-evals --all-targets --all-features -- -D warnings
+cargo test -p fastskill-evals
 ```
-
-## Contribution rules
-
-- Keep crate responsibilities narrow and independent from CLI concerns.
-- Favor explicit, typed errors (`thiserror`) over opaque failures.
-- Preserve artifact and trace formats unless a versioned migration is introduced.
-- Add or update tests for parser, scoring, and artifact behavior changes.
-- Re-export new public items from `src/lib.rs` when they are part of the intended public API.
 
 ## Pull requests
 
 - Describe behavior changes and why they are needed.
-- Include tests for new checks, config parsing, or runner behavior.
+- Config-resolution changes need tests here; engine changes need tests upstream.
 - Update `README.md` when public usage patterns change.
-- Run crate-local checks before requesting review.
