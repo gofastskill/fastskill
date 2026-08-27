@@ -1158,6 +1158,55 @@ fn test_eval_score_empty_summary_errors() {
     );
 }
 
+/// Same guard for `eval report`: a summary.json with zero cases must not
+/// render as `result: PASSED · cases: 0/0 passed` — the vacuous verdict the
+/// run/score guards exist to prevent, surviving via the artifact viewer.
+#[test]
+fn test_eval_report_empty_summary_errors() {
+    use fastskill_evals::artifacts::{write_summary, SummaryResult};
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("run");
+    fs::create_dir_all(&run_dir).unwrap();
+
+    let summary = SummaryResult {
+        suite_pass: true,
+        suite_pass_rate: Some(0.0),
+        agent: "codex".to_string(),
+        model: None,
+        total_cases: 0,
+        passed: 0,
+        failed: 0,
+        trials_per_case: Some(1),
+        parallel: None,
+        pass_threshold: Some(1.0),
+        run_dir: run_dir.clone(),
+        checks_path: None,
+        skill_project_root: dir.path().to_path_buf(),
+        isolation: None,
+        cases: vec![],
+    };
+    write_summary(&run_dir, &summary).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "report", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        !result.success,
+        "eval report of a zero-case summary must fail, not render 0/0 PASSED; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_EMPTY_SUITE"),
+        "Expected EVAL_EMPTY_SUITE, got: {}",
+        combined
+    );
+}
+
 #[test]
 fn test_eval_report_displays_token_info_when_present() {
     use fastskill_evals::artifacts::{write_summary, CaseStatus, CaseSummary, SummaryResult};

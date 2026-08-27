@@ -122,6 +122,16 @@ pub async fn execute_report(args: ReportArgs) -> CliResult<()> {
         ))
     })?;
 
+    // A summary with zero cases must not render as `result: PASSED · cases:
+    // 0/0 passed` — same guard as `eval run` / `eval score`, applied to the
+    // artifact viewer (such artifacts predate the run-side guard).
+    if summary.cases.is_empty() && summary.total_cases == 0 {
+        return Err(CliError::Config(format!(
+            "EVAL_EMPTY_SUITE: summary.json in '{}' contains zero cases — nothing to report",
+            args.run_dir.display()
+        )));
+    }
+
     if use_json {
         crate::outln!(
             "{}",
