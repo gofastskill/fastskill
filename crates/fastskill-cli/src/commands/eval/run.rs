@@ -454,6 +454,19 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     let mut suite =
         load_suite(&eval_config.prompts_path).map_err(|e| CliError::Config(e.to_string()))?;
 
+    // Reject a suite that parsed to zero cases before any filtering (the
+    // --case/--tag filters below already guard their own empty results). The
+    // default verdict is `failed == 0`, so an empty suite — a header-only CSV
+    // or a wrong prompts path pointing at a template — would otherwise report
+    // `0/0 passed · PASSED` and exit 0, green-lighting CI while running
+    // nothing at all.
+    if suite.cases.is_empty() {
+        return Err(CliError::Config(format!(
+            "EVAL_EMPTY_SUITE: suite '{}' contains zero cases",
+            eval_config.prompts_path.display()
+        )));
+    }
+
     if let Some(ref case_id) = args.case {
         suite = suite.filter_by_id(case_id);
         if suite.cases.is_empty() {

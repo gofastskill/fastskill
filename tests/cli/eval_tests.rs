@@ -1048,6 +1048,115 @@ fn test_eval_validate_agent_flag() {
     );
 }
 
+/// A suite whose CSV parses to zero cases (e.g. a header-only file left behind
+/// by a truncated write or a wrong `prompts` path pointing at a template) must
+/// be rejected loudly. Pre-guard, `eval run` reported `0/0 passed` with the
+/// default `failed == 0` verdict — i.e. PASSED, exit 0 — green-lighting CI
+/// while running nothing at all.
+#[test]
+fn test_eval_run_empty_suite_errors() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    // Header only — zero cases.
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let output_dir = dir.path().join("out");
+    // `--agent aikit`: the in-process runtime is the only one guaranteed to
+    // exist everywhere (CI has no external agent CLIs installed, and runtime
+    // validation runs before suite loading — an uninstalled agent would fail
+    // with RUNTIME_UNKNOWN_ID before the guard under test is ever reached).
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "aikit",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+        ],
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "eval run with an empty suite must fail, not report 0/0 PASSED; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_EMPTY_SUITE"),
+        "Expected EVAL_EMPTY_SUITE, got: {}",
+        combined
+    );
+}
+
+/// Same guard for `eval score`: a summary.json with zero cases (as pre-guard
+/// `eval run` could produce from an empty suite) must not re-score as
+/// `0/0 passed · PASSED` with exit 0.
+#[test]
+fn test_eval_score_empty_summary_errors() {
+    use fastskill_evals::artifacts::{write_summary, SummaryResult};
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("run");
+    fs::create_dir_all(&run_dir).unwrap();
+    let checks_path = dir.path().join("checks.toml");
+    fs::write(
+        &checks_path,
+        "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+    )
+    .unwrap();
+
+    let summary = SummaryResult {
+        suite_pass: true,
+        suite_pass_rate: Some(0.0),
+        agent: "codex".to_string(),
+        model: None,
+        total_cases: 0,
+        passed: 0,
+        failed: 0,
+        trials_per_case: Some(1),
+        parallel: None,
+        pass_threshold: Some(1.0),
+        run_dir: run_dir.clone(),
+        checks_path: Some(checks_path),
+        skill_project_root: dir.path().to_path_buf(),
+        cases: vec![],
+    };
+    write_summary(&run_dir, &summary).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        !result.success,
+        "eval score of a zero-case summary must fail, not report 0/0 PASSED; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_EMPTY_SUITE"),
+        "Expected EVAL_EMPTY_SUITE, got: {}",
+        combined
+    );
+}
+
 #[test]
 fn test_eval_report_displays_token_info_when_present() {
     use fastskill_evals::artifacts::{write_summary, CaseStatus, CaseSummary, SummaryResult};

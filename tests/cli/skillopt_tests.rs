@@ -274,9 +274,142 @@ timeout_seconds = 30
 
 // ── Resume and export ─────────────────────────────────────────────────────────
 
+/// Config TOML shared by the run→resume roundtrip test. `windsurf` is a
+/// supported agent key that deploys skills but is NOT a runnable backend, so
+/// `AikitEvalRunner` fails fast without spawning any subprocess — the training
+/// loop still completes end-to-end (rollouts and gate calls score 0.0, steps
+/// reject) exactly as aikit-skillopt's own `test_train_skill_end_to_end`
+/// exercises it. No real agent CLI is needed on the machine or in CI.
+fn roundtrip_config_toml() -> &'static str {
+    r#"
+skill = "SKILL.md"
+skill_name = "test-skill"
+suite = "suite.csv"
+checks = "checks.toml"
+out_dir = "runs"
+target_agent = "windsurf"
+optimizer_agent = "windsurf"
+n_epochs = 1
+batch_size = 1
+accumulation = 1
+aggregate_group_size = 2
+lr_0 = 2
+pass_threshold = 0.5
+gate_metric = "hard"
+gate_trials = 1
+gate_epsilon = 0.0
+slow_update_mode = "gated"
+protected_soft_cap_chars = 500
+timeout_seconds = 30
+"#
+}
+
+/// The real writer/reader pair: `optimize resume` pointed at a run directory
+/// that a real `optimize run` produced.
+///
+/// `run` resolves the config's skill/suite/checks paths against the CONFIG
+/// file's directory, but `resume` resolves the stored optimize.toml against
+/// the RUN directory. Before the archive fix, `run` wrote only optimize.toml
+/// into the run dir, so every real resume died at validate_config with
+/// SKILLOPT_SKILL_NOT_FOUND before the loop ever started. The older resume
+/// test below hand-builds its run dir and so never caught this; this test
+/// drives the layout `run` actually writes.
+#[test]
+fn test_skillopt_run_then_resume_real_layout() {
+    let dir = TempDir::new().unwrap();
+    let project = dir.path();
+
+    fs::write(project.join("SKILL.md"), "# Test Skill\n\nDo the thing.\n").unwrap();
+    fs::write(
+        project.join("suite.csv"),
+        "id,prompt,should_trigger,split\n\
+         tr-1,hello,true,train\n\
+         sel-1,world,true,selection\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("checks.toml"),
+        "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+    )
+    .unwrap();
+    let config_path = project.join("optimize.toml");
+    fs::write(&config_path, roundtrip_config_toml()).unwrap();
+
+    let run_result = run_fastskill_command(
+        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        run_result.success,
+        "optimize run failed: {}{}",
+        run_result.stdout, run_result.stderr
+    );
+
+    // Locate the timestamped run dir `run` allocated under out_dir.
+    let runs_dir = project.join("runs");
+    let run_dirs: Vec<_> = fs::read_dir(&runs_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    assert_eq!(
+        run_dirs.len(),
+        1,
+        "expected exactly one run dir under {}",
+        runs_dir.display()
+    );
+    let run_dir = run_dirs[0].path();
+
+    // The run dir must archive the exact inputs: the stored optimize.toml's
+    // skill/suite/checks paths must resolve WITHIN the run dir to copies whose
+    // content matches the originals.
+    let stored: toml::Value =
+        toml::from_str(&fs::read_to_string(run_dir.join("optimize.toml")).unwrap()).unwrap();
+    for (key, original) in [
+        ("skill", "SKILL.md"),
+        ("suite", "suite.csv"),
+        ("checks", "checks.toml"),
+    ] {
+        let rel = stored[key].as_str().unwrap();
+        let archived = run_dir.join(rel);
+        assert!(
+            archived.exists(),
+            "stored config's '{key}' path must resolve inside the run dir; {} missing",
+            archived.display()
+        );
+        assert_eq!(
+            fs::read_to_string(&archived).unwrap(),
+            fs::read_to_string(project.join(original)).unwrap(),
+            "archived {key} must be byte-identical to the input"
+        );
+    }
+
+    // And the actual payoff: resume works on the layout run produced.
+    let resume_result =
+        run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    let combined = format!("{}{}", resume_result.stdout, resume_result.stderr);
+    assert!(
+        !combined.contains("SKILLOPT_SKILL_NOT_FOUND")
+            && !combined.contains("SKILLOPT_SUITE_NOT_FOUND"),
+        "resume of a real run dir must not die on unresolvable input paths, got: {}",
+        combined
+    );
+    assert!(
+        resume_result.success,
+        "optimize resume of a real run dir failed: {}",
+        combined
+    );
+}
+
 /// `optimize resume` loads the suite from the stored config the same way `run`
 /// does — the same OPTIMIZE_NO_TRAIN_CASES gate from spec 013 finding #3 must apply
 /// there too, not just on the initial `run`.
+///
+/// The run dir here is hand-built, which is now faithful: since the input-archive
+/// fix, a real `run` copies SKILL.md/suite CSV into the run dir with optimize.toml
+/// pointing at those copies — exactly this layout. (A suite this shape cannot be
+/// produced through `run` itself, because `run` rejects it up front; resume can
+/// still meet it if the archived suite was edited after the fact.)
 #[test]
 fn test_skillopt_resume_no_train_cases() {
     let dir = TempDir::new().unwrap();
@@ -317,6 +450,55 @@ timeout_seconds = 30
     assert!(
         combined.contains("OPTIMIZE_NO_TRAIN_CASES"),
         "Expected OPTIMIZE_NO_TRAIN_CASES in: {}",
+        combined
+    );
+}
+
+/// Parity with `run`'s split gates: `run` checks selection_count before
+/// train_count, and `resume` must apply the same OPTIMIZE_NO_SELECTION_CASES
+/// guard rather than falling through to the training loop's later, differently
+/// worded failure.
+#[test]
+fn test_skillopt_resume_no_selection_cases() {
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path();
+
+    fs::write(run_dir.join("SKILL.md"), "# Test Skill").unwrap();
+
+    // Only train rows — no selection cases anywhere.
+    let suite_csv = "id,prompt,should_trigger,split\n\
+                      tr-1,hello,true,train\n\
+                      tr-2,world,true,train\n";
+    fs::write(run_dir.join("suite.csv"), suite_csv).unwrap();
+
+    let toml = r#"
+skill = "SKILL.md"
+skill_name = "test-skill"
+suite = "suite.csv"
+out_dir = ".skillopt/runs"
+target_agent = "claude"
+optimizer_agent = "claude"
+n_epochs = 1
+batch_size = 1
+accumulation = 1
+aggregate_group_size = 2
+lr_0 = 2
+pass_threshold = 0.5
+gate_metric = "hard"
+gate_trials = 1
+gate_epsilon = 0.0
+slow_update_mode = "gated"
+protected_soft_cap_chars = 500
+timeout_seconds = 30
+"#;
+    fs::write(run_dir.join("optimize.toml"), toml).unwrap();
+
+    let result = run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("OPTIMIZE_NO_SELECTION_CASES"),
+        "Expected OPTIMIZE_NO_SELECTION_CASES in: {}",
         combined
     );
 }

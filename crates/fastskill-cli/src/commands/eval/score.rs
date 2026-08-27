@@ -137,6 +137,16 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
         ))
     })?;
 
+    // A summary with zero cases must not re-score as `0/0 passed · PASSED`
+    // (the suite verdict below is `failed == 0`) — same guard as `eval run`'s
+    // empty-suite check, applied to the artifact side.
+    if summary.cases.is_empty() {
+        return Err(CliError::Config(format!(
+            "EVAL_EMPTY_SUITE: summary.json in '{}' contains zero cases — nothing to re-score",
+            args.run_dir.display()
+        )));
+    }
+
     // Validate that we have usable paths
     let checks_path = summary.checks_path.as_ref().ok_or_else(|| {
         CliError::Config(

@@ -24,12 +24,14 @@ Checks eval configuration and files (optional agent presence check).
 ```bash
 fastskill eval validate
 fastskill eval validate --agent codex
+fastskill eval validate --all
 fastskill eval validate --json
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--agent <AGENT>` | Verify the given agent is available |
+| `--agent <AGENT>` | Verify the given agent(s) are available; repeatable. Mutually exclusive with `--all` |
+| `--all` | Verify availability of every installed agent. Mutually exclusive with `--agent` |
 | `--format <FORMAT>` | `table` or `json` only (eval does not support `grid`/`xml`) |
 | `--json` | Shorthand for `--format json` |
 
@@ -39,14 +41,19 @@ Runs eval cases against an agent; writes artifacts under `--output-dir`.
 
 ```bash
 fastskill eval run --agent codex --output-dir ./eval-runs
+fastskill eval run --agent codex --agent claude --output-dir ./eval-runs
+fastskill eval run --all --output-dir ./eval-runs
 fastskill eval run --agent claude --output-dir /tmp/evals --case smoke-1
 fastskill eval run --agent codex --output-dir ./evals --tag smoke --model gpt-4o
 fastskill eval run --agent codex --output-dir ./evals --json --no-fail
 ```
 
+`--agent <key>` (repeatable) and `--all` are mutually exclusive — passing both errors with `RUNTIME_CONFLICTING_FLAGS`. `eval run` requires one of them (passing neither errors with `RUNTIME_NO_SELECTION`).
+
 | Option | Description |
 |--------|-------------|
-| `--agent <AGENT>` | **Required.** Agent key to run |
+| `--agent <AGENT>` | Agent key(s) to run; repeatable. Required unless `--all` is given |
+| `--all` | Run against all installed agents. Mutually exclusive with `--agent` |
 | `--output-dir <DIR>` | **Required.** Directory for run output |
 | `--model <MODEL>` | Optional model override passed to the agent |
 | `--case <ID>` | Run only this case id |
