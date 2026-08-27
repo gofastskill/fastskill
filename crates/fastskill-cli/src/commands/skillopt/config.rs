@@ -42,6 +42,12 @@ pub struct SkillOptToml {
     // execution
     pub timeout_seconds: u64,
     pub parallel: Option<u32>,
+
+    /// Environment isolation for every scoring pass (spec 016 D5). `None`
+    /// defaults to `true`: each case scores in a scratch workspace containing
+    /// only the candidate skill. `false` (via `isolate = false` or the
+    /// `--no-isolation` flag) restores the legacy shared-workspace behaviour.
+    pub isolate: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -189,6 +195,7 @@ pub fn build_run_config(
         "timeout_seconds": cfg.timeout_seconds,
         "parallel": cfg.parallel,
         "artifact_stem": "skill",
+        "isolate": cfg.isolate.unwrap_or(true),
     });
 
     Ok(serde_json::from_value(config_json)?)
@@ -522,6 +529,38 @@ fn parse_csv_line(line: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn minimal_cfg() -> SkillOptToml {
+        toml::from_str(
+            "skill = \"skill.md\"\nskill_name = \"s\"\nsuite = \"suite.csv\"\n\
+             out_dir = \"out\"\ntarget_agent = \"aikit\"\nn_epochs = 1\nbatch_size = 1\n\
+             accumulation = 1\naggregate_group_size = 1\nlr_0 = 1\npass_threshold = 0.5\n\
+             gate_metric = \"hard\"\ngate_trials = 1\ngate_epsilon = 0.0\n\
+             slow_update_mode = \"gated\"\nprotected_soft_cap_chars = 100\n\
+             timeout_seconds = 60\n",
+        )
+        .expect("minimal config parses")
+    }
+
+    /// spec 016 D5: an optimize config that says nothing about isolation must
+    /// produce an isolated RunConfig — default-on, opt-out only.
+    #[test]
+    fn build_run_config_isolates_by_default() {
+        let cfg = minimal_cfg();
+        assert_eq!(cfg.isolate, None, "toml without `isolate` parses as None");
+        let rc = build_run_config(&cfg, "aikit").expect("build");
+        assert!(rc.isolate, "RunConfig.isolate must default to true");
+    }
+
+    /// `isolate = false` (config knob or --no-isolation override) must reach
+    /// RunConfig — this is the downstream opt-out hook.
+    #[test]
+    fn build_run_config_threads_isolate_false() {
+        let mut cfg = minimal_cfg();
+        cfg.isolate = Some(false);
+        let rc = build_run_config(&cfg, "aikit").expect("build");
+        assert!(!rc.isolate, "isolate=false must reach RunConfig");
+    }
 
     #[test]
     fn parse_suite_counts_train_selection_and_test_splits() {

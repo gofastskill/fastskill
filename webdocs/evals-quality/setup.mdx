@@ -104,7 +104,7 @@ greet-2,What is 2+2?,false,smoke,
 | `prompt` | yes | Text sent to the agent. Use CSV quoting (`"..."`, doubled `""` for an embedded quote) for commas or newlines. |
 | `should_trigger` | yes | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. **See the callout below — this column does not affect pass/fail.** |
 | `tags` | no | Comma-separated tags inside the cell (e.g. `"smoke,basic"`). Used by `eval run --tag <name>`. |
-| `workspace_subdir` | no | Path relative to the skill project root; if set, that directory becomes the agent's working directory for the case. Empty or omitted → project root. |
+| `workspace_subdir` | no | Relative path that becomes the agent's working directory for the case. Under the default isolation it is created **inside the case's scratch workspace**, with fixture files copied in from the same path under the project root; under `--no-isolation` it resolves directly under the project root (the legacy behaviour). Empty or omitted → workspace root. |
 
 Empty lines are skipped.
 
@@ -137,7 +137,7 @@ expected = true
 | `expected` | bool | no | `true` (`false` asserts the skill did **not** run) |
 | `required` | bool | no | `true` |
 
-Matches a **structured `Skill` tool invocation** in the trace, not a substring of prose. When `skill` is given, that name must appear in the invocation's serialized input. This is the robust way to assert triggering — and, with `expected = false`, the only reliable way to assert non-triggering.
+Matches a **structured `Skill` tool invocation** in the trace, not a substring of prose. When `skill` is given, it must **exactly equal** the invocation's skill-identifying input field (`skill`, `name`, or `skillName`) — `"foo"` does not match a `"foo-bar"` invocation, and a skill name merely mentioned in argument text does not count. This is the robust way to assert triggering — and, with `expected = false`, the only reliable way to assert non-triggering.
 
 ### `trigger_expectation`
 
@@ -186,7 +186,7 @@ required = true
 | `path` | path | yes | — |
 | `required` | bool | no | `true` |
 
-Passes if `path` exists under the case's working directory (project root, or `project_root / workspace_subdir` when the case sets one).
+Passes if `path` exists under the case's working directory — the case's scratch workspace under the default isolation (plus `workspace_subdir` when set), or the project root under `--no-isolation`.
 
 ### `max_tool_calls` (alias: `max_command_count`)
 

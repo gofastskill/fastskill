@@ -13,6 +13,8 @@ Options:
       --out-dir <out-dir>        Override the out_dir from the config file
       --resume <resume>          Resume from this run directory instead of starting fresh
   -v, --verbose                  Enable verbose output
+      --no-isolation             Score in a shared workspace against the ambient agent environment
+                                 (disables per-case scoring isolation)
   -h, --help                     Print help
   -V, --version                  Print version
 

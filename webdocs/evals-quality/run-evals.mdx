@@ -17,6 +17,10 @@ This workflow is the day-to-day path for quality checks. If you haven't authored
 fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
 ```
 
+<Callout type="info">
+**Runs are isolated by default.** Each case executes in a per-case scratch workspace containing only the skill under test (`SKILL.md` beside `skill-project.toml`, named by `[metadata].id`), with user-level skill discovery suppressed where the backend supports it. The `isolation:` line in the output (and the `isolation` object in `summary.json`) reports what each run actually got; a failed case's workspace survives under `<run-dir>/workspaces/` for debugging. Pass `--no-isolation` to run in the project root against your machine's ambient environment — and expect trigger rates measured before isolation existed to re-baseline on the first isolated run.
+</Callout>
+
 Common focused runs:
 
 ```bash

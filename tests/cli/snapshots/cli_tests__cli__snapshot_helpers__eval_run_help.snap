@@ -22,6 +22,8 @@ Options:
       --trials <trials>          Override trials per case from config (1-1000)
       --ci                       CI mode: pass/fail on suite pass rate vs threshold
       --threshold <threshold>    Override pass threshold (0.0-1.0)
+      --no-isolation             Run in the project root against the ambient agent environment
+                                 (disables per-case scratch-workspace isolation)
   -h, --help                     Print help
   -V, --version                  Print version
 
