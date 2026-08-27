@@ -57,18 +57,18 @@ One-liner from the repository (detects OS, downloads a release binary, installs 
 curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 ```
 
-Options (run `./install.sh --help` after downloading the script): `--user`, `--prefix DIR`, `--force`, and a version argument such as `./install.sh v0.9.16`.
+Options (run `./install.sh --help` after downloading the script): `--user`, `--prefix DIR`, `--force`, and a version argument such as `./install.sh v0.9.205`.
 
 </Tab>
 
 <Tab value="GitHub Releases">
 
-Download a pre-built binary from [GitHub Releases](https://github.com/gofastskill/fastskill/releases). Replace `VERSION` with the tag you want (for example `0.9.16`; assets use `v${VERSION}` in the URL).
+Download a pre-built binary from [GitHub Releases](https://github.com/gofastskill/fastskill/releases). Replace `VERSION` with the tag you want (for example `0.9.205`; assets use `v${VERSION}` in the URL).
 
 ### 1. macOS (Apple Silicon)
 
 ```bash
-VERSION="0.9.16"
+VERSION="0.9.205"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-aarch64-apple-darwin.tar.gz" -o fastskill.tgz
 tar -xzf fastskill.tgz
 sudo mv fastskill /usr/local/bin/
@@ -79,7 +79,7 @@ Asset name: `fastskill-aarch64-apple-darwin.tar.gz`.
 ### 2. macOS (Intel)
 
 ```bash
-VERSION="0.9.16"
+VERSION="0.9.205"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-apple-darwin.tar.gz" -o fastskill.tgz
 tar -xzf fastskill.tgz
 sudo mv fastskill /usr/local/bin/
@@ -90,7 +90,7 @@ Asset name: `fastskill-x86_64-apple-darwin.tar.gz`.
 ### 3. Linux (x86_64, glibc, with git support)
 
 ```bash
-VERSION="0.9.16"
+VERSION="0.9.205"
 curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz" -o fastskill.tgz
 tar -xzf fastskill.tgz
 sudo mv fastskill /usr/local/bin/
