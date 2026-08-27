@@ -32,6 +32,12 @@ pub struct RunArgs {
 
     /// Resume from this run directory instead of starting fresh
     pub resume: Option<PathBuf>,
+
+    /// Disable per-case scoring isolation (spec 016 D5): score in a shared
+    /// materialized workspace against the ambient agent environment.
+    /// Persisted into the run's provenance config so `optimize resume`
+    /// keeps the same behaviour.
+    pub no_isolation: bool,
 }
 
 impl IntoCommandSpec for RunArgs {
@@ -68,6 +74,16 @@ impl IntoCommandSpec for RunArgs {
                     help: "Resume from this run directory instead of starting fresh",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "no-isolation",
+                    kind: ArgKind::Flag,
+                    long: Some("no-isolation"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Score in a shared workspace against the ambient agent environment \
+                           (disables per-case scoring isolation)",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -96,6 +112,7 @@ impl FromArgValueMap for RunArgs {
                     None
                 }
             }),
+            no_isolation: matches!(map.get("no-isolation"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -122,6 +139,9 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
 
     if let Some(out_dir) = args.out_dir {
         cfg.out_dir = out_dir.to_string_lossy().to_string();
+    }
+    if args.no_isolation {
+        cfg.isolate = Some(false);
     }
 
     let config_dir = args
@@ -229,6 +249,12 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
         if cfg.checks.is_some() {
             table.insert("checks".to_string(), toml::Value::from(ARCHIVED_CHECKS));
         }
+        // Persist the effective isolation decision (config knob or
+        // --no-isolation override) so resume replays the same behaviour
+        // instead of silently re-defaulting.
+        if let Some(isolate) = cfg.isolate {
+            table.insert("isolate".to_string(), toml::Value::from(isolate));
+        }
     }
     let provenance_str = toml::to_string_pretty(&provenance).map_err(|e| {
         CliError::Config(format!(
@@ -253,7 +279,7 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
 
     // aikit-skillopt now takes the eval runner explicitly (post goaikit/aikit#148).
     // fastskill drives real agents through the same runner its `eval` command uses.
-    let runner = fastskill_evals::runner::AikitEvalRunner;
+    let runner = fastskill_evals::runner::AikitEvalRunner::new();
     let outcome = aikit_skillopt::train_skill(inputs, &runner)
         .await
         .map_err(|e| CliError::Config(format!("OPTIMIZE_TRAINING_FAILED: {e}")))?;
@@ -268,4 +294,36 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
     }
     crate::outln!("{stdout_line}");
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod no_isolation_flag_tests {
+    use super::*;
+
+    /// spec 016 D5: --no-isolation must be registered, default to false
+    /// (isolated is the default), parse when present, and override the
+    /// config knob to `Some(false)`.
+    #[test]
+    fn no_isolation_flag_registered_parsed_and_overrides_config() {
+        let spec = RunArgs::command_spec();
+        let flag = spec
+            .args
+            .iter()
+            .find(|a| a.name == "no-isolation")
+            .expect("--no-isolation registered");
+        assert_eq!(flag.kind, ArgKind::Flag);
+
+        let mut m = HashMap::new();
+        m.insert(
+            "config".to_string(),
+            ArgValue::Str("optimize.toml".to_string()),
+        );
+        let args = RunArgs::from_arg_value_map(&m);
+        assert!(!args.no_isolation, "isolation must be the default");
+
+        m.insert("no-isolation".to_string(), ArgValue::Bool(true));
+        let args = RunArgs::from_arg_value_map(&m);
+        assert!(args.no_isolation);
+    }
 }

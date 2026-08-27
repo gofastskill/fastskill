@@ -139,7 +139,7 @@ pub async fn execute_resume(args: ResumeArgs) -> CliResult<()> {
 
     // 8. Resume training
     // aikit-skillopt now takes the eval runner explicitly (post goaikit/aikit#148).
-    let runner = fastskill_evals::runner::AikitEvalRunner;
+    let runner = fastskill_evals::runner::AikitEvalRunner::new();
     let outcome = aikit_skillopt::resume_skill(
         args.run_dir.clone(),
         initial_skill_md,

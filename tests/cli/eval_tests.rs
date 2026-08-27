@@ -1136,6 +1136,7 @@ fn test_eval_score_empty_summary_errors() {
         run_dir: run_dir.clone(),
         checks_path: Some(checks_path),
         skill_project_root: dir.path().to_path_buf(),
+        isolation: None,
         cases: vec![],
     };
     write_summary(&run_dir, &summary).unwrap();
@@ -1181,6 +1182,7 @@ fn test_eval_report_displays_token_info_when_present() {
         run_dir: run_dir.clone(),
         checks_path: None,
         skill_project_root: dir.path().to_path_buf(),
+        isolation: None,
         cases: vec![CaseSummary {
             id: "token-case".to_string(),
             status: CaseStatus::Passed,

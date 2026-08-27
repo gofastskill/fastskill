@@ -79,7 +79,7 @@ The checks file is loaded by `aikit_evals::checks::ChecksToml`: an array of `[[c
 
 | `name` | Fields | Description |
 |---|---|---|
-| `skill_invoked` | `skill` (string, optional), `expected` (bool, default `true`), `required` (bool, default `true`) | Passes if a structured `Skill` tool invocation appears in the trace, matching `expected`. With `skill` set, that name must appear in the invocation's input. **Prefer this for asserting your skill fired.** |
+| `skill_invoked` | `skill` (string, optional), `expected` (bool, default `true`), `required` (bool, default `true`) | Passes if a structured `Skill` tool invocation appears in the trace, matching `expected`. With `skill` set, it must exactly equal the invocation's skill-identifying input field (`skill`, `name`, or `skillName`). **Prefer this for asserting your skill fired.** |
 | `trigger_expectation` | `pattern` (string), `expected` (bool), `required` (bool, default `true`) | Passes if `pattern` appearing in the trace matches `expected` (found == expected). |
 | `command_contains` | `pattern` (string), `required` (bool, default `true`) | Passes if `pattern` appears anywhere in the trace. |
 | `file_exists` | `path` (string), `required` (bool, default `true`) | Passes if `path` exists under the run's working directory after execution. |

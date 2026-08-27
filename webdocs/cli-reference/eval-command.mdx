@@ -61,6 +61,15 @@ fastskill eval run --agent codex --output-dir ./evals --json --no-fail
 | `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero even when the suite fails |
+| `--no-isolation` | Run in the project root against the ambient agent environment (disables per-case isolation) |
+
+### Environment isolation
+
+By default every case runs **isolated**: the skill next to `skill-project.toml` is deployed alone into a per-case scratch workspace, and the agent's user-level skill discovery is suppressed where the backend supports it (claude, codex, pi). Scores then measure the skill under test rather than whatever else is installed on your machine. Isolation needs a `SKILL.md` beside `skill-project.toml` and a `[metadata].id` naming the skill — missing either is a `EVAL_ISOLATION_NO_SKILL` error, not a silent fallback.
+
+The summary reports what each run actually got (`isolation:` line in table output, `isolation` object in `summary.json`), and a failed case's scratch workspace is kept under `<run-dir>/workspaces/` for debugging. Pass `--no-isolation` to restore the old inherit-everything behaviour.
+
+Scores recorded before isolation existed were measured against the ambient environment — expect trigger rates to re-baseline on the first isolated run.
 
 ## eval report
 

@@ -13,12 +13,14 @@ use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::artifacts::{
     allocate_run_dir, write_case_trials_summary, write_summary, write_trial_artifacts, CaseStatus,
-    CaseSummary, CaseTrialsResult, SummaryResult, TrialResult,
+    CaseSummary, CaseTrialsResult, IsolationReport, SummaryResult, TrialResult,
 };
 use fastskill_evals::checks::load_checks;
 use fastskill_evals::resolve_eval_config;
 use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
 use fastskill_evals::suite::load_suite;
+
+use super::isolation::{render_isolation_line, resolve_isolation_mode};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -68,6 +70,11 @@ pub struct RunArgs {
 
     /// Override pass threshold (0.0-1.0)
     pub threshold: Option<f64>,
+
+    /// Disable environment isolation: run cases in the project root against
+    /// the ambient agent environment (legacy behaviour). Scores are then
+    /// influenced by whatever skills are installed on this machine.
+    pub no_isolation: bool,
 }
 
 fn parse_output_format(s: &str) -> Option<fastskill_core::OutputFormat> {
@@ -200,6 +207,16 @@ impl IntoCommandSpec for RunArgs {
                     help: "Override pass threshold (0.0-1.0)",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "no-isolation",
+                    kind: ArgKind::Flag,
+                    long: Some("no-isolation"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Run in the project root against the ambient agent environment \
+                           (disables per-case scratch-workspace isolation)",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -282,6 +299,7 @@ impl FromArgValueMap for RunArgs {
                 ArgValue::Int(i) => Some(*i as f64),
                 _ => None,
             }),
+            no_isolation: matches!(map.get("no-isolation"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -377,11 +395,32 @@ mod tests {
         // (`-3`) rather than a wrapped `u32::MAX`.
         assert_eq!(args.trials, Some(-3));
     }
+
+    /// spec 016: --no-isolation must be registered as a flag, default to
+    /// false (isolated is the default), and parse when present.
+    #[test]
+    fn test_no_isolation_flag_registered_and_parsed() {
+        let spec = RunArgs::command_spec();
+        let flag = spec
+            .args
+            .iter()
+            .find(|a| a.name == "no-isolation")
+            .expect("--no-isolation registered");
+        assert_eq!(flag.kind, ArgKind::Flag);
+
+        let args = RunArgs::from_arg_value_map(&base_map());
+        assert!(!args.no_isolation, "isolation must be the default");
+
+        let mut m = base_map();
+        m.insert("no-isolation".to_string(), ArgValue::Bool(true));
+        let args = RunArgs::from_arg_value_map(&m);
+        assert!(args.no_isolation);
+    }
 }
 
 /// Execute the `eval run` command using the default aikit-backed runner.
 pub async fn execute_run(args: RunArgs) -> CliResult<()> {
-    execute_run_with_runner(args, Arc::new(AikitEvalRunner)).await
+    execute_run_with_runner(args, Arc::new(AikitEvalRunner::new())).await
 }
 
 /// Execute `eval run` with an injectable [`EvalRunner`] (tests or future adapters).
@@ -427,6 +466,8 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 
     let eval_config = resolve_eval_config(&resolution.path, &project_root)
         .map_err(|e| CliError::Config(e.to_string()))?;
+
+    let isolation = resolve_isolation_mode(args.no_isolation, &resolution.path, &project_root)?;
 
     // Validate against the raw parsed value so the error echoes exactly what the
     // user typed (e.g. a negative `-3`), not a wrapped/clamped integer.
@@ -545,6 +586,10 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
             project_root: project_root.clone(),
             timeout_seconds: eval_config.timeout_seconds,
             pass_threshold,
+            isolation: isolation.clone(),
+            // A failed case's scratch workspace is moved here so it survives
+            // for debugging; successful workspaces are deleted.
+            retain_workspace_in: Some(run_dir.join("workspaces")),
         };
 
         if !use_json {
@@ -557,6 +602,10 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
         }
 
         let mut case_summaries = Vec::new();
+        // First observed per-case isolation report stands in for the run: the
+        // backend and mechanism are constant across an agent's run, and a
+        // per-case copy lives in each trial's artifacts.
+        let mut run_isolation: Option<IsolationReport> = None;
 
         for case in &suite.cases {
             if !use_json {
@@ -612,6 +661,10 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
                         e
                     ))
                 })??;
+
+                if run_isolation.is_none() {
+                    run_isolation = out.isolation.clone();
+                }
 
                 let trial = TrialResult {
                     trial_id,
@@ -741,6 +794,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
             run_dir: run_dir.clone(),
             checks_path: eval_config.checks_path.clone(),
             skill_project_root: project_root.clone(),
+            isolation: run_isolation,
             cases: case_summaries,
         };
 
@@ -780,6 +834,15 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
                 summary.total_cases
             );
             crate::outln!("  run_dir: {}", summary.run_dir.display());
+            crate::outln!("  {}", render_isolation_line(summary.isolation.as_ref()));
+            if let Some(iso) = &summary.isolation {
+                if !iso.ambient_skills.is_empty() {
+                    crate::outln!(
+                        "  ambient skills visible to agent: {}",
+                        iso.ambient_skills.join(", ")
+                    );
+                }
+            }
             if summary.suite_pass {
                 if args.ci {
                     crate::outln!(

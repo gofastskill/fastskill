@@ -100,7 +100,10 @@ skill = "my-skill"
 "#;
     let parsed: ChecksToml = toml::from_str(toml).expect("skill_invoked must parse");
 
-    let fired = r#"{"seq":0,"payload":{"type":"tool_use","call_id":"c1","tool_name":"Skill","input":{"command":"my-skill"}}}"#;
+    // The named form exact-matches the invocation's skill-identifying field
+    // (`skill`, `name`, or `skillName` — the shapes claude's Skill tool_use
+    // events carry), not a substring of the serialized input.
+    let fired = r#"{"seq":0,"payload":{"type":"tool_use","call_id":"c1","tool_name":"Skill","input":{"skill":"my-skill"}}}"#;
     assert!(run_checks(&parsed.checks, "", fired, Path::new("/tmp"))[0].passed);
 
     // A different tool is not a skill invocation, even though the trace text
@@ -111,7 +114,16 @@ skill = "my-skill"
         "a Bash call mentioning the skill name must not count as an invocation"
     );
 
-    // `skill` omitted => any Skill invocation matches.
+    // A Skill invocation whose input carries the name only in a non-identifying
+    // field must not satisfy the NAMED form: exact-field matching is what stops
+    // "foo" from matching "foo-bar" or argument text.
+    let non_identifying = r#"{"seq":0,"payload":{"type":"tool_use","call_id":"c1","tool_name":"Skill","input":{"args":"use my-skill please"}}}"#;
+    assert!(
+        !run_checks(&parsed.checks, "", non_identifying, Path::new("/tmp"))[0].passed,
+        "the named form must read identifying fields only, not the whole input"
+    );
+
+    // `skill` omitted => any Skill invocation matches, whatever its input shape.
     let any: ChecksToml = toml::from_str("[[check]]\nname = \"skill_invoked\"\n").unwrap();
     let someone_else = r#"{"seq":0,"payload":{"type":"tool_use","call_id":"c1","tool_name":"Skill","input":{"command":"unrelated"}}}"#;
     assert!(run_checks(&any.checks, "", someone_else, Path::new("/tmp"))[0].passed);

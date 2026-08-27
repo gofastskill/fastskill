@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
+source = "git+https://github.com/goaikit/aikit.git?rev=14b02dbb90acf00ab12f9417153c8c027c5c47b1#14b02dbb90acf00ab12f9417153c8c027c5c47b1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
+source = "git+https://github.com/goaikit/aikit.git?rev=14b02dbb90acf00ab12f9417153c8c027c5c47b1#14b02dbb90acf00ab12f9417153c8c027c5c47b1"
 dependencies = [
  "aikit-sdk",
  "async-trait",
@@ -66,6 +66,7 @@ dependencies = [
  "num_cpus",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "toml",
@@ -75,7 +76,7 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
+source = "git+https://github.com/goaikit/aikit.git?rev=14b02dbb90acf00ab12f9417153c8c027c5c47b1#14b02dbb90acf00ab12f9417153c8c027c5c47b1"
 dependencies = [
  "aikit-agent",
  "claude-agent-sdk",
@@ -98,7 +99,7 @@ dependencies = [
 [[package]]
 name = "aikit-skillopt"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
+source = "git+https://github.com/goaikit/aikit.git?rev=14b02dbb90acf00ab12f9417153c8c027c5c47b1#14b02dbb90acf00ab12f9417153c8c027c5c47b1"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -111,7 +112,7 @@ dependencies = [
 [[package]]
 name = "aikit-textgrad"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=ca308bb32d4ee577f0683766000178c1d75cd457#ca308bb32d4ee577f0683766000178c1d75cd457"
+source = "git+https://github.com/goaikit/aikit.git?rev=14b02dbb90acf00ab12f9417153c8c027c5c47b1#14b02dbb90acf00ab12f9417153c8c027c5c47b1"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -703,7 +704,7 @@ dependencies = [
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=2ef8be676c348236304528acae1f146458e38520#2ef8be676c348236304528acae1f146458e38520"
+source = "git+https://github.com/aroff/cli-framework?rev=1cdaf67379a12f266cd552dfa4581bb0a9da064f#1cdaf67379a12f266cd552dfa4581bb0a9da064f"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",

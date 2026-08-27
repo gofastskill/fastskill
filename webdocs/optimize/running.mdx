@@ -46,6 +46,14 @@ fastskill optimize run --config optimize.toml --out-dir /tmp/my-runs
 
 This overrides the `out_dir` value in the config without modifying the file.
 
+### Disable scoring isolation
+
+```bash
+fastskill optimize run --config optimize.toml --no-isolation
+```
+
+Scoring passes are isolated by default (see the `isolate` knob in [Configuration](/optimize/configuration)); `--no-isolation` scores in a shared workspace against the machine's ambient agent environment instead. The decision is persisted into the run's provenance `optimize.toml`, so a later `resume` keeps the same behaviour. Baselines recorded before isolation existed were measured against the ambient environment — expect gate and baseline scores to shift on the first isolated run.
+
 ### Resume an interrupted run in one step
 
 If you interrupted a run (Ctrl-C, timeout, machine restart), you can resume it directly from the `run` command:

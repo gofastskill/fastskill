@@ -78,6 +78,7 @@ timeout_seconds          = 120
 | `pass_threshold` | float | Yes, no default | [0.0, 1.0] | Fraction of cases that must pass for the gate to accept a step. |
 | `parallel` | int | No | none enforced | Number of eval cases to run in parallel. Omit to use the runner's default (number of CPUs). |
 | `timeout_seconds` | int | Yes, no default | none enforced | Per-case timeout in seconds. |
+| `isolate` | bool | No (defaults to `true`) | — | Per-case scoring isolation: every scoring pass (rollouts, gate, baseline, final) runs each case in a scratch workspace containing only the candidate skill, with user-level skill discovery suppressed where the target agent supports it. Set `false` (or pass `--no-isolation`) to restore the legacy shared-workspace behaviour — scores are then influenced by whatever skills are installed on the machine. |
 
 **Note on `aggregate_group_size` and `gate_trials`:** unlike the other numeric fields, these two
 are not checked by `fastskill`'s own config validation. A `0` value parses fine and passes
