@@ -71,7 +71,7 @@ tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # CLI framework for versioned API server hosting
-cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "1cdaf67379a12f266cd552dfa4581bb0a9da064f", default-features = false, features = ["api-server"] }
+cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "74cde5b0d02c12dc657486b2839bed29b32934ab", default-features = false, features = ["api-server"] }
 
 # Request validation
 validator = { version = "0.21", features = ["derive"] }
