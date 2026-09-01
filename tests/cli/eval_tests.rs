@@ -1372,3 +1372,50 @@ fn test_eval_score_preserves_recorded_error_status() {
         "recorded error_message must survive re-scoring"
     );
 }
+
+#[test]
+fn test_eval_validate_json_reports_agent_availability() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    // Same fake-agent approach as test_eval_validate_agent_flag: the JSON
+    // document must carry the per-agent availability that the table output
+    // prints, otherwise `--all --json` gives a script no way to learn which
+    // agents `eval run --all` would use.
+    let bin_dir = dir.path().join("bin");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
+
+    let result = run_fastskill_command_with_env(
+        &["eval", "validate", "--agent", "codex", "--json"],
+        &[("PATH", merged_path.as_str())],
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "eval validate --agent codex --json must succeed; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let json_start = result.stdout.find('{').unwrap();
+    let output: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(output["valid"], true);
+    assert_eq!(
+        output["agents"]["codex"], true,
+        "JSON output must report the probed agent; got: {}",
+        output
+    );
+}

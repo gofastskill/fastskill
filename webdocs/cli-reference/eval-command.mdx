@@ -35,6 +35,8 @@ fastskill eval validate --json
 | `--format <FORMAT>` | `table` or `json` only (eval does not support `grid`/`xml`) |
 | `--json` | Shorthand for `--format json` |
 
+With `--agent` or `--all`, both outputs report each selected agent: the table prints one `agent '<key>': available|unavailable` line per agent, and the JSON document carries an `agents` object keyed by agent id (`{"agents": {"claude": true}}`). An unavailable agent is an error unless `fail_on_missing_agent = false` is set in the eval config.
+
 ## eval run
 
 Runs eval cases against an agent; writes artifacts under `--output-dir`.

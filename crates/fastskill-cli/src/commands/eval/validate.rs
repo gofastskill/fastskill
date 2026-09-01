@@ -182,7 +182,35 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     let selection = crate::runtime_selector::resolve_runtime_selection(&input)
         .map_err(runtime_selection_error_to_cli)?;
 
+    // Probe agent availability before printing anything: the JSON document
+    // must carry the per-agent result (the table output already does), and it
+    // must never claim `valid: true` for a selection that then fails with
+    // EVAL_AGENT_UNAVAILABLE.
+    let mut agents: Vec<(String, bool)> = Vec::new();
+    if let Some(sel) = &selection {
+        for agent_key in &sel.runtimes {
+            let available = is_agent_available(agent_key);
+            if !available && eval_config.fail_on_missing_agent {
+                return Err(CliError::Config(format!(
+                    "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it or use --agent with an available agent.",
+                    agent_key
+                )));
+            }
+            if !available {
+                eprintln!(
+                    "warning: agent '{}' is not available (fail_on_missing_agent=false, continuing)",
+                    agent_key
+                );
+            }
+            agents.push((agent_key.clone(), available));
+        }
+    }
+
     if use_json {
+        let agents_json: serde_json::Map<String, serde_json::Value> = agents
+            .iter()
+            .map(|(key, available)| (key.clone(), serde_json::Value::Bool(*available)))
+            .collect();
         let output = serde_json::json!({
             "valid": true,
             "prompts_path": eval_config.prompts_path,
@@ -195,6 +223,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "project_root": eval_config.project_root,
             "case_count": case_count,
             "check_count": check_count,
+            "agents": agents_json,
         });
         crate::outln!(
             "{}",
@@ -216,35 +245,16 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "  fail_on_missing_agent: {}",
             eval_config.fail_on_missing_agent
         );
-    }
-
-    // Check agent availability for each resolved runtime.
-    if let Some(sel) = &selection {
-        for agent_key in &sel.runtimes {
-            let available = is_agent_available(agent_key);
-            if !available && eval_config.fail_on_missing_agent {
-                return Err(CliError::Config(format!(
-                    "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it or use --agent with an available agent.",
-                    agent_key
-                )));
-            }
-            if !available {
-                eprintln!(
-                    "warning: agent '{}' is not available (fail_on_missing_agent=false, continuing)",
-                    agent_key
-                );
-            }
-            if !use_json {
-                crate::outln!(
-                    "  agent '{}': {}",
-                    agent_key,
-                    if available {
-                        "available"
-                    } else {
-                        "unavailable"
-                    }
-                );
-            }
+        for (agent_key, available) in &agents {
+            crate::outln!(
+                "  agent '{}': {}",
+                agent_key,
+                if *available {
+                    "available"
+                } else {
+                    "unavailable"
+                }
+            );
         }
     }
 
