@@ -11,7 +11,7 @@ This page is the reference for **authoring** an eval suite: the config table in 
 
 - `skill-project.toml` exists (project root or skill directory — `fastskill` walks up the tree to find it).
 - `SKILL.md` exists alongside it if you're authoring a single skill's suite.
-- For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk — `codex`, `claude`, `gemini`, `opencode`, `agent` are the documented set, but `fastskill eval validate --all` reports exactly which keys aikit-sdk finds installed in *your* environment, which can include others (e.g. `cursor`, `pi`, `aikit`).
+- For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk: `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine; a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`. `fastskill eval validate --all` reports which keys are detected in *your* environment.
 
 Evals do not require embedding or `OPENAI_API_KEY` — that's only for `reindex` / `search`.
 

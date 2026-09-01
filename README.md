@@ -155,8 +155,9 @@ embedding_model = "text-embedding-3-small"
 ```
 
 Set `OPENAI_API_KEY` in your environment to enable embedding-based search. See the
-[configuration guide](webdocs/configuration/init-command.mdx) for the full schema (repositories,
-groups, server, eval).
+[init command guide](webdocs/configuration/init-command.mdx) for `[metadata]`, `[tool.fastskill]`,
+embedding settings and schema migration, and [eval setup](webdocs/evals-quality/setup.mdx) for the
+`[tool.fastskill.eval]` schema.
 
 ## Documentation
 

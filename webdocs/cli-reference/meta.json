@@ -12,6 +12,7 @@
     "repository-command",
     "cache-command",
     "eval-command",
+    "optimize-command",
     "tooling-commands"
   ]
 }

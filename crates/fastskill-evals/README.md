@@ -22,7 +22,6 @@ fastskill-evals = { path = "../fastskill-evals" }
 
 - `fastskill-evals` MAY depend on `fastskill-core` (for `SkillProjectToml`).
 - `fastskill-core` MUST NOT depend on `fastskill-evals`.
-- `fastskill-agent-runtime` MUST NOT depend on `fastskill-evals`.
 
 ## Related documentation
 

@@ -18,7 +18,7 @@ Evals are declared under `[tool.fastskill.eval]` in `skill-project.toml`:
 prompts = "evals/prompts.csv"     # CSV of prompt cases
 checks = "evals/checks.toml"      # TOML of checks/assertions
 timeout_seconds = 600             # per-case timeout
-fail_on_missing_agent = false     # error if the target agent isn't available
+fail_on_missing_agent = false     # skip instead of failing when the agent isn't installed (default: true)
 ```
 
 - `prompts` — path to a CSV of prompt cases to run.
@@ -39,12 +39,12 @@ fail_on_missing_agent = false     # error if the target agent isn't available
 # 1. Check the config and files are well-formed
 fastskill eval validate
 
-# 2. Run the prompt cases against the agent
-fastskill eval run
+# 2. Run the prompt cases against an agent (--agent or --all, plus --output-dir, are required)
+fastskill eval run --agent claude --output-dir ./eval-runs
 
-# 3. Review and score
-fastskill eval report
-fastskill eval score
+# 3. Review and re-score the per-agent run directory it created
+fastskill eval report --run-dir ./eval-runs/<timestamp>/claude
+fastskill eval score --run-dir ./eval-runs/<timestamp>/claude
 ```
 
 Eval output supports `--format table|json` (no grid/xml for eval).
