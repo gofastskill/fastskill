@@ -72,7 +72,8 @@ pub(super) fn resolve_isolation_mode(
             e
         ))
     })?;
-    let toml: SkillProjectToml = toml::from_str(&content)
+    // Schema-aware (legacy manifests upgrade in memory), like every other manifest reader.
+    let toml = SkillProjectToml::from_toml_str(&content)
         .map_err(|e| CliError::Config(format!("EVAL_CONFIG_INVALID: {}", e)))?;
     let skill_name = toml
         .metadata
@@ -134,6 +135,37 @@ mod isolation_mode_tests {
             }
             IsolationMode::Inherit => panic!("default must be Isolated, got Inherit"),
         }
+    }
+
+    /// A pre-`Origin` manifest (no `schema_version`, `source = "git"` plus flat fields) must
+    /// resolve through the schema-aware loader like every other command. A raw
+    /// `toml::from_str` rejects it with an opaque untagged-enum error, so `fastskill eval`
+    /// would refuse a project that `list` and `install` accept.
+    #[test]
+    fn test_legacy_manifest_resolves_isolated() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("skill-project.toml");
+        std::fs::write(
+            &project_file,
+            "[metadata]\nid = \"greeting-helper\"\nversion = \"1.0.0\"\n\n\
+             [dependencies.helper]\nsource = \"git\"\nurl = \"https://github.com/org/helper\"\n\
+             branch = \"main\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("SKILL.md"),
+            "---\nname: greeting-helper\n---\nbody\n",
+        )
+        .unwrap();
+
+        let mode = resolve_isolation_mode(false, &project_file, dir.path()).unwrap();
+        assert_eq!(
+            mode,
+            IsolationMode::Isolated {
+                skill_name: "greeting-helper".to_string(),
+                source: SkillSource::Dir(dir.path().to_path_buf()),
+            }
+        );
     }
 
     #[test]
