@@ -1261,3 +1261,114 @@ fn test_eval_report_displays_token_info_when_present() {
         result.stdout
     );
 }
+
+/// A trial that timed out or errored at run time carries a recorded
+/// `status: error` and an `error_message`. `eval score` re-applies checks to
+/// the saved trace, but checks passing over a *partial* trace are not a pass:
+/// the recorded verdict must survive re-scoring, otherwise `score` reports
+/// more passes than the `run` that wrote the artifacts (observed live: 10/14
+/// from `run`, 11/14 from `score` on the same directory).
+#[test]
+fn test_eval_score_preserves_recorded_error_status() {
+    use fastskill_evals::artifacts::{
+        read_summary, write_summary, CaseStatus, CaseSummary, SummaryResult, TrialResult,
+    };
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("run");
+    let trial_dir = run_dir.join("timeout-case").join("trial-1");
+    fs::create_dir_all(&trial_dir).unwrap();
+    let checks_path = dir.path().join("checks.toml");
+    fs::write(
+        &checks_path,
+        "[[check]]\nname = \"skill_invoked\"\nskill = \"fastskill\"\nexpected = true\nrequired = true\n",
+    )
+    .unwrap();
+
+    // Trace shape as written by a real claude run: the skill WAS invoked
+    // before the case timed out, so every check passes on the partial trace.
+    fs::write(
+        trial_dir.join("trace.jsonl"),
+        concat!(
+            r#"{"seq":0,"payload":{"type":"tool_use","call_id":"toolu_1","tool_name":"Skill","input":{"skill":"fastskill"}}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    fs::write(trial_dir.join("stdout.txt"), "").unwrap();
+
+    let recorded = TrialResult {
+        trial_id: 1,
+        status: CaseStatus::Error,
+        command_count: Some(31),
+        input_tokens: None,
+        output_tokens: None,
+        check_results: vec![],
+        error_message: Some("EVAL_CASE_TIMEOUT: Case timed out after 300s".to_string()),
+    };
+    fs::write(
+        trial_dir.join("result.json"),
+        serde_json::to_string_pretty(&recorded).unwrap(),
+    )
+    .unwrap();
+
+    let summary = SummaryResult {
+        suite_pass: false,
+        suite_pass_rate: Some(0.0),
+        agent: "claude".to_string(),
+        model: None,
+        total_cases: 1,
+        passed: 0,
+        failed: 1,
+        trials_per_case: Some(1),
+        parallel: None,
+        pass_threshold: Some(1.0),
+        run_dir: run_dir.clone(),
+        checks_path: Some(checks_path),
+        skill_project_root: dir.path().to_path_buf(),
+        isolation: None,
+        cases: vec![CaseSummary {
+            id: "timeout-case".to_string(),
+            status: CaseStatus::Failed,
+            command_count: Some(31),
+            input_tokens: None,
+            output_tokens: None,
+            pass_count: Some(0),
+            total_trials: Some(1),
+            pass_rate: Some(0.0),
+            trials: vec![recorded],
+        }],
+    };
+    write_summary(&run_dir, &summary).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        !result.success,
+        "a timed-out trial must not become a pass on re-score; output: {combined}"
+    );
+    assert!(
+        combined.contains("cases: 0/1 passed"),
+        "expected `cases: 0/1 passed`, got: {combined}"
+    );
+
+    let rescored = read_summary(&run_dir).unwrap();
+    assert_eq!((rescored.passed, rescored.failed), (0, 1));
+    let case = &rescored.cases[0];
+    assert_eq!(case.status, CaseStatus::Failed);
+    assert_eq!(
+        case.trials[0].status,
+        CaseStatus::Error,
+        "recorded trial error status must survive re-scoring"
+    );
+    assert_eq!(
+        case.trials[0].error_message.as_deref(),
+        Some("EVAL_CASE_TIMEOUT: Case timed out after 300s"),
+        "recorded error_message must survive re-scoring"
+    );
+}

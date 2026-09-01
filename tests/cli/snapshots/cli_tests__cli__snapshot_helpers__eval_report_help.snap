@@ -19,4 +19,4 @@ Options:
 Syntax: eval report [OPTIONS]
 
 Examples:
-  fastskill eval report --run-dir ./eval-runs/2026-08-14T12-00-00
+  fastskill eval report --run-dir ./eval-runs/2026-08-14T12-00-00Z/claude

@@ -20,4 +20,4 @@ Options:
 Syntax: eval score [OPTIONS]
 
 Examples:
-  fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00
+  fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00Z/claude
