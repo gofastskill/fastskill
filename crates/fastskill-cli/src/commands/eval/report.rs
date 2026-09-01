@@ -40,7 +40,9 @@ impl IntoCommandSpec for ReportArgs {
             summary: "Show a report for a completed eval run",
             syntax: Some("eval report [OPTIONS]"),
             category: Some("quality"),
-            examples: vec!["fastskill eval report --run-dir ./eval-runs/2026-08-14T12-00-00"],
+            examples: vec![
+                "fastskill eval report --run-dir ./eval-runs/2026-08-14T12-00-00Z/claude",
+            ],
             args: vec![
                 ArgSpec {
                     name: "run-dir",

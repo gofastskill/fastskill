@@ -32,6 +32,10 @@ RUN apt-get update \
 
 COPY --from=build /src/target/release/fastskill /usr/local/bin/fastskill
 COPY ci/quality /app/ci/quality
+# The doc-walk suite executes the commands in these pages verbatim (ci/quality/docwalk/docs.json
+# resolves them relative to /app). Without this copy the suite dies on FileNotFoundError and the
+# whole tier is reported as INFRA FAILURE.
+COPY webdocs /app/webdocs
 RUN chmod +x /app/ci/quality/entrypoint.sh
 
 # Non-root, throwaway $HOME. Doc-walk cases that write to ~/.claude* land here and

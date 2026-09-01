@@ -8,7 +8,7 @@ description: "Validate, run, report, and score skill evaluation suites defined i
 `fastskill eval` runs skill quality checks using prompts and rubrics under `[tool.fastskill.eval]` in `skill-project.toml`. Subcommands are `validate`, `run`, `report`, and `score`.
 
 <Callout type="info">
-`eval run` requires an agent on `PATH` for the chosen `--agent` key (for example `codex`, `claude`, `gemini`, `opencode`, or `agent`). Use `eval validate --agent <key>` to verify availability.
+`eval run` requires an agent on `PATH` for the chosen `--agent` key. Known keys are `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine, so a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`, which lists what was detected. Use `eval validate --agent <key>` or `--all` to verify availability.
 </Callout>
 
 ## Usage
@@ -46,6 +46,8 @@ fastskill eval run --all --output-dir ./eval-runs
 fastskill eval run --agent claude --output-dir /tmp/evals --case smoke-1
 fastskill eval run --agent codex --output-dir ./evals --tag smoke --model gpt-4o
 fastskill eval run --agent codex --output-dir ./evals --json --no-fail
+fastskill eval run --agent codex --output-dir ./evals --trials 5 --threshold 0.8
+fastskill eval run --all --output-dir ./eval-runs --ci --threshold 0.9
 ```
 
 `--agent <key>` (repeatable) and `--all` are mutually exclusive — passing both errors with `RUNTIME_CONFLICTING_FLAGS`. `eval run` requires one of them (passing neither errors with `RUNTIME_NO_SELECTION`).
@@ -61,6 +63,9 @@ fastskill eval run --agent codex --output-dir ./evals --json --no-fail
 | `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero even when the suite fails |
+| `--trials <N>` | Override `trials_per_case` from the config for this run (1–1000) |
+| `--threshold <F>` | Override `pass_threshold` from the config for this run (0.0–1.0) |
+| `--ci` | CI mode: the suite passes when its overall pass rate meets the threshold, instead of requiring zero failed cases |
 | `--no-isolation` | Run in the project root against the ambient agent environment (disables per-case isolation) |
 
 ### Environment isolation
@@ -76,13 +81,13 @@ Scores recorded before isolation existed were measured against the ambient envir
 Summarizes a completed run directory.
 
 ```bash
-fastskill eval report --run-dir ./eval-runs/2026-04-01T14-32-10Z
+fastskill eval report --run-dir ./eval-runs/2026-04-01T14-32-10Z/claude
 fastskill eval report --run-dir /tmp/evals/latest --json
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--run-dir <DIR>` | **Required.** Run directory to summarize |
+| `--run-dir <DIR>` | **Required.** The per-agent run directory — `<output-dir>/<timestamp>/<agent>`, the one that holds `summary.json` |
 | `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 
@@ -91,13 +96,13 @@ fastskill eval report --run-dir /tmp/evals/latest --json
 Re-scores saved artifacts without invoking the agent again.
 
 ```bash
-fastskill eval score --run-dir ./eval-runs/2026-04-01T14-32-10Z
+fastskill eval score --run-dir ./eval-runs/2026-04-01T14-32-10Z/claude
 fastskill eval score --run-dir /tmp/evals/run-1 --no-fail
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--run-dir <DIR>` | **Required.** Run directory |
+| `--run-dir <DIR>` | **Required.** The per-agent run directory (`<output-dir>/<timestamp>/<agent>`) |
 | `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero on suite failure |

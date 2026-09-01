@@ -41,11 +41,11 @@ fastskill analyze duplicates --threshold 0.85 --limit 20 --severity high --forma
 `fastskill optimize` runs a text-gradient loop to iteratively improve a skill's content:
 
 ```bash
-fastskill optimize run       # start an optimization run
-fastskill optimize status    # check progress
-fastskill optimize resume    # resume an interrupted run
-fastskill optimize inspect   # inspect run detail
-fastskill optimize export    # export the result
+fastskill optimize run --config ./optimize.toml                    # start a run
+fastskill optimize status ./optimize-runs/<run> --watch            # check progress
+fastskill optimize resume ./optimize-runs/<run>                    # resume an interrupted run
+fastskill optimize inspect ./optimize-runs/<run> --step 3          # inspect one step
+fastskill optimize export ./optimize-runs/<run> --out ./SKILL.md   # export the best skill
 ```
 
 ## Install only part of a collection with groups

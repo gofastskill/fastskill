@@ -728,11 +728,13 @@ fastskill repos add external-dev \
 
 **Skill Validation:**
 ```bash
-# Validate local skills
-fastskill eval validate ~/local-skills
+# Validate a skill project's eval configuration (run from the skill's root;
+# eval validate takes no path argument)
+cd ~/local-skills/my-skill
+fastskill eval validate
 
-# Check for common issues
-fastskill eval validate ~/local-skills --strict
+# Also confirm the agents you plan to run against are installed
+fastskill eval validate --all
 ```
 
 **Integration Testing:**
@@ -777,7 +779,6 @@ priority = 1
       --repo-type local \
       ./test-skills
 
-    fastskill eval validate ./test-skills
     fastskill add test-repo/test-skill
     fastskill read test-repo/test-skill
 ```

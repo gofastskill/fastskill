@@ -13,8 +13,11 @@ pub fn resolve_eval_config(
     project_root: &Path,
 ) -> Result<EvalConfig, EvalConfigError> {
     let content = std::fs::read_to_string(project_file)?;
-    let toml: SkillProjectToml =
-        toml::from_str(&content).map_err(|e| EvalConfigError::Parse(e.to_string()))?;
+    // Schema-aware: upgrades a pre-`Origin` (no `schema_version`) manifest in memory, exactly
+    // as `list`/`install` do. A raw `toml::from_str` would reject that shape with an opaque
+    // untagged-enum error, making `fastskill eval` the one command a legacy project cannot run.
+    let toml = SkillProjectToml::from_toml_str(&content)
+        .map_err(|e| EvalConfigError::Parse(e.to_string()))?;
 
     let eval_config = toml
         .tool
@@ -73,6 +76,36 @@ mod tests {
         let result = resolve_eval_config(&project_file, dir.path());
         assert!(result.is_ok());
         let config = result.unwrap();
+        assert_eq!(config.timeout_seconds, 600);
+    }
+
+    /// A pre-`Origin` manifest (no `schema_version`, `source = "git"` plus flat fields) must
+    /// go through `SkillProjectToml::from_toml_str`, which upgrades it in memory. Parsing it
+    /// raw rejects the `[dependencies]` table with an opaque untagged-enum error, so
+    /// `fastskill eval` would refuse a project that `list` and `install` accept.
+    #[test]
+    fn test_resolve_eval_config_accepts_legacy_manifest() {
+        let dir = TempDir::new().unwrap();
+        let evals_dir = dir.path().join("evals");
+        std::fs::create_dir_all(&evals_dir).unwrap();
+        std::fs::write(
+            evals_dir.join("prompts.csv"),
+            "id,prompt,should_trigger\ntest-1,hello,true\n",
+        )
+        .unwrap();
+
+        let project_file = dir.path().join("skill-project.toml");
+        std::fs::write(
+            &project_file,
+            "[metadata]\nid = \"test\"\nversion = \"1.0.0\"\n\n\
+             [dependencies.helper]\nsource = \"git\"\nurl = \"https://github.com/org/helper\"\n\
+             branch = \"main\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\n\
+             timeout_seconds = 600\nfail_on_missing_agent = false\n",
+        )
+        .unwrap();
+
+        let config = resolve_eval_config(&project_file, dir.path())
+            .expect("legacy manifest must resolve like every other command");
         assert_eq!(config.timeout_seconds, 600);
     }
 }

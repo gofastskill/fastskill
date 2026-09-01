@@ -44,7 +44,9 @@ impl IntoCommandSpec for ScoreArgs {
             summary: "Re-score saved eval artifacts without running the agent again",
             syntax: Some("eval score [OPTIONS]"),
             category: Some("quality"),
-            examples: vec!["fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00"],
+            examples: vec![
+                "fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00Z/claude",
+            ],
             args: vec![
                 ArgSpec {
                     name: "run-dir",
@@ -215,18 +217,36 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
             );
             let all_passed = check_results.iter().all(|r| r.passed);
 
+            // A trial that errored or was skipped at run time (timeout, agent crash,
+            // missing agent) has at best a partial trace, and checks passing over a
+            // partial trace are not a pass. Keep the recorded verdict and message so
+            // `score` can never report more passes than the `run` that wrote the
+            // artifacts; only passed/failed trials are re-derived from the checks.
+            let recorded: Option<TrialResult> = std::fs::read_to_string(tdir.join("result.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok());
+            let (status, error_message) = match &recorded {
+                Some(r) if matches!(r.status, CaseStatus::Error | CaseStatus::Skipped) => {
+                    (r.status.clone(), r.error_message.clone())
+                }
+                _ => (
+                    if all_passed {
+                        CaseStatus::Passed
+                    } else {
+                        CaseStatus::Failed
+                    },
+                    None,
+                ),
+            };
+
             trials.push(TrialResult {
                 trial_id: *trial_id,
-                status: if all_passed {
-                    CaseStatus::Passed
-                } else {
-                    CaseStatus::Failed
-                },
-                command_count: None,
-                input_tokens: None,
-                output_tokens: None,
+                status,
+                command_count: recorded.as_ref().and_then(|r| r.command_count),
+                input_tokens: recorded.as_ref().and_then(|r| r.input_tokens),
+                output_tokens: recorded.as_ref().and_then(|r| r.output_tokens),
                 check_results,
-                error_message: None,
+                error_message,
             });
         }
 

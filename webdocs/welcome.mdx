@@ -136,8 +136,7 @@ FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) an
 
 ### 4. **Publish & registries** (when you distribute)
 
-- **Package**: ZIP artifacts with versioning
-- **Publish**: API or local folder targets when you ship skills to others
+- **Catalogs**: `fastskill marketplace create` generates a `marketplace.json` from a folder of skills
 - **Repositories**: `fastskill repos` for catalog sources—not the only story; many teams spend most time in install, list, validate, and eval
 
 ## Key Features
@@ -239,7 +238,7 @@ fastskill search "charts and graphs"
 ### Skill Authors
 
 **Author, check, then ship:**
-- `fastskill init` and packaging for versioned ZIPs
+- `fastskill init` for the manifest, `marketplace create` for a catalog
 - Validation and `fastskill eval` before release
 - Dependencies declared in the manifest
 - Distribute via Git, ZIP, or registries when needed
