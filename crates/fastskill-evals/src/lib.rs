@@ -17,13 +17,16 @@ pub use aikit_evals::trace;
 
 // Re-export all public items at the crate root for convenience.
 pub use aikit_evals::{
-    agent_events_to_trace, allocate_run_dir, count_raw_json_events, load_checks, load_suite,
-    read_case_results, read_summary, resolve_from_input, run_checks, run_eval_case,
-    stdout_to_trace, suite_passes, trace_to_jsonl, write_case_artifacts, write_case_trials_summary,
-    write_summary, write_trial_artifacts, AikitEvalRunner, ArtifactsError, CaseResult,
-    CaseRunOptions, CaseRunOutput, CaseStatus, CaseSummary, CaseTrialsResult, CheckDefinition,
-    CheckResult, ChecksError, ChecksToml, EvalCase, EvalConfig, EvalConfigError, EvalConfigInput,
-    EvalRunner, EvalSuite, RunArtifacts, RunnerError, SuiteError, SummaryResult, TraceEvent,
-    TracePayload, TrialResult,
+    agent_events_to_trace, aggregate_trials, allocate_run_dir, count_command_events,
+    count_raw_json_events, effective_checks, load_checks, load_suite, read_case_results,
+    read_summary, resolve_from_input, run_checks, run_checks_in_context, run_eval_case,
+    stdout_to_trace, suite_passes, trace_to_jsonl, unobservable_required, validate_case_checks,
+    write_case_artifacts, write_case_trials_summary, write_summary, write_trial_artifacts,
+    AikitEvalRunner, ArtifactsError, CaseResult, CaseRunOptions, CaseRunOutput, CaseStatus,
+    CaseSummary, CaseTrialsResult, CheckContext, CheckDefinition, CheckResult, ChecksError,
+    ChecksToml, EvalCase, EvalConfig, EvalConfigError, EvalConfigInput, EvalRunner, EvalSuite,
+    IsolationMode, IsolationReport, NotObservable, RunArtifacts, RunnerError, SkillSource,
+    SuiteError, SummaryResult, TerminalRecord, TokenBreakdown, TraceEvent, TracePayload,
+    TrialResult,
 };
 pub use config_adapter::resolve_eval_config;

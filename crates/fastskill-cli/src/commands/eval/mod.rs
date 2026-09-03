@@ -1,9 +1,11 @@
 //! Eval command group for skill quality assurance
 
 pub mod isolation;
+pub mod observability;
 pub mod report;
 pub mod run;
 pub mod score;
+pub mod scorecard;
 pub mod validate;
 
 /// Eval command group
@@ -28,4 +30,7 @@ pub enum EvalSubcommand {
 
     /// Re-score saved eval artifacts without running the agent again
     Score(score::ScoreArgs),
+
+    /// Fold many eval runs into named, gated metrics
+    Scorecard(scorecard::ScorecardArgs),
 }

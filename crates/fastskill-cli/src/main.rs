@@ -492,6 +492,14 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 },
             )?
+            .register_out(
+                path!["eval", "scorecard"],
+                |_ctx, args: eval::scorecard::ScorecardArgs| async move {
+                    eval::scorecard::execute_scorecard(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
     };
 
     // ── optimize: fully migrated to typed API ────────────────────────────────────

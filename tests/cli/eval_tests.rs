@@ -87,6 +87,17 @@ fn test_eval_score_help() {
 }
 
 #[test]
+fn test_eval_scorecard_help() {
+    let result = run_fastskill_command(&["eval", "scorecard", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings(
+        "eval_scorecard_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
 fn test_eval_run_requires_agent() {
     let result = run_fastskill_command(&["eval", "run", "--output-dir", "/tmp/evals"], None);
     assert!(!result.success);
@@ -396,9 +407,12 @@ fn test_eval_run_persists_event_trace_jsonl() {
     let dir = TempDir::new().unwrap();
     let evals_dir = dir.path().join("evals");
     fs::create_dir_all(&evals_dir).unwrap();
+    // The fake agent never consults the skill, so this case declares that.
+    // `should_trigger` is scored (R7): claiming `true` here would fail every
+    // trial on a check that has nothing to do with what this test measures.
     fs::write(
         evals_dir.join("prompts.csv"),
-        "id,prompt,should_trigger,tags,workspace_subdir\ntrace-case,\"test prompt\",true,\"basic\",\n",
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrace-case,\"test prompt\",false,\"basic\",\n",
     )
     .unwrap();
     fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
@@ -491,18 +505,29 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
     fs::create_dir_all(&evals_dir).unwrap();
     fs::write(
         evals_dir.join("prompts.csv"),
-        "id,prompt,should_trigger,tags,workspace_subdir\ntrial-case,\"test prompt\",true,\"basic\",\n",
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrial-case,\"test prompt\",false,\"basic\",\n",
     )
     .unwrap();
     fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
     fs::write(
+        evals_dir.join("checks.toml"),
+        "[[check]]\nname = \"command_contains\"\npattern = \"fake-agent-ok\"\nrequired = true\n",
+    )
+    .unwrap();
+    fs::write(
         dir.path().join("skill-project.toml"),
-        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
     )
     .unwrap();
 
-    // Fake agent (see `install_fake_agent`) that passes the first 3
-    // invocations, then fails -- driven by `FAKE_AGENT_MODE=counter`.
+    // Fake agent (see `install_fake_agent`) that answers correctly on the
+    // first 3 invocations and wrongly after -- `FAKE_AGENT_MODE=counter` with
+    // `FAKE_AGENT_FAIL_KIND=answer`. The failing trials still exit 0 and still
+    // complete their turn: only the answer is wrong, which is what the check
+    // above reads. That distinction is the whole point of the fail kind. An
+    // exit-1 trial is an `error`, and errors are excluded from the rate, so a
+    // fixture that crashed instead of answering badly could never move a
+    // threshold at all -- see the error-accounting test below.
     let bin_dir = dir.path().join("bin");
     let output_dir = dir.path().join("out");
     let state_dir = dir.path().join("state");
@@ -512,6 +537,7 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
         ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
         ("FAKE_AGENT_MODE", "counter"),
         ("FAKE_AGENT_PASS_LIMIT", "3"),
+        ("FAKE_AGENT_FAIL_KIND", "answer"),
     ];
 
     // Threshold 0.6 should pass for 3/5.
@@ -546,6 +572,9 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
     assert_eq!(summary["cases"][0]["status"], "passed");
     assert_eq!(summary["cases"][0]["pass_count"], 3);
     assert_eq!(summary["cases"][0]["total_trials"], 5);
+    // Nothing crashed, so every trial is a measurement and the rate is 3/5.
+    assert_eq!(summary["cases"][0]["error_count"], 0);
+    assert_eq!(summary["cases"][0]["scored_trials"], 5);
 
     // Reset state and require 100% suite pass rate should fail in --ci mode.
     fs::remove_file(state_dir.join("count")).ok();
@@ -578,6 +607,90 @@ fn test_eval_run_trials_threshold_and_ci_exit_semantics() {
         combined.contains("threshold") || combined.contains("Eval suite failed"),
         "Expected threshold-related failure, got: {}",
         combined
+    );
+}
+
+/// R1: a trial that produced no measurement is not evidence about the skill,
+/// so it is excluded from the pass rate and reported on its own. The fixture
+/// here is the same counter, failing the other way: past the limit it exits 1
+/// instead of answering badly. Five trials, three of them clean, and the rate
+/// the threshold sees must be 3/3 rather than 3/5 -- with the two crashes
+/// still visible in the summary rather than quietly dropped.
+#[test]
+fn test_eval_run_excludes_error_trials_from_the_rate_and_counts_them() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nerror-case,\"test prompt\",false,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    let output_dir = dir.path().join("out");
+    let state_dir = dir.path().join("state");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
+    let env_vars = vec![
+        ("PATH", merged_path.as_str()),
+        ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+        ("FAKE_AGENT_MODE", "counter"),
+        ("FAKE_AGENT_PASS_LIMIT", "3"),
+        // default fail kind: exit 1, i.e. no measurement at all
+    ];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "codex",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--case",
+            "error-case",
+            "--trials",
+            "5",
+            "--threshold",
+            "1.0",
+            "--ci",
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "3 clean trials out of 3 measurements is a rate of 1.0, so a \
+         threshold of 1.0 is met; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    let case = &summary["cases"][0];
+    assert_eq!(case["id"], "error-case");
+    assert_eq!(case["status"], "passed");
+    assert_eq!(case["pass_count"], 3);
+    assert_eq!(case["total_trials"], 5);
+    assert_eq!(
+        case["error_count"], 2,
+        "the two crashed trials must still be reported: {}",
+        result.stdout
+    );
+    assert_eq!(
+        case["scored_trials"], 3,
+        "only the measurements may be scored: {}",
+        result.stdout
     );
 }
 
@@ -616,7 +729,7 @@ fn test_eval_run_parallelism_produces_overlapping_trial_windows() {
     fs::create_dir_all(&evals_dir).unwrap();
     fs::write(
         evals_dir.join("prompts.csv"),
-        "id,prompt,should_trigger,tags,workspace_subdir\nsleep-case,\"test prompt\",true,\"basic\",\n",
+        "id,prompt,should_trigger,tags,workspace_subdir\nsleep-case,\"test prompt\",false,\"basic\",\n",
     )
     .unwrap();
     fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
@@ -781,7 +894,7 @@ fn test_eval_run_all_flag() {
     fs::create_dir_all(&evals_dir).unwrap();
     fs::write(
         evals_dir.join("prompts.csv"),
-        "id,prompt,should_trigger,tags,workspace_subdir\nall-case,\"test prompt\",true,\"basic\",\n",
+        "id,prompt,should_trigger,tags,workspace_subdir\nall-case,\"test prompt\",false,\"basic\",\n",
     )
     .unwrap();
     fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
@@ -956,7 +1069,7 @@ fn test_eval_run_json_output_contains_agent_field() {
     fs::create_dir_all(&evals_dir).unwrap();
     fs::write(
         evals_dir.join("prompts.csv"),
-        "id,prompt,should_trigger,tags,workspace_subdir\nagent-json-case,\"test prompt\",true,\"basic\",\n",
+        "id,prompt,should_trigger,tags,workspace_subdir\nagent-json-case,\"test prompt\",false,\"basic\",\n",
     )
     .unwrap();
     fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
@@ -1001,6 +1114,133 @@ fn test_eval_run_json_output_contains_agent_field() {
         summary["agent"].as_str().unwrap(),
         "codex",
         "JSON 'agent' field must match the requested agent"
+    );
+}
+
+/// R7 red-green, run side. The fixtures above flip `should_trigger` to `false`
+/// so the fake agent's behaviour matches the column; this is the other half,
+/// and it is what proves those fixtures are passing on a real check rather than
+/// on the column being ignored. Same agent, same fake, `true` instead of
+/// `false`: the run must now fail, on the check the column generates.
+#[test]
+fn test_eval_run_scores_the_should_trigger_column() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntrigger-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
+    let output_dir = dir.path().join("out");
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "codex",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--json",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "an agent that never consults the skill must fail a should_trigger=true \
+         case; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("skill_invoked"),
+        "the failure must name the check the column generates, got: {combined}"
+    );
+
+    // A crashed trial would also make the run non-zero, and would prove
+    // nothing about the column. Pin the shape: the agent completed, the trial
+    // was scored, and it is the check that came back false.
+    let json_start = result.stdout.find('{').unwrap();
+    let summary: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    let case = &summary["cases"][0];
+    assert_eq!(case["status"], "failed", "got: {}", result.stdout);
+    assert_eq!(case["error_count"], 0, "got: {}", result.stdout);
+    assert_eq!(case["scored_trials"], 1, "got: {}", result.stdout);
+}
+
+/// R10 on the `--agent` path: a backend whose decoder emits no tool frames has
+/// no evidence for the check `should_trigger` generates, so the run is refused
+/// before it costs anything rather than reported as a failing suite afterwards.
+#[test]
+fn test_eval_run_refuses_a_backend_that_cannot_score_the_suite() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nblind-case,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    let merged_path = install_fake_agent(&bin_dir, "gemini");
+    let output_dir = dir.path().join("out");
+    let env_vars = vec![("PATH", merged_path.as_str())];
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "gemini",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            // --no-fail suppresses "the skill scored badly"; it must not
+            // suppress "this backend cannot produce a score at all".
+            "--no-fail",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "a suite with no score on this backend must not exit zero; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_CHECKS_UNOBSERVABLE"),
+        "got: {combined}"
+    );
+    assert!(
+        !output_dir.exists(),
+        "the refusal must land before any trial runs, so no run directory is \
+         allocated; found one at {}",
+        output_dir.display()
     );
 }
 
@@ -1241,6 +1481,9 @@ fn test_eval_report_displays_token_info_when_present() {
             pass_count: Some(1),
             total_trials: Some(1),
             pass_rate: Some(1.0),
+            error_count: Some(0),
+            scored_trials: Some(1),
+            should_trigger: None,
             trials: vec![],
         }],
     };
@@ -1262,52 +1505,29 @@ fn test_eval_report_displays_token_info_when_present() {
     );
 }
 
-/// A trial that timed out or errored at run time carries a recorded
-/// `status: error` and an `error_message`. `eval score` re-applies checks to
-/// the saved trace, but checks passing over a *partial* trace are not a pass:
-/// the recorded verdict must survive re-scoring, otherwise `score` reports
-/// more passes than the `run` that wrote the artifacts (observed live: 10/14
-/// from `run`, 11/14 from `score` on the same directory).
-#[test]
-fn test_eval_score_preserves_recorded_error_status() {
-    use fastskill_evals::artifacts::{
-        read_summary, write_summary, CaseStatus, CaseSummary, SummaryResult, TrialResult,
-    };
+/// Shared scaffolding for the `eval score` artifact tests: one case, one
+/// trial, a trace the caller supplies, and a `summary.json` that records the
+/// case's `should_trigger` column exactly as `eval run` now writes it.
+#[allow(clippy::too_many_arguments)]
+fn write_scoreable_run(
+    root: &std::path::Path,
+    case_id: &str,
+    checks_toml: &str,
+    trace_jsonl: &str,
+    recorded: fastskill_evals::artifacts::TrialResult,
+    should_trigger: Option<bool>,
+) -> std::path::PathBuf {
+    use fastskill_evals::artifacts::{write_summary, CaseStatus, CaseSummary, SummaryResult};
     use std::fs;
-    use tempfile::TempDir;
 
-    let dir = TempDir::new().unwrap();
-    let run_dir = dir.path().join("run");
-    let trial_dir = run_dir.join("timeout-case").join("trial-1");
+    let run_dir = root.join("run");
+    let trial_dir = run_dir.join(case_id).join("trial-1");
     fs::create_dir_all(&trial_dir).unwrap();
-    let checks_path = dir.path().join("checks.toml");
-    fs::write(
-        &checks_path,
-        "[[check]]\nname = \"skill_invoked\"\nskill = \"fastskill\"\nexpected = true\nrequired = true\n",
-    )
-    .unwrap();
 
-    // Trace shape as written by a real claude run: the skill WAS invoked
-    // before the case timed out, so every check passes on the partial trace.
-    fs::write(
-        trial_dir.join("trace.jsonl"),
-        concat!(
-            r#"{"seq":0,"payload":{"type":"tool_use","call_id":"toolu_1","tool_name":"Skill","input":{"skill":"fastskill"}}}"#,
-            "\n"
-        ),
-    )
-    .unwrap();
+    let checks_path = root.join("checks.toml");
+    fs::write(&checks_path, checks_toml).unwrap();
+    fs::write(trial_dir.join("trace.jsonl"), trace_jsonl).unwrap();
     fs::write(trial_dir.join("stdout.txt"), "").unwrap();
-
-    let recorded = TrialResult {
-        trial_id: 1,
-        status: CaseStatus::Error,
-        command_count: Some(31),
-        input_tokens: None,
-        output_tokens: None,
-        check_results: vec![],
-        error_message: Some("EVAL_CASE_TIMEOUT: Case timed out after 300s".to_string()),
-    };
     fs::write(
         trial_dir.join("result.json"),
         serde_json::to_string_pretty(&recorded).unwrap(),
@@ -1327,24 +1547,94 @@ fn test_eval_score_preserves_recorded_error_status() {
         pass_threshold: Some(1.0),
         run_dir: run_dir.clone(),
         checks_path: Some(checks_path),
-        skill_project_root: dir.path().to_path_buf(),
+        skill_project_root: root.to_path_buf(),
         isolation: None,
         cases: vec![CaseSummary {
-            id: "timeout-case".to_string(),
+            id: case_id.to_string(),
             status: CaseStatus::Failed,
-            command_count: Some(31),
+            command_count: recorded.command_count,
             input_tokens: None,
             output_tokens: None,
             pass_count: Some(0),
             total_trials: Some(1),
             pass_rate: Some(0.0),
+            error_count: Some(0),
+            scored_trials: Some(1),
+            should_trigger,
             trials: vec![recorded],
         }],
     };
     write_summary(&run_dir, &summary).unwrap();
+    run_dir
+}
+
+/// One `tool_use` frame naming the typed `Skill` tool: the skill was invoked.
+const SKILL_INVOKED_TRACE: &str = concat!(
+    r#"{"seq":0,"payload":{"type":"tool_use","call_id":"toolu_1","tool_name":"Skill","input":{"skill":"fastskill"}}}"#,
+    "\n"
+);
+
+const SKILL_INVOKED_CHECK: &str =
+    "[[check]]\nname = \"skill_invoked\"\nskill = \"fastskill\"\nexpected = true\nrequired = true\n";
+
+fn passing_trial(command_count: Option<usize>) -> fastskill_evals::artifacts::TrialResult {
+    use fastskill_evals::artifacts::{CaseStatus, TrialResult};
+    TrialResult {
+        trial_id: 1,
+        status: CaseStatus::Passed,
+        command_count,
+        input_tokens: None,
+        output_tokens: None,
+        check_results: vec![],
+        error_message: None,
+        exit_code: Some(0),
+        terminal: None,
+        cost_usd: None,
+        tokens: Default::default(),
+        skill_path: None,
+    }
+}
+
+/// A trial that timed out or errored at run time carries a recorded
+/// `status: error` and an `error_message`. `eval score` re-applies checks to
+/// the saved trace, but checks passing over a *partial* trace are not a pass:
+/// the recorded verdict must survive re-scoring, otherwise `score` reports
+/// more passes than the `run` that wrote the artifacts (observed live: 10/14
+/// from `run`, 11/14 from `score` on the same directory).
+///
+/// Under R4 the case now takes the verdict `error` rather than `failed`: its
+/// only trial produced no measurement, so there is nothing left to average.
+#[test]
+fn test_eval_score_preserves_recorded_error_status() {
+    use fastskill_evals::artifacts::{CaseStatus, TrialResult};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let errored = TrialResult {
+        status: CaseStatus::Error,
+        command_count: Some(31),
+        error_message: Some("EVAL_CASE_TIMEOUT: Case timed out after 300s".to_string()),
+        ..passing_trial(Some(31))
+    };
+    // The skill WAS invoked before the case timed out, so every check passes
+    // on the partial trace. Only the recorded verdict stops it reading as one.
+    let run_dir = write_scoreable_run(
+        dir.path(),
+        "timeout-case",
+        SKILL_INVOKED_CHECK,
+        SKILL_INVOKED_TRACE,
+        errored,
+        None,
+    );
 
     let result = run_fastskill_command(
-        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        &[
+            "eval",
+            "score",
+            "--run-dir",
+            run_dir.to_str().unwrap(),
+            "--json",
+        ],
         None,
     );
     let combined = format!("{}{}", result.stdout, result.stderr);
@@ -1353,23 +1643,153 @@ fn test_eval_score_preserves_recorded_error_status() {
         "a timed-out trial must not become a pass on re-score; output: {combined}"
     );
     assert!(
-        combined.contains("cases: 0/1 passed"),
-        "expected `cases: 0/1 passed`, got: {combined}"
+        combined.contains("EVAL_CASES_UNMEASURED") && combined.contains("timeout-case"),
+        "the exit must name the unmeasured case; got: {combined}"
     );
 
-    let rescored = read_summary(&run_dir).unwrap();
-    assert_eq!((rescored.passed, rescored.failed), (0, 1));
-    let case = &rescored.cases[0];
-    assert_eq!(case.status, CaseStatus::Failed);
+    let json_start = result.stdout.find('{').unwrap();
+    let scored: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(scored["passed"], 0);
+    let case = &scored["cases"][0];
     assert_eq!(
-        case.trials[0].status,
-        CaseStatus::Error,
+        case["status"], "error",
+        "a case with no scored trials is `error`, not a 0% fail; got: {case}"
+    );
+    assert_eq!(case["error_count"], 1);
+    assert_eq!(case["scored_trials"], 0);
+    assert_eq!(
+        case["trials"][0]["status"], "error",
         "recorded trial error status must survive re-scoring"
     );
     assert_eq!(
-        case.trials[0].error_message.as_deref(),
-        Some("EVAL_CASE_TIMEOUT: Case timed out after 300s"),
+        case["trials"][0]["error_message"], "EVAL_CASE_TIMEOUT: Case timed out after 300s",
         "recorded error_message must survive re-scoring"
+    );
+}
+
+/// R11. `eval score` used to backfill counts into the run's `summary.json`
+/// while reading it, so scoring the fixtures committed in `gofastskill/skill`
+/// dirtied that repository's working tree. The writer owns the artifact.
+#[test]
+fn test_eval_score_does_not_write_to_the_run_directory() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = write_scoreable_run(
+        dir.path(),
+        "happy-case",
+        SKILL_INVOKED_CHECK,
+        SKILL_INVOKED_TRACE,
+        passing_trial(Some(1)),
+        None,
+    );
+
+    let summary_path = run_dir.join("summary.json");
+    let before = std::fs::read(&summary_path).unwrap();
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        result.success,
+        "the fixture scores clean; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let after = std::fs::read(&summary_path).unwrap();
+    assert_eq!(
+        before, after,
+        "eval score must not rewrite summary.json — scoring a committed fixture would dirty the tree"
+    );
+}
+
+/// R7. The `should_trigger` column is scored, and `eval score` reads it off the
+/// artifact so an offline re-score reaches the same verdict the run did. Here
+/// the case says the skill must stay out of the way and the trace shows it was
+/// invoked, so the case fails on a checks file that asserts nothing about it.
+#[test]
+fn test_eval_score_honours_the_recorded_should_trigger_column() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = write_scoreable_run(
+        dir.path(),
+        "no-trigger-case",
+        "[[check]]\nname = \"max_tool_calls\"\nlimit = 100\nrequired = true\n",
+        SKILL_INVOKED_TRACE,
+        passing_trial(Some(1)),
+        Some(false),
+    );
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        !result.success,
+        "should_trigger=false with the skill invoked must fail the case; got: {combined}"
+    );
+    assert!(
+        combined.contains("cases: 0/1 passed"),
+        "expected `cases: 0/1 passed`, got: {combined}"
+    );
+}
+
+/// The mirror of the test above: the same trace and the same checks file, with
+/// the column flipped, must pass. Without this half the check could be failing
+/// for any reason at all.
+#[test]
+fn test_eval_score_passes_when_should_trigger_matches_the_trace() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = write_scoreable_run(
+        dir.path(),
+        "trigger-case",
+        "[[check]]\nname = \"max_tool_calls\"\nlimit = 100\nrequired = true\n",
+        SKILL_INVOKED_TRACE,
+        passing_trial(Some(1)),
+        Some(true),
+    );
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        result.success,
+        "should_trigger=true with the skill invoked must pass; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+}
+
+/// A pre-R7 artifact has no `should_trigger` column. Guessing `false` would
+/// invent an assertion the run never made and turn every archived run into a
+/// failure, so the fallback is the explicit checks alone.
+#[test]
+fn test_eval_score_falls_back_to_explicit_checks_when_the_column_is_absent() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = write_scoreable_run(
+        dir.path(),
+        "legacy-case",
+        "[[check]]\nname = \"max_tool_calls\"\nlimit = 100\nrequired = true\n",
+        SKILL_INVOKED_TRACE,
+        passing_trial(Some(1)),
+        None,
+    );
+
+    let result = run_fastskill_command(
+        &["eval", "score", "--run-dir", run_dir.to_str().unwrap()],
+        None,
+    );
+    assert!(
+        result.success,
+        "an artifact without the column scores on its explicit checks; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
     );
 }
 
@@ -1417,5 +1837,210 @@ fn test_eval_validate_json_reports_agent_availability() {
         output["agents"]["codex"], true,
         "JSON output must report the probed agent; got: {}",
         output
+    );
+}
+
+/// End-to-end proof that the scorecard reads real artifacts and drops errored
+/// trials before folding their check results.
+///
+/// The fixture crashes two of five trials. Those two still carry check results
+/// -- the checks ran, over an empty trace -- so a reader that folds
+/// `check_results` without consulting `status` reports a denominator of 5. The
+/// only honest denominator is 3.
+#[test]
+fn test_eval_scorecard_folds_runs_and_drops_errored_trials() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nop-crash,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    let sweep_dir = dir.path().join("sweep").join("consultation");
+    let state_dir = dir.path().join("state");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
+    let env_vars = vec![
+        ("PATH", merged_path.as_str()),
+        ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+        ("FAKE_AGENT_MODE", "counter"),
+        ("FAKE_AGENT_PASS_LIMIT", "3"),
+    ];
+
+    let run = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "codex",
+            "--output-dir",
+            sweep_dir.to_str().unwrap(),
+            "--case",
+            "op-crash",
+            "--trials",
+            "5",
+            "--no-fail",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        run.success,
+        "--no-fail makes the run a measurement; stdout: {}, stderr: {}",
+        run.stdout, run.stderr
+    );
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        r#"
+[[metric]]
+name = "Skill-open rate"
+kind = "check_rate"
+cases = ["op-*"]
+checks = ["skill_invoked"]
+min_rate = 0.85
+
+[[metric]]
+name = "Efficiency"
+kind = "tool_calls_p95"
+cases = ["op-*"]
+max = 25
+"#,
+    )
+    .unwrap();
+
+    let sweep_root = dir.path().join("sweep");
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        sweep_root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+
+    // The fake agent never opens the skill, so a `should_trigger = true` case
+    // fails its implicit skill-invocation check on every measured trial. The
+    // metric is therefore below its threshold and the command exits non-zero.
+    let gated = run_fastskill_command_with_env(&args, &env_vars, Some(dir.path()));
+    assert!(
+        !gated.success,
+        "a metric below its threshold must fail the command; stdout: {}",
+        gated.stdout
+    );
+    assert!(
+        gated.stderr.contains("EVAL_SCORECARD_BELOW_THRESHOLD"),
+        "stderr: {}",
+        gated.stderr
+    );
+
+    let mut relaxed_args = args.to_vec();
+    relaxed_args.push("--no-fail");
+    let result = run_fastskill_command_with_env(&relaxed_args, &env_vars, Some(dir.path()));
+    assert!(
+        result.success,
+        "--no-fail reports without gating; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+
+    assert_eq!(card["totals"]["runs"], 1);
+    assert_eq!(card["totals"]["trials"], 5);
+    assert_eq!(
+        card["totals"]["scored_trials"], 3,
+        "two crashed trials carry no measurement: {}",
+        result.stdout
+    );
+    assert_eq!(card["totals"]["error_trials"], 2);
+
+    let open = &card["metrics"][0];
+    assert_eq!(open["name"], "Skill-open rate");
+    assert_eq!(
+        open["observed"], 3,
+        "the denominator is scored trials, never attempted trials: {}",
+        result.stdout
+    );
+    assert_eq!(open["passed"], 0);
+    assert_eq!(open["verdict"], "BELOW THRESHOLD");
+
+    assert_eq!(card["metrics"][1]["name"], "Efficiency");
+    assert_eq!(card["metrics"][1]["verdict"], "PASS");
+}
+
+/// A mistyped case pattern must not quietly delete a gate.
+#[test]
+fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("sweep/suite/2026-09-03T00-00-00Z/codex");
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        run_dir.join("summary.json"),
+        r#"{
+          "suite_pass": true, "agent": "codex", "model": null,
+          "total_cases": 1, "passed": 1, "failed": 0,
+          "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp",
+          "cases": [{
+            "id": "op-init", "status": "passed",
+            "command_count": 2, "input_tokens": null, "output_tokens": null,
+            "trials": [{
+              "trial_id": 1, "status": "passed",
+              "command_count": 2, "input_tokens": null, "output_tokens": null,
+              "check_results": [
+                {"check_name": "skill_invoked", "passed": true, "required": true, "message": null}
+              ],
+              "error_message": null
+            }]
+          }]
+        }"#,
+    )
+    .unwrap();
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        "[[metric]]\nname = \"Typo\"\nkind = \"check_rate\"\ncases = [\"typo-*\"]\nchecks = [\"skill_invoked\"]\nmin_rate = 0.5\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            dir.path().join("sweep").to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--no-fail",
+        ],
+        None,
+    );
+    assert!(
+        !result.success,
+        "--no-fail must not suppress a metric with no data; stdout: {}",
+        result.stdout
+    );
+    assert!(
+        result.stderr.contains("EVAL_SCORECARD_EMPTY_METRIC"),
+        "stderr: {}",
+        result.stderr
     );
 }
