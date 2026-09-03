@@ -1,6 +1,6 @@
 # Eval Measurement Integrity
 
-**Version**: 1.1
+**Version**: 1.2
 **Last Updated**: 2026-09-03
 **Spans**: `goaikit/aikit` (`aikit-sdk`, `aikit-evals`) → `aroff/cli-framework` → `gofastskill/fastskill` → `gofastskill/skill`
 
@@ -165,9 +165,9 @@ Each step waits for the previous to merge.
 |---|---|---|---|
 | 1 | `goaikit/aikit` | R1–R9, ADR 0020, glossary follow-up | `532c5ee` (#167) |
 | 2 | `aroff/cli-framework` | rev bump only | `c1c813c` (#138) |
-| 3 | `gofastskill/fastskill` | rev bump, R10, R11, this document | this change |
-| 3b | `gofastskill/fastskill` | R13, `eval scorecard` | this change |
-| 4 | `gofastskill/skill` | collapse the v2 layout onto R6, delete the Python aggregator | pending |
+| 3 | `gofastskill/fastskill` | rev bump, R10, R11, this document | `6060af1` (#299) |
+| 3b | `gofastskill/fastskill` | R13, `eval scorecard` | `6060af1` (#299) |
+| 4 | `gofastskill/skill` | collapse the v2 layout onto R6, delete the Python aggregator | `f78a620` (#16) |
 
 The `aikit-sdk` git dependency is pinned by exact revision in both `cli-framework` and `fastskill`, and the two must match character for character or cargo resolves two incompatible copies of the crate. The middle link is not optional.
 
