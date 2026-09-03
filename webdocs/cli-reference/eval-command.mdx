@@ -109,6 +109,54 @@ fastskill eval score --run-dir /tmp/evals/run-1 --no-fail
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Exit zero on suite failure |
 
+## eval scorecard
+
+Folds many runs into named metrics and gates each on its own threshold. Use it after a sweep, where `eval report` describes one run and `eval score` decides one run's verdict.
+
+A scorecard reports each check type's own rate rather than a suite pass rate. A case carrying both a skill-invocation check and a tool-call ceiling would otherwise report a budget overrun as a recall failure.
+
+```bash
+fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml
+fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml --json --no-fail
+```
+
+| Option | Description |
+|--------|-------------|
+| `--root <DIR>` | **Required.** Searched recursively for run directories (any directory holding a `summary.json`) |
+| `--metrics <FILE>` | **Required.** TOML file declaring the metrics and their thresholds |
+| `--format <FORMAT>` | `table` or `json` only |
+| `--json` | Shorthand for `--format json` |
+| `--no-fail` | Report the numbers without failing on a metric below its threshold |
+
+### The metrics file
+
+Each `[[metric]]` selects cases by `*`-wildcard id pattern. Omitting `cases` selects every case.
+
+```toml
+[[metric]]
+name = "Skill-open rate"
+kind = "check_rate"
+cases = ["op-*"]
+checks = ["skill_invoked"]
+min_rate = 0.85
+
+[[metric]]
+name = "Efficiency (p95 tool calls)"
+kind = "tool_calls_p95"
+cases = ["op-*"]
+max = 25
+```
+
+`check_rate` is passing check results over observed check results, over trials rather than cases: a case passing three of five trials contributes 3/5. `tool_calls_p95` is the 95th percentile of tool calls per trial, compared against a ceiling.
+
+### What is excluded, and why
+
+- **Errored trials.** A trial with outcome `error` still carries check results, because the checks ran, over an empty trace. Every negative expectation and every tool-call ceiling passed there vacuously, so folding them would report an outage as a clean sweep. They are dropped from every rate and counted separately.
+- **Not-observable checks.** A check whose evidence the backend cannot produce records `passed: false` for older readers. It is excluded rather than counted as a failure.
+- **Estimated cost.** Only the vendor-reported figure is summed. When no trial reported one, the line reads "not reported" rather than `$0.00`.
+
+A case whose every trial errored is named in the output, and a metric that matched no observed check result **fails the command** even under `--no-fail`: a mistyped case pattern would otherwise make a gate quietly disappear. Check results that no metric claims are named in a warning.
+
 ## See also
 
 - [init Command](/cli-reference/init-command) for skill layout
