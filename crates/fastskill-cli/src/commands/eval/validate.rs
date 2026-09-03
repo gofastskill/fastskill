@@ -10,11 +10,13 @@ use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
-use fastskill_evals::checks::load_checks;
+use fastskill_evals::checks::{load_checks, CheckDefinition};
 use fastskill_evals::resolve_eval_config;
 use fastskill_evals::suite::load_suite;
 use std::collections::HashMap;
 use std::env;
+
+use super::observability::{partition_scoreable, validate_suite_checks};
 
 /// Arguments for `fastskill eval validate`
 #[derive(Debug)]
@@ -166,16 +168,20 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     let case_count = suite.cases.len();
 
     // Parse and validate checks TOML if present and exists
-    let check_count = if let Some(ref checks_path) = eval_config.checks_path {
-        if checks_path.exists() {
-            let checks = load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?;
-            checks.len()
-        } else {
-            0
+    let checks: Vec<CheckDefinition> = match &eval_config.checks_path {
+        Some(checks_path) if checks_path.exists() => {
+            load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?
         }
-    } else {
-        0
+        _ => Vec::new(),
     };
+    let check_count = checks.len();
+
+    // A suite with no checks file is still not check-free: every case's
+    // `should_trigger` column generates a required skill-invocation check, and
+    // whether that one is observable depends on the backend and on isolation.
+    // Isolation is the default, and it stages the `SKILL.md` beside the project
+    // file — so a project without one cannot stage anything, on any mode.
+    let skill_will_be_staged = project_root.join("SKILL.md").is_file();
 
     // Resolve runtime selection (optional for validate).
     let input = RuntimeSelectionInput::from(&args);
@@ -186,7 +192,13 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     // must carry the per-agent result (the table output already does), and it
     // must never claim `valid: true` for a selection that then fails with
     // EVAL_AGENT_UNAVAILABLE.
+    // A contradiction between a case's `should_trigger` and an explicit
+    // `skill_invoked` on it is a property of the suite, not of any backend, so
+    // it fails validation outright and is asked even with no runtime selected.
+    validate_suite_checks(&suite.cases, &checks)?;
+
     let mut agents: Vec<(String, bool)> = Vec::new();
+    let mut unscoreable: Vec<(String, String)> = Vec::new();
     if let Some(sel) = &selection {
         for agent_key in &sel.runtimes {
             let available = is_agent_available(agent_key);
@@ -204,12 +216,31 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             }
             agents.push((agent_key.clone(), available));
         }
+
+        // R10: report which of these backends could actually score the suite,
+        // before `eval run` spends a token finding out. `validate` answers for
+        // the default isolation mode; `run` re-asks with the mode selected.
+        // A selection with nothing scoreable is invalid; a mixed one is
+        // reported per agent, matching how `run` drops and continues.
+        let split =
+            partition_scoreable(&sel.runtimes, &suite.cases, &checks, skill_will_be_staged)?;
+        if split.scoreable.is_empty() && !sel.runtimes.is_empty() {
+            return Err(split.into_error());
+        }
+        unscoreable = split.into_reasons();
     }
 
     if use_json {
         let agents_json: serde_json::Map<String, serde_json::Value> = agents
             .iter()
             .map(|(key, available)| (key.clone(), serde_json::Value::Bool(*available)))
+            .collect();
+        // Sibling of `agents` rather than a richer value inside it: readers
+        // pinned to `agents.<key> == true|false` keep working, and a backend
+        // that can score simply has no entry here.
+        let unscoreable_json: serde_json::Map<String, serde_json::Value> = unscoreable
+            .iter()
+            .map(|(key, reason)| (key.clone(), serde_json::Value::String(reason.clone())))
             .collect();
         let output = serde_json::json!({
             "valid": true,
@@ -224,6 +255,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "case_count": case_count,
             "check_count": check_count,
             "agents": agents_json,
+            "unscoreable": unscoreable_json,
         });
         crate::outln!(
             "{}",
@@ -246,15 +278,24 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             eval_config.fail_on_missing_agent
         );
         for (agent_key, available) in &agents {
+            let scoreable = !unscoreable.iter().any(|(key, _)| key == agent_key);
             crate::outln!(
-                "  agent '{}': {}",
+                "  agent '{}': {}{}",
                 agent_key,
                 if *available {
                     "available"
                 } else {
                     "unavailable"
+                },
+                if scoreable {
+                    ""
+                } else {
+                    ", cannot score this suite"
                 }
             );
+        }
+        for (agent_key, reason) in &unscoreable {
+            crate::outln!("  agent '{}' has no score:\n{}", agent_key, reason);
         }
     }
 

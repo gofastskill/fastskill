@@ -12,8 +12,8 @@ use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::artifacts::{
-    allocate_run_dir, write_case_trials_summary, write_summary, write_trial_artifacts, CaseStatus,
-    CaseSummary, CaseTrialsResult, IsolationReport, SummaryResult, TrialResult,
+    aggregate_trials, allocate_run_dir, write_case_trials_summary, write_summary,
+    write_trial_artifacts, CaseStatus, CaseSummary, IsolationReport, SummaryResult, TrialResult,
 };
 use fastskill_evals::checks::load_checks;
 use fastskill_evals::resolve_eval_config;
@@ -21,6 +21,7 @@ use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
 use fastskill_evals::suite::load_suite;
 
 use super::isolation::{render_isolation_line, resolve_isolation_mode};
+use super::observability::scoreable_runtimes;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -534,6 +535,27 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
         vec![]
     };
 
+    // R10: a required check whose evidence a backend never emits makes the
+    // suite unscoreable there. Ask before the first trial — every one after
+    // this point costs a provider call, and none of them would produce a score.
+    // Runtimes that cannot score are dropped rather than failing the whole
+    // invocation, so `--all` is not held hostage by one text-only decoder;
+    // naming a backend with `--agent` leaves nothing to fall back to and fails.
+    let (runtimes, exclusion_notice) = scoreable_runtimes(
+        &runtimes,
+        &suite.cases,
+        &checks,
+        matches!(
+            isolation,
+            fastskill_evals::runner::IsolationMode::Isolated { .. }
+        ),
+    )?;
+    if let Some(notice) = exclusion_notice {
+        // stderr even under --json: the machine-readable summary covers the
+        // runtimes that ran, and the ones that did not must not vanish.
+        eprintln!("{}", notice);
+    }
+
     let total_trial_runs =
         (suite.cases.len() as u64) * (trials_per_case as u64) * (runtimes.len() as u64);
     if total_trial_runs >= 100 && !use_json {
@@ -646,7 +668,6 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
             }
 
             let mut trials: Vec<TrialResult> = Vec::with_capacity(trials_per_case as usize);
-            let mut pass_count: u32 = 0;
             let mut command_count_sum: usize = 0;
             let mut input_tokens_sum: u64 = 0;
             let mut output_tokens_sum: u64 = 0;
@@ -674,11 +695,17 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
                     output_tokens: case_result.output_tokens,
                     check_results: case_result.check_results.clone(),
                     error_message: case_result.error_message.clone(),
+                    // R5: every field the runner already held and the artifact
+                    // previously narrowed away. Copied verbatim — `eval run` is
+                    // the writer, and a writer that reshapes what the runner
+                    // measured is a second source of truth.
+                    exit_code: case_result.exit_code,
+                    terminal: case_result.terminal.clone(),
+                    cost_usd: case_result.cost_usd,
+                    tokens: case_result.tokens.clone(),
+                    skill_path: case_result.skill_path.clone(),
                 };
 
-                if trial.status == CaseStatus::Passed {
-                    pass_count += 1;
-                }
                 if let Some(cc) = trial.command_count {
                     saw_any_command_count = true;
                     command_count_sum = command_count_sum.saturating_add(cc);
@@ -712,23 +739,16 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
                 trials.push(trial);
             }
 
-            trials.sort_by_key(|t| t.trial_id);
-            let total_trials = trials_per_case;
-            let pass_rate = pass_count as f64 / total_trials as f64;
-            let aggregated_status = if pass_rate >= pass_threshold {
-                CaseStatus::Passed
-            } else {
-                CaseStatus::Failed
-            };
-
-            let aggregated = CaseTrialsResult {
-                id: case.id.clone(),
-                trials: trials.clone(),
-                aggregated_status: aggregated_status.clone(),
-                pass_count,
-                total_trials,
-                pass_rate,
-            };
+            // R4: one fold, shared with the engine. Errored trials leave the
+            // ratio entirely, and a case with none left scores `error` rather
+            // than a 0% fail. Re-deriving the rate here would let the CLI and
+            // the engine disagree about the same run.
+            let aggregated = aggregate_trials(&case.id, trials, trials_per_case, pass_threshold);
+            let trials = aggregated.trials.clone();
+            let aggregated_status = aggregated.aggregated_status.clone();
+            let total_trials = aggregated.total_trials;
+            let pass_rate = aggregated.pass_rate;
+            let pass_count = aggregated.pass_count;
 
             if let Err(e) = write_case_trials_summary(&run_dir, &case.id, &aggregated) {
                 if !use_json {
@@ -760,6 +780,13 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
                 pass_count: Some(pass_count),
                 total_trials: Some(total_trials),
                 pass_rate: Some(pass_rate),
+                error_count: Some(aggregated.error_count),
+                scored_trials: Some(aggregated.scored_trials),
+                // Recorded so `eval score` can rebuild the same effective check
+                // list offline: under R7 this column generates an implicit
+                // skill-invocation check, and a scorer that cannot see it drops
+                // that check and reports a different verdict than the run.
+                should_trigger: Some(case.should_trigger),
                 trials,
             });
         }

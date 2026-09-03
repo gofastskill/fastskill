@@ -322,6 +322,11 @@ mod isolation_e2e_tests {
                     output_tokens: None,
                     check_results: vec![],
                     error_message: None,
+                    exit_code: Some(0),
+                    terminal: None,
+                    cost_usd: None,
+                    tokens: Default::default(),
+                    skill_path: None,
                 },
                 String::new(),
             )
@@ -346,10 +351,23 @@ mod isolation_e2e_tests {
             "id,prompt,should_trigger\ncase-1,say hello,true\n",
         )
         .unwrap();
+        // `--no-isolation` stages no scratch copy of the skill, so the check
+        // that `should_trigger` implies would have no path to match and the
+        // pre-flight would refuse the run before the runner ever saw the
+        // isolation mode these tests exist to observe. Spelling the document
+        // path on the check is the remedy the refusal names, and it makes the
+        // suite scoreable in both modes.
+        std::fs::write(
+            dir.join("evals/checks.toml"),
+            "[[check]]\nname = \"skill_invoked\"\npath = \"SKILL.md\"\n\
+             expected = true\nrequired = true\n",
+        )
+        .unwrap();
         std::fs::write(
             dir.join("skill-project.toml"),
             "[metadata]\nid = \"greeting-helper\"\nversion = \"1.0.0\"\n\n\
              [tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\n\
+             checks = \"evals/checks.toml\"\n\
              timeout_seconds = 60\nfail_on_missing_agent = false\n",
         )
         .unwrap();

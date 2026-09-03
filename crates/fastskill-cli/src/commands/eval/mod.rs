@@ -1,6 +1,7 @@
 //! Eval command group for skill quality assurance
 
 pub mod isolation;
+pub mod observability;
 pub mod report;
 pub mod run;
 pub mod score;
