@@ -364,7 +364,9 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
     // clean run, which is the exact failure this whole change exists to close.
     if !errored_cases.is_empty() {
         return Err(CliError::Config(format!(
-            "EVAL_CASES_UNMEASURED: {} of {} case(s) produced no measurement and were excluded              from the score: {}. Re-run them; the reported {}/{} covers only the rest.",
+            "EVAL_CASES_UNMEASURED: {} of {} case(s) produced no measurement and were \
+             excluded from the score: {}. Re-run them; the reported {}/{} covers only \
+             the rest.",
             errored_cases.len(),
             summary.total_cases,
             errored_cases.join(", "),
