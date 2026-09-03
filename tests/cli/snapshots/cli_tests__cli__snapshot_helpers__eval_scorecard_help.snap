@@ -1,0 +1,24 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Fold many eval runs into named, gated metrics
+
+Usage: fastskill eval scorecard [OPTIONS] --root <root> --metrics <metrics>
+
+Options:
+      --root <root>              Directory searched recursively for run directories
+      --skills-dir <skills-dir>  Override the skills directory path
+      --global                   Use global skills directory (~/.config/fastskill/skills)
+      --metrics <metrics>        TOML file declaring the metrics and their thresholds
+      --format <format>          Output format: table, json
+  -v, --verbose                  Enable verbose output
+      --json                     Shorthand for --format json
+      --no-fail                  Report the numbers without failing on a metric below its threshold
+  -h, --help                     Print help
+  -V, --version                  Print version
+
+Syntax: eval scorecard --root <DIR> --metrics <FILE> [OPTIONS]
+
+Examples:
+  fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml

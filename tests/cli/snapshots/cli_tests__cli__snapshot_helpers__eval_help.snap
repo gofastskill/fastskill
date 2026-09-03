@@ -1,6 +1,5 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
 expression: normalized
 ---
 Evaluation commands for skill quality assurance
@@ -8,11 +7,12 @@ Evaluation commands for skill quality assurance
 Usage: fastskill eval [OPTIONS] <COMMAND>
 
 Commands:
-  report    Show a report for a completed eval run
-  run       Run eval cases against an agent
-  score     Re-score saved eval artifacts without running the agent again
-  validate  Validate eval configuration and files
-  help      Print this message or the help of the given subcommand(s)
+  report     Show a report for a completed eval run
+  run        Run eval cases against an agent
+  score      Re-score saved eval artifacts without running the agent again
+  scorecard  Fold many eval runs into named, gated metrics
+  validate   Validate eval configuration and files
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --skills-dir <skills-dir>  Override the skills directory path

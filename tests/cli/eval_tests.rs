@@ -87,6 +87,17 @@ fn test_eval_score_help() {
 }
 
 #[test]
+fn test_eval_scorecard_help() {
+    let result = run_fastskill_command(&["eval", "scorecard", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings(
+        "eval_scorecard_help",
+        &result.stdout,
+        &cli_snapshot_settings(),
+    );
+}
+
+#[test]
 fn test_eval_run_requires_agent() {
     let result = run_fastskill_command(&["eval", "run", "--output-dir", "/tmp/evals"], None);
     assert!(!result.success);
@@ -1826,5 +1837,210 @@ fn test_eval_validate_json_reports_agent_availability() {
         output["agents"]["codex"], true,
         "JSON output must report the probed agent; got: {}",
         output
+    );
+}
+
+/// End-to-end proof that the scorecard reads real artifacts and drops errored
+/// trials before folding their check results.
+///
+/// The fixture crashes two of five trials. Those two still carry check results
+/// -- the checks ran, over an empty trace -- so a reader that folds
+/// `check_results` without consulting `status` reports a denominator of 5. The
+/// only honest denominator is 3.
+#[test]
+fn test_eval_scorecard_folds_runs_and_drops_errored_trials() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nop-crash,\"test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\ntimeout_seconds = 30\nfail_on_missing_agent = true\n",
+    )
+    .unwrap();
+
+    let bin_dir = dir.path().join("bin");
+    let sweep_dir = dir.path().join("sweep").join("consultation");
+    let state_dir = dir.path().join("state");
+    let merged_path = install_fake_agent(&bin_dir, "codex");
+    let env_vars = vec![
+        ("PATH", merged_path.as_str()),
+        ("FASTSKILL_TEST_STATE_DIR", state_dir.to_str().unwrap()),
+        ("FAKE_AGENT_MODE", "counter"),
+        ("FAKE_AGENT_PASS_LIMIT", "3"),
+    ];
+
+    let run = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "codex",
+            "--output-dir",
+            sweep_dir.to_str().unwrap(),
+            "--case",
+            "op-crash",
+            "--trials",
+            "5",
+            "--no-fail",
+        ],
+        &env_vars,
+        Some(dir.path()),
+    );
+    assert!(
+        run.success,
+        "--no-fail makes the run a measurement; stdout: {}, stderr: {}",
+        run.stdout, run.stderr
+    );
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        r#"
+[[metric]]
+name = "Skill-open rate"
+kind = "check_rate"
+cases = ["op-*"]
+checks = ["skill_invoked"]
+min_rate = 0.85
+
+[[metric]]
+name = "Efficiency"
+kind = "tool_calls_p95"
+cases = ["op-*"]
+max = 25
+"#,
+    )
+    .unwrap();
+
+    let sweep_root = dir.path().join("sweep");
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        sweep_root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+
+    // The fake agent never opens the skill, so a `should_trigger = true` case
+    // fails its implicit skill-invocation check on every measured trial. The
+    // metric is therefore below its threshold and the command exits non-zero.
+    let gated = run_fastskill_command_with_env(&args, &env_vars, Some(dir.path()));
+    assert!(
+        !gated.success,
+        "a metric below its threshold must fail the command; stdout: {}",
+        gated.stdout
+    );
+    assert!(
+        gated.stderr.contains("EVAL_SCORECARD_BELOW_THRESHOLD"),
+        "stderr: {}",
+        gated.stderr
+    );
+
+    let mut relaxed_args = args.to_vec();
+    relaxed_args.push("--no-fail");
+    let result = run_fastskill_command_with_env(&relaxed_args, &env_vars, Some(dir.path()));
+    assert!(
+        result.success,
+        "--no-fail reports without gating; stdout: {}, stderr: {}",
+        result.stdout, result.stderr
+    );
+
+    let json_start = result.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+
+    assert_eq!(card["totals"]["runs"], 1);
+    assert_eq!(card["totals"]["trials"], 5);
+    assert_eq!(
+        card["totals"]["scored_trials"], 3,
+        "two crashed trials carry no measurement: {}",
+        result.stdout
+    );
+    assert_eq!(card["totals"]["error_trials"], 2);
+
+    let open = &card["metrics"][0];
+    assert_eq!(open["name"], "Skill-open rate");
+    assert_eq!(
+        open["observed"], 3,
+        "the denominator is scored trials, never attempted trials: {}",
+        result.stdout
+    );
+    assert_eq!(open["passed"], 0);
+    assert_eq!(open["verdict"], "BELOW THRESHOLD");
+
+    assert_eq!(card["metrics"][1]["name"], "Efficiency");
+    assert_eq!(card["metrics"][1]["verdict"], "PASS");
+}
+
+/// A mistyped case pattern must not quietly delete a gate.
+#[test]
+fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("sweep/suite/2026-09-03T00-00-00Z/codex");
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        run_dir.join("summary.json"),
+        r#"{
+          "suite_pass": true, "agent": "codex", "model": null,
+          "total_cases": 1, "passed": 1, "failed": 0,
+          "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp",
+          "cases": [{
+            "id": "op-init", "status": "passed",
+            "command_count": 2, "input_tokens": null, "output_tokens": null,
+            "trials": [{
+              "trial_id": 1, "status": "passed",
+              "command_count": 2, "input_tokens": null, "output_tokens": null,
+              "check_results": [
+                {"check_name": "skill_invoked", "passed": true, "required": true, "message": null}
+              ],
+              "error_message": null
+            }]
+          }]
+        }"#,
+    )
+    .unwrap();
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        "[[metric]]\nname = \"Typo\"\nkind = \"check_rate\"\ncases = [\"typo-*\"]\nchecks = [\"skill_invoked\"]\nmin_rate = 0.5\n",
+    )
+    .unwrap();
+
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            dir.path().join("sweep").to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--no-fail",
+        ],
+        None,
+    );
+    assert!(
+        !result.success,
+        "--no-fail must not suppress a metric with no data; stdout: {}",
+        result.stdout
+    );
+    assert!(
+        result.stderr.contains("EVAL_SCORECARD_EMPTY_METRIC"),
+        "stderr: {}",
+        result.stderr
     );
 }

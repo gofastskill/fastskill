@@ -1,6 +1,6 @@
 # Eval Measurement Integrity
 
-**Version**: 1.0
+**Version**: 1.1
 **Last Updated**: 2026-09-03
 **Spans**: `goaikit/aikit` (`aikit-sdk`, `aikit-evals`) → `aroff/cli-framework` → `gofastskill/fastskill` → `gofastskill/skill`
 
@@ -122,6 +122,41 @@ Trial outcome and Case verdict are named separately although one type, `CaseStat
 
 ---
 
+## R13 — A sweep folds into named, gated metrics
+
+`eval report` describes one run and `eval score` decides one run's verdict. Neither answers the question a sweep is run to answer: across every run, what is the rate of each individual assertion, and does it clear the bar set for it?
+
+Those are not the same number as a suite pass rate. A consultation case carries both a skill-invocation check and a tool-call ceiling, and folding them into one per-case verdict reports a budget overrun as a recall failure. `fastskill eval scorecard` keeps each check type's rate separate and gates each on its own threshold, reading `summary.json` and nothing else.
+
+Two facts make this a tool concern rather than a post-processing one. A trial with outcome `error` still carries check results — the checks ran, over an empty trace, and every negative expectation and every ceiling passed vacuously — so a reader that folds `check_results` without consulting `status` reports an outage as a clean sweep. A check that was **not observable** records `passed: false` for older readers and must not be counted as a failure by anything that understands the field. Both are recorded in the artifact and honouring them is not optional.
+
+Metrics are declared in a TOML file, selecting cases by `*`-wildcard id pattern:
+
+```toml
+[[metric]]
+name = "Skill-open rate"
+kind = "check_rate"
+cases = ["op-*"]
+checks = ["skill_invoked"]
+min_rate = 0.85
+
+[[metric]]
+name = "Efficiency (p95 tool calls)"
+kind = "tool_calls_p95"
+cases = ["op-*"]
+max = 25
+```
+
+Three behaviours are deliberate:
+
+- A metric matching no observed check result **fails the command**, and `--no-fail` does not suppress it. A mistyped case pattern would otherwise make a gate quietly disappear, which is the vacuity hazard moved up one more level.
+- Check results no metric claims are named in a warning. An assertion that runs on every trial and is reported nowhere is an assertion nobody reads.
+- Cost is summed from the vendor-reported field only and rendered as "not reported" when absent, per R5.
+
+This replaces the Python aggregator in `gofastskill/skill`, whose `is_alive()` text heuristic and `stdout.txt` cost parser were both workarounds for information the engine did not record and now does.
+
+---
+
 ## Ownership and sequence
 
 Each step waits for the previous to merge.
@@ -131,6 +166,7 @@ Each step waits for the previous to merge.
 | 1 | `goaikit/aikit` | R1–R9, ADR 0020, glossary follow-up | `532c5ee` (#167) |
 | 2 | `aroff/cli-framework` | rev bump only | `c1c813c` (#138) |
 | 3 | `gofastskill/fastskill` | rev bump, R10, R11, this document | this change |
+| 3b | `gofastskill/fastskill` | R13, `eval scorecard` | this change |
 | 4 | `gofastskill/skill` | collapse the v2 layout onto R6, delete the Python aggregator | pending |
 
 The `aikit-sdk` git dependency is pinned by exact revision in both `cli-framework` and `fastskill`, and the two must match character for character or cargo resolves two incompatible copies of the crate. The middle link is not optional.
