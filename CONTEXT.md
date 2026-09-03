@@ -86,6 +86,26 @@ The HTTP REST API + bundled web UI. Consumers: humans (browser), CI, REST client
 **mcp**:
 The Model Context Protocol server. Consumer: agents speaking MCP. Kept separate from `serve` on purpose — different transport, different audience. Do not fold one into the other.
 
+### Evaluation
+
+The eval commands consume the **Skill Evaluation** vocabulary of `goaikit/aikit` (`aikit-evals/CONTEXT.md`) — Case, Trial, Check, Suite, Trial outcome, Case verdict, Judge, Judgment, Score, Run directory — and add only the terms below, which exist because fastskill is where many run directories are read together.
+
+**Benchmark**:
+The environment a scorecard measures: the suites — cases, checks, judges — that a metrics file selects over, and the metrics themselves. Identified by the content hash of that file and of the suite files it selects; a benchmark whose gates or selections changed is a different question, not a later answer to the same one, so scorecards of different benchmarks are never drawn on one line.
+_Avoid_: Sweep, spec, eval config, test plan
+
+**Metric**:
+One question a benchmark asks over a set of run directories — a rate of check results, a percentile of tool calls, or a mean judge score — selected by case-id pattern and by check or judge name. A gated metric carries a threshold and a **verdict**, PASS or FAIL; an ungated metric is reported and never decides. A metric that selects nothing is an error, never an absence.
+_Avoid_: KPI, stat, measure, gate (the threshold is the gate; the metric is the question), check (per trial, upstream)
+
+**Scorecard**:
+One evaluation of a benchmark against a set of run directories, carrying enough of its own identity — when, the target agent and model, the skill revision, the benchmark hash, the judge identities — to be rendered or compared later without those directories. One scorecard is one point on a progress line.
+_Avoid_: Sweep, report (a rendering), summary (one run directory's, upstream), results
+
+**Report**:
+A rendering of measurements already made — one run directory's summary, or one or more scorecards — as a table, JSON, or one self-contained HTML file with every asset embedded. Producing a report never runs an agent and never re-scores; it reads scorecard files, not run directories, so it can be made anywhere the files are.
+_Avoid_: Dashboard, page, export, scorecard (the measurement it renders)
+
 ## Resolved decisions
 
 - **`sync` is removed.** It wrote skills into an agent metadata file for *older agents that lacked native skill support*. Modern targets (Claude Code) read skills directly, so the command is obsolete. Propagation now has exactly two members: `install` (Manifest → skills dir) and `reindex` (skills dir → Vector index, conditional on an Embedding provider).
