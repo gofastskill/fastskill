@@ -465,7 +465,16 @@ const PRE_FIX_README_ROWS: &str = concat!(
 
 #[test]
 fn checker_fires_on_the_pre_fix_readme() {
-    let groups = compile_groups(&cli_groups());
+    let surface = cli_groups();
+    // `mcp register` is a deprecated alias that upstream cli-framework hides.
+    // Whether the pre-fix README is stale *about it* therefore depends on the
+    // pinned framework revision, not on this scanner. Derive that half of the
+    // expectation from the live surface so a pin bump cannot turn this red;
+    // the judge/scorecard half is pinned and still carries the assertion.
+    let register_visible = surface
+        .get("mcp")
+        .is_some_and(|subs| subs.contains("register"));
+    let groups = compile_groups(&surface);
     let corpus = vec![(
         "README.md@2f5df14".to_string(),
         PRE_FIX_README_ROWS.to_string(),
@@ -486,13 +495,17 @@ fn checker_fires_on_the_pre_fix_readme() {
         .iter()
         .flat_map(|f| f.missing.iter().cloned())
         .collect();
-    let expected: BTreeSet<String> = ["eval judge", "eval scorecard", "mcp register"]
+    let mut expected: BTreeSet<String> = ["eval judge", "eval scorecard"]
         .into_iter()
         .map(str::to_string)
         .collect();
+    if register_visible {
+        expected.insert("mcp register".to_string());
+    }
     assert_eq!(
         missing, expected,
-        "the pre-fix README must be reported as missing exactly judge, scorecard and register"
+        "the pre-fix README must be reported as missing exactly judge, scorecard \
+         and (while the framework still exposes it) register"
     );
 
     // ...and no collateral noise: the repos and optimize rows were already
@@ -500,10 +513,14 @@ fn checker_fires_on_the_pre_fix_readme() {
     let unknown: Vec<&String> = findings.iter().flat_map(|f| f.unknown.iter()).collect();
     assert!(unknown.is_empty(), "unexpected unknown tokens: {unknown:?}");
     let flagged: BTreeSet<&str> = findings.iter().map(|f| f.list.group.as_str()).collect();
+    let mut expected_flagged = BTreeSet::from(["eval"]);
+    if register_visible {
+        expected_flagged.insert("mcp");
+    }
     assert_eq!(
-        flagged,
-        BTreeSet::from(["eval", "mcp"]),
-        "only the eval and mcp rows were stale in the pre-fix README"
+        flagged, expected_flagged,
+        "only the eval row -- and, while the framework still exposes \
+         `mcp register`, the mcp row -- were stale in the pre-fix README"
     );
 }
 

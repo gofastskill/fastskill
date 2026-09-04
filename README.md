@@ -112,7 +112,7 @@ fastskill optimize run --config optimize.toml     # auto-improve the skill docum
 
 ```bash
 fastskill mcp install --agent claude --scope project   # expose fastskill as MCP tools
-fastskill mcp serve                                    # MCP over stdio (read-only tools)
+fastskill mcp serve --transport stdio                  # MCP over stdio (read-only tools)
 fastskill serve                                        # local HTTP API + web UI (read-only)
 ```
 
