@@ -93,9 +93,13 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
 }
 
 use commands::{
-    add, analyze, cache, doctor, eval, init, install, list, marketplace, read, reindex, remove,
-    repos, search, serve, skillopt, update,
+    add, analyze, cache, doctor, eval, init, install, list, marketplace, mcp, read, reindex,
+    remove, repos, search, serve, skillopt, update,
 };
+
+/// The binary's name, as reported by `--version` and used to derive MCP tool
+/// names (`fastskill_<command>`).
+const APP_NAME: &str = "fastskill";
 
 #[tokio::main]
 async fn main() {
@@ -121,7 +125,7 @@ async fn main() {
 
     let mut app = or_exit(
         builder
-            .with_version("fastskill", fastskill_core::VERSION)
+            .with_version(APP_NAME, fastskill_core::VERSION)
             .with_git_sha_short(None)
             // Honour `expose_mcp`. The framework default (`AllCommands`)
             // ignores it, which exported `serve` as a tool -- an MCP call that
@@ -130,6 +134,10 @@ async fn main() {
             .build(ctx),
         "Error initialising app",
     );
+
+    // `mcp serve` exports the other commands as MCP tools, so it needs the
+    // registry it is itself registered in. Publish it once the app is built.
+    commands::mcp::set_command_registry(Arc::new(app.command_registry().clone()));
 
     // `fastskill <skill-id>` (no subcommand) is a shorthand that routes to
     // `read`. We rewrite the args here, before dispatch, when the first
@@ -707,6 +715,16 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .await
                         .map_err(anyhow::Error::from)
                 }
+            })?
+            // `mcp serve` is registered here rather than left to cli-framework's
+            // auto-registration, which has no write gate: it exported every
+            // mutating command as a callable tool. Registering `mcp/serve`
+            // ourselves suppresses that (see `AppBuilder::build`); `mcp install`
+            // and `mcp list` still auto-register.
+            .register_group(&path!["mcp"], mcp::group_metadata())?
+            .register_out_no_mcp(path!["mcp", "serve"], |ctx, args: mcp::McpServeArgs| {
+                let banner = mcp::banner_settings(ctx);
+                async move { mcp::execute_mcp_serve(APP_NAME, args, banner).await }
             })?
     };
 

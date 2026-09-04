@@ -54,6 +54,7 @@ pub mod security;
 pub mod storage;
 pub mod utils;
 pub mod validation;
+pub mod write_ops;
 
 pub use core::context_resolver::{
     ContentMode, ContextResolver, ResolveContextRequest, ResolveContextResponse, ResolveScope,

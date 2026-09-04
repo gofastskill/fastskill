@@ -18,6 +18,7 @@ pub mod integration_tests;
 pub mod legacy_migration_tests;
 pub mod list_e2e_tests;
 pub mod mcp_install_e2e_tests;
+pub mod mcp_write_gate_e2e_tests;
 pub mod read_e2e_tests;
 pub mod read_tests;
 pub mod registry_e2e_tests;

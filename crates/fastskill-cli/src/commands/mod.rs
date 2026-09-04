@@ -10,6 +10,7 @@ pub mod init;
 pub mod install;
 pub mod list;
 pub mod marketplace;
+pub mod mcp;
 pub mod read;
 pub mod reindex;
 pub mod remove;

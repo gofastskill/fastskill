@@ -73,6 +73,12 @@ tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip",
 # CLI framework for versioned API server hosting
 cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "f389b51ad947c86c0fd6c3ab9be1e9e85602e35e", default-features = false, features = ["api-server"] }
 
+# MCP protocol types and transports. Version and feature set MUST track
+# cli-framework's own `rmcp` dependency: `fastskill mcp serve` wraps
+# cli-framework's `CliFrameworkHandler` in its own `ServerHandler`, so the two
+# crates must resolve to the same `rmcp`.
+rmcp = { version = "1.6", features = ["server", "transport-streamable-http-server", "transport-io"] }
+
 # Request validation
 validator = { version = "0.21", features = ["derive"] }
 

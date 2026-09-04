@@ -19,6 +19,10 @@ fastskill-core = { path = "../fastskill-core", default-features = false, feature
 
 # CLI framework for AppBuilder, command registry, MCP server, and doctor
 cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor"] }
+
+# MCP protocol types + transports, for the write-gated `mcp serve` handler
+rmcp.workspace = true
+axum.workspace = true
 fastskill-evals = { path = "../fastskill-evals" }
 
 # aikit-sdk for agent integration

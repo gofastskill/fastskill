@@ -134,7 +134,7 @@ fastskill serve                                        # local HTTP API + web UI
 | `fastskill optimize <cmd>` | Text-gradient skill optimization (`run/resume/status/inspect/export`) |
 | `fastskill analyze <cmd>` | Similarity `matrix`, `cluster`, and `duplicates` across skills |
 | `fastskill serve` | Local HTTP API + web UI (read-only by default; `--enable-write` to mutate) |
-| `fastskill mcp <cmd>` | Run/install the MCP server (`serve/install/list`) for agents |
+| `fastskill mcp <cmd>` | Run/install the MCP server (`serve/install/list`) for agents (tools are read-only by default; `serve --enable-write` to mutate) |
 | `fastskill doctor` | Diagnose configuration and environment readiness |
 
 Every command supports `--help`. Run `fastskill <skill-id>` as a shorthand for `fastskill read <skill-id>`.

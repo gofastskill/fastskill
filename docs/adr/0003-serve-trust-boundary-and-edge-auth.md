@@ -53,9 +53,24 @@ they trigger for a legitimate caller, and most run in the **CLI** with no server
 fixed independently.
 
 The write-gate principle applies to **any** surface that mutates state, not just HTTP. The MCP
-server (`fastskill mcp`, kept separate from `serve` by design) currently exposes **no** mutating
-tools (`ToolCallingService` returns an empty tool list — see spec 002 PARTIAL-4), so there is no
-gate to build there today; if it ever exposes writes, the same read-only-by-default rule applies.
+server (`fastskill mcp serve`, kept separate from `serve` by design) exports the CLI's commands as
+tools — mutating commands included — so it needs the same gate, and now has one: `mcp serve` takes
+the same `--enable-write` flag, spelled identically because it means the same thing. Without it the
+mutating tools are absent from `tools/list`, and a `tools/call` naming one is refused with JSON-RPC
+error `-32005` (`MCP_TOOL_DENIED`) quoting the flag, without dispatching the command. With it they
+are listed and dispatched normally.
+
+An earlier revision of this section recorded that MCP exposed no mutating tools and so needed no
+gate. That was already false when written: every mutating command was registered with
+`register_out`, which exports it as an MCP tool, so an `initialize` + `tools/call fastskill_remove`
+over stdio deleted an installed skill. The claim is corrected here rather than dropped so the drift
+stays on the record.
+
+Both gates read **one** definition — `fastskill_core::write_ops::WRITE_OPERATIONS` — which names
+each mutating operation once and carries its HTTP routes and its command path. `serve` mounts its
+write routes from that table and `mcp serve` derives the blocked tool names from the same table, so
+a newly added mutating command cannot end up gated on one surface and open on the other. Two
+hand-maintained lists is how the two surfaces diverged in the first place.
 
 ## Consequences
 
