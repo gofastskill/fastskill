@@ -4,28 +4,6 @@ use crate::error::{CliError, CliResult};
 use crate::runtime_selector::RuntimeSelectionError;
 use fastskill_core::OutputFormat;
 
-/// Emit a standardized deprecation warning with migration guidance.
-#[allow(dead_code)]
-pub fn emit_deprecation_warning(
-    legacy_command: &str,
-    new_command: &str,
-    operation_type: &str,
-    mappings: &[(&str, &str)],
-) {
-    eprintln!(
-        "⚠️  Warning: The '{}' command is deprecated and will be removed in a future version.",
-        legacy_command
-    );
-    eprintln!(
-        "   Please use 'fastskill {}' for {} instead:",
-        new_command, operation_type
-    );
-    for (legacy_sub, new_path) in mappings {
-        eprintln!("   - '{}' → '{}'", legacy_sub, new_path);
-    }
-    eprintln!();
-}
-
 /// Map a `RuntimeSelectionError` to a `CliError` with canonical `RUNTIME_*` prefix codes.
 pub fn runtime_selection_error_to_cli(e: RuntimeSelectionError) -> CliError {
     match e {
@@ -85,12 +63,6 @@ pub fn validate_eval_format_args(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_emit_deprecation_warning_no_panic() {
-        let mappings = vec![("list", "repos list")];
-        emit_deprecation_warning("sources", "repos", "repository management", &mappings);
-    }
 
     #[test]
     fn test_validate_eval_format_accepts_table_and_json() {

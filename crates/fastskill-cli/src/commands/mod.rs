@@ -17,5 +17,4 @@ pub mod repos;
 pub mod search;
 pub mod serve;
 pub mod skillopt;
-pub mod sources;
 pub mod update;
