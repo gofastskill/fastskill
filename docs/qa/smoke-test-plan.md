@@ -296,7 +296,7 @@ mkdir -p "$SBX/mcp" && cd "$SBX/mcp"
 | 6.5 | `fastskill mcp install --agent copilot --scope project` | Writes `./.vscode/mcp.json` (key `servers`, VS Code shape). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.6 | `fastskill mcp install --agent opencode --scope project` | Writes `./opencode.json` (root `mcp` map). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.7 | `fastskill mcp install --agent codex --stdio` | Writes `./.codex/config.toml` (`[mcp_servers.…]`) with the current executable as a stdio command. | ⚙️ | " | ☐P ☐F ☐G |
-| 6.8 | `fastskill mcp register --agent claude --scope project` | Behaves identically to `install` (documented alias) — **confirm they truly match.** | 🧑 | " | ☐P ☐F ☐G |
+| 6.8 | `fastskill mcp register --agent claude --scope project` | Still succeeds and writes the same `./.mcp.json` as 6.2 — `register` is a **withdrawn alias**, not a removed command (cli-framework `d1b1c61`). Also confirm neither `mcp --help` nor `fastskill spec` advertises it any more. | ⚙️ | " | ☐P ☐F ☐G |
 
 **6b — serve + protocol handshake.**
 
@@ -507,7 +507,7 @@ rm -rf "$SBX"
 List every step you marked ⚙️ (or any 🤖 step you think is under-covered by the test suite).
 These are candidate integration tests. Starter set (extend as you go):
 
-- [ ] MCP `install`/`register` config-write shape per target (6.2–6.8) — assert exact file + JSON/TOML key per agent.
+- [ ] MCP `install` config-write shape per target (6.2–6.7) — assert exact file + JSON/TOML key per agent, plus `register` rejection (6.8).
 - [ ] MCP `serve` protocol handshake `tools/list` over stdio and http (6.9–6.10) — assert the tool set and that `serve` is excluded.
 - [ ] MCP stdio flag-rejection `[E004]` (6.11).
 - [ ] Serve write-gating returns 403 (not 404) without `--enable-write` (5.7).

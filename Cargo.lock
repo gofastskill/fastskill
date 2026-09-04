@@ -707,7 +707,7 @@ dependencies = [
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=f389b51ad947c86c0fd6c3ab9be1e9e85602e35e#f389b51ad947c86c0fd6c3ab9be1e9e85602e35e"
+source = "git+https://github.com/aroff/cli-framework?rev=d1b1c617949e899f36e44e2b6a7490607b15cbdd#d1b1c617949e899f36e44e2b6a7490607b15cbdd"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",
@@ -2111,7 +2111,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -3232,7 +3232,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -3270,7 +3270,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]

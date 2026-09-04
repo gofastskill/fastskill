@@ -71,7 +71,7 @@ tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # CLI framework for versioned API server hosting
-cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "f389b51ad947c86c0fd6c3ab9be1e9e85602e35e", default-features = false, features = ["api-server"] }
+cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "d1b1c617949e899f36e44e2b6a7490607b15cbdd", default-features = false, features = ["api-server"] }
 
 # MCP protocol types and transports. Version and feature set MUST track
 # cli-framework's own `rmcp` dependency: `fastskill mcp serve` wraps
