@@ -36,6 +36,31 @@ pub enum DependencyResolutionError {
 
     #[error("Failed to load transitive dependencies for {skill}: {error}")]
     TransitiveLoadError { skill: String, error: String },
+
+    #[error("Unsafe dependency ID '{id}': {reason}")]
+    UnsafeDependencyId { id: String, reason: String },
+}
+
+/// A dependency ID becomes a directory name under the skills directory, so it
+/// has to be safe to join. Scoped IDs (`scope/name`) are legitimate, so the ID
+/// is validated per `/`-separated segment rather than as a single component --
+/// `SkillId::new` would reject the scope separator outright.
+fn validate_dependency_id(id: &str) -> Result<(), DependencyResolutionError> {
+    if id.is_empty() {
+        return Err(DependencyResolutionError::UnsafeDependencyId {
+            id: id.to_string(),
+            reason: "dependency ID is empty".to_string(),
+        });
+    }
+    for segment in id.split('/') {
+        crate::security::path::validate_path_component(segment).map_err(|e| {
+            DependencyResolutionError::UnsafeDependencyId {
+                id: id.to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+    }
+    Ok(())
 }
 
 /// A single item in the install queue, carrying its resolution context
@@ -87,6 +112,7 @@ impl DependencyResolver {
         // Seed the queue with the direct (depth-0) dependencies
         for entry in initial_entries {
             let id = entry.id.clone();
+            validate_dependency_id(&id)?;
             if self.visited_skills.insert(id.clone()) {
                 parents.insert(id, None);
                 self.install_queue.push_back(SkillInstallItem {
@@ -144,6 +170,7 @@ impl DependencyResolver {
 
             for trans_entry in transitive_entries {
                 let trans_id = trans_entry.id.clone();
+                validate_dependency_id(&trans_id)?;
 
                 // Deduplication: first-encountered wins.
                 if !self.visited_skills.insert(trans_id.clone()) {
@@ -217,6 +244,55 @@ mod tests {
                 editable: false,
             },
             groups: vec![],
+        }
+    }
+
+    /// A fetched skill's `skill-project.toml` is data from wherever that skill
+    /// came from, and its `[dependencies]` keys become directory names under
+    /// the skills directory. A hostile key steers the transitive-manifest read
+    /// out of the tree entirely.
+    ///
+    /// The oracle is the *effect*, not an error string: a manifest is planted
+    /// outside the skills directory declaring a marker dependency, so if the
+    /// marker ever shows up in the resolution, the read demonstrably escaped.
+    #[tokio::test]
+    async fn transitive_dependency_id_cannot_escape_the_skills_directory() {
+        let tmp = TempDir::new().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        let skill_a = skills_dir.join("skill-a");
+        std::fs::create_dir_all(&skill_a).unwrap();
+        std::fs::write(
+            skill_a.join("skill-project.toml"),
+            r#"[dependencies]
+"../outside" = { origin = { type = "local", path = "x" } }
+"#,
+        )
+        .unwrap();
+
+        // Planted OUTSIDE `skills_dir`. Reaching it at all is the escape.
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(
+            outside.join("skill-project.toml"),
+            r#"[dependencies]
+escaped-marker = { origin = { type = "local", path = "marker" } }
+"#,
+        )
+        .unwrap();
+
+        let mut resolver = DependencyResolver::new(5);
+        let entries = vec![make_local_entry("skill-a", "local/skill-a")];
+        let result = resolver.resolve_dependencies(entries, &skills_dir).await;
+
+        match result {
+            Err(DependencyResolutionError::UnsafeDependencyId { ref id, .. }) => {
+                assert_eq!(id, "../outside");
+            }
+            Err(e) => panic!("expected UnsafeDependencyId, got: {e}"),
+            Ok(items) => {
+                let ids: Vec<&str> = items.iter().map(|i| i.entry.id.as_str()).collect();
+                panic!("resolver read a manifest OUTSIDE the skills directory: {ids:?}");
+            }
         }
     }
 

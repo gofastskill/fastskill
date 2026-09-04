@@ -146,6 +146,14 @@ fn resolve_against_existing_ancestor(path: &Path) -> Option<PathBuf> {
 /// Validate and sanitize a user-provided path component
 /// Returns an error if the component contains path traversal attempts
 pub fn validate_path_component(component: &str) -> Result<String, PathSecurityError> {
+    // An empty component is what a leading separator splits into, so accepting
+    // it lets an absolute path through a caller that validates componentwise.
+    if component.is_empty() {
+        return Err(PathSecurityError::InvalidComponent(
+            "Path component is empty".to_string(),
+        ));
+    }
+
     // Check for obvious traversal attempts
     if component.contains("..") || component.contains('/') || component.contains('\\') {
         return Err(PathSecurityError::TraversalAttempt(format!(
@@ -174,14 +182,12 @@ pub fn safe_join(root: &Path, user_path: &str) -> Result<PathBuf, PathSecurityEr
         validate_path_component(component)?;
     }
 
-    // Join and validate the final path
+    // Join and validate the final path. `validate_path_within_root` resolves
+    // against the nearest existing ancestor, so it is correct for targets that
+    // do not exist yet -- which is the common case here, since callers are
+    // usually about to create the path. Returning early for those would skip
+    // containment for exactly the paths that need it.
     let joined = root.join(user_path);
-
-    // For paths that don't exist yet, just verify components don't have traversal
-    // The actual existence will be checked by the calling code
-    if !joined.exists() {
-        return Ok(joined);
-    }
 
     validate_path_within_root(&joined, root)
 }
@@ -192,6 +198,43 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn safe_join_rejects_an_absolute_user_path_that_does_not_exist_yet() {
+        let tmp = TempDir::new().unwrap();
+        // `Path::join` *replaces* the root when its argument is absolute, so
+        // `root.join("/etc/x")` is just `/etc/x`. `safe_join` used to
+        // short-circuit on `!joined.exists()` and hand that back unchecked, so
+        // the containment test never ran for exactly the paths a caller is
+        // about to create.
+        let escaped = safe_join(tmp.path(), "/tmp/fastskill-safe-join-probe/x");
+        assert!(
+            escaped.is_err(),
+            "safe_join must not return a path outside the root; got {:?}",
+            escaped.map(|p| p.display().to_string())
+        );
+    }
+
+    #[test]
+    fn safe_join_still_allows_a_nonexistent_path_inside_the_root() {
+        let tmp = TempDir::new().unwrap();
+        let joined = safe_join(tmp.path(), "sub/dir/file.md")
+            .expect("a relative in-root path that does not exist yet must be allowed");
+        let root = tmp.path().canonicalize().unwrap();
+        assert!(
+            joined.starts_with(&root),
+            "{} should be under {}",
+            joined.display(),
+            root.display()
+        );
+    }
+
+    #[test]
+    fn validate_path_component_rejects_the_empty_component() {
+        // `"/etc/passwd".split('/')` yields "" for the leading separator.
+        // Accepting it is what let an absolute path through `safe_join`.
+        assert!(validate_path_component("").is_err());
+    }
 
     #[test]
     fn test_sanitize_path_component() {
