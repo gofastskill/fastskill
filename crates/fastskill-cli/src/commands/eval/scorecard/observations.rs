@@ -272,7 +272,8 @@ pub fn evaluate(
                     "PASS"
                 } else {
                     "BELOW THRESHOLD"
-                },
+                }
+                .into(),
                 mixed_judges: false,
                 mixed_targets,
             }
@@ -298,7 +299,8 @@ pub fn evaluate(
                     "PASS"
                 } else {
                     "OVER CEILING"
-                },
+                }
+                .into(),
                 mixed_judges: false,
                 mixed_targets,
             }
@@ -338,7 +340,8 @@ pub fn evaluate(
                     "PASS"
                 } else {
                     "BELOW THRESHOLD"
-                },
+                }
+                .into(),
                 mixed_judges: hashes.len() > 1,
                 mixed_targets,
             }

@@ -22,6 +22,7 @@
 //! - [`document`]: the emitted document's types.
 
 pub mod document;
+pub mod html;
 pub mod metrics;
 pub mod observations;
 
@@ -48,14 +49,30 @@ use std::path::{Path, PathBuf};
 /// Arguments for `fastskill eval scorecard`
 #[derive(Debug)]
 pub struct ScorecardArgs {
-    /// Directory searched recursively for run directories
-    pub root: PathBuf,
+    /// Directory searched recursively for run directories.
+    ///
+    /// Optional only because `--from` renders scorecards that were computed
+    /// elsewhere; without `--from` it is required, and the error below says so.
+    pub root: Option<PathBuf>,
 
     /// TOML file declaring the metrics and their thresholds
-    pub metrics: PathBuf,
+    pub metrics: Option<PathBuf>,
 
-    /// Output format: table, json (default: table)
+    /// Output format: table, json, html (default: table)
     pub format: Option<OutputFormat>,
+
+    /// `--format html`, which is a renderer rather than one of the shared
+    /// `OutputFormat` variants every other command implements.
+    pub html: bool,
+
+    /// Scorecard JSON files to render instead of computing one (R5)
+    pub from: Vec<PathBuf>,
+
+    /// Where to write the HTML; stdout when absent
+    pub output: Option<PathBuf>,
+
+    /// Leave judge reasoning out of the tables and the embedded JSON
+    pub no_reasoning: bool,
 
     /// Shorthand for --format json
     pub json: bool,
@@ -87,10 +104,14 @@ impl IntoCommandSpec for ScorecardArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Fold many eval runs into named, gated metrics",
-            syntax: Some("eval scorecard --root <DIR> --metrics <FILE> [OPTIONS]"),
+            syntax: Some(
+                "eval scorecard --root <DIR> --metrics <FILE> [OPTIONS]\n        \
+                 eval scorecard --format html --from <JSON> [--from <JSON>...] -o <FILE>",
+            ),
             category: Some("quality"),
             examples: vec![
                 "fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml",
+                "fastskill eval scorecard --format html --from a.json --from b.json -o report.html",
             ],
             args: vec![
                 ArgSpec {
@@ -98,8 +119,9 @@ impl IntoCommandSpec for ScorecardArgs {
                     kind: ArgKind::Option,
                     long: Some("root"),
                     value_type: ArgValueType::String,
-                    cardinality: Cardinality::Required,
-                    help: "Directory searched recursively for run directories",
+                    cardinality: Cardinality::Optional,
+                    help: "Directory searched recursively for run directories \
+                            (required unless --from)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -107,8 +129,9 @@ impl IntoCommandSpec for ScorecardArgs {
                     kind: ArgKind::Option,
                     long: Some("metrics"),
                     value_type: ArgValueType::String,
-                    cardinality: Cardinality::Required,
-                    help: "TOML file declaring the metrics and their thresholds",
+                    cardinality: Cardinality::Optional,
+                    help: "TOML file declaring the metrics and their thresholds \
+                            (required unless --from)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -117,7 +140,7 @@ impl IntoCommandSpec for ScorecardArgs {
                     long: Some("format"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Output format: table, json",
+                    help: "Output format: table, json, html",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -165,16 +188,61 @@ impl IntoCommandSpec for ScorecardArgs {
                     help: "Fold runs that measure the same case id more than once",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "from",
+                    kind: ArgKind::Option,
+                    long: Some("from"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    conflicts_with: vec!["root", "metrics"],
+                    help: "Scorecard JSON to render; repeat to draw a progress section",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "output",
+                    kind: ArgKind::Option,
+                    short: Some('o'),
+                    long: Some("output"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Write the HTML report here instead of to stdout",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "no-reasoning",
+                    kind: ArgKind::Flag,
+                    long: Some("no-reasoning"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Leave judge reasoning out of the report and its embedded JSON",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
     }
 }
 
-fn required_path(map: &HashMap<String, ArgValue>, key: &str) -> PathBuf {
+fn opt_path(map: &HashMap<String, ArgValue>, key: &str) -> Option<PathBuf> {
     match map.get(key) {
-        Some(ArgValue::Str(s)) => PathBuf::from(s),
-        _ => panic!("fw bug: missing {key}"),
+        Some(ArgValue::Str(s)) => Some(PathBuf::from(s)),
+        _ => None,
+    }
+}
+
+/// A `Cardinality::Repeated` option arrives as a list, but a single occurrence
+/// can arrive bare, so both shapes are accepted.
+fn path_list(map: &HashMap<String, ArgValue>, key: &str) -> Vec<PathBuf> {
+    match map.get(key) {
+        Some(ArgValue::List(items)) => items
+            .iter()
+            .filter_map(|v| match v {
+                ArgValue::Str(s) => Some(PathBuf::from(s)),
+                _ => None,
+            })
+            .collect(),
+        Some(ArgValue::Str(s)) => vec![PathBuf::from(s)],
+        _ => Vec::new(),
     }
 }
 
@@ -184,16 +252,18 @@ fn flag(map: &HashMap<String, ArgValue>, key: &str) -> bool {
 
 impl FromArgValueMap for ScorecardArgs {
     fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
+        let raw_format = map.get("format").and_then(|v| match v {
+            ArgValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        });
         ScorecardArgs {
-            root: required_path(map, "root"),
-            metrics: required_path(map, "metrics"),
-            format: map
-                .get("format")
-                .and_then(|v| match v {
-                    ArgValue::Str(s) => Some(s.as_str()),
-                    _ => None,
-                })
-                .and_then(parse_output_format),
+            root: opt_path(map, "root"),
+            metrics: opt_path(map, "metrics"),
+            format: raw_format.and_then(parse_output_format),
+            html: raw_format == Some("html"),
+            from: path_list(map, "from"),
+            output: opt_path(map, "output"),
+            no_reasoning: flag(map, "no-reasoning"),
             json: flag(map, "json"),
             no_fail: flag(map, "no-fail"),
             allow_mixed_judges: flag(map, "allow-mixed-judges"),
@@ -399,23 +469,63 @@ fn render_table(card: &Scorecard) {
 
 /// Execute the `eval scorecard` command
 pub async fn execute_scorecard(args: ScorecardArgs) -> CliResult<()> {
-    let format = validate_eval_format_args(&args.format, args.json)?;
-    let use_json = format == OutputFormat::Json;
+    // `--from` renders scorecards computed elsewhere and reads no run
+    // directory, so none of the folding below applies to it (R6).
+    if !args.from.is_empty() {
+        return html::render_from_files(&args);
+    }
 
-    let metrics_file = load_metrics(&args.metrics)?;
+    // `html` is a renderer, not one of the shared `OutputFormat` variants, so
+    // it is resolved before the validator that only knows table and json.
+    if args.html && args.json {
+        return Err(CliError::Config(
+            "Error: --format html and --json ask for two different documents. Pick one."
+                .to_string(),
+        ));
+    }
+    let format = if args.html {
+        OutputFormat::Table
+    } else {
+        validate_eval_format_args(&args.format, args.json)?
+    };
+    let use_json = !args.html && format == OutputFormat::Json;
+    if !args.html {
+        if let Some(path) = &args.output {
+            return Err(CliError::Config(format!(
+                "Error: --output {} only applies to --format html;                  table and json output go to stdout.",
+                path.display()
+            )));
+        }
+    }
+
+    let root = args.root.as_ref().ok_or_else(|| {
+        CliError::Config(
+            "EVAL_SCORECARD_NO_ROOT: --root is required unless --from names scorecards to render"
+                .to_string(),
+        )
+    })?;
+    let metrics_path = args.metrics.as_ref().ok_or_else(|| {
+        CliError::Config(
+            "EVAL_SCORECARD_NO_METRICS: --metrics is required unless --from names scorecards \
+             to render"
+                .to_string(),
+        )
+    })?;
+
+    let metrics_file = load_metrics(metrics_path)?;
     let specs = &metrics_file.metrics;
 
-    if !args.root.exists() {
+    if !root.exists() {
         return Err(CliError::Config(format!(
             "EVAL_SCORECARD_NO_RUNS: root directory does not exist: {}",
-            args.root.display()
+            root.display()
         )));
     }
-    let dirs = run_dirs(&args.root);
+    let dirs = run_dirs(root);
     if dirs.is_empty() {
         return Err(CliError::Config(format!(
             "EVAL_SCORECARD_NO_RUNS: no summary.json found under '{}'",
-            args.root.display()
+            root.display()
         )));
     }
 
@@ -460,19 +570,19 @@ pub async fn execute_scorecard(args: ScorecardArgs) -> CliResult<()> {
 
     let single = (!mixed_targets).then(|| targets.first()).flatten();
     let card = Scorecard {
-        schema: SCORECARD_SCHEMA,
+        schema: SCORECARD_SCHEMA.into(),
         generated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         agent: single.map(|t| t.agent.clone()),
         model: single.and_then(|t| t.model.clone()),
         targets,
         skill: skill_identity(&summaries),
         benchmark: BenchmarkIdentity {
-            path: args.metrics.clone(),
-            sha256: benchmark_sha256(&args.metrics, &metrics_file.suites)?,
+            path: metrics_path.clone(),
+            sha256: benchmark_sha256(metrics_path, &metrics_file.suites)?,
         },
         runs,
-        fastskill_version: env!("CARGO_PKG_VERSION"),
-        aikit_evals_version: AIKIT_EVALS_VERSION,
+        fastskill_version: env!("CARGO_PKG_VERSION").into(),
+        aikit_evals_version: AIKIT_EVALS_VERSION.into(),
         judges: obs.judges.values().cloned().collect(),
         unclaimed_checks: unclaimed(specs, &obs),
         metrics: reports,
@@ -480,7 +590,9 @@ pub async fn execute_scorecard(args: ScorecardArgs) -> CliResult<()> {
         cases: std::mem::take(&mut obs.cases),
     };
 
-    if use_json {
+    if args.html {
+        html::write_report(&args, std::slice::from_ref(&card))?;
+    } else if use_json {
         crate::outln!(
             "{}",
             serde_json::to_string_pretty(&card).unwrap_or_default()
@@ -507,7 +619,7 @@ pub async fn execute_scorecard(args: ScorecardArgs) -> CliResult<()> {
         return Err(CliError::Config(format!(
             "EVAL_SCORECARD_MIXED_TARGETS: runs under '{}' measured {} different targets: {}. \
              Point --root at one target, or pass --allow-mixed-targets to fold them.",
-            args.root.display(),
+            root.display(),
             card.targets.len(),
             named.join(", ")
         )));

@@ -154,18 +154,23 @@ A scorecard reports each measurement's own rate rather than a suite pass rate. A
 ```bash
 fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml
 fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml --json --no-fail
+fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml --format html -o report.html
+fastskill eval scorecard --format html --from june.json --from july.json -o report.html
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--root <DIR>` | **Required.** Searched recursively for run directories (any directory holding a `summary.json`) |
-| `--metrics <FILE>` | **Required.** TOML file declaring the metrics and their thresholds |
-| `--format <FORMAT>` | `table` or `json` only |
+| `--root <DIR>` | **Required unless `--from`.** Searched recursively for run directories (any directory holding a `summary.json`) |
+| `--metrics <FILE>` | **Required unless `--from`.** TOML file declaring the metrics and their thresholds |
+| `--format <FORMAT>` | `table`, `json` or `html` |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Report the numbers without failing on a metric below its threshold |
 | `--allow-mixed-judges` | Fold judgments from more than one judge identity into one metric |
 | `--allow-mixed-targets` | Fold runs against more than one `(agent, model)` pair into one scorecard |
 | `--allow-duplicate-cases` | Fold runs that measure the same case id more than once |
+| `--from <JSON>` | Render an already-written scorecard JSON instead of reading runs. Repeat it to draw a progress section. Conflicts with `--root` and `--metrics` |
+| `-o`, `--output <FILE>` | Write the report here instead of to stdout |
+| `--no-reasoning` | Leave judge reasoning out of the report and out of its embedded JSON |
 
 ### The metrics file
 
@@ -225,6 +230,26 @@ Three guards refuse a scorecard that would average two different measurements to
 ### The JSON document
 
 `--format json` emits a `fastskill.scorecard/1` document: the identities above, the `metrics` and `totals` the table shows, and a `cases[]` array with one row per `(run, case)` carrying every check result and, per judge, the latest judgment per trial with each criterion's normalised score, answer and **full** reasoning. Nothing in a row is summarised — the run directories get deleted, and this document is what survives them.
+
+### The HTML report
+
+`--format html` renders the same document as a page a reader opens months later: identity, the gates and their verdicts, the exclusions above as notes, the judges and their sampling settings, then one table per suite with every case, its checks and its judgments, reasoning folded behind a `<details>` after the first 600 characters.
+
+It is one file. The fonts are embedded, the stylesheet is inline, and the only `<script>` is a `<script type="application/json">` holding the scorecards the page was rendered from — so the page carries its own machine-readable source, and opens with no network. A run directory is linked only when it is still on disk; a link to evidence that was deleted is worse than no link.
+
+```bash
+fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml --format html -o report.html
+```
+
+Pass `--from` instead to render scorecard JSON that was written earlier — on another machine, or by CI. That mode reads no run directory at all, so it links none.
+
+```bash
+fastskill eval scorecard --format html --from june.json --from july.json --from august.json -o report.html
+```
+
+Two or more `--from` files add a progress section: one chart per metric, ordered by `generated_at`, with the gate drawn as a dashed line and every point where the verdict flipped ringed. Series are keyed by target, so two agents on the same benchmark are two lines. Every input must carry the same non-null `benchmark.sha256` — a chart across two benchmarks plots two different measurements as one trend, and there is no override for it. Mismatched inputs fail with `EVAL_SCORECARD_BENCHMARK_MISMATCH`; a scorecard whose metrics file declared no `suites` has no hash to compare and fails with `EVAL_SCORECARD_NO_BENCHMARK_HASH`.
+
+`--no-reasoning` removes judge reasoning from the tables **and** from the embedded JSON. It is for reports that leave the team that ran them.
 
 ### What is excluded, and why
 
