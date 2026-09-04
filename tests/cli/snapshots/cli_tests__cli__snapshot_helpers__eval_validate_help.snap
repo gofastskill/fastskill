@@ -11,8 +11,10 @@ Options:
       --skills-dir <skills-dir>  Override the skills directory path
       --all                      Target all runtimes (mutually exclusive with --agent)
       --global                   Use global skills directory (~/.config/fastskill/skills)
-      --format <format>          Output format: table, json
+      --model <model>            The model eval run will target; warns when a judge declares the
+                                 same one
   -v, --verbose                  Enable verbose output
+      --format <format>          Output format: table, json
       --json                     Shorthand for --format json
   -h, --help                     Print help
   -V, --version                  Print version

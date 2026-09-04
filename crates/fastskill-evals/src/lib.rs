@@ -11,6 +11,7 @@ pub mod config_adapter;
 pub use aikit_evals::artifacts;
 pub use aikit_evals::checks;
 pub use aikit_evals::config;
+pub use aikit_evals::judge;
 pub use aikit_evals::runner;
 pub use aikit_evals::suite;
 pub use aikit_evals::trace;

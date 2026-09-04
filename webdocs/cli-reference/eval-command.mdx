@@ -5,7 +5,7 @@ description: "Validate, run, report, and score skill evaluation suites defined i
 
 ## Overview
 
-`fastskill eval` runs skill quality checks using prompts and rubrics under `[tool.fastskill.eval]` in `skill-project.toml`. Subcommands are `validate`, `run`, `report`, and `score`.
+`fastskill eval` runs skill quality checks using prompts and rubrics under `[tool.fastskill.eval]` in `skill-project.toml`. Subcommands are `validate`, `run`, `judge`, `report`, `score`, and `scorecard`.
 
 <Callout type="info">
 `eval run` requires an agent on `PATH` for the chosen `--agent` key. Known keys are `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine, so a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`, which lists what was detected. Use `eval validate --agent <key>` or `--all` to verify availability.
@@ -26,16 +26,21 @@ fastskill eval validate
 fastskill eval validate --agent codex
 fastskill eval validate --all
 fastskill eval validate --json
+fastskill eval validate --model claude-sonnet-4-5
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--agent <AGENT>` | Verify the given agent(s) are available; repeatable. Mutually exclusive with `--all` |
 | `--all` | Verify availability of every installed agent. Mutually exclusive with `--agent` |
+| `--model <MODEL>` | The model `eval run` will target; a judge declaring the same one is reported as self-preference |
 | `--format <FORMAT>` | `table` or `json` only (eval does not support `grid`/`xml`) |
 | `--json` | Shorthand for `--format json` |
 
-With `--agent` or `--all`, both outputs report each selected agent: the table prints one `agent '<key>': available|unavailable` line per agent, and the JSON document carries an `agents` object keyed by agent id (`{"agents": {"claude": true}}`). An unavailable agent is an error unless `fail_on_missing_agent = false` is set in the eval config.
+Every `[[judge]]` in the checks file is validated from file content alone, so validate gives the same answer on a laptop and in CI. Errors: no resolvable `model`; neither or both of `prompt` / `prompt_file` (likewise for the system and retry pairs); an unknown `{{variable}}`; a `cases` id matching no case; duplicate criterion names; `scale` below 2; `min_score` outside `[0, 1]`; a prompt that never renders `{{output_contract}}`; any unknown key. Warnings: a prompt without `{{rubric}}`, and a judge sharing `--model`. Endpoint reachability and API keys are not checked here — judging checks those before its first request.
+
+With `--agent` or `--all`, both outputs report each selected agent:
+ the table prints one `agent '<key>': available|unavailable` line per agent, and the JSON document carries an `agents` object keyed by agent id (`{"agents": {"claude": true}}`). An unavailable agent is an error unless `fail_on_missing_agent = false` is set in the eval config.
 
 ## eval run
 
@@ -50,6 +55,7 @@ fastskill eval run --agent codex --output-dir ./evals --tag smoke --model gpt-4o
 fastskill eval run --agent codex --output-dir ./evals --json --no-fail
 fastskill eval run --agent codex --output-dir ./evals --trials 5 --threshold 0.8
 fastskill eval run --all --output-dir ./eval-runs --ci --threshold 0.9
+fastskill eval run --agent claude --output-dir ./eval-runs --judge
 ```
 
 `--agent <key>` (repeatable) and `--all` are mutually exclusive — passing both errors with `RUNTIME_CONFLICTING_FLAGS`. `eval run` requires one of them (passing neither errors with `RUNTIME_NO_SELECTION`).
@@ -69,6 +75,8 @@ fastskill eval run --all --output-dir ./eval-runs --ci --threshold 0.9
 | `--threshold <F>` | Override `pass_threshold` from the config for this run (0.0–1.0) |
 | `--ci` | CI mode: the suite passes when its overall pass rate meets the threshold, instead of requiring zero failed cases |
 | `--no-isolation` | Run in the project root against the ambient agent environment (disables per-case isolation) |
+| `--judge` | Judge the run after scoring it, with the judges the checks file declares. Same function as `eval judge` |
+| `--judge-model <MODEL>` | Override every judge's model, and record the override |
 
 ### Environment isolation
 
@@ -77,6 +85,34 @@ By default every case runs **isolated**: the skill next to `skill-project.toml` 
 The summary reports what each run actually got (`isolation:` line in table output, `isolation` object in `summary.json`), and a failed case's scratch workspace is kept under `<run-dir>/workspaces/` for debugging. Pass `--no-isolation` to restore the old inherit-everything behaviour.
 
 Scores recorded before isolation existed were measured against the ambient environment — expect trigger rates to re-baseline on the first isolated run.
+
+## eval judge
+
+Scores a completed run with the LLM judges its checks file declares. `eval run --judge` calls the same function right after the run's own scoring — there is one judging implementation, so a run judged either way is judged identically.
+
+```bash
+fastskill eval judge --run-dir ./eval-runs/2026-04-01T14-32-10Z/claude
+fastskill eval judge --run-dir ./eval-runs/latest/claude --judge-model gpt-4.1
+fastskill eval judge --run-dir ./eval-runs/latest/claude --rejudge
+```
+
+| Option | Description |
+|--------|-------------|
+| `--run-dir <DIR>` | **Required.** The per-agent run directory (`<output-dir>/<timestamp>/<agent>`) |
+| `--checks <FILE>` | Read `[[judge]]` from this file instead of the one the run recorded |
+| `--judge-model <MODEL>` | Override every judge's model, and record the override |
+| `--judge-parallel <N>` | Concurrent judge requests (1–1000); defaults to the run's recorded `parallel` |
+| `--rejudge` | Judge again even when the same request already has a judgment |
+| `--ci` | CI mode: the suite passes when its pass rate meets the run's threshold |
+| `--format <FORMAT>` | `table` or `json` only |
+| `--json` | Shorthand for `--format json` |
+| `--no-fail` | Exit zero on suite failure. Does **not** suppress a judge error |
+
+A judge is one native chat completion per trial — no agent, no tools, nothing injected that the judge's author did not write. Each exchange is recorded in full in `trial-N/judgments.json`, and the engine, never the model, computes every score from the reply.
+
+Rewrites are additive: `result.json`, `aggregated.json` and `summary.json` keep every field they had, and a reader that predates the judge tier sees exactly what it saw before. Judging the same run twice asks nothing — a trial whose latest judgment carries the same request identity is skipped unless `--rejudge`.
+
+A trial that errored is never judged: there is no answer to score, and it is reported as skipped rather than as a zero. A judge that could not produce a judgment exits the command non-zero even under `--no-fail`, because a missing measurement must not be reported as a score.
 
 ## eval report
 
@@ -111,13 +147,13 @@ fastskill eval score --run-dir /tmp/evals/run-1 --no-fail
 
 ## eval scorecard
 
-Folds many runs into named metrics and gates each on its own threshold. Use it after a sweep, where `eval report` describes one run and `eval score` decides one run's verdict.
+Folds many runs into named metrics and gates each on its own threshold, where `eval report` describes one run and `eval score` decides one run's verdict.
 
-A scorecard reports each check type's own rate rather than a suite pass rate. A case carrying both a skill-invocation check and a tool-call ceiling would otherwise report a budget overrun as a recall failure.
+A scorecard reports each measurement's own rate rather than a suite pass rate. A case carrying both a skill-invocation check and a tool-call ceiling would otherwise report a budget overrun as a recall failure.
 
 ```bash
-fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml
-fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml --json --no-fail
+fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml
+fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml --json --no-fail
 ```
 
 | Option | Description |
@@ -127,6 +163,9 @@ fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml --json --
 | `--format <FORMAT>` | `table` or `json` only |
 | `--json` | Shorthand for `--format json` |
 | `--no-fail` | Report the numbers without failing on a metric below its threshold |
+| `--allow-mixed-judges` | Fold judgments from more than one judge identity into one metric |
+| `--allow-mixed-targets` | Fold runs against more than one `(agent, model)` pair into one scorecard |
+| `--allow-duplicate-cases` | Fold runs that measure the same case id more than once |
 
 ### The metrics file
 
@@ -145,17 +184,57 @@ name = "Efficiency (p95 tool calls)"
 kind = "tool_calls_p95"
 cases = ["op-*"]
 max = 25
+
+[[metric]]
+name = "Answer quality"
+kind = "judge_score"
+cases = ["op-*"]
+judges = ["quality"]
+# criterion = "clarity"   # omit to score the judge's `overall`
+min_score = 0.7
+
+# Every suite this benchmark selects, relative to this file. Declaring them is
+# what gives the scorecard a `benchmark.sha256`, and what lets two scorecards be
+# compared at all.
+suites = ["./suites/consultation", "./suites/restraint"]
 ```
 
-`check_rate` is passing check results over observed check results, over trials rather than cases: a case passing three of five trials contributes 3/5. `tool_calls_p95` is the 95th percentile of tool calls per trial, compared against a ceiling.
+`check_rate` is passing check results over observed check results, over trials rather than cases: a case passing three of five trials contributes 3/5. `tool_calls_p95` is the 95th percentile of tool calls per trial, compared against a ceiling. `judge_score` is the mean of a judge's `overall` — or of one named criterion — over the latest judgment per trial.
+
+### Identity: what the numbers are about
+
+A number whose provenance is gone cannot be compared with last month's, so the scorecard records four identities beside the metrics:
+
+| Identity | Where it comes from |
+|----------|--------------------|
+| **Target** | The `(agent, model)` pair each run recorded |
+| **Skill** | `skill_git_sha` and `skill_dirty` copied from the run, never recomputed from the working tree — and reported only when every run agrees |
+| **Benchmark** | `sha256` over the metrics file and every file the declared `suites` select (`checks.toml`, `prompts.csv` and every judge prompt file) |
+| **Judges** | Every distinct `judge_hash` with the model, endpoint and sampling settings that produced it |
+
+Three guards refuse a scorecard that would average two different measurements together. Each names the offending values, and each has an override that records itself in the document, so a reader can see the mixing happened:
+
+| Refused when | Override | Recorded as |
+|--------------|----------|-------------|
+| A `judge_score` metric folds more than one `judge_hash` | `--allow-mixed-judges` | `metrics[].mixed_judges: true` |
+| The runs under `--root` carry more than one `(agent, model)` | `--allow-mixed-targets` | `metrics[].mixed_targets: true`, no top-level `agent`/`model` |
+| The same case id is measured by more than one run | `--allow-duplicate-cases` | Every `cases[]` row keeps its own `run_dir` |
+
+`--no-fail` suppresses none of these: it says "report the numbers rather than gate on them", not "the numbers mean something they do not".
+
+### The JSON document
+
+`--format json` emits a `fastskill.scorecard/1` document: the identities above, the `metrics` and `totals` the table shows, and a `cases[]` array with one row per `(run, case)` carrying every check result and, per judge, the latest judgment per trial with each criterion's normalised score, answer and **full** reasoning. Nothing in a row is summarised — the run directories get deleted, and this document is what survives them.
 
 ### What is excluded, and why
 
-- **Errored trials.** A trial with outcome `error` still carries check results, because the checks ran, over an empty trace. Every negative expectation and every tool-call ceiling passed there vacuously, so folding them would report an outage as a clean sweep. They are dropped from every rate and counted separately.
+- **Errored trials.** A trial with outcome `error` still carries check results, because the checks ran, over an empty trace. Every negative expectation and every tool-call ceiling passed there vacuously, so folding them would report an outage as perfect restraint. They are dropped from every rate and counted separately.
 - **Not-observable checks.** A check whose evidence the backend cannot produce records `passed: false` for older readers. It is excluded rather than counted as a failure.
 - **Estimated cost.** Only the vendor-reported figure is summed. When no trial reported one, the line reads "not reported" rather than `$0.00`.
+- **Judge errors and excluded trials.** A trial whose judgment errored contributes nothing to a `judge_score` — not a zero — and is counted in `totals.judge_errors`. A trial a gated judge could not judge is counted in `totals.judge_excluded_trials`.
+- **Advisory judge rows.** A `judge:<name>` row for a judge that does not gate never moves a `check_rate`. It is reported by the `judge_score` metric that names the judge.
 
-A case whose every trial errored is named in the output, and a metric that matched no observed check result **fails the command** even under `--no-fail`: a mistyped case pattern would otherwise make a gate quietly disappear. Check results that no metric claims are named in a warning.
+A case whose every trial errored is named in the output, and a metric that matched nothing **fails the command** even under `--no-fail`: a mistyped case pattern would otherwise make a gate quietly disappear. Check results that no metric claims are named in a warning.
 
 ## See also
 

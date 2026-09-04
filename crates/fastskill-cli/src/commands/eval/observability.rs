@@ -330,6 +330,7 @@ mod tests {
             should_trigger,
             tags: vec![],
             workspace_subdir: None,
+            extra: Default::default(),
         }
     }
 

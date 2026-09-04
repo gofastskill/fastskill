@@ -10,7 +10,8 @@ use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
-use fastskill_evals::checks::{load_checks, CheckDefinition};
+use fastskill_evals::checks::{load_checks, load_checks_file, CheckDefinition};
+use fastskill_evals::judge::{validate_judges, IssueLevel};
 use fastskill_evals::resolve_eval_config;
 use fastskill_evals::suite::load_suite;
 use std::collections::HashMap;
@@ -26,6 +27,12 @@ pub struct ValidateArgs {
 
     /// Target all runtimes discovered by aikit (mutually exclusive with --agent)
     pub all: bool,
+
+    /// The model `eval run` will target, so a judge declaring the same one can
+    /// be reported as self-preference (R14). Not resolved from anywhere else:
+    /// asking a runtime what it would use is a network call, and validate is
+    /// file-only.
+    pub model: Option<String>,
 
     /// Output format: table, json (default: table)
     pub format: Option<OutputFormat>,
@@ -72,6 +79,16 @@ impl IntoCommandSpec for ValidateArgs {
                     ..Default::default()
                 },
                 ArgSpec {
+                    name: "model",
+                    kind: ArgKind::Option,
+                    long: Some("model"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help:
+                        "The model eval run will target; warns when a judge declares the same one",
+                    ..Default::default()
+                },
+                ArgSpec {
                     name: "format",
                     kind: ArgKind::Option,
                     long: Some("format"),
@@ -112,6 +129,13 @@ impl FromArgValueMap for ValidateArgs {
                 _ => vec![],
             },
             all: matches!(map.get("all"), Some(ArgValue::Bool(true))),
+            model: map.get("model").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
             format: map
                 .get("format")
                 .and_then(|v| {
@@ -197,6 +221,40 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     // it fails validation outright and is asked even with no runtime selected.
     validate_suite_checks(&suite.cases, &checks)?;
 
+    // R14: judge declarations are checked from file content alone, so this
+    // gives the same answer on a laptop and in CI. Endpoint reachability and
+    // key presence are R3's concern and are asked when judging starts.
+    let mut judge_names: Vec<String> = Vec::new();
+    let mut judge_warnings: Vec<String> = Vec::new();
+    if let Some(checks_path) = eval_config.checks_path.as_ref().filter(|p| p.exists()) {
+        let file = load_checks_file(checks_path).map_err(|e| CliError::Config(e.to_string()))?;
+        judge_names = file.judges.iter().map(|j| j.name.clone()).collect();
+        let checks_dir = checks_path.parent().unwrap_or(&project_root);
+        let issues = validate_judges(&file, checks_dir, Some(&suite), None, args.model.as_deref());
+        let errors: Vec<String> = issues
+            .iter()
+            .filter(|i| i.level == IssueLevel::Error)
+            .map(ToString::to_string)
+            .collect();
+        if !errors.is_empty() {
+            return Err(CliError::Config(format!(
+                "EVAL_JUDGE_INVALID: {} declared in '{}':\n{}",
+                if errors.len() == 1 {
+                    "1 problem".to_string()
+                } else {
+                    format!("{} problems", errors.len())
+                },
+                checks_path.display(),
+                errors.join("\n")
+            )));
+        }
+        judge_warnings = issues
+            .iter()
+            .filter(|i| i.level == IssueLevel::Warning)
+            .map(ToString::to_string)
+            .collect();
+    }
+
     let mut agents: Vec<(String, bool)> = Vec::new();
     let mut unscoreable: Vec<(String, String)> = Vec::new();
     if let Some(sel) = &selection {
@@ -230,6 +288,10 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
         unscoreable = split.into_reasons();
     }
 
+    for warning in &judge_warnings {
+        eprintln!("warning: {}", warning);
+    }
+
     if use_json {
         let agents_json: serde_json::Map<String, serde_json::Value> = agents
             .iter()
@@ -254,6 +316,8 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
             "project_root": eval_config.project_root,
             "case_count": case_count,
             "check_count": check_count,
+            "judges": judge_names,
+            "judge_warnings": judge_warnings,
             "agents": agents_json,
             "unscoreable": unscoreable_json,
         });
@@ -268,6 +332,9 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
         if let Some(ref checks) = eval_config.checks_path {
             crate::outln!("  checks: {}", checks.display());
             crate::outln!("  check count: {}", check_count);
+        }
+        if !judge_names.is_empty() {
+            crate::outln!("  judges: {}", judge_names.join(", "));
         }
         crate::outln!("  timeout: {}s", eval_config.timeout_seconds);
         crate::outln!("  trials_per_case: {}", eval_config.trials_per_case);

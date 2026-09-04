@@ -7,25 +7,28 @@ Run eval cases against an agent
 Usage: fastskill eval run [OPTIONS] --output-dir <output-dir>
 
 Options:
-  -a, --agent <agent>            Target runtime(s); repeatable (mutually exclusive with --all)
-      --skills-dir <skills-dir>  Override the skills directory path
-      --all                      Target all runtimes (mutually exclusive with --agent)
-      --global                   Use global skills directory (~/.config/fastskill/skills)
-      --output-dir <output-dir>  Output directory for artifacts (required)
-  -v, --verbose                  Enable verbose output
-      --model <model>            Optional model override forwarded to the agent
-      --case <case>              Filter: run only the case with this ID
-      --tag <tag>                Filter: run only cases with this tag
-      --format <format>          Output format: table, json
-      --json                     Shorthand for --format json
-      --no-fail                  Do not fail with non-zero exit code on suite failure
-      --trials <trials>          Override trials per case from config (1-1000)
-      --ci                       CI mode: pass/fail on suite pass rate vs threshold
-      --threshold <threshold>    Override pass threshold (0.0-1.0)
-      --no-isolation             Run in the project root against the ambient agent environment
-                                 (disables per-case scratch-workspace isolation)
-  -h, --help                     Print help
-  -V, --version                  Print version
+  -a, --agent <agent>              Target runtime(s); repeatable (mutually exclusive with --all)
+      --skills-dir <skills-dir>    Override the skills directory path
+      --all                        Target all runtimes (mutually exclusive with --agent)
+      --global                     Use global skills directory (~/.config/fastskill/skills)
+      --output-dir <output-dir>    Output directory for artifacts (required)
+  -v, --verbose                    Enable verbose output
+      --model <model>              Optional model override forwarded to the agent
+      --case <case>                Filter: run only the case with this ID
+      --tag <tag>                  Filter: run only cases with this tag
+      --format <format>            Output format: table, json
+      --json                       Shorthand for --format json
+      --no-fail                    Do not fail with non-zero exit code on suite failure
+      --trials <trials>            Override trials per case from config (1-1000)
+      --ci                         CI mode: pass/fail on suite pass rate vs threshold
+      --threshold <threshold>      Override pass threshold (0.0-1.0)
+      --judge                      Judge the run after scoring it, with the judges checks.toml
+                                   declares
+      --judge-model <judge-model>  Override every judge's model; recorded in each judgment
+      --no-isolation               Run in the project root against the ambient agent environment
+                                   (disables per-case scratch-workspace isolation)
+  -h, --help                       Print help
+  -V, --version                    Print version
 
 Syntax: eval run [OPTIONS]
 

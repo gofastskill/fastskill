@@ -7,6 +7,7 @@ Evaluation commands for skill quality assurance
 Usage: fastskill eval [OPTIONS] <COMMAND>
 
 Commands:
+  judge      Judge a completed eval run with the judges its checks file declares
   report     Show a report for a completed eval run
   run        Run eval cases against an agent
   score      Re-score saved eval artifacts without running the agent again

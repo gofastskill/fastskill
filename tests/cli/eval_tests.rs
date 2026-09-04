@@ -73,6 +73,13 @@ fn test_eval_run_help() {
 }
 
 #[test]
+fn test_eval_judge_help() {
+    let result = run_fastskill_command(&["eval", "judge", "--help"], None);
+    assert!(result.success);
+    assert_snapshot_with_settings("eval_judge_help", &result.stdout, &cli_snapshot_settings());
+}
+
+#[test]
 fn test_eval_report_help() {
     let result = run_fastskill_command(&["eval", "report", "--help"], None);
     assert!(result.success);
@@ -1377,6 +1384,12 @@ fn test_eval_score_empty_summary_errors() {
         checks_path: Some(checks_path),
         skill_project_root: dir.path().to_path_buf(),
         isolation: None,
+        judge_errors: None,
+        judge_skipped_trials: None,
+        judge_tokens: None,
+        judge_cost_usd: None,
+        skill_git_sha: None,
+        skill_dirty: None,
         cases: vec![],
     };
     write_summary(&run_dir, &summary).unwrap();
@@ -1426,6 +1439,12 @@ fn test_eval_report_empty_summary_errors() {
         checks_path: None,
         skill_project_root: dir.path().to_path_buf(),
         isolation: None,
+        judge_errors: None,
+        judge_skipped_trials: None,
+        judge_tokens: None,
+        judge_cost_usd: None,
+        skill_git_sha: None,
+        skill_dirty: None,
         cases: vec![],
     };
     write_summary(&run_dir, &summary).unwrap();
@@ -1472,6 +1491,12 @@ fn test_eval_report_displays_token_info_when_present() {
         checks_path: None,
         skill_project_root: dir.path().to_path_buf(),
         isolation: None,
+        judge_errors: None,
+        judge_skipped_trials: None,
+        judge_tokens: None,
+        judge_cost_usd: None,
+        skill_git_sha: None,
+        skill_dirty: None,
         cases: vec![CaseSummary {
             id: "token-case".to_string(),
             status: CaseStatus::Passed,
@@ -1484,6 +1509,8 @@ fn test_eval_report_displays_token_info_when_present() {
             error_count: Some(0),
             scored_trials: Some(1),
             should_trigger: None,
+            judge_excluded_count: None,
+            scores: Default::default(),
             trials: vec![],
         }],
     };
@@ -1549,6 +1576,12 @@ fn write_scoreable_run(
         checks_path: Some(checks_path),
         skill_project_root: root.to_path_buf(),
         isolation: None,
+        judge_errors: None,
+        judge_skipped_trials: None,
+        judge_tokens: None,
+        judge_cost_usd: None,
+        skill_git_sha: None,
+        skill_dirty: None,
         cases: vec![CaseSummary {
             id: case_id.to_string(),
             status: CaseStatus::Failed,
@@ -1561,6 +1594,8 @@ fn write_scoreable_run(
             error_count: Some(0),
             scored_trials: Some(1),
             should_trigger,
+            judge_excluded_count: None,
+            scores: Default::default(),
             trials: vec![recorded],
         }],
     };
@@ -1592,6 +1627,7 @@ fn passing_trial(command_count: Option<usize>) -> fastskill_evals::artifacts::Tr
         cost_usd: None,
         tokens: Default::default(),
         skill_path: None,
+        judge_excluded: false,
     }
 }
 
@@ -1869,7 +1905,7 @@ fn test_eval_scorecard_folds_runs_and_drops_errored_trials() {
     .unwrap();
 
     let bin_dir = dir.path().join("bin");
-    let sweep_dir = dir.path().join("sweep").join("consultation");
+    let runs_dir = dir.path().join("eval-runs").join("consultation");
     let state_dir = dir.path().join("state");
     let merged_path = install_fake_agent(&bin_dir, "codex");
     let env_vars = vec![
@@ -1886,7 +1922,7 @@ fn test_eval_scorecard_folds_runs_and_drops_errored_trials() {
             "--agent",
             "codex",
             "--output-dir",
-            sweep_dir.to_str().unwrap(),
+            runs_dir.to_str().unwrap(),
             "--case",
             "op-crash",
             "--trials",
@@ -1922,12 +1958,12 @@ max = 25
     )
     .unwrap();
 
-    let sweep_root = dir.path().join("sweep");
+    let runs_root = dir.path().join("eval-runs");
     let args = [
         "eval",
         "scorecard",
         "--root",
-        sweep_root.to_str().unwrap(),
+        runs_root.to_str().unwrap(),
         "--metrics",
         metrics_path.to_str().unwrap(),
         "--json",
@@ -1990,7 +2026,9 @@ fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
-    let run_dir = dir.path().join("sweep/suite/2026-09-03T00-00-00Z/codex");
+    let run_dir = dir
+        .path()
+        .join("eval-runs/suite/2026-09-03T00-00-00Z/codex");
     fs::create_dir_all(&run_dir).unwrap();
     fs::write(
         run_dir.join("summary.json"),
@@ -2026,7 +2064,7 @@ fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
             "eval",
             "scorecard",
             "--root",
-            dir.path().join("sweep").to_str().unwrap(),
+            dir.path().join("eval-runs").to_str().unwrap(),
             "--metrics",
             metrics_path.to_str().unwrap(),
             "--no-fail",
@@ -2042,5 +2080,834 @@ fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
         result.stderr.contains("EVAL_SCORECARD_EMPTY_METRIC"),
         "stderr: {}",
         result.stderr
+    );
+}
+
+/// One run directory holding a hand-written `summary.json`, so a scorecard test
+/// can pin exactly what the artifacts said without running an agent.
+fn staged_run(root: &std::path::Path, leaf: &str, agent: &str, model: &str, case_id: &str) {
+    use std::fs;
+    let run_dir = root.join(leaf);
+    fs::create_dir_all(&run_dir).unwrap();
+    let model_json = if model.is_empty() {
+        "null".to_string()
+    } else {
+        format!("\"{}\"", model)
+    };
+    fs::write(
+        run_dir.join("summary.json"),
+        format!(
+            r#"{{
+              "suite_pass": true, "agent": "{agent}", "model": {model_json},
+              "total_cases": 1, "passed": 1, "failed": 0,
+              "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp/skill",
+              "skill_git_sha": "abc1234def", "skill_dirty": false,
+              "cases": [{{
+                "id": "{case_id}", "status": "passed",
+                "command_count": 2, "input_tokens": null, "output_tokens": null,
+                "trials": [{{
+                  "trial_id": 1, "status": "passed",
+                  "command_count": 2, "input_tokens": null, "output_tokens": null,
+                  "check_results": [
+                    {{"check_name": "skill_invoked", "passed": true, "required": true, "message": null}}
+                  ],
+                  "error_message": null
+                }}]
+              }}]
+            }}"#
+        ),
+    )
+    .unwrap();
+}
+
+/// A metrics file whose one metric always matches the staged runs above.
+fn staged_metrics(dir: &std::path::Path) -> std::path::PathBuf {
+    let path = dir.join("metrics.toml");
+    std::fs::write(
+        &path,
+        "[[metric]]\nname = \"Skill-open rate\"\nkind = \"check_rate\"\nchecks = [\"skill_invoked\"]\nmin_rate = 0.5\n",
+    )
+    .unwrap();
+    path
+}
+
+/// R2: the document names what was measured, not just the numbers. A rate
+/// whose target, skill revision and benchmark are gone cannot be compared with
+/// last month's, which is the only thing a scorecard is for.
+#[test]
+fn test_eval_scorecard_emits_the_identity_of_what_it_measured() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    let metrics_path = staged_metrics(dir.path());
+
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            root.to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--json",
+        ],
+        None,
+    );
+    assert!(result.success, "stderr: {}", result.stderr);
+    let json_start = result.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+
+    assert_eq!(card["schema"], "fastskill.scorecard/1");
+    assert!(card["generated_at"].as_str().unwrap().ends_with('Z'));
+    assert_eq!(card["agent"], "codex");
+    assert_eq!(card["model"], "gpt-5");
+    assert_eq!(card["targets"][0]["runs"], 1);
+    assert_eq!(card["skill"]["git_sha"], "abc1234def");
+    assert_eq!(card["skill"]["dirty"], false);
+    assert_eq!(
+        card["benchmark"]["sha256"],
+        Value::Null,
+        "a metrics file declaring no suites has no benchmark hash: {}",
+        result.stdout
+    );
+    assert_eq!(
+        card["runs"][0]["started_at"], "2026-09-03T00:00:00Z",
+        "the run id in the path is the start time: {}",
+        result.stdout
+    );
+    assert!(!card["fastskill_version"].as_str().unwrap().is_empty());
+    assert!(!card["aikit_evals_version"].as_str().unwrap().is_empty());
+
+    // R1: one row per (run, case), carrying what was observed rather than a fold.
+    assert_eq!(card["cases"].as_array().unwrap().len(), 1);
+    let case = &card["cases"][0];
+    assert_eq!(case["case_id"], "op-init");
+    assert_eq!(case["scored_trials"], 1);
+    assert_eq!(case["checks"][0]["name"], "skill_invoked");
+    assert_eq!(case["checks"][0]["observed"], true);
+
+    // Every key the scorecard emitted before this document existed is still here.
+    assert_eq!(card["totals"]["runs"], 1);
+    assert_eq!(card["metrics"][0]["verdict"], "PASS");
+    assert!(card["unclaimed_checks"].is_array());
+}
+
+/// R2/R5: two scorecards are comparable only when they asked the same question,
+/// and `benchmark.sha256` is what says they did.
+#[test]
+fn test_eval_scorecard_hashes_every_file_the_benchmark_selects() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+
+    let suite = dir.path().join("suites/consultation");
+    fs::create_dir_all(&suite).unwrap();
+    fs::write(
+        suite.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nop-init,\"go\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(
+        suite.join("checks.toml"),
+        "[[check]]\nname = \"skill_invoked\"\n",
+    )
+    .unwrap();
+
+    let metrics_path = dir.path().join("metrics.toml");
+    // `suites` is a top-level key, so it has to precede the first [[metric]]
+    // table header — after it, TOML would read it as a field of that metric.
+    let metrics = "suites = [\"./suites/consultation\"]\n\n[[metric]]\nname = \"Skill-open rate\"\nkind = \"check_rate\"\nchecks = [\"skill_invoked\"]\nmin_rate = 0.5\n";
+    fs::write(&metrics_path, metrics).unwrap();
+
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+    let hash_of = |args: &[&str]| -> String {
+        let out = run_fastskill_command(args, None);
+        assert!(out.success, "stderr: {}", out.stderr);
+        let json_start = out.stdout.find('{').unwrap();
+        let card: Value = serde_json::from_str(&out.stdout[json_start..]).unwrap();
+        assert!(
+            card["benchmark"]["sha256"].is_string(),
+            "a declared suite must produce a hash: {}",
+            out.stdout
+        );
+        card["benchmark"]["sha256"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    let before = hash_of(&args);
+    assert_eq!(before.len(), 64, "sha256 hex");
+
+    // Change one case in one suite file: a different question was asked, so the
+    // benchmark is a different benchmark and the hash must say so.
+    fs::write(
+        suite.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nop-init,\"go further\",true,\"basic\",\n",
+    )
+    .unwrap();
+    let after = hash_of(&args);
+    assert_ne!(
+        before, after,
+        "editing a suite file must change the benchmark hash"
+    );
+
+    // ...and a file the benchmark does not select is not part of the question,
+    // so it must not move the hash. Without this half the requirement is met
+    // by hashing the whole directory tree, which would make every scorecard
+    // incomparable with every other for reasons no reader could see.
+    fs::write(dir.path().join("notes.txt"), "scratch, not a suite file").unwrap();
+    fs::create_dir_all(dir.path().join("suites/unselected")).unwrap();
+    fs::write(
+        dir.path().join("suites/unselected/prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nother,\"x\",true,\"basic\",\n",
+    )
+    .unwrap();
+    assert_eq!(
+        after,
+        hash_of(&args),
+        "only the files the suites list selects belong to the benchmark"
+    );
+}
+
+/// R4: a rate averaged over two agents is a measurement of neither.
+#[test]
+fn test_eval_scorecard_refuses_two_targets_under_one_root() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    staged_run(
+        &root,
+        "2026-09-03T01-00-00Z/claude",
+        "claude",
+        "opus",
+        "off-idle",
+    );
+    let metrics_path = staged_metrics(dir.path());
+
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+    let refused = run_fastskill_command(&args, None);
+    assert!(
+        !refused.success,
+        "two targets must not be folded silently; stdout: {}",
+        refused.stdout
+    );
+    assert!(
+        refused.stderr.contains("EVAL_SCORECARD_MIXED_TARGETS")
+            && refused.stderr.contains("codex/gpt-5")
+            && refused.stderr.contains("claude/opus"),
+        "the error must name the offending targets; stderr: {}",
+        refused.stderr
+    );
+
+    // `--no-fail` says "report the numbers rather than gate on them". It does
+    // not say the numbers mean something they do not.
+    let mut no_fail = args.to_vec();
+    no_fail.push("--no-fail");
+    assert!(
+        !run_fastskill_command(&no_fail, None).success,
+        "--no-fail must not suppress a mixed-measurement guard"
+    );
+
+    let mut allowed = args.to_vec();
+    allowed.push("--allow-mixed-targets");
+    let folded = run_fastskill_command(&allowed, None);
+    assert!(folded.success, "stderr: {}", folded.stderr);
+    let json_start = folded.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&folded.stdout[json_start..]).unwrap();
+    assert_eq!(
+        card["agent"],
+        Value::Null,
+        "with two targets there is no one agent this card is about: {}",
+        folded.stdout
+    );
+    assert_eq!(card["targets"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        card["metrics"][0]["mixed_targets"], true,
+        "the override records itself: {}",
+        folded.stdout
+    );
+}
+
+/// R4: the same case measured twice is counted twice, and the reader is told.
+#[test]
+fn test_eval_scorecard_refuses_a_case_measured_by_two_runs() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    staged_run(
+        &root,
+        "2026-09-03T01-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    let metrics_path = staged_metrics(dir.path());
+
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+    let refused = run_fastskill_command(&args, None);
+    assert!(!refused.success, "stdout: {}", refused.stdout);
+    assert!(
+        refused.stderr.contains("EVAL_SCORECARD_DUPLICATE_CASES")
+            && refused.stderr.contains("op-init"),
+        "stderr: {}",
+        refused.stderr
+    );
+
+    let mut allowed = args.to_vec();
+    allowed.push("--allow-duplicate-cases");
+    let folded = run_fastskill_command(&allowed, None);
+    assert!(folded.success, "stderr: {}", folded.stderr);
+    let json_start = folded.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&folded.stdout[json_start..]).unwrap();
+    let rows = card["cases"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "every occurrence keeps its own row");
+    assert_ne!(
+        rows[0]["run_dir"], rows[1]["run_dir"],
+        "each row names the run it came from: {}",
+        folded.stdout
+    );
+    assert_eq!(
+        card["totals"]["cases"], 2,
+        "the totals count each occurrence"
+    );
+}
+
+/// R1 / ADR 0020: the scorecard grew, and a reader written against the shape
+/// it had before must still be able to read it.
+#[test]
+fn test_eval_scorecard_stays_readable_by_a_reader_written_against_the_old_shape() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    /// Exactly the fields the scorecard emitted before this change. If any of
+    /// them was renamed, retyped or dropped, this fails to deserialise.
+    #[derive(serde::Deserialize)]
+    struct OldReader {
+        metrics: Vec<OldMetric>,
+        totals: serde_json::Map<String, Value>,
+        unclaimed_checks: Vec<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct OldMetric {
+        name: String,
+        verdict: String,
+        rate: Option<f64>,
+    }
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    let metrics_path = staged_metrics(dir.path());
+
+    let out = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            root.to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--json",
+        ],
+        None,
+    );
+    assert!(out.success, "stderr: {}", out.stderr);
+    let json_start = out.stdout.find('{').unwrap();
+    let parsed = serde_json::from_str::<OldReader>(&out.stdout[json_start..]);
+    assert!(
+        parsed.is_ok(),
+        "old-shape reader must still parse: {:?}\n{}",
+        parsed.as_ref().err(),
+        out.stdout
+    );
+    let old = parsed.unwrap();
+
+    assert_eq!(old.metrics.len(), 1);
+    assert_eq!(old.metrics[0].name, "Skill-open rate");
+    assert_eq!(old.metrics[0].verdict, "PASS");
+    assert!(
+        old.metrics[0].rate.is_some(),
+        "rate keeps its name and type"
+    );
+    assert!(old.totals.contains_key("runs"), "totals keeps its key");
+    assert!(old.unclaimed_checks.is_empty());
+}
+
+/// R4: two judge identities folded into one score is a mixed measurement, and
+/// the reader cannot see it in the number. The command refuses by name.
+#[test]
+fn test_eval_scorecard_refuses_two_judge_identities_in_one_score() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// One judgment record, as `trial-N/judgments.json` holds them.
+    fn stage_judgment(run_dir: &std::path::Path, case_id: &str, trial: u32, hash: &str) {
+        let dir = run_dir.join(case_id).join(format!("trial-{trial}"));
+        fs::create_dir_all(&dir).unwrap();
+        let record = serde_json::json!([{
+            "schema": "aikit.judgment/1",
+            "judge": "command-correctness",
+            "judge_hash": hash,
+            "cache_key": format!("{hash}-command-correctness"),
+            "identity": {
+                "model": "judge-1", "model_reported": null,
+                "endpoint_host": "api.example.com",
+                "temperature": 0.0, "top_p": null, "max_tokens": 1024
+            },
+            "attempts": [],
+            "scores": {"overall": 0.9},
+            "error": null,
+            "usage": {"input": 100, "output": 20, "total": 120},
+            "cost_usd": null,
+            "truncated": [],
+            "judged_at": "2026-09-04T12:00:00Z"
+        }]);
+        fs::write(
+            dir.join("judgments.json"),
+            serde_json::to_string_pretty(&record).unwrap(),
+        )
+        .unwrap();
+    }
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("eval-runs/2026-09-03T00-00-00Z/codex");
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        run_dir.join("summary.json"),
+        r#"{
+          "suite_pass": true, "agent": "codex", "model": "gpt-5",
+          "total_cases": 1, "passed": 1, "failed": 0,
+          "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp/skill",
+          "cases": [{
+            "id": "op-init", "status": "passed",
+            "command_count": 2, "input_tokens": null, "output_tokens": null,
+            "trials": [
+              {"trial_id": 1, "status": "passed", "command_count": 2,
+               "input_tokens": null, "output_tokens": null, "error_message": null,
+               "check_results": []},
+              {"trial_id": 2, "status": "passed", "command_count": 2,
+               "input_tokens": null, "output_tokens": null, "error_message": null,
+               "check_results": []}
+            ]
+          }]
+        }"#,
+    )
+    .unwrap();
+    // Same judge name, same prompt, two different resolved identities: exactly
+    // the case a name-keyed fold would hide.
+    stage_judgment(&run_dir, "op-init", 1, "hash-aaa");
+    stage_judgment(&run_dir, "op-init", 2, "hash-bbb");
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        "[[metric]]\nname = \"Command correctness\"\nkind = \"judge_score\"\njudges = [\"command-correctness\"]\nmin_score = 0.5\n",
+    )
+    .unwrap();
+
+    let runs_root = dir.path().join("eval-runs");
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        runs_root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+    let refused = run_fastskill_command(&args, None);
+    assert!(
+        !refused.success,
+        "two judge identities must not fold into one score; stdout: {}",
+        refused.stdout
+    );
+    assert!(
+        refused.stderr.contains("EVAL_SCORECARD_MIXED_JUDGES")
+            && refused.stderr.contains("Command correctness"),
+        "the error must name the metric; stderr: {}",
+        refused.stderr
+    );
+
+    let mut no_fail = args.to_vec();
+    no_fail.push("--no-fail");
+    assert!(
+        !run_fastskill_command(&no_fail, None).success,
+        "--no-fail must not suppress a mixed-measurement guard"
+    );
+
+    let mut allowed = args.to_vec();
+    allowed.push("--allow-mixed-judges");
+    let folded = run_fastskill_command(&allowed, None);
+    assert!(folded.success, "stderr: {}", folded.stderr);
+    let json_start = folded.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&folded.stdout[json_start..]).unwrap();
+    assert_eq!(
+        card["metrics"][0]["mixed_judges"], true,
+        "the override records itself in the artifact: {}",
+        folded.stdout
+    );
+    let hashes: Vec<&str> = card["judges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|j| j["judge_hash"].as_str().unwrap())
+        .collect();
+    assert!(
+        hashes.contains(&"hash-aaa") && hashes.contains(&"hash-bbb"),
+        "every identity that contributed is listed: {}",
+        folded.stdout
+    );
+}
+
+// ---------------------------------------------------------------------------
+// eval judge / eval run --judge / eval validate judge rules (spec eval-judge
+// R13, R14)
+// ---------------------------------------------------------------------------
+
+/// A skill project whose checks file is exactly `checks_toml`. Returns the
+/// temp dir; every judge test below differs only in that string.
+fn judge_project(checks_toml: &str) -> tempfile::TempDir {
+    use std::fs;
+    let dir = tempfile::TempDir::new().unwrap();
+    let evals_dir = dir.path().join("evals");
+    fs::create_dir_all(&evals_dir).unwrap();
+    fs::write(
+        evals_dir.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\ntest-1,\"Test prompt\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(evals_dir.join("checks.toml"), checks_toml).unwrap();
+    fs::write(dir.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+    fs::write(
+        dir.path().join("skill-project.toml"),
+        "[metadata]\nid = \"test-skill\"\n\n[tool.fastskill.eval]\nprompts = \"evals/prompts.csv\"\nchecks = \"evals/checks.toml\"\ntimeout_seconds = 300\nfail_on_missing_agent = false\n",
+    )
+    .unwrap();
+    dir
+}
+
+/// One `[[judge]]`, with the prompt spliced in so each test can leave out the
+/// one variable it is about.
+fn judge_checks(prompt: &str, extra: &str) -> String {
+    format!(
+        "[[judge]]\nname = \"quality\"\nmodel = \"judge-1\"\nprompt = \"\"\"\n{prompt}\n\"\"\"\n{extra}\n[[judge.criterion]]\nname = \"clear\"\nkind = \"scale\"\ndescription = \"Is the answer clear?\"\n"
+    )
+}
+
+/// R14: a prompt that never renders `{{output_contract}}` leaves the model
+/// guessing the reply shape, so the envelope can only fail. It is an error,
+/// found from file content alone — no endpoint, no key.
+#[test]
+fn test_eval_validate_rejects_a_judge_prompt_without_the_output_contract() {
+    let dir = judge_project(&judge_checks(
+        "Answer: {{trial.final_answer}}\n{{rubric}}",
+        "",
+    ));
+    let result = run_fastskill_command_with_env(
+        &["eval", "validate"],
+        // Emptied deliberately: the check must not depend on a key or on
+        // being able to reach anything.
+        &[("OPENAI_API_KEY", ""), ("AIKIT_LLM_URL", "")],
+        Some(dir.path()),
+    );
+    assert!(
+        !result.success,
+        "a judge prompt without {{{{output_contract}}}} must fail validation; stdout: {}",
+        result.stdout
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("EVAL_JUDGE_INVALID") && combined.contains("output_contract"),
+        "combined: {}",
+        combined
+    );
+}
+
+/// R14: a prompt without `{{rubric}}` still scores, it just scores criteria the
+/// model was never shown. That is a warning, not an error.
+#[test]
+fn test_eval_validate_warns_when_a_judge_prompt_has_no_rubric() {
+    let dir = judge_project(&judge_checks(
+        "Answer: {{trial.final_answer}}\n{{output_contract}}",
+        "",
+    ));
+    let result = run_fastskill_command_with_env(
+        &["eval", "validate"],
+        &[("OPENAI_API_KEY", ""), ("AIKIT_LLM_URL", "")],
+        Some(dir.path()),
+    );
+    assert!(
+        result.success,
+        "a missing {{{{rubric}}}} is a warning, not an error; stderr: {}",
+        result.stderr
+    );
+    assert!(
+        result.stderr.contains("rubric"),
+        "the warning must name what is missing; stderr: {}",
+        result.stderr
+    );
+    assert!(
+        result.stdout.contains("judges: quality"),
+        "validate must list the judges it checked; stdout: {}",
+        result.stdout
+    );
+}
+
+/// R14: a judge grading the model that produced the answer is self-preference.
+/// `--model` is how validate learns the target, because asking a runtime would
+/// be a network call.
+#[test]
+fn test_eval_validate_warns_when_a_judge_shares_the_target_model() {
+    let dir = judge_project(&judge_checks(
+        "Answer: {{trial.final_answer}}\n{{rubric}}\n{{output_contract}}",
+        "",
+    ));
+    let result = run_fastskill_command(
+        &["eval", "validate", "--model", "judge-1"],
+        Some(dir.path()),
+    );
+    assert!(result.success, "stderr: {}", result.stderr);
+    assert!(
+        result.stderr.contains("model under test"),
+        "stderr: {}",
+        result.stderr
+    );
+
+    // The same file with a different target is clean: the warning is about the
+    // two models matching, not about declaring a model at all.
+    let other = run_fastskill_command(
+        &["eval", "validate", "--model", "some-other-model"],
+        Some(dir.path()),
+    );
+    assert!(other.success, "stderr: {}", other.stderr);
+    assert!(
+        !other.stderr.contains("model under test"),
+        "stderr: {}",
+        other.stderr
+    );
+}
+
+/// R14: `cases` names exact case ids, so one that matches nothing means the
+/// judge silently judges no trial at all.
+#[test]
+fn test_eval_validate_rejects_a_judge_case_id_that_matches_no_case() {
+    let dir = judge_project(&judge_checks(
+        "Answer: {{trial.final_answer}}\n{{rubric}}\n{{output_contract}}",
+        "cases = [\"no-such-case\"]\n",
+    ));
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(!result.success, "stdout: {}", result.stdout);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("no-such-case"),
+        "the error must name the id that matched nothing; combined: {}",
+        combined
+    );
+}
+
+/// R14: an unknown key inside a `[[judge]]` is a parse error — a judge must
+/// never be quietly ignored by a misspelling. `agent` is the specific key the
+/// spec names: a judge is one native completion, never an agent.
+#[test]
+fn test_eval_validate_rejects_an_unknown_key_in_a_judge() {
+    let dir = judge_project(&judge_checks(
+        "Answer: {{trial.final_answer}}\n{{rubric}}\n{{output_contract}}",
+        "agent = \"claude\"\n",
+    ));
+    let result = run_fastskill_command(&["eval", "validate"], Some(dir.path()));
+    assert!(!result.success, "stdout: {}", result.stdout);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("agent"),
+        "the error must name the unknown key; combined: {}",
+        combined
+    );
+}
+
+/// A checks file with no `[[judge]]` validates exactly as it did before the
+/// judge tier existed.
+#[test]
+fn test_eval_validate_reports_no_judges_when_none_are_declared() {
+    let dir = judge_project(
+        "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+    );
+    let result = run_fastskill_command(&["eval", "validate", "--json"], Some(dir.path()));
+    assert!(result.success, "stderr: {}", result.stderr);
+    let json_start = result.stdout.find('{').unwrap();
+    let output: serde_json::Value = serde_json::from_str(&result.stdout[json_start..]).unwrap();
+    assert_eq!(output["judges"], serde_json::json!([]));
+    assert_eq!(output["judge_warnings"], serde_json::json!([]));
+}
+
+#[test]
+fn test_eval_judge_requires_run_dir() {
+    let result = run_fastskill_command(&["eval", "judge"], None);
+    assert!(!result.success);
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("run-dir"),
+        "the error must name the missing option; combined: {}",
+        combined
+    );
+}
+
+#[test]
+fn test_eval_judge_nonexistent_run_dir() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let missing = dir.path().join("no-such-run");
+    let result = run_fastskill_command(
+        &["eval", "judge", "--run-dir", missing.to_str().unwrap()],
+        None,
+    );
+    assert!(!result.success);
+    assert!(
+        result.stderr.contains("EVAL_ARTIFACTS_CORRUPT"),
+        "stderr: {}",
+        result.stderr
+    );
+}
+
+/// The range is checked before anything is read, so an impossible value is
+/// reported as what the user typed rather than as a downstream failure.
+#[test]
+fn test_eval_judge_rejects_an_out_of_range_parallel() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "judge",
+            "--run-dir",
+            dir.path().to_str().unwrap(),
+            "--judge-parallel",
+            "0",
+        ],
+        None,
+    );
+    assert!(!result.success);
+    assert!(
+        result.stderr.contains("EVAL_JUDGE_PARALLEL_INVALID"),
+        "stderr: {}",
+        result.stderr
+    );
+}
+
+/// `--judge` on a run whose checks file declares none says so and changes
+/// nothing: the verdict is the run's own, and no request is made.
+#[test]
+fn test_eval_run_judge_with_no_judges_declared_is_a_no_op() {
+    use std::fs;
+    let dir = judge_project("[[check]]\nname = \"trigger_expectation\"\npattern = \"greeting-helper\"\nexpected = true\n");
+    fs::write(
+        dir.path().join("SKILL.md"),
+        "---\nname: greeting-helper\n---\nbody\n",
+    )
+    .unwrap();
+    let bin_dir = dir.path().join("bin");
+    let path = install_fake_agent(&bin_dir, "agent");
+    let out_dir = dir.path().join("eval-runs");
+
+    let result = run_fastskill_command_with_env(
+        &[
+            "eval",
+            "run",
+            "--agent",
+            "aikit",
+            "--output-dir",
+            out_dir.to_str().unwrap(),
+            "--judge",
+            "--no-fail",
+        ],
+        &[("PATH", &path)],
+        Some(dir.path()),
+    );
+    let combined = format!("{}{}", result.stdout, result.stderr);
+    assert!(
+        combined.contains("no [[judge]] declared"),
+        "combined: {}",
+        combined
+    );
+
+    // Nothing was judged, so the run's summary carries no judge totals.
+    let summary_path = std::fs::read_dir(&out_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path().join("aikit").join("summary.json"))
+        .find(|p| p.is_file())
+        .expect("a summary.json under the run dir");
+    let summary: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(summary_path).unwrap()).unwrap();
+    assert!(
+        summary.get("judge_errors").is_none_or(|v| v.is_null()),
+        "summary: {}",
+        summary
     );
 }
