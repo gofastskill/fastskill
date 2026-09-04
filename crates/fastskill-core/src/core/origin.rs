@@ -151,11 +151,39 @@ impl Origin {
     }
 }
 
-/// Canonicalize when the path exists, otherwise keep it as given. Both sides of
-/// the relative/absolute comparison go through this so a symlinked project root
-/// (`/tmp` on macOS, a symlinked checkout) does not defeat the prefix test.
+/// Canonicalize as much of `path` as exists on disk, then re-append the part
+/// that does not. Both sides of the relative/absolute comparison go through
+/// this so a symlinked project root (`/tmp` on macOS, a symlinked checkout)
+/// does not defeat the prefix test.
+///
+/// Canonicalizing the *whole* path is not enough: `canonicalize` fails outright
+/// when the leaf is missing, and a Manifest routinely names a local skill that
+/// has not been fetched yet. The fallback then left one side of the comparison
+/// canonical and the other raw, and on Windows those two forms never share a
+/// prefix — `\\?\C:\Users\runneradmin\...` against `C:\Users\RUNNER~1\...`
+/// (verbatim prefix, 8.3 short name) — so an in-tree path was misjudged
+/// unportable and recorded absolute, which is the very defect this seam exists
+/// to prevent. Walking up to the nearest existing ancestor keeps both sides in
+/// the same form regardless of whether the leaf is there yet.
 fn canonical_or_owned(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+    // Peel off trailing components until something canonicalizes, then put
+    // them back. `suffix` is built leaf-first, so it is replayed in reverse.
+    let mut suffix: Vec<&std::ffi::OsStr> = Vec::new();
+    let mut cursor = path;
+    while let (Some(parent), Some(name)) = (cursor.parent(), cursor.file_name()) {
+        suffix.push(name);
+        if let Ok(mut canonical) = parent.canonicalize() {
+            for component in suffix.iter().rev() {
+                canonical.push(component);
+            }
+            return canonical;
+        }
+        cursor = parent;
+    }
+    path.to_path_buf()
 }
 
 /// Join `relative` onto `base` without touching the filesystem, folding away
@@ -442,6 +470,49 @@ mod tests {
         assert_eq!(
             local_path(&written.resolved_against(elsewhere)),
             elsewhere.join("src/alpha-skill")
+        );
+    }
+
+    #[test]
+    fn in_tree_path_relativizes_before_the_skill_exists() {
+        let root = tempfile::TempDir::new().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        // Deliberately never created. A Manifest routinely names a skill that
+        // has not been fetched into the tree yet; that must not change whether
+        // the path is judged portable.
+        let skill = root.join("local-skill");
+
+        let (written, unportable) = local(skill.to_str().unwrap()).to_manifest_relative(&root);
+
+        assert_eq!(local_path(&written), PathBuf::from("local-skill"));
+        assert_eq!(unportable, None);
+    }
+
+    /// The load-bearing one: `manifest_dir` canonicalizes to something other
+    /// than the string it was given, *and* the target leaf is missing. That is
+    /// the shape Windows CI hits -- the manifest dir canonicalizes to
+    /// `\\?\C:\Users\runneradmin\...` while the joined target keeps the 8.3
+    /// short name `C:\Users\RUNNER~1\...` -- and it is reachable on Unix
+    /// through a symlinked project root. Canonicalizing only the side that
+    /// exists leaves the two in different forms, so the prefix test fails and
+    /// an in-tree path is recorded absolute.
+    #[cfg(unix)]
+    #[test]
+    fn in_tree_path_relativizes_through_a_symlinked_project_root() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tmp.path().canonicalize().unwrap();
+        let real = tmp.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = tmp.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let target = link.join("local-skill");
+        let (written, unportable) = local(target.to_str().unwrap()).to_manifest_relative(&link);
+
+        assert_eq!(local_path(&written), PathBuf::from("local-skill"));
+        assert_eq!(
+            unportable, None,
+            "an in-tree path under a symlinked project root was reported unportable"
         );
     }
 
