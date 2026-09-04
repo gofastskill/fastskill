@@ -317,7 +317,7 @@ pub async fn update_skills(
     })?;
 
     let mut entries = project
-        .to_skill_entries()
+        .to_skill_entries(project_path.parent().unwrap_or(std::path::Path::new(".")))
         .map_err(HttpError::InternalServerError)?;
     entries.sort_by(|a, b| a.id.cmp(&b.id));
 

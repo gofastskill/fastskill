@@ -329,9 +329,13 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         .validate_for_context(context)
         .map_err(|e| CliError::Config(format!("skill-project.toml validation failed: {}", e)))?;
 
-    // Convert dependencies to SkillEntry format
+    // Convert dependencies to SkillEntry format. Local origins are recorded
+    // relative to the Manifest, so they resolve against its directory.
+    let manifest_dir = project_file_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     let mut entries = project
-        .to_skill_entries()
+        .to_skill_entries(manifest_dir)
         .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
 
     // Filter by skill_id if specified
@@ -390,7 +394,14 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
             any_reported = true;
             match service.preflight(&entry.origin).await {
                 Ok(UpdatePreflight::Updatable) => {
-                    crate::outln!("  • {} (from {:?})", entry.id, entry.origin);
+                    // Report the origin *as the Manifest records it*. `entries`
+                    // hold origins already resolved against the Manifest
+                    // directory (that is what makes them fetchable from any
+                    // cwd); echoing that absolute, machine-local path back at
+                    // the user would make `--check` output differ per checkout
+                    // for no gain.
+                    let recorded = entry.origin.to_manifest_relative(manifest_dir).0;
+                    crate::outln!("  • {} (from {:?})", entry.id, recorded);
                 }
                 Ok(UpdatePreflight::UpToDate) => {
                     crate::outln!("  • {} is already up to date", entry.id);

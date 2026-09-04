@@ -42,6 +42,10 @@ pub struct AddOutcome {
     pub resolved: Resolved,
     /// Whether the auto-reindex ran (false = skipped, e.g. no embedding provider).
     pub reindexed: bool,
+    /// Non-fatal things the caller should show the user — currently a local
+    /// origin outside the project tree, which cannot be recorded portably. The
+    /// install succeeded; the Manifest just will not resolve elsewhere.
+    pub warnings: Vec<String>,
 }
 
 /// The outcome of the update preflight (ADR-0005 §Q6). Only `Updatable` proceeds
@@ -203,10 +207,19 @@ impl FastSkillService {
     }
 
     async fn fetch_local(&self, path: &Path, editable: bool) -> Result<Fetched, ServiceError> {
+        // A relative local path is relative to the *project*, not to whatever
+        // directory this process happens to be in. On the server, cwd is
+        // arbitrary and resolving against it would read some other tree
+        // entirely; for a CLI invocation the injected root is absent and cwd
+        // is the project, which is the same answer.
         let resolved_path = if path.is_absolute() {
             path.to_path_buf()
         } else {
-            std::env::current_dir()?.join(path)
+            let base = match self.project_root() {
+                Some(root) => root.clone(),
+                None => std::env::current_dir()?,
+            };
+            base.join(path)
         };
         if !resolved_path.exists() {
             return Err(ServiceError::InvalidOperation(format!(
@@ -416,7 +429,7 @@ impl FastSkillService {
             .force_register_skill(skill_def.clone())
             .await?;
 
-        self.upsert_manifest_and_lock(&skill_def, &groups)?;
+        let warnings = self.upsert_manifest_and_lock(&skill_def, &groups)?;
 
         let reindexed = match self.reindex(None, None).await {
             Ok(outcome) => outcome.reindexed,
@@ -434,6 +447,7 @@ impl FastSkillService {
             origin,
             resolved,
             reindexed,
+            warnings,
         })
     }
 
@@ -441,11 +455,13 @@ impl FastSkillService {
     /// `skills.lock` entry for a just-installed skill. Resolves the project file
     /// from the current working directory (mirrors the CLI's
     /// `manifest_utils::add_skill_to_project_toml` / `update_lock_file`).
+    ///
+    /// Returns any warnings the caller should surface (see [`AddOutcome`]).
     fn upsert_manifest_and_lock(
         &self,
         skill_def: &SkillDefinition,
         groups: &[String],
-    ) -> Result<(), ServiceError> {
+    ) -> Result<Vec<String>, ServiceError> {
         // Resolve the project from the injected root (the served project, for the
         // `serve` path) if present; otherwise walk up from the process cwd, which
         // is correct for a CLI invocation. Never resolve solely from cwd on the
@@ -502,23 +518,23 @@ impl FastSkillService {
                 })
         };
 
+        // The persisted form of the origin. A local path is stored relative to
+        // the Manifest's own directory so a committed skill-project.toml +
+        // skills.lock names the same skill in every checkout; an out-of-tree
+        // path cannot be made portable, so it stays absolute and is warned
+        // about by name rather than written silently.
+        let manifest_dir = project_file_path.parent().unwrap_or(Path::new("."));
+        let (portable_origin, unportable) = skill_def.origin.to_manifest_relative(manifest_dir);
+        let warnings: Vec<String> = unportable
+            .iter()
+            .map(|u| u.warning(skill_def.id.as_str()))
+            .collect();
+
         if let Some(deps) = project.dependencies.as_mut() {
-            // Safety net: re-canonicalize a local path to an absolute path before
-            // persisting it, in case the caller passed a relative one.
-            let origin_for_manifest = match &skill_def.origin {
-                Origin::Local { path, editable } => {
-                    let canonical = path.canonicalize()?;
-                    Origin::Local {
-                        path: canonical,
-                        editable: *editable,
-                    }
-                }
-                other => other.clone(),
-            };
             deps.dependencies.insert(
                 skill_def.id.to_string(),
                 DependencySpec::Inline {
-                    origin: origin_for_manifest,
+                    origin: portable_origin.clone(),
                     groups: effective_groups.clone(),
                 },
             );
@@ -535,7 +551,11 @@ impl FastSkillService {
         } else {
             ProjectSkillsLock::new_empty()
         };
-        lock.update_skill(skill_def);
+        // The Lock is committed next to the Manifest and is what `install --lock`
+        // reads, so it records the same portable origin.
+        let mut locked_def = skill_def.clone();
+        locked_def.origin = portable_origin;
+        lock.update_skill(&locked_def);
         // Mirror the manifest's groups onto the lock entry (update_skill does not
         // carry them from the manifest).
         if let Some(entry) = lock
@@ -548,7 +568,7 @@ impl FastSkillService {
         lock.save_to_file(&lock_path)
             .map_err(|e| ServiceError::Config(format!("Failed to save skills.lock: {e}")))?;
 
-        Ok(())
+        Ok(warnings)
     }
 
     /// Update preflight (ADR-0005 §Q6): decide whether the recorded origin has

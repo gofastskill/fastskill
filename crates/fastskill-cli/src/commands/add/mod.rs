@@ -51,8 +51,13 @@ struct InstallTarget {
 
 fn update_project_files(skill_def: &SkillDefinition, groups: Vec<String>) -> CliResult<()> {
     use crate::utils::manifest_utils;
-    manifest_utils::add_skill_to_project_toml(skill_def, groups.clone())
+    let warnings = manifest_utils::add_skill_to_project_toml(skill_def, groups.clone())
         .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
+    // Printed, not `tracing::warn!`-ed: the CLI installs no subscriber, so a
+    // traced warning about an unportable Manifest path would reach nobody.
+    for warning in &warnings {
+        eprintln!("{}", crate::utils::messages::warning(warning));
+    }
 
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -624,6 +629,13 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
         "{}",
         crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
     );
+    // A local origin outside the project tree could not be recorded portably.
+    // The CLI installs no tracing subscriber, so this has to be printed to be
+    // seen at all — and it is printed here, next to the write it describes,
+    // rather than surfacing later as a mystery `install` failure elsewhere.
+    for warning in &outcome.warnings {
+        eprintln!("{}", crate::utils::messages::warning(warning));
+    }
 
     let auto_reindex = crate::config_file::load_auto_reindex_config();
     crate::utils::reindex_utils::maybe_auto_reindex(
