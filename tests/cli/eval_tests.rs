@@ -2087,7 +2087,13 @@ fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
 /// can pin exactly what the artifacts said without running an agent.
 fn staged_run(root: &std::path::Path, leaf: &str, agent: &str, model: &str, case_id: &str) {
     use std::fs;
-    let run_dir = root.join(leaf);
+    // Joined a segment at a time: an embedded `/` survives verbatim inside a
+    // Windows path, and the walker that discovers this directory reports it
+    // with the platform separator. The two spellings then name one directory
+    // and compare unequal.
+    let run_dir = leaf
+        .split('/')
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
     fs::create_dir_all(&run_dir).unwrap();
     let model_json = if model.is_empty() {
         "null".to_string()
@@ -2646,7 +2652,13 @@ fn staged_judged_run(
     reasoning: &str,
 ) -> std::path::PathBuf {
     use std::fs;
-    let run_dir = root.join(leaf);
+    // Joined a segment at a time: an embedded `/` survives verbatim inside a
+    // Windows path, while the walker that discovers this directory reports it
+    // with the platform separator. The two spellings then name one directory
+    // and compare unequal.
+    let run_dir = leaf
+        .split('/')
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
     fs::create_dir_all(&run_dir).unwrap();
     fs::write(
         run_dir.join("summary.json"),
@@ -2814,9 +2826,19 @@ fn test_eval_scorecard_html_is_one_self_contained_file() {
     );
 
     let urls = linked_urls(&page);
+    // A `file:` URL, not a bare path: an href is resolved as a URL, and an
+    // absolute Windows path is not one. The tail is the only part this test can
+    // name, because the root is a temporary directory.
+    let leaf = "/2026-09-01T00-00-00Z/codex";
     assert!(
-        urls.iter().any(|u| u == run_dir.to_str().unwrap()),
+        urls.iter()
+            .any(|u| u.starts_with("file:///") && u.ends_with(leaf)),
         "the run directory is on this machine, so it is a link: {urls:?}"
+    );
+    assert!(
+        run_dir.is_dir(),
+        "the staged directory the link points at: {}",
+        run_dir.display()
     );
     for url in &urls {
         assert!(

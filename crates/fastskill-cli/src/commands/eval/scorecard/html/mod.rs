@@ -315,12 +315,39 @@ fn identity(h: &mut String, card: &Scorecard, opts: &HtmlOptions) {
     h.push_str("</tbody></table></div></section>\n");
 }
 
+/// A path is not a URL. On Windows `C:\runs\x` opens with something a browser
+/// reads as a scheme and separates with a character URLs do not use; anywhere,
+/// a space in the path ends the attribute early. R6 asks for links that
+/// resolve, so the href is a `file:` URL and only the visible text is the path.
+fn file_url(dir: &Path) -> String {
+    let raw = dir.display().to_string();
+    let mut url = String::from("file://");
+    if !raw.starts_with('/') {
+        // A Windows path begins at its drive letter, so the root slash the URL
+        // needs is not already there.
+        url.push('/');
+    }
+    for ch in raw.chars() {
+        match ch {
+            '\\' => url.push('/'),
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '.' | '_' | '~' | '/' | ':' => url.push(ch),
+            _ => {
+                let mut buf = [0u8; 4];
+                for byte in ch.encode_utf8(&mut buf).as_bytes() {
+                    let _ = write!(url, "%{byte:02X}");
+                }
+            }
+        }
+    }
+    url
+}
+
 /// A run directory is a link only when it is still there. A link to a deleted
 /// scratch directory is worse than none (R6).
 pub fn run_dir_cell(dir: &Path, opts: &HtmlOptions) -> String {
     let shown = esc(&dir.display().to_string());
     if opts.link_run_dirs && dir.is_dir() {
-        format!("<a href=\"{}\">{}</a>", shown, shown)
+        format!("<a href=\"{}\">{}</a>", esc(&file_url(dir)), shown)
     } else {
         shown
     }
@@ -612,6 +639,21 @@ mod tests {
         assert!(
             gone.contains(path.file_name().and_then(|n| n.to_str()).unwrap_or("?")),
             "the path is still shown, so the reader knows what was deleted: {gone}"
+        );
+    }
+
+    /// R6: a link that resolves. Both spellings are handled as text, so this
+    /// holds on whichever platform runs it — and the Windows one is the reason
+    /// the function exists: `C:\...` in an href resolves nowhere.
+    #[test]
+    fn a_run_directory_link_is_a_url_a_browser_can_follow() {
+        assert_eq!(
+            file_url(Path::new(r"C:\eval runs\a")),
+            "file:///C:/eval%20runs/a"
+        );
+        assert_eq!(
+            file_url(Path::new("/tmp/eval runs/a")),
+            "file:///tmp/eval%20runs/a"
         );
     }
 }
