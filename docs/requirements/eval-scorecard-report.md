@@ -118,10 +118,10 @@ Each step waits for the previous to merge and follows the [Eval Judge](eval-judg
 
 | # | Repo | Contains | Landed as |
 |---|---|---|---|
-| 1 | `goaikit/aikit` | `skill_git_sha` and `skill_dirty` in `summary.json` (rides with Eval Judge step 2) | |
-| 2 | `aroff/cli-framework` | rev bump only | |
-| 3 | `gofastskill/fastskill` | rev bump; R1–R4, R7; this document | |
-| 4 | `gofastskill/fastskill` | R5, R6: `--format html`, `--from`, `-o`, `--no-reasoning`, the font assets; `webdocs/cli-reference/eval-command.mdx` | |
+| 1 | `goaikit/aikit` | `skill_git_sha` and `skill_dirty` in `summary.json` (rides with Eval Judge step 2) | goaikit/aikit#171 `eb50f2c` |
+| 2 | `aroff/cli-framework` | rev bump only | aroff/cli-framework#140 `f389b51` |
+| 3 | `gofastskill/fastskill` | rev bump; R1–R4, R7; this document | #303 `964d65f` |
+| 4 | `gofastskill/fastskill` | R5, R6: `--format html`, `--from`, `-o`, `--no-reasoning`, the font assets; `webdocs/cli-reference/eval-command.mdx` | #304 |
 | 5 | `gofastskill/skill` | `suites` in `evals/v2/metrics.toml`; a `judge_score` metric over the correctness judge; a regenerated baseline scorecard JSON replacing the text file no tool can reproduce | |
 
 ## Verification

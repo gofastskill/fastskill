@@ -2087,7 +2087,13 @@ fn test_eval_scorecard_refuses_a_metric_that_matched_nothing() {
 /// can pin exactly what the artifacts said without running an agent.
 fn staged_run(root: &std::path::Path, leaf: &str, agent: &str, model: &str, case_id: &str) {
     use std::fs;
-    let run_dir = root.join(leaf);
+    // Joined a segment at a time: an embedded `/` survives verbatim inside a
+    // Windows path, and the walker that discovers this directory reports it
+    // with the platform separator. The two spellings then name one directory
+    // and compare unequal.
+    let run_dir = leaf
+        .split('/')
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
     fs::create_dir_all(&run_dir).unwrap();
     let model_json = if model.is_empty() {
         "null".to_string()
@@ -2625,6 +2631,461 @@ fn test_eval_scorecard_refuses_two_judge_identities_in_one_score() {
         hashes.contains(&"hash-aaa") && hashes.contains(&"hash-bbb"),
         "every identity that contributed is listed: {}",
         folded.stdout
+    );
+}
+
+// ---------------------------------------------------------------------------
+// eval scorecard --format html (spec eval-scorecard-report R5, R6)
+// ---------------------------------------------------------------------------
+
+/// The reasoning one staged judgment carries. Distinctive on purpose: the
+/// `--no-reasoning` test asserts this exact string appears nowhere in the file.
+const STAGED_REASONING: &str =
+    "The transcript names every flag the rubric asks about, in the order it asks.";
+
+/// A run directory with one judged trial. `passed` decides whether the
+/// `skill_invoked` check holds, which is what makes two cards' verdicts differ.
+fn staged_judged_run(
+    root: &std::path::Path,
+    leaf: &str,
+    passed: bool,
+    reasoning: &str,
+) -> std::path::PathBuf {
+    use std::fs;
+    // Joined a segment at a time: an embedded `/` survives verbatim inside a
+    // Windows path, while the walker that discovers this directory reports it
+    // with the platform separator. The two spellings then name one directory
+    // and compare unequal.
+    let run_dir = leaf
+        .split('/')
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        run_dir.join("summary.json"),
+        format!(
+            r#"{{
+              "suite_pass": {passed}, "agent": "codex", "model": "gpt-5",
+              "total_cases": 1, "passed": 1, "failed": 0,
+              "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp/skill",
+              "skill_git_sha": "abc1234def", "skill_dirty": false,
+              "cases": [{{
+                "id": "op-init", "status": "passed",
+                "command_count": 2, "input_tokens": null, "output_tokens": null,
+                "trials": [{{
+                  "trial_id": 1, "status": "passed",
+                  "command_count": 2, "input_tokens": null, "output_tokens": null,
+                  "check_results": [
+                    {{"check_name": "skill_invoked", "passed": {passed}, "required": true, "message": null}}
+                  ],
+                  "error_message": null
+                }}]
+              }}]
+            }}"#
+        ),
+    )
+    .unwrap();
+
+    let trial_dir = run_dir.join("op-init").join("trial-1");
+    fs::create_dir_all(&trial_dir).unwrap();
+    let reply = serde_json::json!({
+        "criteria": [{"name": "clarity", "answer": 4, "reasoning": reasoning}],
+        "notes": null
+    })
+    .to_string();
+    let record = serde_json::json!([{
+        "schema": "aikit.judgment/1",
+        "judge": "command-correctness",
+        "judge_hash": "hash-aaa",
+        "cache_key": "hash-aaa-command-correctness",
+        "identity": {
+            "model": "judge-1", "model_reported": null,
+            "endpoint_host": "api.example.com",
+            "temperature": 0.0, "top_p": null, "max_tokens": 1024
+        },
+        "attempts": [{
+            "kind": "validation", "request": {}, "response_text": reply,
+            "finish_reason": null, "usage": null, "error": null
+        }],
+        "scores": {"overall": 0.9, "clarity": 0.9},
+        "error": null,
+        "usage": {"input": 100, "output": 20, "total": 120},
+        "cost_usd": null,
+        "truncated": [],
+        "judged_at": "2026-09-04T12:00:00Z"
+    }]);
+    fs::write(
+        trial_dir.join("judgments.json"),
+        serde_json::to_string_pretty(&record).unwrap(),
+    )
+    .unwrap();
+    run_dir
+}
+
+/// A metrics file that declares a suite, so the cards it produces carry a
+/// `benchmark.sha256` and `--from` will compare them (R5).
+fn hashed_metrics(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::fs;
+    let suite = dir.join("suites/consultation");
+    fs::create_dir_all(&suite).unwrap();
+    fs::write(
+        suite.join("prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nop-init,\"go\",true,\"basic\",\n",
+    )
+    .unwrap();
+    fs::write(
+        suite.join("checks.toml"),
+        "[[check]]\nname = \"skill_invoked\"\n",
+    )
+    .unwrap();
+
+    let path = dir.join("metrics.toml");
+    fs::write(
+        &path,
+        "suites = [\"./suites/consultation\"]\n\n\
+         [[metric]]\nname = \"Skill-open rate\"\nkind = \"check_rate\"\n\
+         checks = [\"skill_invoked\"]\nmin_rate = 0.5\n\n\
+         [[metric]]\nname = \"Command correctness\"\nkind = \"judge_score\"\n\
+         judges = [\"command-correctness\"]\nmin_score = 0.5\n",
+    )
+    .unwrap();
+    path
+}
+
+/// Every `href="…"` and `src="…"` value in `page`, in document order.
+fn linked_urls(page: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for attribute in ["href=\"", "src=\""] {
+        let mut rest = page;
+        while let Some(at) = rest.find(attribute) {
+            rest = &rest[at + attribute.len()..];
+            let end = rest.find('"').unwrap_or(rest.len());
+            out.push(rest[..end].to_string());
+            rest = &rest[end..];
+        }
+    }
+    out
+}
+
+/// The contents of the one `<script type="application/json">`, parsed.
+fn embedded_cards(page: &str) -> Vec<serde_json::Value> {
+    let open = "<script type=\"application/json\" id=\"scorecards\">";
+    let start = page.find(open).expect("the embedded JSON block") + open.len();
+    let end = start + page[start..].find("</script>").expect("a closed script");
+    serde_json::from_str(&page[start..end]).expect("the embedded block is JSON")
+}
+
+/// R6: the report is one file. A run directory is scratch space that gets
+/// deleted, and the machine that opens the report months later is usually not
+/// the machine that produced it — so a `<link>`, a CDN font or a remote script
+/// is a report that renders differently, or not at all, exactly when it matters.
+#[test]
+fn test_eval_scorecard_html_is_one_self_contained_file() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("runs-a");
+    let run_dir = staged_judged_run(&root, "2026-09-01T00-00-00Z/codex", true, STAGED_REASONING);
+    let metrics_path = hashed_metrics(dir.path());
+    let out_path = dir.path().join("report.html");
+
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            root.to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--format",
+            "html",
+            "-o",
+            out_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(result.success, "stderr: {}", result.stderr);
+    assert!(
+        result.stdout.contains("Wrote "),
+        "-o says where it put the file: {}",
+        result.stdout
+    );
+    let page = std::fs::read_to_string(&out_path).unwrap();
+
+    assert_eq!(
+        page.matches("<script").count(),
+        1,
+        "the report runs no code; the one script element is the data block"
+    );
+    assert!(
+        page.contains("<script type=\"application/json\" id=\"scorecards\">"),
+        "the one script element must be the JSON data block"
+    );
+    assert!(
+        !page.contains("<link"),
+        "a stylesheet or icon fetched from anywhere is a report that renders differently"
+    );
+
+    let urls = linked_urls(&page);
+    // A `file:` URL, not a bare path: an href is resolved as a URL, and an
+    // absolute Windows path is not one. The tail is the only part this test can
+    // name, because the root is a temporary directory.
+    let leaf = "/2026-09-01T00-00-00Z/codex";
+    assert!(
+        urls.iter()
+            .any(|u| u.starts_with("file:///") && u.ends_with(leaf)),
+        "the run directory is on this machine, so it is a link: {urls:?}"
+    );
+    assert!(
+        run_dir.is_dir(),
+        "the staged directory the link points at: {}",
+        run_dir.display()
+    );
+    for url in &urls {
+        assert!(
+            !url.contains("http"),
+            "no href or src may leave this file: {url}"
+        );
+    }
+
+    // The fonts travel inside the file, under a licence the file reproduces.
+    assert!(
+        page.contains("src:url(data:font/woff2;base64,"),
+        "the faces are embedded, not fetched"
+    );
+    assert!(
+        page.contains("SIL OPEN FONT LICENSE"),
+        "embedding IBM Plex means shipping its licence"
+    );
+
+    // The embedded block is the scorecard itself, not a summary of it.
+    let cards = embedded_cards(&page);
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["schema"], "fastskill.scorecard/1");
+    assert_eq!(cards[0]["cases"][0]["case_id"], "op-init");
+}
+
+/// R6: `--no-reasoning` is a statement about the file, not about the tables in
+/// it. A report that hides reasoning on screen and ships it in the embedded
+/// JSON is worse than one that shows it, because the reader believes it is gone.
+#[test]
+fn test_eval_scorecard_html_no_reasoning_strips_the_whole_file() {
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("runs-a");
+    staged_judged_run(&root, "2026-09-01T00-00-00Z/codex", true, STAGED_REASONING);
+    let metrics_path = hashed_metrics(dir.path());
+
+    let render = |extra: &[&str]| -> String {
+        let out_path = dir.path().join(format!("report{}.html", extra.len()));
+        let mut args = vec![
+            "eval",
+            "scorecard",
+            "--root",
+            root.to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--format",
+            "html",
+            "-o",
+            out_path.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        let result = run_fastskill_command(&args, None);
+        assert!(result.success, "stderr: {}", result.stderr);
+        std::fs::read_to_string(&out_path).unwrap()
+    };
+
+    // Without the flag the reasoning is there — twice over, once for the reader
+    // and once in the data block. Without this half the assertion below passes
+    // against a fixture that never carried reasoning at all.
+    let shown = render(&[]);
+    assert!(
+        shown.contains(STAGED_REASONING),
+        "the fixture's reasoning must reach the tables"
+    );
+    assert_eq!(
+        embedded_cards(&shown)[0]["cases"][0]["judgments"][0]["criteria"][0]["reasoning"],
+        STAGED_REASONING,
+        "and the data block"
+    );
+
+    let withheld = render(&["--no-reasoning"]);
+    assert!(
+        !withheld.contains(STAGED_REASONING),
+        "--no-reasoning must leave the text nowhere in the file, data block included"
+    );
+    assert!(
+        withheld.contains("withheld"),
+        "the table says the reasoning was withheld rather than showing an empty cell"
+    );
+    // The document is stripped of one field, not truncated: everything a
+    // reader needs to find the judgment again is still there.
+    let cards = embedded_cards(&withheld);
+    let criterion = &cards[0]["cases"][0]["judgments"][0]["criteria"][0];
+    assert_eq!(criterion["name"], "clarity");
+    assert!(
+        criterion.get("reasoning").is_none(),
+        "the key itself is gone, not blanked: {criterion}"
+    );
+}
+
+/// R5: a progress chart over two benchmarks draws two questions on one axis.
+/// There is no override for that, and the point where a verdict flipped is the
+/// news the chart exists to carry.
+#[test]
+fn test_eval_scorecard_html_progress_needs_one_benchmark_and_marks_every_flip() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let metrics_path = hashed_metrics(dir.path());
+
+    // Same target, same benchmark, two runs: the second one stopped opening the
+    // skill, so "Skill-open rate" flips and "Command correctness" does not.
+    let root_a = dir.path().join("runs-a");
+    let root_b = dir.path().join("runs-b");
+    staged_judged_run(
+        &root_a,
+        "2026-09-01T00-00-00Z/codex",
+        true,
+        STAGED_REASONING,
+    );
+    staged_judged_run(
+        &root_b,
+        "2026-09-02T00-00-00Z/codex",
+        false,
+        STAGED_REASONING,
+    );
+
+    // Render one scorecard to JSON and stamp it with a fixed `generated_at`,
+    // so the chart's time axis is the fixture's rather than the clock's.
+    let card_file =
+        |root: &std::path::Path, name: &str, generated_at: &str| -> std::path::PathBuf {
+            let out = run_fastskill_command(
+                &[
+                    "eval",
+                    "scorecard",
+                    "--root",
+                    root.to_str().unwrap(),
+                    "--metrics",
+                    metrics_path.to_str().unwrap(),
+                    "--json",
+                    "--no-fail",
+                ],
+                None,
+            );
+            assert!(out.success, "stderr: {}", out.stderr);
+            let start = out.stdout.find('{').unwrap();
+            let mut card: Value = serde_json::from_str(&out.stdout[start..]).unwrap();
+            card["generated_at"] = Value::String(generated_at.to_string());
+            let path = dir.path().join(name);
+            std::fs::write(&path, serde_json::to_string(&card).unwrap()).unwrap();
+            path
+        };
+
+    let a = card_file(&root_a, "a.json", "2026-09-01T00:00:00Z");
+    let b = card_file(&root_b, "b.json", "2026-09-02T00:00:00Z");
+    let out_path = dir.path().join("progress.html");
+
+    // Named newest first on purpose: the chart reads left to right in time
+    // whatever order the files arrived in.
+    let result = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--format",
+            "html",
+            "--from",
+            b.to_str().unwrap(),
+            "--from",
+            a.to_str().unwrap(),
+            "-o",
+            out_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(result.success, "stderr: {}", result.stderr);
+    let page = std::fs::read_to_string(&out_path).unwrap();
+
+    assert!(
+        page.contains("generated 2026-09-02T00:00:00Z"),
+        "the newest card is the one the report describes"
+    );
+    assert_eq!(
+        page.matches("class=\"pt s0 flip\"").count(),
+        1,
+        "one verdict flip in the fixture, one highlighted point"
+    );
+    assert!(
+        page.contains("1 verdict change<"),
+        "and the chart says so in words: {}",
+        &page[page.find("<h2>Progress</h2>").unwrap_or(0)..]
+    );
+
+    // R6: rendering from `--from` touches no run directory — not even to ask
+    // whether one exists. Those paths were written on another machine.
+    assert!(
+        linked_urls(&page).is_empty(),
+        "a `--from` render links nothing: {:?}",
+        linked_urls(&page)
+    );
+
+    // Two benchmarks are two questions.
+    let mut card: Value = serde_json::from_str(&std::fs::read_to_string(&b).unwrap()).unwrap();
+    card["benchmark"]["sha256"] = Value::String("f".repeat(64));
+    std::fs::write(&b, serde_json::to_string(&card).unwrap()).unwrap();
+    let mismatched = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--format",
+            "html",
+            "--from",
+            b.to_str().unwrap(),
+            "--from",
+            a.to_str().unwrap(),
+            "-o",
+            out_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(
+        !mismatched.success,
+        "two benchmarks must not be drawn on one axis; stdout: {}",
+        mismatched.stdout
+    );
+    assert!(
+        mismatched
+            .stderr
+            .contains("EVAL_SCORECARD_BENCHMARK_MISMATCH"),
+        "stderr: {}",
+        mismatched.stderr
+    );
+
+    // ...and a card that never declared a benchmark cannot be compared at all.
+    card["benchmark"]["sha256"] = Value::Null;
+    std::fs::write(&b, serde_json::to_string(&card).unwrap()).unwrap();
+    let unhashed = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--format",
+            "html",
+            "--from",
+            b.to_str().unwrap(),
+            "--from",
+            a.to_str().unwrap(),
+            "-o",
+            out_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(!unhashed.success, "stdout: {}", unhashed.stdout);
+    assert!(
+        unhashed.stderr.contains("EVAL_SCORECARD_NO_BENCHMARK_HASH"),
+        "stderr: {}",
+        unhashed.stderr
     );
 }
 

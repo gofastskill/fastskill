@@ -4,14 +4,16 @@ expression: normalized
 ---
 Fold many eval runs into named, gated metrics
 
-Usage: fastskill eval scorecard [OPTIONS] --root <root> --metrics <metrics>
+Usage: fastskill eval scorecard [OPTIONS]
 
 Options:
-      --root <root>              Directory searched recursively for run directories
+      --root <root>              Directory searched recursively for run directories (required unless
+                                 --from)
       --skills-dir <skills-dir>  Override the skills directory path
       --global                   Use global skills directory (~/.config/fastskill/skills)
-      --metrics <metrics>        TOML file declaring the metrics and their thresholds
-      --format <format>          Output format: table, json
+      --metrics <metrics>        TOML file declaring the metrics and their thresholds (required
+                                 unless --from)
+      --format <format>          Output format: table, json, html
   -v, --verbose                  Enable verbose output
       --json                     Shorthand for --format json
       --no-fail                  Report the numbers without failing on a metric below its threshold
@@ -19,10 +21,15 @@ Options:
       --allow-mixed-targets      Fold runs against more than one (agent, model) pair into one
                                  scorecard
       --allow-duplicate-cases    Fold runs that measure the same case id more than once
+      --from <from>              Scorecard JSON to render; repeat to draw a progress section
+  -o, --output <output>          Write the HTML report here instead of to stdout
+      --no-reasoning             Leave judge reasoning out of the report and its embedded JSON
   -h, --help                     Print help
   -V, --version                  Print version
 
 Syntax: eval scorecard --root <DIR> --metrics <FILE> [OPTIONS]
+        eval scorecard --format html --from <JSON> [--from <JSON>...] -o <FILE>
 
 Examples:
   fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml
+  fastskill eval scorecard --format html --from a.json --from b.json -o report.html

@@ -11,8 +11,9 @@
 
 use fastskill_evals::artifacts::CaseStatus;
 use fastskill_evals::judge::{Judgment, JudgmentIdentity, JudgmentUsage};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -27,7 +28,7 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// One `(agent, model)` pair seen under the root, and how many runs used it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetEntry {
     pub agent: String,
     pub model: Option<String>,
@@ -35,7 +36,7 @@ pub struct TargetEntry {
 }
 
 /// One run folded into the scorecard.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunEntry {
     pub run_dir: PathBuf,
     /// The run id in the directory path, as RFC 3339. `None` when no path
@@ -48,7 +49,8 @@ pub struct RunEntry {
 /// Which skill produced the numbers (R2). Copied from `summary.json`, never
 /// resolved from the working tree at scorecard time: the skill on disk now is
 /// not the skill that ran.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SkillIdentity {
     pub path: Option<PathBuf>,
     pub git_sha: Option<String>,
@@ -56,14 +58,14 @@ pub struct SkillIdentity {
 }
 
 /// Which question was asked (R2).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkIdentity {
     pub path: PathBuf,
     pub sha256: Option<String>,
 }
 
 /// One distinct judge identity seen across the selected judgments.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgeEntry {
     pub name: String,
     pub judge_hash: String,
@@ -73,7 +75,7 @@ pub struct JudgeEntry {
 /// One check result as recorded, with the fields a reader needs to avoid
 /// counting it wrongly: `observed` is false exactly when the backend could not
 /// produce the evidence, and `passed` is then meaningless.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckRow {
     pub trial_id: u32,
     pub name: String,
@@ -87,7 +89,7 @@ pub struct CheckRow {
 
 /// One criterion of one judgment: the normalised score the engine computed,
 /// and the answer and reasoning the judge gave, in full.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CriterionRow {
     pub name: String,
     pub score: f64,
@@ -96,7 +98,7 @@ pub struct CriterionRow {
 }
 
 /// The latest judgment of one judge on one trial.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JudgmentRow {
     pub trial_id: u32,
     pub judge: String,
@@ -110,7 +112,7 @@ pub struct JudgmentRow {
 /// One `(run, case)` row. The case id alone is not a key: the same case can
 /// appear in several runs under one root, and each occurrence keeps its own
 /// `run_dir` (R4).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaseRow {
     pub case_id: String,
     pub run_dir: PathBuf,
@@ -125,20 +127,20 @@ pub struct CaseRow {
 
 /// One metric's result. `observed` is the denominator that was actually
 /// measured, never the number of trials attempted.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MetricReport {
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p95_tool_calls: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     pub passed: usize,
     pub observed: usize,
     pub cases: usize,
     pub threshold: String,
-    pub verdict: &'static str,
+    pub verdict: Cow<'static, str>,
     /// Set when this metric folded judgments from more than one judge identity
     /// and `--allow-mixed-judges` let it through (R4).
     #[serde(default, skip_serializing_if = "is_false")]
@@ -150,7 +152,8 @@ pub struct MetricReport {
 }
 
 /// Everything the scorecard recorded that is reported but not gated.
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ScorecardTotals {
     pub runs: usize,
     pub cases: usize,
@@ -160,7 +163,7 @@ pub struct ScorecardTotals {
     pub not_observable_checks: usize,
     /// Vendor-reported only. `None` when no trial reported a cost, which is a
     /// different statement from `Some(0.0)`.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_usd: Option<f64>,
     pub trials_without_cost: usize,
     /// Cases every one of whose trials errored, so they carry no measurement.
@@ -174,7 +177,8 @@ pub struct ScorecardTotals {
     pub judge_tokens: JudgeTokens,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct JudgeTokens {
     pub input: u64,
     pub output: u64,
@@ -191,22 +195,22 @@ impl JudgeTokens {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Scorecard {
-    pub schema: &'static str,
+    pub schema: Cow<'static, str>,
     pub generated_at: String,
     pub targets: Vec<TargetEntry>,
     /// Set only when `targets` has one entry: with two, there is no single
     /// agent this scorecard is about, and naming one would be a lie (R4).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub skill: SkillIdentity,
     pub benchmark: BenchmarkIdentity,
     pub runs: Vec<RunEntry>,
-    pub fastskill_version: &'static str,
-    pub aikit_evals_version: &'static str,
+    pub fastskill_version: Cow<'static, str>,
+    pub aikit_evals_version: Cow<'static, str>,
     pub judges: Vec<JudgeEntry>,
     pub metrics: Vec<MetricReport>,
     pub totals: ScorecardTotals,
