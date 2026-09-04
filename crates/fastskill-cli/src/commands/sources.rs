@@ -156,8 +156,8 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
 
     match args.command {
         SourcesCommand::List { json } => {
-            // Dispatch to existing registry::repo_ops::execute_list
-            super::registry::repo_ops::execute_list_with_json(json).await
+            // Dispatch to existing repos::repo_ops::execute_list
+            super::repos::repo_ops::execute_list_with_json(json).await
         }
         SourcesCommand::Add {
             name,
@@ -171,7 +171,7 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
             auth_key_path,
             auth_username,
         } => {
-            super::registry::repo_ops::execute_add(
+            super::repos::repo_ops::execute_add(
                 name,
                 repo_type,
                 url_or_path,
@@ -185,17 +185,17 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
             )
             .await
         }
-        SourcesCommand::Remove { name } => super::registry::repo_ops::execute_remove(name).await,
+        SourcesCommand::Remove { name } => super::repos::repo_ops::execute_remove(name).await,
         SourcesCommand::Show { name, json } => {
-            super::registry::repo_ops::execute_show_with_json(name, json).await
+            super::repos::repo_ops::execute_show_with_json(name, json).await
         }
         SourcesCommand::Update {
             name,
             branch,
             priority,
-        } => super::registry::repo_ops::execute_update(name, branch, priority).await,
-        SourcesCommand::Test { name } => super::registry::repo_ops::execute_test(name).await,
-        SourcesCommand::Refresh { name } => super::registry::repo_ops::execute_refresh(name).await,
+        } => super::repos::repo_ops::execute_update(name, branch, priority).await,
+        SourcesCommand::Test { name } => super::repos::repo_ops::execute_test(name).await,
+        SourcesCommand::Refresh { name } => super::repos::repo_ops::execute_refresh(name).await,
         SourcesCommand::Create {
             path,
             output,
@@ -206,7 +206,7 @@ pub async fn execute_sources(args: SourcesArgs) -> CliResult<()> {
             description,
             version,
         } => {
-            super::registry::marketplace::execute_create(
+            super::repos::marketplace::execute_create(
                 path,
                 output,
                 base_url,

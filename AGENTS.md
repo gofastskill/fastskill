@@ -173,10 +173,10 @@ Commands are divided into two categories:
    - Initialize `FastSkillService` first
    - Use shared service layer for operations
 
-2. **Standalone commands** (init, install, registry)
+2. **Standalone commands** (init, install, repos)
    - Execute without full service initialization
    - Avoid circular dependencies and overhead
-   - Registry command has its own modular structure in `src/cli/commands/registry/`
+   - The `repos` command has its own modular structure in `crates/fastskill-cli/src/commands/repos/`
 
 ### Vector Search Implementation
 
@@ -281,8 +281,8 @@ FastSkill is **async-first** using Tokio:
 
 1. Add new repository type to `RepositoryType` enum in `src/core/repository.rs`
 2. Implement `RepositoryClient` trait for new type
-3. Add CLI subcommand in `src/cli/commands/registry/`
-4. Update formatters in `src/cli/commands/registry/formatters.rs` if needed
+3. Add CLI subcommand in `crates/fastskill-cli/src/commands/repos/`
+4. Update formatters in `crates/fastskill-cli/src/commands/repos/formatters.rs` if needed
 
 ## Style and Conventions
 

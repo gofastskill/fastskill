@@ -11,7 +11,6 @@ pub mod install;
 pub mod list;
 pub mod marketplace;
 pub mod read;
-pub mod registry;
 pub mod reindex;
 pub mod remove;
 pub mod repos;
