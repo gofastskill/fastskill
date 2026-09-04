@@ -42,8 +42,8 @@ FastSkill uses a unified `skill-project.toml` file at the project root for all c
 ```toml
 # skill-project.toml - Unified configuration
 [dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
-pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+web-scraper = { origin = { type = "git", url = "https://github.com/org/repo.git", ref = { branch = "main" } } }
+pytest = { origin = { type = "repository", repo = "team-tools", skill = "pytest" }, groups = ["dev"] }
 ```
 
 **Benefits:**
@@ -72,8 +72,8 @@ Skills declare dependencies that FastSkill resolves automatically:
 
 ```toml
 [dependencies]
-web-scraper = { source = "registry", name = "team-tools", version = "^1.0" }
-data-processor = { source = "git", url = "https://github.com/org/data.git" }
+web-scraper = { origin = { type = "repository", repo = "team-tools", skill = "web-scraper", version = "^1.0" } }
+data-processor = { origin = { type = "git", url = "https://github.com/org/data.git" } }
 ```
 
 ### Version control and automation
@@ -93,10 +93,10 @@ Different skill sets for different environments:
 ```toml
 [dependencies]
 # Development environment gets extra tools
-dev-tools = { source = "source", name = "registry", skill = "dev-tools", groups = ["dev"] }
+dev-tools = { origin = { type = "repository", repo = "team-tools", skill = "dev-tools" }, groups = ["dev"] }
 
 # Production gets monitoring
-monitoring = { source = "source", name = "registry", skill = "monitoring", groups = ["prod"] }
+monitoring = { origin = { type = "repository", repo = "team-tools", skill = "monitoring" }, groups = ["prod"] }
 ```
 
 ### Performance
@@ -126,7 +126,7 @@ FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) an
 
 - **Install-time checks**: structure and metadata when skills are added or installed
 - **Reconciliation**: `fastskill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
-- **Eval suites**: `fastskill eval` for validate / run / report / score against defined cases ([eval command](/cli-reference/eval-command))
+- **Eval suites**: `fastskill eval` for validate / run / judge / report / score / scorecard against defined cases ([eval command](/cli-reference/eval-command))
 
 ### 3. **Discovery**
 
@@ -148,8 +148,8 @@ Define your skills declaratively in `skill-project.toml` at your project root:
 ```toml
 # skill-project.toml
 [dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/repo.git", branch = "main" }
-data-processor = { source = "source", name = "team-tools", skill = "data-processor", groups = ["prod"] }
+web-scraper = { origin = { type = "git", url = "https://github.com/org/repo.git", ref = { branch = "main" } } }
+data-processor = { origin = { type = "repository", repo = "team-tools", skill = "data-processor" }, groups = ["prod"] }
 ```
 
 ### Reproducible installs

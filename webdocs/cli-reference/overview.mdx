@@ -98,7 +98,7 @@ fastskill list --help         # Help for list command
     Search remote catalogs by default; use `--local` for embedding search on installed skills. See [search Command](/cli-reference/search-command).
   </Card>
   <Card title="fastskill repos">
-    Manage repositories (list/add/remove/info/update/test/refresh) and browse remote skill catalog with authentication and priority. See [repos Command](/cli-reference/repository-command).
+    Manage repositories (list/add/remove/info/update/test/refresh) and browse remote skill catalogs (skills/show/versions) with authentication and priority. See [repos Command](/cli-reference/repository-command).
   </Card>
 </Cards>
 
@@ -159,7 +159,7 @@ All configuration lives in `skill-project.toml` at your project root. Skill depe
 
 ```toml skill-project.toml
 [dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/web-scraper.git" }
+web-scraper = { origin = { type = "git", url = "https://github.com/org/web-scraper.git" } }
 
 [tool.fastskill]
 skills_directory = ".claude/skills"

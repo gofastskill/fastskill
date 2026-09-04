@@ -81,7 +81,7 @@ fastskill remove old-skill
 # Option 2: Add to skill-project.toml
 # Edit skill-project.toml and add:
 # [dependencies]
-# old-skill = { source = "local", path = "./old-skill" }
+# old-skill = { origin = { type = "local", path = "./old-skill" } }
 ```
 
 #### Mismatch
@@ -140,7 +140,7 @@ graph TD
 # 1. Add skills to manifest
 # Edit skill-project.toml:
 # [dependencies]
-# new-skill = { source = "git", url = "https://github.com/user/new-skill.git" }
+# new-skill = { origin = { type = "git", url = "https://github.com/user/new-skill.git" } }
 
 # 2. Install skills
 fastskill install
@@ -282,8 +282,8 @@ When using dependency groups, reconciliation considers group membership:
 
 ```toml skill-project.toml
 [dependencies]
-prod-skill = { source = "git", url = "https://github.com/user/prod-skill.git", groups = ["prod"] }
-dev-tool = { source = "local", path = "./dev-tool", groups = ["dev"] }
+prod-skill = { origin = { type = "git", url = "https://github.com/user/prod-skill.git" }, groups = ["prod"] }
+dev-tool = { origin = { type = "local", path = "./dev-tool" }, groups = ["dev"] }
 ```
 
 ```bash

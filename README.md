@@ -32,7 +32,7 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 - **Test skill quality** with eval suites (`fastskill eval`) before you ship — each case runs isolated in a scratch workspace with only your skill, so trigger rates are reproducible across machines.
 - **Improve skills automatically** with the text-gradient optimizer (`fastskill optimize`).
 - **Analyze a collection** for near-duplicates, clusters, and similarity (`fastskill analyze`).
-- **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill serve`), plus an MCP server that exposes every command to your agent (`fastskill mcp`).
+- **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill serve`), plus an MCP server for your agent (`fastskill mcp serve`) whose tools are read-only by default too, until you pass `--enable-write`.
 - **Diagnose** your setup at any time with `fastskill doctor`.
 
 ## Install
@@ -112,8 +112,16 @@ fastskill optimize run --config optimize.toml     # auto-improve the skill docum
 
 ```bash
 fastskill mcp install --agent claude --scope project   # expose fastskill as MCP tools
+fastskill mcp serve                                    # MCP over stdio (read-only tools)
 fastskill serve                                        # local HTTP API + web UI (read-only)
 ```
+
+Both servers are read-only by default, from one table of mutating operations. Without
+`--enable-write`, `fastskill mcp serve` omits the mutating tools (`init`, `add`, `install`,
+`update`, `remove`, `reindex`, `repos add/remove/update/refresh`, `cache clean`,
+`marketplace create`, `optimize run/resume`) from `tools/list` and refuses a `tools/call` naming one with JSON-RPC
+`-32005 MCP_TOOL_DENIED`; `fastskill serve` likewise mounts no write routes. Pass
+`--enable-write` to either one to allow mutation.
 
 ## Command reference
 
@@ -130,7 +138,7 @@ fastskill serve                                        # local HTTP API + web UI
 | `fastskill reindex` | Rebuild the local semantic search index |
 | `fastskill repos <cmd>` | Manage repositories & browse catalogs (`list/add/remove/info/update/test/refresh/skills/show/versions`) |
 | `fastskill marketplace create` | Generate a `marketplace.json` catalog from a folder of skills |
-| `fastskill eval <cmd>` | Skill quality evals (`validate/run/report/score`) |
+| `fastskill eval <cmd>` | Skill quality evals (`validate/run/judge/report/score/scorecard`) |
 | `fastskill optimize <cmd>` | Text-gradient skill optimization (`run/resume/status/inspect/export`) |
 | `fastskill analyze <cmd>` | Similarity `matrix`, `cluster`, and `duplicates` across skills |
 | `fastskill serve` | Local HTTP API + web UI (read-only by default; `--enable-write` to mutate) |
@@ -147,14 +155,25 @@ All project configuration lives in **`skill-project.toml`** at your project root
 to find it). A minimal manifest:
 
 ```toml
+schema_version = "1"
+
 [dependencies]
-demo-skill = { source = "local", path = "./skills/demo-skill", editable = true, groups = ["dev"] }
+demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable = true }, groups = ["dev"] }
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
 
 # Only needed for semantic search (reindex / search --local):
 [tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
 ```
+
+Every dependency names an **origin** — `{ type = "local", path = … }`, `{ type = "git", url = …,
+ref = { branch = … } }`, `{ type = "zip-url", url = … }` or `{ type = "repository", repo = …,
+skill = … }`. The pre-`Origin` flat shape (`source = "git"` with sibling `url`/`branch`/`path`
+keys) is still read and upgraded in memory for older manifests, but it is not written and is
+slated for removal — write new manifests with `origin`.
 
 Set `OPENAI_API_KEY` in your environment to enable embedding-based search. See the
 [init command guide](webdocs/configuration/init-command.mdx) for `[metadata]`, `[tool.fastskill]`,
