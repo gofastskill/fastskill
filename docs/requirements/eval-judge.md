@@ -220,9 +220,11 @@ Each step waits for the previous to merge. `aikit-evals` is a library; the comma
 | 2 | `goaikit/aikit` | R1–R9, R11, R12, the library half of R13 and R14; `LlmResponse.model`; `EvalCase.extra`; ADR 0021 | [aikit#171](https://github.com/goaikit/aikit/pull/171), `eb50f2c` |
 | 3 | `aroff/cli-framework` | rev bump only | [cli-framework#140](https://github.com/aroff/cli-framework/pull/140), `f389b51` |
 | 4 | `gofastskill/fastskill` | rev bump; `eval judge`, `eval run --judge`, the validate rules; `webdocs/cli-reference/eval-command.mdx` gains the command, which `spec_docs_parity_test` requires; this document | [fastskill#303](https://github.com/gofastskill/fastskill/pull/303) |
-| 5 | `gofastskill/skill` | the first `[[judge]]`, on the correctness suite: `build.py` emits it from `patterns.json`, `prompts.csv` gains an `expected` column, the prompt lives in a hand-written `judge-prompt.md` the generator references | |
+| 5 | `gofastskill/skill` | the first `[[judge]]`, on the correctness suite: `build.py` emits it from `patterns.json`, `prompts.csv` gains an `expected` column, the prompt lives in a hand-written `judge-prompt.md` the generator references | [skill#17](https://github.com/gofastskill/skill/pull/17), `5fb2861` |
 
 The `aikit-sdk` git dependency is pinned by exact revision in both `cli-framework` and `fastskill`, and the two must match character for character or cargo resolves two incompatible copies of the crate. The middle link is not optional.
+
+The judge that landed in step 5 is advisory: it declares no `min_score`, so it scores without moving a verdict, and its metrics report at `min_score = 0.0`. A gate is ratified against the first judged sweep, not asserted ahead of one.
 
 ## Verification
 

@@ -121,8 +121,10 @@ Each step waits for the previous to merge and follows the [Eval Judge](eval-judg
 | 1 | `goaikit/aikit` | `skill_git_sha` and `skill_dirty` in `summary.json` (rides with Eval Judge step 2) | goaikit/aikit#171 `eb50f2c` |
 | 2 | `aroff/cli-framework` | rev bump only | aroff/cli-framework#140 `f389b51` |
 | 3 | `gofastskill/fastskill` | rev bump; R1–R4, R7; this document | #303 `964d65f` |
-| 4 | `gofastskill/fastskill` | R5, R6: `--format html`, `--from`, `-o`, `--no-reasoning`, the font assets; `webdocs/cli-reference/eval-command.mdx` | #304 |
-| 5 | `gofastskill/skill` | `suites` in `evals/v2/metrics.toml`; a `judge_score` metric over the correctness judge; a regenerated baseline scorecard JSON replacing the text file no tool can reproduce | |
+| 4 | `gofastskill/fastskill` | R5, R6: `--format html`, `--from`, `-o`, `--no-reasoning`, the font assets; `webdocs/cli-reference/eval-command.mdx` | #304 `81731e7` |
+| 5 | `gofastskill/skill` | `suites` in `evals/v2/metrics.toml`; a `judge_score` metric over the correctness judge; a regenerated baseline scorecard JSON replacing the text file no tool can reproduce | [skill#17](https://github.com/gofastskill/skill/pull/17), `5fb2861` — baseline **not** regenerated |
+
+Step 5 landed `suites` and two `judge_score` metrics, both ungated. The regenerated baseline did not: reproducing it means a real sweep — roughly an hour and $6 of agent calls, plus one judge call per correctness trial — against credentials this repository does not hold. Until one is run, `evals/v2/baseline/pi-glm-5.3-2026-09-01.txt` stands as the last measurement, and it predates both the judge and the collapse to three suites. It is a record, not a comparison target: `--from` needs a scorecard JSON, and no tool can produce one from that file.
 
 ## Verification
 
