@@ -42,14 +42,26 @@ impl FilesystemStorage {
         })
     }
 
+    /// Resolve a skill's directory under `base_path`.
+    ///
+    /// The skill ID arrives here as a plain `&str`. Callers happen to validate
+    /// it today, but the signature promises nothing, and the paths built here
+    /// feed `remove_dir_all` and `create_dir_all` -- so containment is enforced
+    /// at the point the path is built rather than trusted from each caller.
+    fn get_skill_dir(&self, skill_id: &str) -> Result<PathBuf, ServiceError> {
+        crate::security::path::safe_join(&self.base_path, skill_id).map_err(|e| {
+            ServiceError::Validation(format!("Invalid skill ID '{}': {}", skill_id, e))
+        })
+    }
+
     /// Get the path for a skill's metadata file
-    fn get_skill_metadata_path(&self, skill_id: &str) -> PathBuf {
-        self.base_path.join(skill_id).join("metadata.json")
+    fn get_skill_metadata_path(&self, skill_id: &str) -> Result<PathBuf, ServiceError> {
+        Ok(self.get_skill_dir(skill_id)?.join("metadata.json"))
     }
 
     /// Get the path for a skill's SKILL.md file
-    fn get_skill_content_path(&self, skill_id: &str) -> PathBuf {
-        self.base_path.join(skill_id).join("SKILL.md")
+    fn get_skill_content_path(&self, skill_id: &str) -> Result<PathBuf, ServiceError> {
+        Ok(self.get_skill_dir(skill_id)?.join("SKILL.md"))
     }
 
     /// Load skill metadata from disk or cache
@@ -71,7 +83,7 @@ impl FilesystemStorage {
         let mut misses = self.cache_misses.write().await;
         *misses += 1;
 
-        let metadata_path = self.get_skill_metadata_path(skill_id);
+        let metadata_path = self.get_skill_metadata_path(skill_id)?;
 
         if !metadata_path.exists() {
             return Ok(None);
@@ -100,7 +112,7 @@ impl FilesystemStorage {
         skill_id: &str,
         metadata: &SkillMetadata,
     ) -> Result<(), ServiceError> {
-        let metadata_path = self.get_skill_metadata_path(skill_id);
+        let metadata_path = self.get_skill_metadata_path(skill_id)?;
 
         // Create skill directory if it doesn't exist
         if let Some(parent) = metadata_path.parent() {
@@ -130,7 +142,7 @@ impl FilesystemStorage {
 
     /// Load skill content (SKILL.md)
     pub async fn load_skill_content(&self, skill_id: &str) -> Result<Option<String>, ServiceError> {
-        let content_path = self.get_skill_content_path(skill_id);
+        let content_path = self.get_skill_content_path(skill_id)?;
 
         if !content_path.exists() {
             return Ok(None);
@@ -149,7 +161,7 @@ impl FilesystemStorage {
         skill_id: &str,
         content: &str,
     ) -> Result<(), ServiceError> {
-        let content_path = self.get_skill_content_path(skill_id);
+        let content_path = self.get_skill_content_path(skill_id)?;
 
         // Create skill directory if it doesn't exist
         if let Some(parent) = content_path.parent() {
@@ -200,7 +212,7 @@ impl FilesystemStorage {
 
     /// Delete a skill from storage
     pub async fn delete_skill(&self, skill_id: &str) -> Result<(), ServiceError> {
-        let skill_path = self.base_path.join(skill_id);
+        let skill_path = self.get_skill_dir(skill_id)?;
 
         if skill_path.exists() {
             fs::remove_dir_all(&skill_path).await.map_err(|e| {
@@ -242,8 +254,8 @@ impl FilesystemStorage {
         // Calculate total size (simplified)
         let mut total_size = 0u64;
         for skill_id in self.list_skill_ids().await? {
-            let metadata_path = self.get_skill_metadata_path(&skill_id);
-            let content_path = self.get_skill_content_path(&skill_id);
+            let metadata_path = self.get_skill_metadata_path(&skill_id)?;
+            let content_path = self.get_skill_content_path(&skill_id)?;
 
             if let Ok(metadata) = fs::metadata(&metadata_path).await {
                 total_size += metadata.len();
@@ -288,5 +300,45 @@ impl crate::storage::StorageBackend for FilesystemStorage {
     async fn clear_cache(&self) -> Result<(), ServiceError> {
         self.clear_cache().await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// `delete_skill` drives `remove_dir_all` from a caller-supplied `&str`.
+    /// Every caller today validates the id first, but the signature promises
+    /// nothing, so the guard belongs here rather than in each caller.
+    #[tokio::test]
+    async fn delete_skill_refuses_an_id_that_escapes_the_base_path() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join("base");
+        let victim = tmp.path().join("victim");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::write(victim.join("keep.txt"), b"do not delete me").unwrap();
+
+        let storage = FilesystemStorage::new(base).await.unwrap();
+        let result = storage.delete_skill("../victim").await;
+
+        assert!(
+            victim.join("keep.txt").exists(),
+            "delete_skill removed a directory outside its base path"
+        );
+        assert!(result.is_err(), "an escaping skill id must be rejected");
+    }
+
+    #[tokio::test]
+    async fn delete_skill_still_removes_a_normal_skill() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path().join("base");
+        let storage = FilesystemStorage::new(base.clone()).await.unwrap();
+        let skill = base.join("real-skill");
+        std::fs::create_dir_all(&skill).unwrap();
+
+        storage.delete_skill("real-skill").await.unwrap();
+        assert!(!skill.exists(), "a valid skill id must still be removable");
     }
 }
