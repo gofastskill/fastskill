@@ -2273,10 +2273,27 @@ fn test_eval_scorecard_hashes_every_file_the_benchmark_selects() {
         "id,prompt,should_trigger,tags,workspace_subdir\nop-init,\"go further\",true,\"basic\",\n",
     )
     .unwrap();
+    let after = hash_of(&args);
     assert_ne!(
-        before,
-        hash_of(&args),
+        before, after,
         "editing a suite file must change the benchmark hash"
+    );
+
+    // ...and a file the benchmark does not select is not part of the question,
+    // so it must not move the hash. Without this half the requirement is met
+    // by hashing the whole directory tree, which would make every scorecard
+    // incomparable with every other for reasons no reader could see.
+    fs::write(dir.path().join("notes.txt"), "scratch, not a suite file").unwrap();
+    fs::create_dir_all(dir.path().join("suites/unselected")).unwrap();
+    fs::write(
+        dir.path().join("suites/unselected/prompts.csv"),
+        "id,prompt,should_trigger,tags,workspace_subdir\nother,\"x\",true,\"basic\",\n",
+    )
+    .unwrap();
+    assert_eq!(
+        after,
+        hash_of(&args),
+        "only the files the suites list selects belong to the benchmark"
     );
 }
 
@@ -2414,6 +2431,200 @@ fn test_eval_scorecard_refuses_a_case_measured_by_two_runs() {
     assert_eq!(
         card["totals"]["cases"], 2,
         "the totals count each occurrence"
+    );
+}
+
+/// R1 / ADR 0020: the scorecard grew, and a reader written against the shape
+/// it had before must still be able to read it.
+#[test]
+fn test_eval_scorecard_stays_readable_by_a_reader_written_against_the_old_shape() {
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    /// Exactly the fields the scorecard emitted before this change. If any of
+    /// them was renamed, retyped or dropped, this fails to deserialise.
+    #[derive(serde::Deserialize)]
+    struct OldReader {
+        metrics: Vec<OldMetric>,
+        totals: serde_json::Map<String, Value>,
+        unclaimed_checks: Vec<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct OldMetric {
+        name: String,
+        verdict: String,
+        rate: Option<f64>,
+    }
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("eval-runs");
+    staged_run(
+        &root,
+        "2026-09-03T00-00-00Z/codex",
+        "codex",
+        "gpt-5",
+        "op-init",
+    );
+    let metrics_path = staged_metrics(dir.path());
+
+    let out = run_fastskill_command(
+        &[
+            "eval",
+            "scorecard",
+            "--root",
+            root.to_str().unwrap(),
+            "--metrics",
+            metrics_path.to_str().unwrap(),
+            "--json",
+        ],
+        None,
+    );
+    assert!(out.success, "stderr: {}", out.stderr);
+    let json_start = out.stdout.find('{').unwrap();
+    let parsed = serde_json::from_str::<OldReader>(&out.stdout[json_start..]);
+    assert!(
+        parsed.is_ok(),
+        "old-shape reader must still parse: {:?}\n{}",
+        parsed.as_ref().err(),
+        out.stdout
+    );
+    let old = parsed.unwrap();
+
+    assert_eq!(old.metrics.len(), 1);
+    assert_eq!(old.metrics[0].name, "Skill-open rate");
+    assert_eq!(old.metrics[0].verdict, "PASS");
+    assert!(
+        old.metrics[0].rate.is_some(),
+        "rate keeps its name and type"
+    );
+    assert!(old.totals.contains_key("runs"), "totals keeps its key");
+    assert!(old.unclaimed_checks.is_empty());
+}
+
+/// R4: two judge identities folded into one score is a mixed measurement, and
+/// the reader cannot see it in the number. The command refuses by name.
+#[test]
+fn test_eval_scorecard_refuses_two_judge_identities_in_one_score() {
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// One judgment record, as `trial-N/judgments.json` holds them.
+    fn stage_judgment(run_dir: &std::path::Path, case_id: &str, trial: u32, hash: &str) {
+        let dir = run_dir.join(case_id).join(format!("trial-{trial}"));
+        fs::create_dir_all(&dir).unwrap();
+        let record = serde_json::json!([{
+            "schema": "aikit.judgment/1",
+            "judge": "command-correctness",
+            "judge_hash": hash,
+            "cache_key": format!("{hash}-command-correctness"),
+            "identity": {
+                "model": "judge-1", "model_reported": null,
+                "endpoint_host": "api.example.com",
+                "temperature": 0.0, "top_p": null, "max_tokens": 1024
+            },
+            "attempts": [],
+            "scores": {"overall": 0.9},
+            "error": null,
+            "usage": {"input": 100, "output": 20, "total": 120},
+            "cost_usd": null,
+            "truncated": [],
+            "judged_at": "2026-09-04T12:00:00Z"
+        }]);
+        fs::write(
+            dir.join("judgments.json"),
+            serde_json::to_string_pretty(&record).unwrap(),
+        )
+        .unwrap();
+    }
+
+    let dir = TempDir::new().unwrap();
+    let run_dir = dir.path().join("eval-runs/2026-09-03T00-00-00Z/codex");
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        run_dir.join("summary.json"),
+        r#"{
+          "suite_pass": true, "agent": "codex", "model": "gpt-5",
+          "total_cases": 1, "passed": 1, "failed": 0,
+          "run_dir": "/tmp/run", "checks_path": null, "skill_project_root": "/tmp/skill",
+          "cases": [{
+            "id": "op-init", "status": "passed",
+            "command_count": 2, "input_tokens": null, "output_tokens": null,
+            "trials": [
+              {"trial_id": 1, "status": "passed", "command_count": 2,
+               "input_tokens": null, "output_tokens": null, "error_message": null,
+               "check_results": []},
+              {"trial_id": 2, "status": "passed", "command_count": 2,
+               "input_tokens": null, "output_tokens": null, "error_message": null,
+               "check_results": []}
+            ]
+          }]
+        }"#,
+    )
+    .unwrap();
+    // Same judge name, same prompt, two different resolved identities: exactly
+    // the case a name-keyed fold would hide.
+    stage_judgment(&run_dir, "op-init", 1, "hash-aaa");
+    stage_judgment(&run_dir, "op-init", 2, "hash-bbb");
+
+    let metrics_path = dir.path().join("metrics.toml");
+    fs::write(
+        &metrics_path,
+        "[[metric]]\nname = \"Command correctness\"\nkind = \"judge_score\"\njudges = [\"command-correctness\"]\nmin_score = 0.5\n",
+    )
+    .unwrap();
+
+    let runs_root = dir.path().join("eval-runs");
+    let args = [
+        "eval",
+        "scorecard",
+        "--root",
+        runs_root.to_str().unwrap(),
+        "--metrics",
+        metrics_path.to_str().unwrap(),
+        "--json",
+    ];
+    let refused = run_fastskill_command(&args, None);
+    assert!(
+        !refused.success,
+        "two judge identities must not fold into one score; stdout: {}",
+        refused.stdout
+    );
+    assert!(
+        refused.stderr.contains("EVAL_SCORECARD_MIXED_JUDGES")
+            && refused.stderr.contains("Command correctness"),
+        "the error must name the metric; stderr: {}",
+        refused.stderr
+    );
+
+    let mut no_fail = args.to_vec();
+    no_fail.push("--no-fail");
+    assert!(
+        !run_fastskill_command(&no_fail, None).success,
+        "--no-fail must not suppress a mixed-measurement guard"
+    );
+
+    let mut allowed = args.to_vec();
+    allowed.push("--allow-mixed-judges");
+    let folded = run_fastskill_command(&allowed, None);
+    assert!(folded.success, "stderr: {}", folded.stderr);
+    let json_start = folded.stdout.find('{').unwrap();
+    let card: Value = serde_json::from_str(&folded.stdout[json_start..]).unwrap();
+    assert_eq!(
+        card["metrics"][0]["mixed_judges"], true,
+        "the override records itself in the artifact: {}",
+        folded.stdout
+    );
+    let hashes: Vec<&str> = card["judges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|j| j["judge_hash"].as_str().unwrap())
+        .collect();
+    assert!(
+        hashes.contains(&"hash-aaa") && hashes.contains(&"hash-bbb"),
+        "every identity that contributed is listed: {}",
+        folded.stdout
     );
 }
 
