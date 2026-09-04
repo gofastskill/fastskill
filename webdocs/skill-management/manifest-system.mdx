@@ -41,8 +41,8 @@ description = "My project that uses FastSkill skills"
 
 # Required: Skill dependencies
 [dependencies]
-web-scraper = { source = "git", url = "https://github.com/org/web-scraper.git", branch = "main" }
-monitoring = { source = "source", name = "team-tools", skill = "monitoring", version = "1.0.0" }
+web-scraper = { origin = { type = "git", url = "https://github.com/org/web-scraper.git", ref = { branch = "main" } } }
+monitoring = { origin = { type = "repository", repo = "team-tools", skill = "monitoring", version = "1.0.0" } }
 
 # Optional: Repository configuration
 [tool.fastskill.repositories]
@@ -54,44 +54,44 @@ index_url = "https://api.fastskill.io/index"
 auth = { type = "pat", env_var = "FASTSKILL_TOKEN" }
 ```
 
-### Dependency Source Types
+### Dependency Origins
 
-All existing dependency source types are supported in the `[dependencies]` section:
+Every dependency names an **origin** — where the skill comes from. Four kinds:
 
 **Git Repository:**
 ```toml
 [dependencies]
-git-skill = { source = "git", url = "https://github.com/org/skill.git", branch = "main" }
+git-skill = { origin = { type = "git", url = "https://github.com/org/skill.git", ref = { branch = "main" } } }
 ```
 
 **Local Path:**
 ```toml
 [dependencies]
-local-skill = { source = "local", path = "./local-skill" }
+local-skill = { origin = { type = "local", path = "./local-skill" } }
 ```
 
 **ZIP URL:**
 ```toml
 [dependencies]
-zip-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+zip-skill = { origin = { type = "zip-url", url = "https://example.com/skill.zip" } }
 ```
 
-**Registry Source:**
+**Repository:**
 ```toml
 [dependencies]
-registry-skill = { source = "source", name = "public-registry", skill = "skill-name", version = "1.0.0" }
+repo-skill = { origin = { type = "repository", repo = "public-registry", skill = "skill-name", version = "1.0.0" } }
 ```
 
 **With Groups:**
 ```toml
 [dependencies]
-dev-skill = { source = "git", url = "https://github.com/org/dev-skill.git", groups = ["dev"] }
+dev-skill = { origin = { type = "git", url = "https://github.com/org/dev-skill.git" }, groups = ["dev"] }
 ```
 
 **Editable Install:**
 ```toml
 [dependencies]
-editable-skill = { source = "local", path = "./skill", editable = true }
+editable-skill = { origin = { type = "local", path = "./skill", editable = true } }
 ```
 
 ### Groups
@@ -101,13 +101,13 @@ Skills can be organized into groups (like Poetry groups):
 ```toml
 [dependencies]
 # Default skills (installed in all cases)
-web-scraper = { source = "git", url = "https://github.com/org/repo.git" }
+web-scraper = { origin = { type = "git", url = "https://github.com/org/repo.git" } }
 
 # Development group skills
-pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+pytest = { origin = { type = "repository", repo = "team-tools", skill = "pytest" }, groups = ["dev"] }
 
 # Production group skills
-monitoring = { source = "source", name = "team-tools", skill = "monitoring", groups = ["prod"] }
+monitoring = { origin = { type = "repository", repo = "team-tools", skill = "monitoring" }, groups = ["prod"] }
 ```
 
 **Install commands:**
@@ -121,7 +121,7 @@ For local development, you can mark skills as editable:
 
 ```toml
 [dependencies]
-my-local-skill = { source = "local", path = "./local-skills/my-skill", editable = true, groups = ["dev"] }
+my-local-skill = { origin = { type = "local", path = "./local-skills/my-skill", editable = true }, groups = ["dev"] }
 ```
 
 Editable skills are installed as symlinks (on Unix) or references, allowing you to edit them in place without reinstalling.
@@ -173,20 +173,29 @@ The `skills.lock` file at your project root records the **exact installed state*
 
 ```toml
 [metadata]
-version = "1.0.0"
-generated_at = "2024-01-01T12:00:00Z"
-fastskill_version = "0.1.0"
+version = "3.0"
+fastskill_version = "0.9.212"
 
 [[skills]]
 id = "web-scraper"
 name = "Web Scraper"
-version = "1.2.3"
-source = { type = "git", url = "https://github.com/org/repo.git", branch = "main" }
-commit_hash = "abc123def456789"
-fetched_at = "2024-01-01T12:00:00Z"
+dependencies = []
 groups = []
-editable = false
+depth = 0
+
+[skills.origin]
+type = "git"
+url = "https://github.com/org/repo.git"
+ref = { branch = "main" }
+
+[skills.resolved]
+version = "1.2.3"
+commit_hash = "abc123def456789"
 ```
+
+The Lock carries the same `origin` the Manifest declares (install *intent*) plus a
+`resolved` table holding what the fetch actually produced — the concrete version, and the
+exact `commit_hash` or `checksum` when there is one.
 
 ### Key Differences from skill-project.toml
 
@@ -257,7 +266,7 @@ Skills can use semantic versioning when distributed as ZIP files:
 
 ```toml
 [dependencies]
-versioned-skill = { source = "zip-url", zip_url = "https://example.com/skill.zip" }
+versioned-skill = { origin = { type = "zip-url", url = "https://example.com/skill.zip" } }
 ```
 
 ### Git-Based Versioning
@@ -270,12 +279,19 @@ For Git sources, FastSkill tracks:
 ```toml
 # In skill-project.toml (declarative)
 [dependencies]
-web-scraper = { source = "git", url = "...", branch = "main" }
+web-scraper = { origin = { type = "git", url = "...", ref = { branch = "main" } } }
 
 # In skills.lock (exact state)
 [[skills]]
 id = "web-scraper"
-source = { type = "git", url = "...", branch = "main" }
+
+[skills.origin]
+type = "git"
+url = "..."
+ref = { branch = "main" }
+
+[skills.resolved]
+version = "1.2.3"
 commit_hash = "abc123def456789"  # Exact commit
 ```
 
@@ -300,7 +316,7 @@ capabilities = ["file-processing"]  # Optional
 # Optional: Skill dependencies (if this skill depends on other skills)
 [dependencies]
 other-skill = "1.0.0"
-another-skill = { source = "source", name = "registry", skill = "another", version = "2.0.0" }
+another-skill = { origin = { type = "repository", repo = "team-tools", skill = "another", version = "2.0.0" } }
 ```
 
 **Key Points**:
@@ -330,10 +346,10 @@ Separate development and production skills:
 ```toml
 [dependencies]
 # Development tools
-pytest = { source = "source", name = "team-tools", skill = "pytest", groups = ["dev"] }
+pytest = { origin = { type = "repository", repo = "team-tools", skill = "pytest" }, groups = ["dev"] }
 
 # Production monitoring
-monitoring = { source = "source", name = "team-tools", skill = "monitoring", groups = ["prod"] }
+monitoring = { origin = { type = "repository", repo = "team-tools", skill = "monitoring" }, groups = ["prod"] }
 ```
 
 ### 3. Lock File for Production

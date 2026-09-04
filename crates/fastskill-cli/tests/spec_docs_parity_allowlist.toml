@@ -95,3 +95,30 @@ docs for), but that's an editorial call for the docs owners, not something \
 to silently paper over here -- so it's allowlisted with this explanation \
 rather than left to fail CI. If/when it's documented, remove this entry.
 """
+
+# ---------------------------------------------------------------------------
+# subcommand_list_omission: a documented enumeration of a group's subcommands
+# ("`validate/run/judge/report/score/scorecard`") deliberately leaves one out.
+# Checked by crates/fastskill-cli/tests/docs_subcommand_lists_test.rs.
+#
+# `command` is "<group> <subcommand>", matching the CLI path with the slash
+# written as a space.
+# ---------------------------------------------------------------------------
+
+[[subcommand_list_omission]]
+command = "mcp register"
+reason = """
+`mcp register` is a cli-framework built-in that duplicates `mcp install`; it \
+is being removed upstream, so the README and webdocs deliberately document \
+the intended surface -- serve/install/list -- rather than advertising a \
+command that is on its way out. Remove this entry when the upstream removal \
+lands and `fastskill spec` stops reporting `mcp/register`; the test will then \
+pass without it, and an allowlist entry for drift that no longer exists is \
+dead weight.
+"""
+
+# ---------------------------------------------------------------------------
+# subcommand_list_unknown_token: a documented enumeration names something that
+# is not a real subcommand of that group, and that is intended (e.g. a
+# deliberately illustrative placeholder). Empty today.
+# ---------------------------------------------------------------------------

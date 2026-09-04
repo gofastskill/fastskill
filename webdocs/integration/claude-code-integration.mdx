@@ -85,7 +85,7 @@ fastskill mcp install --agent claude --stdio --scope global --overwrite
 fastskill mcp install --agent claude --stdio --dry-run
 ```
 
-After running the command, reload Claude Code. The tools exposed by `fastskill mcp serve --transport stdio` will be callable from the agent.
+After running the command, reload Claude Code. The tools exposed by `fastskill mcp serve --transport stdio` will be callable from the agent — the read-only ones only. Mutating tools (`fastskill_install`, `fastskill_add`, `fastskill_remove`, …) require `mcp serve --enable-write`; see [Write access](/tool-calling/development#write-access).
 
 > **Deprecated:** Manually editing `~/.claude.json` or `.mcp.json` to add a `fastskill` MCP entry is deprecated. Use `fastskill mcp install` instead.
 

@@ -167,6 +167,11 @@ pub enum ReposCommand {
 }
 
 mod args;
+pub mod formatters;
+pub mod helpers;
+pub mod marketplace;
+pub mod repo_ops;
+pub mod skill_ops;
 
 pub use args::{
     ReposAddArgs, ReposInfoArgs, ReposListArgs, ReposRefreshArgs, ReposRemoveArgs, ReposShowArgs,
@@ -179,11 +184,11 @@ pub use args::{
 
 pub async fn execute_repos_list(args: ReposListArgs) -> CliResult<()> {
     let resolved_format = validate_format_args(&args.format, args.json)?;
-    super::registry::repo_ops::execute_list_with_format(resolved_format).await
+    repo_ops::execute_list_with_format(resolved_format).await
 }
 
 pub async fn execute_repos_add(args: ReposAddArgs) -> CliResult<()> {
-    super::registry::repo_ops::execute_add(
+    repo_ops::execute_add(
         args.name,
         args.repo_type,
         args.url_or_path,
@@ -199,28 +204,28 @@ pub async fn execute_repos_add(args: ReposAddArgs) -> CliResult<()> {
 }
 
 pub async fn execute_repos_remove(args: ReposRemoveArgs) -> CliResult<()> {
-    super::registry::repo_ops::execute_remove(args.name).await
+    repo_ops::execute_remove(args.name).await
 }
 
 pub async fn execute_repos_info(args: ReposInfoArgs) -> CliResult<()> {
     let resolved_format = validate_format_args(&args.format, args.json)?;
-    super::registry::repo_ops::execute_show_with_format(args.name, resolved_format).await
+    repo_ops::execute_show_with_format(args.name, resolved_format).await
 }
 
 pub async fn execute_repos_update(args: ReposUpdateArgs) -> CliResult<()> {
-    super::registry::repo_ops::execute_update(args.name, args.branch, args.priority).await
+    repo_ops::execute_update(args.name, args.branch, args.priority).await
 }
 
 pub async fn execute_repos_test(args: ReposTestArgs) -> CliResult<()> {
-    super::registry::repo_ops::execute_test(args.name).await
+    repo_ops::execute_test(args.name).await
 }
 
 pub async fn execute_repos_refresh(args: ReposRefreshArgs) -> CliResult<()> {
-    super::registry::repo_ops::execute_refresh(args.name).await
+    repo_ops::execute_refresh(args.name).await
 }
 
 pub async fn execute_repos_skills(args: ReposSkillsArgs) -> CliResult<()> {
-    super::registry::skill_ops::execute_list_skills(
+    skill_ops::execute_list_skills(
         args.repository,
         args.scope,
         args.all_versions,
@@ -232,11 +237,11 @@ pub async fn execute_repos_skills(args: ReposSkillsArgs) -> CliResult<()> {
 }
 
 pub async fn execute_repos_show(args: ReposShowArgs) -> CliResult<()> {
-    super::registry::skill_ops::execute_show_skill(args.skill_id, args.repository).await
+    skill_ops::execute_show_skill(args.skill_id, args.repository).await
 }
 
 pub async fn execute_repos_versions(args: ReposVersionsArgs) -> CliResult<()> {
-    super::registry::skill_ops::execute_versions(args.skill_id, args.repository).await
+    skill_ops::execute_versions(args.skill_id, args.repository).await
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::await_holding_lock)]

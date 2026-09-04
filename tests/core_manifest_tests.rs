@@ -6,7 +6,7 @@ use fastskill_core::core::manifest::{
     SkillProjectToml, ToolSection,
 };
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn test_toml_parsing_basic() {
@@ -633,7 +633,7 @@ fn test_all_dependency_source_types() {
     };
 
     // Verify all dependencies can be converted to SkillEntry
-    let entries = project.to_skill_entries().unwrap();
+    let entries = project.to_skill_entries(Path::new("/path/to")).unwrap();
     assert_eq!(entries.len(), 4);
 
     // Verify git origin
@@ -714,7 +714,7 @@ fn test_dependency_groups_and_editable_installs() {
         tool: None,
     };
 
-    let entries = project.to_skill_entries().unwrap();
+    let entries = project.to_skill_entries(Path::new("/path/to")).unwrap();
     assert_eq!(entries.len(), 3);
 
     // Verify groups

@@ -191,7 +191,12 @@ impl DependencyResolver {
         manifest_path: &Path,
     ) -> Result<Vec<SkillEntry>, ManifestError> {
         let project = SkillProjectToml::load_from_file(manifest_path)?;
-        project.to_skill_entries().map_err(ManifestError::Parse)
+        // A transitive dependency's local origin is relative to *its own*
+        // manifest — the installed skill's directory — not to the root project.
+        let manifest_dir = manifest_path.parent().unwrap_or(Path::new("."));
+        project
+            .to_skill_entries(manifest_dir)
+            .map_err(ManifestError::Parse)
     }
 }
 

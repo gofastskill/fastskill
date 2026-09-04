@@ -266,7 +266,7 @@ test-skill = "1.0.0"
     assert_eq!(result.path, project_file);
 
     // Test 4: Verify dependencies can be converted to skill entries
-    let entries = project.to_skill_entries().unwrap();
+    let entries = project.to_skill_entries(project_root).unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].id, "test-skill");
     match &entries[0].origin {

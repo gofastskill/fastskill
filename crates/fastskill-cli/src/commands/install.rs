@@ -298,13 +298,20 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
         crate::outln!("Using lock file ({} skills)", lock.skills.len());
 
-        // Convert lock entries to installable items
+        // Convert lock entries to installable items. The Lock sits next to the
+        // Manifest and records local origins relative to that directory, so
+        // they resolve against this checkout — not against the machine the lock
+        // was written on.
+        let lock_dir = lock_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
         lock.skills
             .into_iter()
             .map(|locked| SkillInstallItem {
                 entry: SkillEntry {
                     id: locked.id,
-                    origin: locked.origin,
+                    origin: locked.origin.resolved_against(&lock_dir),
                     groups: locked.groups,
                 },
                 depth: locked.depth,
@@ -322,9 +329,14 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
             CliError::Config(format!("skill-project.toml validation failed: {}", e))
         })?;
 
-        // Convert dependencies to SkillEntry format
+        // Convert dependencies to SkillEntry format. A local origin is recorded
+        // relative to the Manifest, so it resolves against the Manifest's own
+        // directory — which is what lets a committed project install anywhere.
+        let manifest_dir = project_file_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
         let mut entries = project
-            .to_skill_entries()
+            .to_skill_entries(manifest_dir)
             .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
 
         // Filter skills by groups

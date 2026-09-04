@@ -33,10 +33,24 @@ pub struct AnalysisContext {
     pub vector_svc: Arc<dyn fastskill_core::core::vector_index::VectorIndexService>,
 }
 
+/// Load the skills every `analyze` subcommand works from.
+///
+/// `Ok(None)` means "nothing to analyse, and the user has been told what to do
+/// about it" — the empty-index case, which is a genuine (if empty) answer.
+///
+/// A missing Embedding provider is **not** that case: every number `analyze`
+/// prints is derived from the vector index, so with no provider there is no
+/// analysis to report and no non-semantic path to fall back to. This used to
+/// print "Note: semantic analysis requires an embedding provider. Results may
+/// be limited to structural analysis." and return `Ok(None)`, so all three
+/// subcommands exited 0 having looked at nothing — indistinguishable, to a
+/// human or to CI, from a clean "no duplicates found". There was no structural
+/// analysis behind that promise. It is now an error (CONTEXT.md, "Vector
+/// index": `analyze` *inherits the provider precondition*), and the unkept
+/// promise is gone rather than restated.
 pub async fn load_analysis_context(svc: &FastSkillService) -> CliResult<Option<AnalysisContext>> {
     let Some(vector_svc) = svc.vector_index_service() else {
-        crate::outln!("Note: semantic analysis requires an embedding provider. Results may be limited to structural analysis.");
-        return Ok(None);
+        return Err(CliError::MissingEmbeddingProvider("analyze"));
     };
     let skills = vector_svc
         .get_all_skills()

@@ -1,14 +1,17 @@
 ---
 title: "MCP Tool Calling"
-description: "Expose every FastSkill command to agents as MCP tools with `fastskill mcp serve`, and wire them into Claude Code, Cursor, and other agents with `fastskill mcp install`."
+description: "Expose FastSkill to agents as MCP tools with `fastskill mcp serve` (read-only by default, `--enable-write` to allow mutation), and wire them into Claude Code, Cursor, and other agents with `fastskill mcp install`."
 ---
 
 ## Overview
 
 FastSkill's tool/integration surface for agents is **MCP** (Model Context Protocol). You do not
-author custom tools inside FastSkill — instead, `fastskill mcp serve` exposes **every** FastSkill CLI
-command to an agent as an MCP tool, and `fastskill mcp install` writes the server config into your
-agent's configuration.
+author custom tools inside FastSkill — instead, `fastskill mcp serve` exposes FastSkill CLI commands
+to an agent as MCP tools, and `fastskill mcp install` writes the server config into your agent's
+configuration.
+
+The server is **read-only by default**: the mutating commands are not exported as tools unless you
+start it with `--enable-write`. See [Write access](#write-access) below.
 
 ## Serve FastSkill as an MCP server
 
@@ -16,17 +19,53 @@ agent's configuration.
 fastskill mcp serve
 ```
 
-Every CLI command is registered as an MCP tool named `fastskill.<path>`, where the command path has
-its separators replaced by dots. For example:
+Each exported CLI command is registered as an MCP tool named `fastskill_<path>`, where the command
+path has its separators replaced by underscores. For example:
 
 | CLI command | MCP tool name |
 |-------------|---------------|
-| `fastskill search` | `fastskill.search` |
-| `fastskill repos add` | `fastskill.repos.add` |
-| `fastskill install` | `fastskill.install` |
-| `fastskill list` | `fastskill.list` |
+| `fastskill search` | `fastskill_search` |
+| `fastskill repos add` | `fastskill_repos_add` |
+| `fastskill install` | `fastskill_install` |
+| `fastskill list` | `fastskill_list` |
 
-The built-in `completion` command is the one exception — it is never exported as an MCP tool.
+The `mcp` commands themselves, `serve`, and the built-in `completion` and `spec` commands are not
+exported as tools.
+
+### Write access
+
+`fastskill mcp serve` is read-only unless you pass `--enable-write`, spelled exactly as
+`fastskill serve`'s flag because it means the same thing. Both gates read one table —
+`fastskill_core::write_ops::WRITE_OPERATIONS` — so a mutating command cannot be gated on one surface
+and open on the other.
+
+Without the flag, these tools are absent from `tools/list`, and a `tools/call` naming one is refused
+with JSON-RPC error `-32005 MCP_TOOL_DENIED` quoting the flag, before the command is dispatched:
+
+| Blocked tool | CLI command |
+|--------------|-------------|
+| `fastskill_init` | `fastskill init` |
+| `fastskill_add` | `fastskill add` |
+| `fastskill_install` | `fastskill install` |
+| `fastskill_update` | `fastskill update` |
+| `fastskill_remove` | `fastskill remove` |
+| `fastskill_reindex` | `fastskill reindex` |
+| `fastskill_repos_add` | `fastskill repos add` |
+| `fastskill_repos_remove` | `fastskill repos remove` |
+| `fastskill_repos_update` | `fastskill repos update` |
+| `fastskill_repos_refresh` | `fastskill repos refresh` |
+| `fastskill_cache_clean` | `fastskill cache clean` |
+| `fastskill_marketplace_create` | `fastskill marketplace create` |
+| `fastskill_optimize_run` | `fastskill optimize run` |
+| `fastskill_optimize_resume` | `fastskill optimize resume` |
+
+```bash
+# Read-only: 23 tools, none of them mutating
+fastskill mcp serve --transport stdio
+
+# Allow the agent to mutate the project
+fastskill mcp serve --transport stdio --enable-write
+```
 
 ### Transports
 

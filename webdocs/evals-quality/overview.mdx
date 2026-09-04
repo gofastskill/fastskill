@@ -31,8 +31,10 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 |---|---|
 | Validate eval definitions | `fastskill eval validate` |
 | Execute suite | `fastskill eval run --agent <agent> --output-dir <dir>` |
+| Judge a run with an LLM rubric | `fastskill eval judge --run-dir <dir>` |
 | Summarize results | `fastskill eval report --run-dir <dir>` |
 | Re-score prior run | `fastskill eval score --run-dir <dir>` |
+| Fold many runs into gated metrics | `fastskill eval scorecard --root <dir> --metrics <file>` |
 | Inspect clusters | `fastskill analyze cluster` |
 | Find near-duplicates | `fastskill analyze duplicates` |
 | Similarity matrix | `fastskill analyze matrix` |

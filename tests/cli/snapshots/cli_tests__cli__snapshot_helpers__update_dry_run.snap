@@ -7,7 +7,7 @@ Updating skills...
 Skills that would be updated:
 
   • dev-tools (from Git { url: "https://github.com/org/dev-tools.git", ref: Branch("main"), subdir: None })
-  • local-skill (from Local { path: "./local-skill", editable: false })
+  • local-skill (from Local { path: "local-skill", editable: false })
   • remote-skill (from ZipUrl { url: "https://example.com/skill.zip" })
   • test-utils: Configuration error: No default repository configured
   • web-scraper: Configuration error: No default repository configured

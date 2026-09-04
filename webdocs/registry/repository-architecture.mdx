@@ -326,8 +326,8 @@ Project-level configuration with repository definitions:
 
 ```toml skill-project.toml
 [dependencies]
-web-scraper = { source = "registry", id = "pptx" }
-data-processor = { source = "git", url = "https://github.com/team/data-tools.git" }
+web-scraper = { origin = { type = "repository", repo = "public-registry", skill = "pptx" } }
+data-processor = { origin = { type = "git", url = "https://github.com/team/data-tools.git" } }
 
 [tool.fastskill.repositories]
 [[tool.fastskill.repositories]]
@@ -442,11 +442,11 @@ fastskill repos add gitlab-skills \
 
 ## Skill Discovery and Installation
 
-### From Registry ID
+### From a Repository
 
 ```toml skill-project.toml
 [dependencies]
-web-scraper = { source = "registry", id = "pptx" }
+web-scraper = { origin = { type = "repository", repo = "public-registry", skill = "pptx" } }
 ```
 
 ```bash
@@ -459,7 +459,7 @@ fastskill install
 
 ```toml skill-project.toml
 [dependencies]
-data-tools = { source = "git", url = "https://github.com/org/data-tools.git" }
+data-tools = { origin = { type = "git", url = "https://github.com/org/data-tools.git" } }
 ```
 
 ```bash
@@ -472,7 +472,7 @@ fastskill install
 
 ```toml skill-project.toml
 [dependencies]
-local-skill = { source = "local", path = "./skills/my-skill" }
+local-skill = { origin = { type = "local", path = "./skills/my-skill" } }
 ```
 
 ```bash

@@ -99,19 +99,19 @@ jobs:
 
       # fastskill-cli's own test suite (~481 tests) does not run on Windows at all yet --
       # most of it is blocked on insta-snapshot binary-path normalization (a later
-      # phase of this rollout). But the six integration-test binaries filtered in below
+      # phase of this rollout). But the seven integration-test binaries filtered in below
       # were individually audited (Phase 3) and contain no snapshot assertions, no
       # hardcoded Unix paths, no #[cfg(unix)]-gated behavior, and no shell-outs assuming
       # a `sh`/`bash` interpreter -- they only spawn the just-built
       # `CARGO_BIN_EXE_fastskill` binary directly, which resolves to `fastskill.exe` on
-      # Windows automatically. Running this subset now gets 20 real CLI-surface tests
+      # Windows automatically. Running this subset now gets 23 real CLI-surface tests
       # (help-text/clap-panic sweep, lock-file determinism/migration/scope-routing, MCP
-      # stdio protocol, docs-vs-spec parity) exercising Windows for close to zero extra
-      # cost, since the build above already compiled the crate. `cli_tests` (the big
-      # insta-snapshot CLI suite) is run in its own step below now that the
-      # binary-path-normalization blocker is fixed.
+      # stdio protocol, docs-vs-spec parity, documented-subcommand-list parity)
+      # exercising Windows for close to zero extra cost, since the build above already
+      # compiled the crate. `cli_tests` (the big insta-snapshot CLI suite) is run in its
+      # own step below now that the binary-path-normalization blocker is fixed.
       - name: Test fastskill-cli (Windows-safe subset)
-        run: cargo nextest run -p fastskill-cli -E 'binary(all_commands_help_test) + binary(lock_determinism_test) + binary(lock_migration_test) + binary(lock_scope_routing_test) + binary(mcp_stdio_protocol_test) + binary(spec_docs_parity_test)' --retries 3 --no-fail-fast
+        run: cargo nextest run -p fastskill-cli -E 'binary(all_commands_help_test) + binary(lock_determinism_test) + binary(lock_migration_test) + binary(lock_scope_routing_test) + binary(mcp_stdio_protocol_test) + binary(spec_docs_parity_test) + binary(docs_subcommand_lists_test)' --retries 3 --no-fail-fast
 
       # Phase 3 PR B: `cli_tests` (~249 tests, including its own
       # `snapshot_helpers::tests` unit tests) is the big insta-snapshot CLI

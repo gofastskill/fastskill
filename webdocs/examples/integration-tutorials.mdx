@@ -11,7 +11,8 @@ that exist in the tool.
 
 ## 1. MCP into Claude Code
 
-Expose every FastSkill command to Claude Code as MCP tools.
+Expose FastSkill to Claude Code as MCP tools — read-only unless you start the server with
+`--enable-write`.
 
 ```bash
 # Register FastSkill as an MCP server for Claude Code in this project
@@ -21,12 +22,14 @@ fastskill mcp install --agent claude --scope project --stdio
 fastskill mcp list
 ```
 
-Claude Code will now see tools named `fastskill.<command>` — for example `fastskill.search`,
-`fastskill.install`, `fastskill.resolve`, and `fastskill.repos.add`. To point the agent at a running
-HTTP MCP server instead of spawning FastSkill itself:
+Claude Code will now see tools named `fastskill_<command>` — for example `fastskill_search`,
+`fastskill_list`, `fastskill_read`, and `fastskill_repos_show`. Mutating tools such as
+`fastskill_install` and `fastskill_repos_add` are withheld until the server is started with
+`--enable-write`; see [Write access](/tool-calling/development#write-access). To point the agent at
+a running HTTP MCP server instead of spawning FastSkill itself:
 
 ```bash
-fastskill mcp serve --transport http --port 8080 --path /mcp
+fastskill mcp serve --transport http --port 8080 --path /mcp --enable-write
 fastskill mcp install --agent claude --scope project --url http://127.0.0.1:8080/mcp
 ```
 

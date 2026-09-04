@@ -58,7 +58,7 @@ A diagnostic command that reports environment readiness — chiefly whether an *
 The distribution commands form an orthogonal pipeline, not overlapping verbs:
 
 **Registry index**:
-The on-disk NDJSON catalog read by `fastskill serve` and `registry search`; populated externally (e.g. by the platform operator) for an **http-registry** repository; consumed by `repos`/`search --remote`. FastSkill's *native* catalog format.
+The on-disk NDJSON catalog read by `fastskill serve`; populated externally (e.g. by the platform operator) for an **http-registry** repository; consumed by `repos skills` / `search --remote`. FastSkill's *native* catalog format.
 
 **marketplace.json**:
 A *distinct, first-class* catalog produced by `marketplace create`, consumed by plugin-marketplace tooling (e.g. Claude Code plugin marketplaces). **Not** interchangeable with the **Registry index** — two real formats for two different consumers; do not conflate or collapse them.

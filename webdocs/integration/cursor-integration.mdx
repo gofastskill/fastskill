@@ -41,7 +41,9 @@ fastskill mcp install --agent cursor --stdio --dry-run
 ```
 
 After running the command, reload Cursor. The tools exposed by
-`fastskill mcp serve --transport stdio` will be callable from the agent.
+`fastskill mcp serve --transport stdio` will be callable from the agent — the read-only ones only.
+Mutating tools (`fastskill_install`, `fastskill_add`, `fastskill_remove`, …) require
+`mcp serve --enable-write`; see [Write access](/tool-calling/development#write-access).
 
 > **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is
 > deprecated. Use `fastskill mcp install` instead.

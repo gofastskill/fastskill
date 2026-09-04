@@ -234,7 +234,7 @@ impl FromArgValueMap for MarketplaceCreateArgs {
 }
 
 pub async fn execute_marketplace_create(args: MarketplaceCreateArgs) -> CliResult<()> {
-    super::registry::marketplace::execute_create(
+    super::repos::marketplace::execute_create(
         args.path,
         args.output,
         args.base_url,

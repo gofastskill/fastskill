@@ -1,9 +1,7 @@
 //! Axum HTTP server implementation
 
 use crate::core::service::FastSkillService;
-use crate::http::handlers::{
-    manifest, registry, reindex, resolve, search, skills, status, AppState,
-};
+use crate::http::handlers::{manifest, registry, resolve, search, skills, status, AppState};
 use crate::http::models::{ApiResponse, ErrorResponse};
 use axum::{
     body::Body,
@@ -11,7 +9,7 @@ use axum::{
     http::{header, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVersion, Stability};
@@ -312,6 +310,8 @@ impl FastSkillServer {
 
     /// WRITE routes under /api/v1/ — anything that is not a pure read (ADR-0003).
     ///
+    /// Built from [`crate::write_ops::WRITE_OPERATIONS`], the single definition of
+    /// FastSkill's mutating operations that `fastskill mcp serve` also gates on.
     /// These paths are ALWAYS registered but wrapped in the write-gate middleware
     /// so they return 403 (not 404) when `--enable-write` is off. Includes:
     /// install/update/delete skills, reindex, registry refresh, and manifest
@@ -319,23 +319,13 @@ impl FastSkillServer {
     /// per PARTIAL-1 / spec 003.) `/skills/upgrade` is kept mounted alongside
     /// `/skills/update` as a back-compat alias (spec 003 §2) — same handler.
     fn create_write_routes_v1() -> Router<AppState> {
-        Router::new()
-            .route("/skills/{id}", delete(skills::delete_skill))
-            .route("/skills/install", post(skills::install_skill))
-            .route("/skills/update", post(skills::update_skills))
-            .route("/skills/upgrade", post(skills::update_skills))
-            .route("/reindex", post(reindex::reindex_all))
-            .route("/reindex/{id}", post(reindex::reindex_skill))
-            .route("/registry/refresh", post(registry::refresh_sources))
-            .route("/manifest/skills", post(manifest::add_skill_to_manifest))
-            .route(
-                "/manifest/skills/{id}",
-                put(manifest::update_skill_in_manifest),
-            )
-            .route(
-                "/manifest/skills/{id}",
-                delete(manifest::remove_skill_from_manifest),
-            )
+        let mut router = Router::new();
+        for operation in crate::write_ops::WRITE_OPERATIONS {
+            for route in operation.http_routes {
+                router = router.route(route.path, route.method_router());
+            }
+        }
+        router
     }
 
     /// Raw index routes for mount("/index") — paths relative to the mount point

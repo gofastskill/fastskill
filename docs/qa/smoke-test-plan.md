@@ -302,7 +302,9 @@ mkdir -p "$SBX/mcp" && cd "$SBX/mcp"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 6.9 | `fastskill mcp serve --transport stdio` then pipe a JSON-RPC `initialize` + `tools/list` on stdin | Returns a tool list including `list`, `read`, `add`, `search`, `repos …`, `eval …`, etc. **`serve` (HTTP) must NOT appear as a tool.** | ⚙️ | main.rs export policy | ☐P ☐F ☐G |
+| 6.9 | `fastskill mcp serve --transport stdio` then pipe a JSON-RPC `initialize` + `tools/list` on stdin | Returns a read-only tool list: `list`, `read`, `search`, `repos list`, `eval …`, etc. **`serve` (HTTP) must NOT appear as a tool**, and neither may any mutating tool (`add`, `install`, `remove`, `update`, `reindex`, `repos add/remove/update/refresh`, `marketplace create`, `optimize run/resume`, `cache clean`, `init`) — they are write-gated (ADR-0003). | ⚙️ | main.rs export policy | ☐P ☐F ☐G |
+| 6.9a | Same session, `tools/call` `fastskill_remove` on an installed skill **without** `--enable-write` | JSON-RPC error `-32005 MCP_TOOL_DENIED` naming `--enable-write`; **the skill directory is still on disk.** | ⚙️ | commands/mcp.rs | ☐P ☐F ☐G |
+| 6.9b | `fastskill mcp serve --transport stdio --enable-write`, then `tools/list` + `tools/call` `fastskill_remove` | `fastskill_remove` is listed and the call succeeds; the skill is removed. | ⚙️ | " | ☐P ☐F ☐G |
 | 6.10 | `fastskill mcp serve` (http, default `127.0.0.1:8080/mcp`) then `curl` a JSON-RPC `tools/list` to `/mcp` | Same tool list over HTTP, `200`. | ⚙️ | cli-framework MCP | ☐P ☐F ☐G |
 | 6.11 | `fastskill mcp serve --transport stdio --host 0.0.0.0` | **Rejected** with `[E004] … '--host', '--port', '--path' are only valid when --transport=http`. | 🤖 | commands.rs | ☐P ☐F ☐G |
 

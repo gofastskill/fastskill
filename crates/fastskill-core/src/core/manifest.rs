@@ -764,7 +764,13 @@ impl SkillProjectToml {
 
     /// Convert SkillProjectToml dependencies to SkillEntry format for installation
     /// T027: Helper to convert unified format to legacy format for compatibility
-    pub fn to_skill_entries(&self) -> Result<Vec<SkillEntry>, String> {
+    ///
+    /// `manifest_dir` is the directory this Manifest was loaded from. A local
+    /// origin recorded relative to the Manifest is resolved against it here —
+    /// never against the process's current directory, which has nothing to do
+    /// with where the Manifest lives. Taking the directory as an argument is
+    /// what makes that impossible to forget at a call site.
+    pub fn to_skill_entries(&self, manifest_dir: &Path) -> Result<Vec<SkillEntry>, String> {
         let mut entries = Vec::new();
 
         if let Some(ref deps_section) = self.dependencies {
@@ -792,7 +798,7 @@ impl SkillProjectToml {
 
                 entries.push(SkillEntry {
                     id: skill_id.clone(),
-                    origin,
+                    origin: origin.resolved_against(manifest_dir),
                     groups,
                 });
             }

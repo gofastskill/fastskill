@@ -3,7 +3,6 @@
 use fastskill_core::core::{
     lock::{global_lock_path, GlobalSkillsLock, LockError, ProjectSkillsLock},
     manifest::{DependenciesSection, DependencySpec, SkillProjectToml},
-    origin::Origin,
     project::resolve_project_file,
     skill_manager::SkillDefinition,
 };
@@ -75,7 +74,15 @@ pub fn update_lock_file_with_depth(
         ProjectSkillsLock::new_empty()
     };
 
-    lock.update_skill_with_depth(skill, depth, parent_skill);
+    // The Lock is committed next to the Manifest, so a local origin is stored
+    // relative to that directory. Without this, `install` — which reads an
+    // already-resolved (absolute) origin and writes it straight back — would
+    // re-absolutize skills.lock on every run.
+    let lock_dir = lock_path.parent().unwrap_or(Path::new("."));
+    let mut skill = skill.clone();
+    let (portable_origin, _unportable) = skill.origin.to_manifest_relative(lock_dir);
+    skill.origin = portable_origin;
+    lock.update_skill_with_depth(&skill, depth, parent_skill);
 
     if let Some(locked_entry) = lock.skills.iter_mut().find(|s| s.id == skill.id.as_str()) {
         locked_entry.groups = groups;
@@ -148,13 +155,14 @@ pub fn remove_from_global_lock_file(skill_id: &str) -> Result<(), Box<dyn std::e
 /// T028: Add skill to skill-project.toml [dependencies] section.
 /// Fails if skill-project.toml is not found in the hierarchy (we never auto-create it).
 ///
-/// Local paths are canonicalized to absolute paths before being written to the TOML file.
-/// This ensures consistent behavior regardless of the current working directory when
-/// the skill is added.
+/// A local path inside the project tree is recorded **relative to the Manifest**,
+/// so the committed skill-project.toml names the same skill in every checkout.
+/// A path outside that tree cannot be made portable; it stays absolute and is
+/// returned as a warning for the caller to print.
 pub fn add_skill_to_project_toml(
     skill: &SkillDefinition,
     groups: Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     // Resolve project file from current directory
     let current_dir =
         env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))?;
@@ -214,20 +222,12 @@ pub fn add_skill_to_project_toml(
     } else {
         Some(groups)
     };
-    let origin = match &skill.origin {
-        // Safety net: re-canonicalize a local path to an absolute path before
-        // persisting it, in case the caller passed a relative one.
-        Origin::Local { path, editable } => {
-            let canonical_path = path
-                .canonicalize()
-                .map_err(|e| format!("Failed to canonicalize path '{}': {}", path.display(), e))?;
-            Origin::Local {
-                path: canonical_path,
-                editable: *editable,
-            }
-        }
-        other => other.clone(),
-    };
+    let manifest_dir = project_file_path.parent().unwrap_or(Path::new("."));
+    let (origin, unportable) = skill.origin.to_manifest_relative(manifest_dir);
+    let warnings: Vec<String> = unportable
+        .iter()
+        .map(|u| u.warning(skill.id.as_str()))
+        .collect();
     let dep_spec = DependencySpec::Inline {
         origin,
         groups: dep_groups,
@@ -241,7 +241,7 @@ pub fn add_skill_to_project_toml(
         .save_to_file(&project_file_path)
         .map_err(|e| format!("Failed to save skill-project.toml: {}", e))?;
 
-    Ok(())
+    Ok(warnings)
 }
 
 /// T029: Remove skill from skill-project.toml [dependencies] section

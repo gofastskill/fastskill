@@ -93,9 +93,13 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
 }
 
 use commands::{
-    add, analyze, cache, doctor, eval, init, install, list, marketplace, read, reindex, remove,
-    repos, search, serve, skillopt, update,
+    add, analyze, cache, doctor, eval, init, install, list, marketplace, mcp, read, reindex,
+    remove, repos, search, serve, skillopt, update,
 };
+
+/// The binary's name, as reported by `--version` and used to derive MCP tool
+/// names (`fastskill_<command>`).
+const APP_NAME: &str = "fastskill";
 
 #[tokio::main]
 async fn main() {
@@ -121,7 +125,7 @@ async fn main() {
 
     let mut app = or_exit(
         builder
-            .with_version("fastskill", fastskill_core::VERSION)
+            .with_version(APP_NAME, fastskill_core::VERSION)
             .with_git_sha_short(None)
             // Honour `expose_mcp`. The framework default (`AllCommands`)
             // ignores it, which exported `serve` as a tool -- an MCP call that
@@ -131,11 +135,17 @@ async fn main() {
         "Error initialising app",
     );
 
+    // `mcp serve` exports the other commands as MCP tools, so it needs the
+    // registry it is itself registered in. Publish it once the app is built.
+    commands::mcp::set_command_registry(Arc::new(app.command_registry().clone()));
+
     // `fastskill <skill-id>` (no subcommand) is a shorthand that routes to
     // `read`. We rewrite the args here, before dispatch, when the first
     // positional token is not a recognized top-level command or command group.
     // Global flags (and their values) that precede the subcommand are skipped.
-    let raw = {
+    // The second element is the word we rewrote, kept so a later failure can
+    // say *why* `read` was running at all.
+    let (raw, shorthand_skill_id) = {
         // The set of recognized first path segments: every registered command
         // (including built-ins like `spec`/`completion`/`mcp`) and every group
         // node (`analyze`, `repos`, ...). `help` is clap-provided.
@@ -187,19 +197,49 @@ async fn main() {
                     std::process::exit(1);
                 }
                 shorthand::Routing::Read => {
+                    let skill_id = raw[i].clone();
                     let mut rewritten = raw;
                     rewritten.insert(i, "read".to_string());
-                    rewritten
+                    (rewritten, Some(skill_id))
                 }
             }
         } else {
-            raw
+            (raw, None)
         }
     };
 
     match app.run_with_args(raw).await {
         Ok(()) => std::process::exit(0),
         Err(e) => {
+            // A bare word only reaches `read` because it matched no command.
+            // When it then dies for want of a project, the generic manifest
+            // error is the very message `fastskill list` prints -- it never
+            // mentions the word, so a user who mistyped a command is told their
+            // workspace is misconfigured instead. Say all three things: the word
+            // is not a command, it was therefore read as a skill ID, and reading
+            // a skill needs a project.
+            if let (Some(skill_id), Some(cli_error)) = (
+                shorthand_skill_id.as_deref(),
+                e.downcast_ref::<error::CliError>(),
+            ) {
+                if error::is_manifest_missing(cli_error) {
+                    eprintln!(
+                        "error: '{}' is not a fastskill command, so it was read as a skill ID \
+                         (`fastskill read {}`).",
+                        skill_id, skill_id
+                    );
+                    eprintln!(
+                        "  note: reading a skill needs a project, and skill-project.toml was not \
+                         found in this directory or any parent."
+                    );
+                    eprintln!(
+                        "  hint: run 'fastskill init' here first, or read a globally installed \
+                         skill with: fastskill read {} --global",
+                        skill_id
+                    );
+                    std::process::exit(1);
+                }
+            }
             // `run_with_args` already writes a structured diagnostic to stderr
             // (via `DiagnosticReporter`) for usage errors — parse failures,
             // validation failures, unknown nested commands — before returning
@@ -707,6 +747,16 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .await
                         .map_err(anyhow::Error::from)
                 }
+            })?
+            // `mcp serve` is registered here rather than left to cli-framework's
+            // auto-registration, which has no write gate: it exported every
+            // mutating command as a callable tool. Registering `mcp/serve`
+            // ourselves suppresses that (see `AppBuilder::build`); `mcp install`
+            // and `mcp list` still auto-register.
+            .register_group(&path!["mcp"], mcp::group_metadata())?
+            .register_out_no_mcp(path!["mcp", "serve"], |ctx, args: mcp::McpServeArgs| {
+                let banner = mcp::banner_settings(ctx);
+                async move { mcp::execute_mcp_serve(APP_NAME, args, banner).await }
             })?
     };
 
