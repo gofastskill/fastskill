@@ -62,59 +62,15 @@ pub fn validate_path_within_root(path: &Path, root: &Path) -> Result<PathBuf, Pa
         PathSecurityError::CanonicalizationFailed(format!("Failed to canonicalize root: {}", e))
     })?;
 
-    // If the path doesn't exist yet, we need to check its parent
-    let abs_path = if path.exists() {
-        path.canonicalize().map_err(|e| {
-            PathSecurityError::CanonicalizationFailed(format!("Failed to canonicalize path: {}", e))
-        })?
-    } else {
-        // For non-existent paths, canonicalize the parent and append the filename
-        let parent = path.parent().unwrap_or(Path::new("."));
-        let abs_parent = if parent.as_os_str().is_empty() {
-            std::env::current_dir().map_err(|e| {
-                PathSecurityError::CanonicalizationFailed(format!(
-                    "Failed to get current directory: {}",
-                    e
-                ))
-            })?
-        } else if parent.exists() {
-            parent.canonicalize().map_err(|e| {
-                PathSecurityError::CanonicalizationFailed(format!(
-                    "Failed to canonicalize parent: {}",
-                    e
-                ))
-            })?
-        } else {
-            // If parent doesn't exist, we need to validate the constructed path
-            // Normalize the path to resolve any .. or . components
-            let relative_to_root = path.strip_prefix(root).unwrap_or(path);
-            let normalized_relative = normalize_path(relative_to_root);
-            if normalized_relative.as_os_str().is_empty() {
-                // Path escapes root through ..
-                return Err(PathSecurityError::EscapesRoot(format!(
-                    "Path '{}' attempts to escape root directory '{}'",
-                    path.display(),
-                    abs_root.display()
-                )));
-            }
-            let normalized_path = abs_root.join(&normalized_relative);
-            // Verify the normalized path is within root
-            if !normalized_path.starts_with(&abs_root) {
-                return Err(PathSecurityError::EscapesRoot(format!(
-                    "Path '{}' attempts to escape root directory '{}'",
-                    path.display(),
-                    abs_root.display()
-                )));
-            }
-            return Ok(normalized_path);
-        };
-
-        if let Some(filename) = path.file_name() {
-            abs_parent.join(filename)
-        } else {
-            abs_parent
-        }
-    };
+    // Resolve `path` into the *same* form as `abs_root` whether or not it
+    // exists yet, so the containment test below compares like with like.
+    let abs_path = resolve_against_existing_ancestor(path).ok_or_else(|| {
+        PathSecurityError::EscapesRoot(format!(
+            "Path '{}' attempts to escape root directory '{}'",
+            path.display(),
+            abs_root.display()
+        ))
+    })?;
 
     // Check if the resolved path is within the root
     if !abs_path.starts_with(&abs_root) {
@@ -126,6 +82,65 @@ pub fn validate_path_within_root(path: &Path, root: &Path) -> Result<PathBuf, Pa
     }
 
     Ok(abs_path)
+}
+
+/// Resolve `path` to canonical form, canonicalizing the deepest ancestor that
+/// actually exists and re-appending the part that does not.
+///
+/// Both sides of a containment check must be in the same form.
+/// `canonicalize` fails outright when the leaf is missing -- and callers
+/// routinely ask about a path that has not been created yet -- so the previous
+/// implementation fell back to stripping the *raw* `root`, leaving one side
+/// canonical and the other raw. On Windows those two forms never share a
+/// prefix (`\\?\C:\Users\runneradmin\...` against `C:\Users\RUNNER~1\...`:
+/// verbatim prefix vs 8.3 short name), and a symlinked root reproduces the
+/// same split on Unix, so an ordinary in-root path was reported as an escape.
+///
+/// `..` inside the missing remainder is folded away by [`normalize_path`]
+/// rather than re-appended literally -- a literal `..` component would
+/// otherwise sail through the component-wise prefix test. Returns `None` when
+/// the remainder walks above its own anchor, which is a traversal attempt.
+fn resolve_against_existing_ancestor(path: &Path) -> Option<PathBuf> {
+    if let Ok(canonical) = path.canonicalize() {
+        return Some(canonical);
+    }
+
+    // Peel components off the tail until what is left exists. `..` and `.` go
+    // into the remainder like any other component, so they are folded by
+    // `normalize_path` below instead of terminating the walk.
+    let mut anchor = path.to_path_buf();
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+    while !anchor.exists() {
+        match anchor.components().next_back() {
+            Some(Component::Prefix(_)) | Some(Component::RootDir) | None => break,
+            Some(component) => suffix.push(component.as_os_str().to_os_string()),
+        }
+        if !anchor.pop() {
+            break;
+        }
+    }
+
+    // A relative path whose every component was consumed is relative to the
+    // process's current directory, which is what the caller means by it.
+    let anchor = if anchor.as_os_str().is_empty() {
+        std::env::current_dir().ok()?
+    } else {
+        anchor.canonicalize().ok()?
+    };
+
+    let mut remainder = PathBuf::new();
+    for component in suffix.iter().rev() {
+        remainder.push(component);
+    }
+    if remainder.as_os_str().is_empty() {
+        return Some(anchor);
+    }
+    let normalized = normalize_path(&remainder);
+    if normalized.as_os_str().is_empty() {
+        // `normalize_path` returns empty when `..` climbs above the remainder.
+        return None;
+    }
+    Some(anchor.join(normalized))
 }
 
 /// Validate and sanitize a user-provided path component
@@ -255,6 +270,56 @@ mod tests {
         assert!(!safe_component.contains(".."));
         assert!(!safe_component.contains('/'));
         assert!(!safe_component.contains('\\'));
+    }
+
+    /// The Windows shape, reproduced on Unix with a symlink: the caller holds
+    /// the root canonically (`AppState::canonicalize_path` does exactly this)
+    /// while the candidate arrives raw -- an absolute `skill_file` read back
+    /// from a manifest -- and neither the leaf nor its parent exists yet.
+    ///
+    /// The missing-parent branch stripped the *raw* `root` from a path that is
+    /// in canonical-root form only by accident, so on Windows
+    /// (`\\?\C:\Users\runneradmin\...` against `C:\Users\RUNNER~1\...`)
+    /// the strip always failed, the whole absolute path was re-joined onto the
+    /// canonical root, and an ordinary in-root path was reported as an escape.
+    #[cfg(unix)]
+    #[test]
+    fn nonexistent_path_under_a_symlinked_root_is_not_an_escape() {
+        let temp_dir = TempDir::new().unwrap();
+        let tmp = temp_dir.path().canonicalize().unwrap();
+        let real = tmp.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = tmp.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        // Leaf missing, parent missing too: the branch under test.
+        let candidate = link.join("pending").join("SKILL.md");
+        let resolved = validate_path_within_root(&candidate, &real).unwrap_or_else(|e| {
+            panic!("in-root path under a symlinked root reported as an escape: {e}")
+        });
+        assert_eq!(resolved, real.join("pending").join("SKILL.md"));
+
+        // And the same path expressed through the link as the root resolves
+        // identically -- both sides land in canonical form.
+        let via_link = validate_path_within_root(&candidate, &link).unwrap();
+        assert_eq!(via_link, real.join("pending").join("SKILL.md"));
+    }
+
+    /// `..` inside the *missing* remainder must still fold away rather than be
+    /// re-appended literally, or a traversal would slip past the component-wise
+    /// containment test as a literal `..` component.
+    #[test]
+    fn nonexistent_path_folds_dotdot_in_the_missing_remainder() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+
+        let resolved = validate_path_within_root(&root.join("missing/../inner.md"), &root).unwrap();
+        assert_eq!(resolved, root.join("inner.md"));
+        assert!(
+            !resolved.components().any(|c| c.as_os_str() == ".."),
+            "a literal `..` survived into the validated path: {}",
+            resolved.display()
+        );
     }
 
     #[test]
