@@ -5,6 +5,7 @@
 pub mod add_e2e_tests;
 pub mod add_tests;
 pub mod analyze_cluster_tests;
+pub mod analyze_provider_gate_tests;
 pub mod config_tests;
 pub mod doctor_tests;
 pub mod eval_tests;

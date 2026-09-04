@@ -111,6 +111,22 @@ pub enum CliError {
 
     #[error("Invalid identifier: {0}")]
     InvalidIdentifier(String),
+
+    /// A command whose entire output is derived from the vector index was run
+    /// with no Embedding provider configured.
+    ///
+    /// CONTEXT.md ("Vector index"): *"every consumer (`search --local`,
+    /// `analyze`) inherits the same provider precondition"*. Inheriting a
+    /// precondition means an **unmet** one is an error. `reindex` is the single
+    /// command CONTEXT.md sanctions *skipping* — it has nothing to report when
+    /// there is nothing to index — and `search --local` degrades to a real
+    /// keyword path. A command with no non-semantic path to fall back to can
+    /// either grow one or refuse; printing nothing and exiting 0 is neither,
+    /// because a caller reads that as "analysed, found nothing".
+    ///
+    /// The field is the command name, so the message names what the user ran.
+    #[error("{0} requires an embedding provider. Run 'fastskill doctor' for setup guidance.")]
+    MissingEmbeddingProvider(&'static str),
 }
 
 pub type CliResult<T> = Result<T, CliError>;
