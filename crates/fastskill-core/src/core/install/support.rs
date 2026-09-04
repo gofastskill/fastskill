@@ -38,7 +38,7 @@ pub(super) fn resolve_registry_version(
     version: Option<&VersionConstraint>,
 ) -> Result<String, ServiceError> {
     if let Some(exact) = version.and_then(VersionConstraint::as_exact) {
-        return Ok(exact);
+        return validate_resolved_version(exact);
     }
 
     let idx = cache.read_source_index(repo_name)?.ok_or_else(|| {
@@ -66,10 +66,30 @@ pub(super) fn resolve_registry_version(
             .collect(),
         None => entry.versions.clone(),
     };
-    newest_version(&candidates).ok_or_else(|| {
+    let newest = newest_version(&candidates).ok_or_else(|| {
         ServiceError::Config(format!(
             "no version of '{skill}' in the cached index for repository '{repo_name}' satisfies \
              the requested constraint; run `fastskill repos refresh {repo_name}` to refresh it"
+        ))
+    })?;
+    validate_resolved_version(newest)
+}
+
+/// Enforce that a resolved version is usable as a single path component.
+///
+/// The resolved version is interpolated into filesystem paths -- the
+/// `package-{version}.zip` staging file in the registry install path -- and
+/// into a [`CacheIdentity`], whose own `relative_path` is componentwise
+/// validated. For a `newest`/range resolution the value originates in the
+/// registry's listing response, by way of the on-disk source index, so it is
+/// remote-controlled: [`newest_version`] ranks unparseable versions lowest but
+/// still returns one when *every* candidate is unparseable, and nothing else
+/// upstream constrains the string. Check it here, where both resolution paths
+/// converge, instead of at each downstream use.
+fn validate_resolved_version(version: String) -> Result<String, ServiceError> {
+    crate::security::path::validate_path_component(&version).map_err(|e| {
+        ServiceError::Validation(format!(
+            "repository advertised an unusable version '{version}': {e}"
         ))
     })
 }
@@ -805,4 +825,82 @@ pub(super) async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), Ser
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    fn cache_with_versions(root: &TempDir, versions: &[&str]) -> SkillCache {
+        let cache = SkillCache::at_root(root.path());
+        cache
+            .write_source_index(
+                "acme",
+                &SourceIndex {
+                    fetched_at: chrono::Utc::now(),
+                    entries: vec![SourceIndexEntry {
+                        skill: "widget".to_string(),
+                        versions: versions.iter().map(|v| (*v).to_string()).collect(),
+                        name: String::new(),
+                        description: String::new(),
+                    }],
+                },
+            )
+            .unwrap();
+        cache
+    }
+
+    /// A registry's listing response reaches this function through the on-disk
+    /// source index, so the version strings in it are remote-controlled.
+    /// `newest_version` ranks unparseable versions lowest but still returns one
+    /// when *every* candidate is unparseable, so a traversal string can be the
+    /// selected version -- and the selection is then interpolated into
+    /// filesystem paths (`install.rs`'s `package-{version}.zip`) and into a
+    /// `CacheIdentity`. Reject it here, at the single resolution choke point,
+    /// rather than at each downstream use.
+    #[test]
+    fn a_traversal_version_from_the_cached_index_is_rejected() {
+        let root = TempDir::new().unwrap();
+        let cache = cache_with_versions(&root, &["../../../../etc/cron.d/pwned"]);
+
+        let err = resolve_registry_version(&cache, "acme", "widget", None).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("../../../../etc/cron.d/pwned"),
+            "the error should name the version it rejected, got: {msg}"
+        );
+    }
+
+    /// An absolute version string is the other shape that escapes a `join`:
+    /// `Path::join` *replaces* the root when its argument is absolute.
+    #[test]
+    fn an_absolute_version_from_the_cached_index_is_rejected() {
+        let root = TempDir::new().unwrap();
+        let cache = cache_with_versions(&root, &["/etc/cron.d/pwned"]);
+
+        assert!(resolve_registry_version(&cache, "acme", "widget", None).is_err());
+    }
+
+    /// The guard must not cost ordinary resolution: a normal semver set still
+    /// resolves, and still resolves by semver order rather than lexically.
+    #[test]
+    fn ordinary_semver_versions_still_resolve_newest_first() {
+        let root = TempDir::new().unwrap();
+        let cache = cache_with_versions(&root, &["1.2.3", "1.9.0", "1.10.0"]);
+
+        let v = resolve_registry_version(&cache, "acme", "widget", None).unwrap();
+        assert_eq!(v, "1.10.0");
+    }
+
+    /// Pre-release and build metadata are legal semver and contain characters
+    /// (`-`, `+`, `.`) a component validator could over-reject.
+    #[test]
+    fn a_prerelease_version_is_not_rejected_by_the_guard() {
+        let root = TempDir::new().unwrap();
+        let cache = cache_with_versions(&root, &["1.0.0-rc.1"]);
+
+        let v = resolve_registry_version(&cache, "acme", "widget", None).unwrap();
+        assert_eq!(v, "1.0.0-rc.1");
+    }
 }

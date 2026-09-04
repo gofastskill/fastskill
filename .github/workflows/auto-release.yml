@@ -94,7 +94,12 @@ jobs:
       - name: Check for no-release label
         id: check-label
         run: |
-          PR_NUMBER=$(echo "${{ github.event.head_commit.message }}" | grep -oP '#\K[0-9]+' | head -1 || echo "")
+          # The commit message arrives as $COMMIT_MSG (see env: below) rather than
+          # through workflow-expression interpolation. On a squash merge the message is
+          # the PR title, so it is attacker-controlled; interpolating it here would
+          # splice it into this script as shell *source* instead of shell *data*, in a
+          # job that holds a write-scoped App token.
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP '#\K[0-9]+' | head -1 || echo "")
 
           if [ -n "$PR_NUMBER" ]; then
             echo "Found PR #$PR_NUMBER in commit message"
@@ -110,6 +115,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
 
       - name: Get current and last released versions
         if: steps.check-label.outputs.skip != 'true'
