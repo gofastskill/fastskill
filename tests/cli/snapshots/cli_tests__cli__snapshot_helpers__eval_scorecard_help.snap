@@ -15,10 +15,14 @@ Options:
   -v, --verbose                  Enable verbose output
       --json                     Shorthand for --format json
       --no-fail                  Report the numbers without failing on a metric below its threshold
+      --allow-mixed-judges       Fold judgments from more than one judge identity into one metric
+      --allow-mixed-targets      Fold runs against more than one (agent, model) pair into one
+                                 scorecard
+      --allow-duplicate-cases    Fold runs that measure the same case id more than once
   -h, --help                     Print help
   -V, --version                  Print version
 
 Syntax: eval scorecard --root <DIR> --metrics <FILE> [OPTIONS]
 
 Examples:
-  fastskill eval scorecard --root ./sweep --metrics ./evals/metrics.toml
+  fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml

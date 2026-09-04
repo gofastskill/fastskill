@@ -303,6 +303,7 @@ mod isolation_e2e_tests {
                     exit_code: Some(0),
                     timed_out: false,
                     workspace: None,
+                    workspace_diff: None,
                     isolation: Some(IsolationReport {
                         requested,
                         project_scope: ScopeFidelity::Isolated,
@@ -393,6 +394,8 @@ mod isolation_e2e_tests {
             ci: false,
             threshold: None,
             no_isolation,
+            judge: false,
+            judge_model: None,
         }
     }
 

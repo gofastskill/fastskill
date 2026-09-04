@@ -477,6 +477,14 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
+                path!["eval", "judge"],
+                |_ctx, args: eval::judge::JudgeArgs| async move {
+                    eval::judge::execute_judge(args)
+                        .await
+                        .map_err(anyhow::Error::from)
+                },
+            )?
+            .register_out(
                 path!["eval", "report"],
                 |_ctx, args: eval::report::ReportArgs| async move {
                     eval::report::execute_report(args)

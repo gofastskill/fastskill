@@ -216,9 +216,9 @@ Each step waits for the previous to merge. `aikit-evals` is a library; the comma
 
 | # | Repo | Contains | Landed as |
 |---|---|---|---|
-| 1 | `goaikit/aikit` | R10: trace `kind`/`phase`, `workspace.diff` for every trial | |
-| 2 | `goaikit/aikit` | R1–R9, R11, R12, the library half of R13 and R14; `LlmResponse.model`; `EvalCase.extra`; ADR 0021 | |
-| 3 | `aroff/cli-framework` | rev bump only | |
+| 1 | `goaikit/aikit` | R10: trace `kind`/`phase`, `workspace.diff` for every trial | [aikit#170](https://github.com/goaikit/aikit/pull/170), `cc569cc` |
+| 2 | `goaikit/aikit` | R1–R9, R11, R12, the library half of R13 and R14; `LlmResponse.model`; `EvalCase.extra`; ADR 0021 | [aikit#171](https://github.com/goaikit/aikit/pull/171), `eb50f2c` |
+| 3 | `aroff/cli-framework` | rev bump only | [cli-framework#140](https://github.com/aroff/cli-framework/pull/140), `f389b51` |
 | 4 | `gofastskill/fastskill` | rev bump; `eval judge`, `eval run --judge`, the validate rules; `webdocs/cli-reference/eval-command.mdx` gains the command, which `spec_docs_parity_test` requires; this document | |
 | 5 | `gofastskill/skill` | the first `[[judge]]`, on the correctness suite: `build.py` emits it from `patterns.json`, `prompts.csv` gains an `expected` column, the prompt lives in a hand-written `judge-prompt.md` the generator references | |
 

@@ -1,6 +1,7 @@
 //! Eval command group for skill quality assurance
 
 pub mod isolation;
+pub mod judge;
 pub mod observability;
 pub mod report;
 pub mod run;
@@ -24,6 +25,9 @@ pub enum EvalSubcommand {
 
     /// Run eval cases against an agent
     Run(run::RunArgs),
+
+    /// Judge a completed run with the judges its checks file declares
+    Judge(judge::JudgeArgs),
 
     /// Show a report for a completed eval run
     Report(report::ReportArgs),

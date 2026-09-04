@@ -293,6 +293,7 @@ pub async fn execute_score(args: ScoreArgs) -> CliResult<()> {
                     .map(|r| r.tokens.clone())
                     .unwrap_or_default(),
                 skill_path: recorded.as_ref().and_then(|r| r.skill_path.clone()),
+                judge_excluded: recorded.as_ref().is_some_and(|r| r.judge_excluded),
             });
         }
 

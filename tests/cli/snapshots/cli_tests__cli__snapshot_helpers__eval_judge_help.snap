@@ -1,0 +1,43 @@
+---
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+expression: normalized
+---
+Judge a completed eval run with the judges its checks file declares
+
+Usage: fastskill eval judge [OPTIONS] --run-dir <run-dir>
+
+Options:
+      --run-dir <run-dir>
+          Path to the run directory to judge
+      --skills-dir <skills-dir>
+          Override the skills directory path
+      --checks <checks>
+          Checks file to read judges from, instead of the one the run recorded
+      --global
+          Use global skills directory (~/.config/fastskill/skills)
+      --judge-model <judge-model>
+          Override every judge's model; recorded in each judgment
+  -v, --verbose
+          Enable verbose output
+      --judge-parallel <judge-parallel>
+          Concurrent judge requests (default: the run's parallel)
+      --rejudge
+          Judge again even when the same request already has a judgment
+      --ci
+          CI mode: pass/fail on suite pass rate vs threshold
+      --format <format>
+          Output format: table, json
+      --json
+          Shorthand for --format json
+      --no-fail
+          Do not fail with non-zero exit code on suite failure
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+
+Syntax: eval judge [OPTIONS]
+
+Examples:
+  fastskill eval judge --run-dir ./eval-runs/2026-09-04T12-00-00Z/claude
+  fastskill eval judge --run-dir ./eval-runs/latest/claude --judge-model gpt-4.1

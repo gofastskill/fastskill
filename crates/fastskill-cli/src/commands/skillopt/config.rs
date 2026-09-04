@@ -350,6 +350,9 @@ fn parse_suite_csv_with_splits(content: &str) -> Result<SuiteSplits, String> {
             should_trigger,
             tags,
             workspace_subdir,
+            // The optimizer reads the columns it names and no others; a judge
+            // prompt is not rendered on this path.
+            extra: Default::default(),
         });
     }
 
