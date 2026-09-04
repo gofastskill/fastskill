@@ -123,6 +123,20 @@ pub fn manifest_required_message() -> &'static str {
      then run this command again."
 }
 
+/// The opening words every "there is no project here" message shares.
+const MANIFEST_MISSING_PREFIX: &str = "skill-project.toml not found";
+
+/// Whether this error is "there is no project manifest here".
+///
+/// Several places raise it — [`manifest_required_message`] and
+/// `fastskill_core::core::load_project_config` among them — so the test below
+/// pins the known producers rather than trusting one call site. Callers use
+/// this to add context a generic handler cannot: `main` turns a bare-word
+/// shorthand that died here into a message naming the word and `fastskill init`.
+pub fn is_manifest_missing(error: &CliError) -> bool {
+    matches!(error, CliError::Config(message) if message.starts_with(MANIFEST_MISSING_PREFIX))
+}
+
 #[derive(Debug, Clone)]
 pub enum CliWarning {
     MissingSkillProjectToml { path: PathBuf, fallback_id: String },
@@ -176,7 +190,7 @@ impl CliError {
 
 #[cfg(test)]
 mod tests {
-    use super::CliError;
+    use super::{is_manifest_missing, manifest_required_message, CliError};
 
     #[test]
     fn search_service_error_uses_system_exit_code() {
@@ -192,5 +206,35 @@ mod tests {
             "invalid".to_string(),
         ));
         assert_eq!(error.exit_code(), 1);
+    }
+
+    #[test]
+    fn manifest_missing_is_recognised_from_the_canonical_message() {
+        assert!(is_manifest_missing(&CliError::Config(
+            manifest_required_message().to_string()
+        )));
+    }
+
+    #[test]
+    fn manifest_missing_is_recognised_from_the_core_loader() {
+        // The loader `resolve_skills_storage_directory` calls owns its own copy
+        // of the wording. If that copy drifts out of the prefix, the shorthand
+        // hint in `main` goes silently missing -- fail here instead.
+        let empty = tempfile::TempDir::new().unwrap();
+        let error = fastskill_core::core::load_project_config(empty.path())
+            .map(|_| ())
+            .expect_err("a directory with no skill-project.toml must not resolve");
+        assert!(
+            is_manifest_missing(&CliError::Config(error.clone())),
+            "core's loader no longer produces a recognisable manifest-missing error: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn other_config_errors_are_not_manifest_missing() {
+        assert!(!is_manifest_missing(&CliError::Config(
+            "Skills directory does not exist: /nope".to_string()
+        )));
     }
 }

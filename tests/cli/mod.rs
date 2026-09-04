@@ -26,6 +26,7 @@ pub mod reindex_e2e_tests;
 pub mod repos_integration_tests;
 pub mod repository_tests;
 pub mod serve_e2e_tests;
+pub mod shorthand_e2e_tests;
 pub mod skillopt_tests;
 pub mod snapshot_helpers;
 pub mod test_helpers;

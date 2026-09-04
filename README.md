@@ -137,7 +137,9 @@ fastskill serve                                        # local HTTP API + web UI
 | `fastskill mcp <cmd>` | Run/install the MCP server (`serve/install/list`) for agents (tools are read-only by default; `serve --enable-write` to mutate) |
 | `fastskill doctor` | Diagnose configuration and environment readiness |
 
-Every command supports `--help`. Run `fastskill <skill-id>` as a shorthand for `fastskill read <skill-id>`.
+Every command supports `--help`. Run `fastskill <skill-id>` as a shorthand for `fastskill read
+<skill-id>` — like `read`, it needs a project (`fastskill init`), or `--global` to read a
+globally installed skill.
 
 ## Configuration
 

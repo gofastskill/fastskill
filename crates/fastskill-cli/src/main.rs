@@ -143,7 +143,9 @@ async fn main() {
     // `read`. We rewrite the args here, before dispatch, when the first
     // positional token is not a recognized top-level command or command group.
     // Global flags (and their values) that precede the subcommand are skipped.
-    let raw = {
+    // The second element is the word we rewrote, kept so a later failure can
+    // say *why* `read` was running at all.
+    let (raw, shorthand_skill_id) = {
         // The set of recognized first path segments: every registered command
         // (including built-ins like `spec`/`completion`/`mcp`) and every group
         // node (`analyze`, `repos`, ...). `help` is clap-provided.
@@ -195,19 +197,49 @@ async fn main() {
                     std::process::exit(1);
                 }
                 shorthand::Routing::Read => {
+                    let skill_id = raw[i].clone();
                     let mut rewritten = raw;
                     rewritten.insert(i, "read".to_string());
-                    rewritten
+                    (rewritten, Some(skill_id))
                 }
             }
         } else {
-            raw
+            (raw, None)
         }
     };
 
     match app.run_with_args(raw).await {
         Ok(()) => std::process::exit(0),
         Err(e) => {
+            // A bare word only reaches `read` because it matched no command.
+            // When it then dies for want of a project, the generic manifest
+            // error is the very message `fastskill list` prints -- it never
+            // mentions the word, so a user who mistyped a command is told their
+            // workspace is misconfigured instead. Say all three things: the word
+            // is not a command, it was therefore read as a skill ID, and reading
+            // a skill needs a project.
+            if let (Some(skill_id), Some(cli_error)) = (
+                shorthand_skill_id.as_deref(),
+                e.downcast_ref::<error::CliError>(),
+            ) {
+                if error::is_manifest_missing(cli_error) {
+                    eprintln!(
+                        "error: '{}' is not a fastskill command, so it was read as a skill ID \
+                         (`fastskill read {}`).",
+                        skill_id, skill_id
+                    );
+                    eprintln!(
+                        "  note: reading a skill needs a project, and skill-project.toml was not \
+                         found in this directory or any parent."
+                    );
+                    eprintln!(
+                        "  hint: run 'fastskill init' here first, or read a globally installed \
+                         skill with: fastskill read {} --global",
+                        skill_id
+                    );
+                    std::process::exit(1);
+                }
+            }
             // `run_with_args` already writes a structured diagnostic to stderr
             // (via `DiagnosticReporter`) for usage errors — parse failures,
             // validation failures, unknown nested commands — before returning
