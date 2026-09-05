@@ -1,10 +1,18 @@
 # fastskill → cli-framework `api-server` adoption spec
 
-Status: implemented and updated for the public release (2026-06-16). FastSkill uses cli-framework's `api-server` host and one public API structure: `/api/{version}/...`, fixed `/healthz` and `/readyz`, `X-API-Version`, and graceful shutdown. Registry publish is now an opt-in `registry-publish` build feature. The old Claude-compatible `/v1/skills...` HTTP surface has been removed; use MCP integration for Claude Code.
+Status: implemented and updated for the public release (2026-06-16). FastSkill uses cli-framework's `api-server` host and one public API structure: `/api/{version}/...`, fixed `/healthz` and `/readyz`, `X-API-Version`, and graceful shutdown. The old Claude-compatible `/v1/skills...` HTTP surface has been removed; use MCP integration for Claude Code (`fastskill mcp serve`/`mcp install`).
 
-References (verified against source 2026-05-25):
+> **Update (see doc history):** this spec's §1 "out of scope" call not to adopt cli-framework's
+> `AppBuilder`/command system, and its assumption that fastskill has no MCP, were both later
+> superseded — fastskill's CLI is now built on cli-framework's `AppBuilder` (`crates/fastskill-cli/src/main.rs`),
+> and `fastskill mcp serve` is a real, write-gated MCP server. The `registry-publish` build feature
+> and its multipart publish endpoint described in §2/§8/§11 were never shipped: no such Cargo
+> feature or handler exists in the tree. Read those sections as historical planning, not current
+> state.
+
+References (verified against source 2026-05-25, MCP/AppBuilder note added 2026-09-04):
 - cli-framework host API: `aroff/cli-framework` `src/api/mod.rs` (`ApiServerBuilder`, `ApiServer`), `skill/examples/with_api/src/main.rs`. Features `api-server`, `api-swagger`.
-- fastskill server: `crates/fastskill-core/src/http/server.rs`; serve cmd `crates/fastskill-cli/src/commands/serve.rs`; worker `crates/fastskill-core/src/core/registry/validation_worker.rs`.
+- fastskill server: `crates/fastskill-core/src/http/server.rs`; serve cmd `crates/fastskill-cli/src/commands/serve.rs`.
 
 ---
 
@@ -12,14 +20,14 @@ References (verified against source 2026-05-25):
 
 cli-framework `api-server` pins **axum 0.8, tower 0.5, tower-http 0.6**, and `pub use`s its axum as `cli_framework::axum`. Because the host's `version(...)`/`mount(...)`/`root_fallback(...)` accept `axum::Router`, fastskill's routers MUST be built with the **same axum 0.8** the framework links (a semver-incompatible axum will not compile across the boundary).
 
-**Verified 2026-05-25 (post-pull):**
-- ✅ **axum 0.8** — done (`Cargo.toml:61` `axum = "0.8"`; bumped 0.7.9 → 0.8.9 in PR #138).
-- ❌ **tower-http still 0.5** (`Cargo.toml:63`) — **must bump to 0.6** so the `tower_http::cors::CorsLayer` passed to `.cors(...)` is the same major cli-framework links. Keep features `cors, trace, compression-gzip, fs`.
+**Verified 2026-05-25 (post-pull), tower-http re-verified 2026-09-04:**
+- ✅ **axum 0.8** — done (`Cargo.toml:69` `axum = "0.8"`; bumped 0.7.9 → 0.8.9 in PR #138).
+- ✅ **tower-http 0.7** (`Cargo.toml:71`) — bumped past the 0.6 minimum this section originally called for. Features `cors, trace, compression-gzip, fs`.
 - ✅ **axum 0.8 path-param syntax.** Routes use `{param}` / `{*rest}` syntax.
-- tower 0.5 — ok.
+- tower 0.5 (`Cargo.toml:70`) — ok.
 
 Steps:
-1. Bump `tower-http` 0.5 → 0.6 (keep its feature list); fix any remaining axum-0.8 `{param}` route syntax. cli-framework enables only `cors`; cargo unions features, so fastskill keeps `compression-gzip` + `fs` at 0.6.
+1. ~~Bump `tower-http` 0.5 → 0.6~~ Done (now 0.7); fix any remaining axum-0.8 `{param}` route syntax. cli-framework enables only `cors`; cargo unions features, so fastskill keeps `compression-gzip` + `fs`.
 2. Add the dependency:
    ```toml
    cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "<>=29f0bb0; incl. #74 root_fallback + #76 health_version>", features = ["api-server"] }
@@ -31,7 +39,7 @@ Steps:
 
 ## 1. Adoption model
 
-- **Library-only.** Use `cli_framework::api::ApiServerBuilder` / `ApiServer` directly inside fastskill's existing `execute_serve`. Do **not** adopt cli-framework's `AppBuilder`/command system — clap stays.
+- **Library-only, at the time this was written.** Use `cli_framework::api::ApiServerBuilder` / `ApiServer` directly inside fastskill's existing `execute_serve`. This spec originally scoped out cli-framework's `AppBuilder`/command system in favor of keeping clap; that decision was later reversed — fastskill's CLI is now built on `AppBuilder` (`crates/fastskill-cli/src/main.rs`, `register_out`/`register_out_no_mcp`/`register_group` with `path![...]`). The `api-server` host adoption described in this section is unaffected by that later change.
 - `FastSkillServer::serve()` (`server.rs:457-495`) is rewritten to compose an `ApiServer` and call `ApiServer::serve(addr)`. The TcpListener bind + `axum::serve` boilerplate is deleted (the host owns it, and adds SIGINT/SIGTERM graceful shutdown fastskill lacks today).
 
 The real host API (from `src/api/mod.rs`, do not invent other methods):
@@ -53,12 +61,11 @@ let server = ApiServerBuilder::new()
     .readiness_check(readiness)                 // optional (§6)
     .build();
 
-let shutdown = server.shutdown_token();         // bind the worker to it (§6)
-// start ValidationWorker bound to `shutdown`
+let shutdown = server.shutdown_token();         // bind any background worker to it (§6)
 server.serve(&addr).await?;                      // owns listener + graceful shutdown
 ```
 
-Builder surface available: `version`, `mount`, `default_version`, `cors`, `auth(BoxCloneLayer<Router>)`, `mcp_router` (unused — fastskill has no MCP), `readiness_check`, `protect_health`, `root_fallback`, `health_version`, `reserved_prefixes`, `build`. `ApiServer`: `serve(&str)`, `into_router()`, `shutdown_token()`.
+Builder surface available: `version`, `mount`, `default_version`, `cors`, `auth(BoxCloneLayer<Router>)`, `mcp_router` (unused by this HTTP host — fastskill's MCP server, `fastskill mcp serve`, is a separate stdio/HTTP JSON-RPC surface built on `cli_framework::AppBuilder`, not on this `mcp_router` hook), `readiness_check`, `protect_health`, `root_fallback`, `health_version`, `reserved_prefixes`, `build`. `ApiServer`: `serve(&str)`, `into_router()`, `shutdown_token()`.
 
 **State note:** the host takes stateless `axum::Router`. fastskill's `create_*_routes()` return `Router<AppState>`; call `.with_state(state.clone())` on each family router (or on the merged family router) so the type becomes `Router` before passing to `version()`/`mount()`/`root_fallback()`.
 
@@ -75,7 +82,7 @@ Current families (`server.rs:314-423`) and where each goes:
 | `/api/status` | `create_status_routes` | → `version("v1")` → `/api/v1/status` (app status, NOT a health check — see §6) |
 | `/api/manifest/skills*` | `create_manifest_routes` | → `version("v1")` → `/api/v1/manifest/...` |
 | `/api/registry/*` | `create_registry_routes` | → `version("v1")` → `/api/v1/registry/...` |
-| `/api/registry/publish*` | `create_registry_routes` | Optional under `registry-publish` → `/api/v1/registry/publish...` |
+| `/api/registry/publish*` | *(planned, never shipped)* | Was to be optional under a `registry-publish` feature; no such feature or handler exists in the tree — treat this row as historical. |
 | `/index/*skill_id` | `create_registry_routes` | **mount** `"/index"` (raw index files; external/CDN-like path, keep unversioned) |
 | `/`, `/index.html`, `/app.js`, `/styles.css`, `/dashboard` | `create_ui_routes` | **root_fallback** (§5) |
 
@@ -115,7 +122,7 @@ Action: collect the UI routes (the `serve_embedded_static` handler + `/dashboard
 - **Health/readiness are framework-owned and fixed:** `/healthz` (liveness) + `/readyz` (readiness), always on. Set `.health_version(env!("CARGO_PKG_VERSION"))` so `/healthz` reports fastskill's version, not cli-framework's.
 - fastskill's existing `/api/status` is an **application status** payload (skills_count, uptime, hot_reload, storage_path) — it is NOT a health probe. Keep it as a normal versioned endpoint (`/api/v1/status`); do not try to replace `/healthz` with it.
 - **Optional `readiness_check`:** supply a closure reporting `ReadinessReport { ready, checks }` once the skill index/storage is loaded; default is always-ready. Worthwhile if index build is async at boot.
-- **ValidationWorker shutdown (net-new behavior).** Today `ValidationWorker::start()` (`validation_worker.rs:64-94`) spawns a `tokio::spawn` poll loop gated by `running: Arc<AtomicBool>` that nothing ever flips — it leaks on shutdown. Bind it to the host lifecycle: take `server.shutdown_token()` before `serve()`, and either (a) `tokio::spawn` a task that awaits `token.cancelled()` then sets `running=false`/calls `stop()`, or (b) pass the token into the worker and check `token.is_cancelled()` in the loop alongside the sleep (`tokio::select!` on `token.cancelled()` vs `sleep`). This gives clean drain on SIGINT/SIGTERM.
+- **Background worker shutdown (net-new behavior, as planned).** This section originally described binding a `ValidationWorker` poll loop to `server.shutdown_token()` for clean drain on SIGINT/SIGTERM. No `ValidationWorker` exists in the current tree (`crates/fastskill-core/src/core/registry/` holds only `auth.rs`, `client.rs`, `config.rs`) — either it was never added or was since removed. If a background poll loop is added to the serve path in the future, bind it the same way: take `server.shutdown_token()` before `serve()`, and either (a) `tokio::spawn` a task that awaits `token.cancelled()` then signals the loop to stop, or (b) pass the token into the loop and check `token.is_cancelled()` alongside the sleep (`tokio::select!` on `token.cancelled()` vs `sleep`).
 
 ---
 
@@ -127,9 +134,9 @@ Action: collect the UI routes (the `serve_embedded_static` handler + `/dashboard
 
 ---
 
-## 8. Multipart upload
+## 8. Multipart upload (planned, never shipped)
 
-`POST /api/v1/registry/publish` (`handlers/registry_publish.rs`) uses `axum::extract::Multipart`. It exists only when FastSkill is built with the `registry-publish` feature. Requires axum's `multipart` feature (already enabled). No host-level body-limit is imposed; if a cap is wanted, add a per-route `RequestBodyLimitLayer` on FastSkill's router (tower-http `limit`).
+This section originally planned `POST /api/v1/registry/publish` (`handlers/registry_publish.rs`) using `axum::extract::Multipart`, gated behind a `registry-publish` feature. Neither the handler file, the feature, nor the route exist in the current tree — this was never implemented. If it is built later: it would need axum's `multipart` feature (already enabled workspace-wide); no host-level body-limit is imposed, so a cap would need a per-route `RequestBodyLimitLayer` on fastskill's router (tower-http `limit`).
 
 ---
 
@@ -171,11 +178,11 @@ Documentation is in-scope for this migration, not a follow-up. Update everything
 
 ## 11. Acceptance criteria
 
-1. `fastskill serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...`; optional multipart publish under `registry-publish`; `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`.
+1. `fastskill serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...`; `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`. (The multipart publish endpoint planned in §8 was never shipped.)
 2. `/healthz` returns `{status, version}` with **fastskill's** crate version; `/readyz` reflects the readiness check (or always-ready).
 3. `X-API-Version: v1` present on `/api/v1/...` responses.
 4. `GET /api/...` with no version → 308 redirect to `/api/v1/...` (default Pinned) — or, if `DefaultVersion::None` is chosen, a 404 listing versions.
-5. SIGINT/SIGTERM drains gracefully: `/readyz` flips to 503, in-flight requests finish, and the ValidationWorker loop exits (no leaked task).
+5. SIGINT/SIGTERM drains gracefully: `/readyz` flips to 503, in-flight requests finish, and any background worker bound to `shutdown_token()` exits (no leaked task).
 6. gzip still applied to fastskill responses (compression on its own routers); no regression for the console UI download size.
 7. Builds with `--features api-server`; `cargo tree -i axum` shows a single axum 0.8.
 8. Console UI loads and its API calls succeed against `/api/v1/...`.
@@ -187,16 +194,21 @@ Documentation is in-scope for this migration, not a follow-up. Update everything
 
 | Item | Decision / risk |
 |---|---|
-| Two `v1` surfaces (`/api/v1/...` own + `/v1/...` Claude-compat) | Intentional; the Claude-compat one is an external Anthropic contract kept via `mount("/v1")`. Document clearly to avoid confusion. |
-| Dep state (verified) | axum 0.8 ✅ done (#138). tower-http still 0.5 → **bump to 0.6**. axum 0.8 `{param}` path syntax — fix old `:id`/`*skill_id` literals. |
+| Two `v1` surfaces (`/api/v1/...` own + `/v1/...` Claude-compat) | Superseded: the Claude-compat `/v1/...` surface was removed (see status line and §3), not kept via `mount("/v1")` — `crates/fastskill-core/src/http/server.rs` mounts only `/index` alongside the versioned `/api/v1/...` surface. Use MCP integration (`fastskill mcp serve`) for Claude Code instead. |
+| Dep state (verified) | axum 0.8 ✅ done (#138). tower-http ✅ bumped to 0.7 (past the 0.6 this spec called for). axum 0.8 `{param}` path syntax — fix old `:id`/`*skill_id` literals. |
 | CompressionLayer ownership | Host won't apply it; fastskill applies on its own routers. Safe only because there is no streaming (verified). If SSE is ever added, scope compression to exclude `text/event-stream`. |
 | `/index/*` versioning | Kept unversioned via `mount` to preserve installer URLs; revisit if no external consumer depends on it. |
 | Breaking `/api/...` → `/api/v1/...` | Accepted; update console UI + tests + any docs/published clients. |
 | Single axum in tree | Use `cli_framework::axum` for host-facing routers or ensure 0.8 unification. |
 
-## 13. Out of scope
+## 13. Out of scope (as of this spec; both bullets below were later revisited)
 
-- Adopting cli-framework's CLI/command framework (clap stays).
-- MCP serving (fastskill has none; `mcp_router` unused).
+- Adopting cli-framework's CLI/command framework for commands — scoped out here, but fastskill's
+  CLI was later rebuilt on cli-framework's `AppBuilder` anyway (see the update note at the top of
+  this document). That rebuild is a separate change from the `api-server` host adoption this spec
+  covers.
+- MCP serving — this spec assumed fastskill had none. `fastskill mcp serve`/`mcp install`/`mcp list`
+  now exist, built on `AppBuilder`, independent of this spec's `mcp_router` (unused by the HTTP
+  host; see §1).
 - Changing storage, search, or registry/S3 logic.
 - The webhook-style or any second-listener concerns (fastskill has none).

@@ -17,16 +17,22 @@ confirm/date them as the tester (or an agent) hits them.
 ## Known gaps & rough edges
 
 ### K1 — `scripts/install.sh` hard-fails on macOS despite README billing (Distribution / A.6)
-- **What:** `install.sh` detects OS/arch but errors `"Currently only Linux x86_64 is supported"`
-  on macOS, while the README advertises the script as "Linux & macOS".
-- **Source:** `scripts/install.sh:159-161`; README install section.
-- **Severity:** S2 (major — documented install path doesn't work on a claimed platform).
-- **Expect the tester to hit it at:** Appendix A.6 (and D.2 doc walk on a Mac).
+- **What (as authored, 2026-08):** `install.sh` detected OS/arch but errored `"Currently only
+  Linux x86_64 is supported"` on macOS, while the README advertised the script as "Linux & macOS".
+- **Source:** `scripts/install.sh:159-161` (as authored); README install section.
+- **Severity:** S2 (major — documented install path didn't work on a claimed platform).
+- **FIXED (confirmed at HEAD, 2026-09-04):** `detect_platform()` (`scripts/install.sh:126-177`)
+  now handles `Darwin*` → `macos` with both `x86_64` and `arm64`, mapping to the published
+  `aarch64-apple-darwin` / `x86_64-apple-darwin` release targets. The unsupported-platform error
+  now reads `"Unsupported platform: ${os} ${arch}. Supported platforms: Linux (x86_64), macOS
+  (x86_64, arm64)."` — macOS is a genuinely supported path, matching the README. If a tester
+  still hits an install failure on macOS, triage it as a **new** finding, not this one.
 
 ### K2 — Port 8080 collision between `serve` and `mcp serve` (Serve / MCP, S5 / S6)
 - **What:** `fastskill serve` defaults to `localhost:8080`; `fastskill mcp serve --transport http`
   *also* defaults to `127.0.0.1:8080`. Running both with defaults collides.
-- **Source:** `serve.rs` defaults; `mcp/commands.rs` defaults.
+- **Source:** `crates/fastskill-cli/src/commands/serve.rs` defaults;
+  `crates/fastskill-cli/src/commands/mcp.rs` defaults.
 - **Severity:** S3 (minor — UX footgun; plan already warns about it in §5/§6).
 - **Note:** This is called out *in the plan* as a setup note (not a blind gap), because it
   would otherwise wedge the tester. If a tester reports it as a bug, it's known.

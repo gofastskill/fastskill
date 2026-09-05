@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## Overview
 
-FastSkill is a Rust-based package manager and operational toolkit for Claude Code-compatible skills. It provides registry services, semantic search, version management, and deployment tooling for AI agent skills at scale.
+FastSkill is a Rust-based package manager and operational toolkit for Claude Code-compatible skills. It provides repository services, semantic search, version management, and deployment tooling for AI agent skills at scale.
 
 ## Development Commands
 
@@ -80,110 +80,127 @@ RUST_LOG=fastskill::core=info,fastskill::http=debug cargo run --bin fastskill --
 
 ## Architecture Overview
 
-FastSkill follows a **layered architecture** with clear separation of concerns:
+FastSkill is a Cargo workspace of three crates:
 
 ```
-CLI Layer (src/cli/)
-    ↓
-Service Layer (FastSkillService)
-    ↓
-Core/Business Layer (src/core/)
-    ↓
-Storage Layer (src/storage/)
-
-HTTP Layer (src/http/) - independent of CLI, uses same service layer
+crates/fastskill-cli    - command-line interface (cli-framework AppBuilder), HTTP-server wiring
+    ↓ depends on
+crates/fastskill-core   - domain logic, storage, HTTP handlers, repositories, vector index
+crates/fastskill-evals  - thin adapter over aikit-evals (suite/check/runner/artifact infra)
 ```
+
+`fastskill-cli` registers its commands and its `serve`/`mcp serve` HTTP surfaces against
+`fastskill-core` services; the HTTP layer (`crates/fastskill-core/src/http/`) is not a separate
+process — it's mounted by the `serve` command and uses the same core services as every other
+command.
 
 ### Key Modules
 
-- **`src/cli/`** - Command-line interface and argument parsing (14 files)
-  - `cli.rs` - Main CLI entry point and command dispatch
-  - `commands/` - Individual command implementations (add, search, serve, registry, etc.)
-  - `config.rs` - Configuration file handling
-  - `utils/` - CLI utilities (API client, messages, install/manifest helpers)
+- **`crates/fastskill-cli/src/`** - CLI entry point and command handlers
+  - `main.rs` - Builds the `cli_framework::AppBuilder` app: registers every command with
+    `path![...]` (e.g. `path!["repos", "add"]`) via `register_out`/`register_out_no_mcp`/`register_group`
+  - `registration.rs` - `AppBuilderExt` trait (`register_out`, `register_out_no_mcp`) that routes
+    buffered `outln!` output through the MCP-safe context
+  - `commands/` - one module (or subdirectory) per command: `add/`, `analyze/`, `cache.rs`,
+    `doctor.rs`, `eval/`, `init.rs`, `install.rs`, `list.rs`, `marketplace.rs`, `mcp.rs`,
+    `read.rs`, `reindex.rs`, `remove.rs`, `repos/`, `search.rs`, `serve.rs`, `skillopt/`, `update.rs`
+  - `config.rs` - Loads `skill-project.toml`, including `load_repositories_from_project()`
 
-- **`src/core/`** - Core business logic (27 files)
-  - `skill_manager.rs` - Skill lifecycle management (register, update, enable/disable)
+- **`crates/fastskill-core/src/core/`** - Core business logic
+  - `skill_manager.rs` - `SkillDefinition` and skill lifecycle management (register, update, enable/disable)
   - `metadata.rs` - Skill metadata extraction and discovery
   - `vector_index.rs` - Semantic search using OpenAI embeddings + SQLite
-  - `registry/` - Registry client, configuration, and authentication
-  - `repository.rs` - Unified repository system (git, HTTP, local, ZIP)
-  - `manifest.rs` - Project manifest (skills.toml) and lockfile handling
+  - `registry/` - Registry client, configuration, and authentication (`auth.rs`, `client.rs`, `config.rs`)
+  - `repository.rs` + `repository/client.rs` - Unified repository system (`RepositoryType`: `GitMarketplace`, `HttpRegistry`, `ZipUrl`, `Local`; `RepositoryClient` trait)
+  - `manifest.rs` / `manifest/` - Project manifest (`skill-project.toml`) parsing
+  - `lock.rs` / `lock/` - `ProjectSkillsLock` (`skills.lock`) and `GlobalSkillsLock` (`global-skills.lock`)
   - `service.rs` - `FastSkillService` orchestrator that initializes all sub-services
 
-- **`src/http/`** - HTTP API server (13 files)
-  - `server.rs` - Axum server setup and router configuration
-  - `handlers/` - API endpoint handlers (skills, search, registry, manifest, etc.)
-  - `models.rs` - Request/response types (`ApiResponse<T>`, error handling)
+- **`crates/fastskill-core/src/storage/`** - Storage backends
+  - `filesystem.rs` - File-based skill storage with metadata caching (`StorageBackend` trait)
+  - `git.rs` / `git/` - Git operations for skill sources
+  - `zip.rs` - ZIP package extraction and creation
+  - `hot_reload.rs` - File watching behind the `hot-reload` feature
+  - `vector_index.rs` - SQLite persistence for embeddings
 
-- **`src/storage/`** - Storage backends (5 files)
-  - `filesystem.rs` - File-based skill storage with metadata caching
-  - `git_storage.rs` - Git operations for skill sources
-  - `zip_handler.rs` - ZIP package extraction and creation
-  - `vector_index_storage.rs` - SQLite persistence for embeddings
-
-- **`src/validation/`** - Skill validation (3 files)
+- **`crates/fastskill-core/src/validation/`** - Skill validation
   - `skill_validator.rs` - Validates skill structure and metadata
   - `standard_validator.rs` - Standard SKILL.md format validation
   - `zip_validator.rs` - ZIP package integrity validation
+  - `field_validation.rs` - Field-level validation helpers
 
-- **`src/events/`** - Event bus for skill lifecycle tracking (2 files)
+- **`crates/fastskill-core/src/events/event_bus.rs`** - Event bus for skill lifecycle tracking
 
-- **`src/execution.rs`** - Script execution sandboxing and security policies
+- **`crates/fastskill-core/src/write_ops.rs`** - The single `WriteOperation`/`WriteHttpRoute` table
+  that both the HTTP write-gate and the MCP tool gate derive from (ADR-0003). Adding a mutating
+  command or route means adding it here; there is no second list to keep in sync.
+
+- **`crates/fastskill-core/src/http/`** - HTTP API server, mounted by `fastskill serve`
+  - `server.rs` - Axum server setup and router configuration
+  - `handlers/` - API endpoint handlers: `manifest.rs`, `registry.rs`, `reindex.rs`, `resolve.rs`, `search.rs`, `skills.rs`, `status.rs`
+  - `models.rs` - Request/response types, error handling
+
+- **`crates/fastskill-cli/src/commands/mcp.rs`** - `fastskill mcp serve|install|list`; `serve` is
+  registered with `register_out_no_mcp` (never returns, and cli-framework's default MCP
+  auto-registration has no write gate); `install`/`list` auto-register.
 
 ### Critical Data Structures
 
 #### SkillDefinition
-The core data structure representing a skill. Located in `src/core/skill_definition.rs`.
+The core data structure representing a skill. Located in `crates/fastskill-core/src/core/skill_manager.rs`.
 
 **Key fields:**
-- `id: SkillId` - Validated skill identifier
+- `id: SkillId`, `name`, `description`, `version`, `author` - Identity and metadata
 - `skill_file: PathBuf` - Path to SKILL.md
-- `source_url/source_type/source_branch` - Tracks skill origin
-- `editable: bool` - For local development (like Poetry's `-e` flag)
-- `enabled: bool` - Runtime enable/disable without uninstalling
+- `reference_files` / `script_files` / `asset_files` - Optional file references
 - Execution config: `execution_environment`, `dependencies`, `timeout`
+- Provenance fields tracking install intent (origin, editable, etc.)
 
 #### FastSkillService
-The main service orchestrator in `src/core/service.rs`. Initializes and coordinates all sub-services:
+The main service orchestrator in `crates/fastskill-core/src/core/service.rs`. Initializes and coordinates all sub-services:
 - `SkillManagementService` (skill lifecycle)
 - `MetadataService` (metadata extraction)
-- `VectorIndexService` (semantic search)
+- `VectorIndexService` (semantic search, optional)
+- `EmbeddingService` (optional, injected at the CLI/serve edge)
+- `RepositoryManager` (optional, multi-source skill discovery)
 - `StorageBackend` (file operations)
-- `RepositoryManager` (multi-source skill discovery)
 
 Used by both CLI commands and HTTP handlers.
 
 #### Repository System
-Multi-source skill repository support in `src/core/repository.rs`:
+Multi-source skill repository support in `crates/fastskill-core/src/core/repository.rs` and
+`repository/client.rs`:
 
-**Repository Types:**
+**Repository Types (`RepositoryType`):**
 - `GitMarketplace` - Git repos with marketplace.json for skill discovery
 - `HttpRegistry` - HTTP-based registries with flat index
 - `ZipUrl` - ZIP file downloads from base URL
 - `Local` - Local filesystem paths
 
-Configured in `.claude/repositories.toml` with priority-based conflict resolution.
+Configured in `skill-project.toml` under `[tool.fastskill.repositories]`, loaded via
+`crates/fastskill-cli/src/config.rs::load_repositories_from_project()`, with priority-based
+conflict resolution.
 
 ### Command Dispatch Pattern
 
-Commands are divided into two categories:
+`crates/fastskill-cli/src/main.rs` builds a `cli_framework::AppBuilder` app and registers every
+command explicitly against a `path![...]` (e.g. `path!["repos", "add"]`):
 
-1. **Service-dependent commands** (add, search, serve, show, update, etc.)
-   - Initialize `FastSkillService` first
-   - Use shared service layer for operations
+- `register_out` - the default: buffers `outln!` output and drains it into the MCP-safe context
+  after the handler resolves, so the command works both as a CLI subcommand and as an MCP tool.
+- `register_out_no_mcp` - for commands that never return (`serve`) or make no sense as a
+  request/response MCP tool call (`mcp serve`).
+- `register_group` - registers a command group's shared metadata/help; some groups (`mcp`) leave
+  individual leaves (`install`, `list`) to cli-framework's default auto-registration.
 
-2. **Standalone commands** (init, install, repos)
-   - Execute without full service initialization
-   - Avoid circular dependencies and overhead
-   - The `repos` command has its own modular structure in `crates/fastskill-cli/src/commands/repos/`
+The `repos` command has its own modular structure in `crates/fastskill-cli/src/commands/repos/`.
 
 ### Vector Search Implementation
 
-Located in `src/core/vector_index.rs`:
+Located in `crates/fastskill-core/src/core/vector_index.rs`:
 
 1. Skills are embedded using OpenAI's `text-embedding-3-small` model
-2. Embeddings stored in SQLite database (`.claude/.fastskill/index.db`)
+2. Embeddings stored in a SQLite database at `<skills_dir>/.fastskill/index.db`
 3. Search uses cosine similarity to rank results
 4. Files are content-addressed (SHA256 hashing) to detect changes
 
@@ -193,7 +210,7 @@ Located in `src/core/vector_index.rs`:
 
 ### Event System
 
-Event-driven architecture in `src/events/event_bus.rs`:
+Event-driven architecture in `crates/fastskill-core/src/events/event_bus.rs`:
 
 **Event types:** `SkillRegistered`, `SkillUpdated`, `SkillUnregistered`, `SkillReloaded`, `SkillEnabled`, `SkillDisabled`
 
@@ -205,17 +222,18 @@ FastSkill resolves configuration in priority order:
 
 1. CLI arguments
 2. Environment variables (e.g., `OPENAI_API_KEY`, `RUST_LOG`)
-3. `skill-project.toml` `[tool.fastskill]` section (walks up directory tree)
-4. Walk up directory tree to find existing `.claude/skills/`
-5. Default to `./.claude/skills/`
+3. `skill-project.toml` `[tool.fastskill]` section (walks up directory tree to find it)
+4. Default to `./.claude/skills` as the skills directory if none is configured
 
 ### Key Configuration Files
 
-- **`skill-project.toml`** `[tool.fastskill]` - Project configuration (embedding settings, skills directory)
-- **`.claude/repositories.toml`** - Multi-repository configuration
-- **`.claude/skills.toml`** - Project manifest (like package.json or Cargo.toml)
-- **`.claude/skills.lock`** - Lockfile for reproducible installations
-- **`.claude/.fastskill/index.db`** - SQLite vector index
+- **`skill-project.toml`** - Project manifest (dependencies, `[tool.fastskill]` settings including
+  `skills_directory`, `[tool.fastskill.repositories]`, `[tool.fastskill.embedding]`)
+- **`<project_root>/skills.lock`** - `ProjectSkillsLock`, deterministic lockfile for reproducible installations
+- **`global-skills.lock`** - `GlobalSkillsLock`, operational lockfile with timestamps for global installs
+- **`<skills_dir>/.fastskill/index.db`** - SQLite vector index
+
+Lock file structures are defined in `crates/fastskill-core/src/core/lock.rs` (`LOCK_FORMAT_VERSION = "3.0"`).
 
 ## Feature Flags
 
@@ -264,25 +282,33 @@ FastSkill is **async-first** using Tokio:
 
 ### Adding a new CLI command
 
-1. Add command variant to `Commands` enum in `src/cli/commands/mod.rs`
-2. Create handler module in `src/cli/commands/`
-3. Implement `execute_*()` async function
-4. Add dispatch logic in `src/cli/cli.rs`
-5. Wire through `FastSkillService` methods if service-dependent
+1. Create a handler module (or subdirectory) under `crates/fastskill-cli/src/commands/` with a
+   `TypedArgs` struct and an `execute_*()` async function.
+2. Register it in `crates/fastskill-cli/src/main.rs` against a `path![...]`, using
+   `register_out` (default), `register_out_no_mcp` (never returns, or meaningless as an MCP tool),
+   or `register_group` for a command group's shared metadata.
+3. Wire through `FastSkillService` methods if service-dependent.
+4. If the command mutates FastSkill-managed state, add it to the `WriteOperation` table in
+   `crates/fastskill-core/src/write_ops.rs` — that is the sole gate for both the HTTP write-gate
+   and the MCP tool gate; there is no separate list to update.
+5. Update the documented command/flag tables (README.md, this file) — `docs_subcommand_lists_test.rs`
+   and `spec_docs_parity_test.rs` fail `cargo nextest run` if they drift from `fastskill spec`.
 
 ### Adding a new HTTP endpoint
 
-1. Create handler module in `src/http/handlers/`
-2. Define request/response types in `src/http/models.rs`
-3. Add route to Axum router in `src/http/server.rs`
-4. Keep handlers consistent with local `fastskill serve` unauthenticated API behavior
+1. Create a handler module in `crates/fastskill-core/src/http/handlers/`.
+2. Define request/response types in `crates/fastskill-core/src/http/models.rs`.
+3. Add the route to the Axum router in `crates/fastskill-core/src/http/server.rs`.
+4. If the route mutates state, add it to `WriteHttpRoute` in `crates/fastskill-core/src/write_ops.rs`
+   so it's mounted behind the `--enable-write` middleware.
+5. Keep handlers consistent with local `fastskill serve` unauthenticated API behavior.
 
 ### Extending repository support
 
-1. Add new repository type to `RepositoryType` enum in `src/core/repository.rs`
-2. Implement `RepositoryClient` trait for new type
-3. Add CLI subcommand in `crates/fastskill-cli/src/commands/repos/`
-4. Update formatters in `crates/fastskill-cli/src/commands/repos/formatters.rs` if needed
+1. Add the new repository type to the `RepositoryType` enum in `crates/fastskill-core/src/core/repository.rs`.
+2. Implement the `RepositoryClient` trait (`crates/fastskill-core/src/core/repository/client.rs`) for the new type.
+3. Add CLI subcommand wiring in `crates/fastskill-cli/src/commands/repos/`.
+4. Update formatters in `crates/fastskill-cli/src/commands/repos/formatters.rs` if needed.
 
 ## Style and Conventions
 
@@ -303,7 +329,7 @@ When handling untrusted input or archives, agents MUST follow these rules:
   Code that writes files from archive entry names or other untrusted path-like strings MUST validate that the resolved output path stays under the intended base directory. The resolved path MUST be normalized (e.g. without `..` or redundant segments) and MUST have the base directory as a prefix before any filesystem write; otherwise the entry MUST be rejected.
 
 - **Archive extraction**  
-  Any ZIP (or similar) extraction MUST use the same rule: never join entry names to a base path and write without checking that the result is under the extraction root. This applies to CLI add-from-zip, registry validation worker extraction, and any future extraction code.
+  Any ZIP (or similar) extraction MUST use the same rule: never join entry names to a base path and write without checking that the result is under the extraction root. This applies to `crates/fastskill-core/src/storage/zip.rs`, `crates/fastskill-core/src/validation/zip_validator.rs`, and any future extraction code.
 
 - **Tests**  
   For code that extracts archives or resolves untrusted paths, tests MUST include at least one case that uses malicious path components (e.g. `../`, `..\\`, or segments that escape the base). The test MUST assert that no file is created outside the intended directory (or that the operation fails). Shared safe-extraction helpers SHOULD have dedicated tests so reuse does not regress.
@@ -322,7 +348,7 @@ Per RFC 2119, the following rules apply:
 - Automatic releases on pushes to `main` (patch version bump)
 - Skip with `[skip release]`, `[no release]`, or `[skip ci]` in commit message
 - Manual releases via version tags (`v1.2.3`) or workflow dispatch
-- Builds 3 binary variants: `x86_64-unknown-linux-musl` (static), `x86_64-unknown-linux-gnu` (glibc), `x86_64-pc-windows-msvc`
+- Builds 5 binary variants: `x86_64-unknown-linux-musl` (static), `x86_64-unknown-linux-gnu` (glibc), `x86_64-pc-windows-msvc`, `aarch64-apple-darwin` (Apple Silicon), `x86_64-apple-darwin` (Intel Macs)
 
 ## Additional Resources
 
