@@ -137,6 +137,7 @@ Both servers are read-only by default, from one table of mutating operations. Wi
 | `fastskill search <query>` | Search remote catalogs (default) or installed skills (`--local`) |
 | `fastskill reindex` | Rebuild the local semantic search index |
 | `fastskill repos <cmd>` | Manage repositories & browse catalogs (`list/add/remove/info/update/test/refresh/skills/show/versions`) |
+| `fastskill cache <cmd>` | Inspect and reclaim the on-disk skill content cache (`info/clean`) |
 | `fastskill marketplace create` | Generate a `marketplace.json` catalog from a folder of skills |
 | `fastskill eval <cmd>` | Skill quality evals (`validate/run/judge/report/score/scorecard`) |
 | `fastskill optimize <cmd>` | Text-gradient skill optimization (`run/resume/status/inspect/export`) |
@@ -191,8 +192,7 @@ embedding settings and schema migration, and [eval setup](webdocs/evals-quality/
 
 ## Contributing
 
-FastSkill is a Rust workspace (`fastskill-cli`, `fastskill-core`, `fastskill-evals`). To build from
-source, run the test suite, or contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
+To build from source, run the test suite, or contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

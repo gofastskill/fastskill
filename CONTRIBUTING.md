@@ -2,33 +2,33 @@
 
 ## Finding ways to help
 
-We label issues that would be good for a first time contributor as
+Issues good for a first-time contributor are labeled
 [`good first issue`](https://github.com/gofastskill/fastskill/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 These usually do not require significant experience with Rust or the fastskill code base.
 
-We label issues that we think are a good opportunity for subsequent contributions as
+Issues that are a good opportunity for subsequent contributions are labeled
 [`help wanted`](https://github.com/gofastskill/fastskill/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22).
-These require varying levels of experience with Rust and fastskill. Often, we want to accomplish these
-tasks but do not have the resources to do so ourselves.
+These require varying levels of experience with Rust and fastskill. These tasks are often desirable
+but the maintainers lack the resources to complete them directly.
 
-You don't need our permission to start on an issue we have labeled as appropriate for community
-contribution as described above. However, it's a good idea to indicate that you are going to work on
-an issue to avoid concurrent attempts to solve the same problem.
+No permission is required to start on an issue labeled as appropriate for community contribution as
+described above. However, indicate that you are going to work on an issue to avoid concurrent
+attempts to solve the same problem.
 
-Please check in with us before starting work on an issue that has not been labeled as appropriate
-for community contribution. We're happy to receive contributions for other issues, but it's
-important to make sure we have consensus on the solution to the problem first.
+Check in with the maintainers before starting work on an issue that has not been labeled as
+appropriate for community contribution. Contributions for other issues are welcome, but reaching
+consensus on the solution first is important.
 
 Outside of issues with the labels above, issues labeled as
 [`bug`](https://github.com/gofastskill/fastskill/issues?q=is%3Aopen+is%3Aissue+label%3A%22bug%22) are the
 best candidates for contribution. In contrast, issues labeled with `needs-decision` or
-`needs-design` are _not_ good candidates for contribution. Please do not open pull requests for
-issues with these labels.
+`needs-design` are _not_ good candidates for contribution. Do not open pull requests for issues with
+these labels.
 
-Please do not open pull requests for new features without prior discussion. While we appreciate
-exploration of new features, we will almost always close these pull requests immediately. Adding a
-new feature to fastskill creates a long-term maintenance burden and requires strong consensus from the fastskill
-team before it is appropriate to begin work on an implementation.
+Do not open pull requests for new features without prior discussion. Exploration of new features is
+welcome, but such pull requests are almost always closed immediately without it. Adding a new
+feature to fastskill creates a long-term maintenance burden and requires strong consensus from the
+fastskill maintainers before it is appropriate to begin work on an implementation.
 
 ## Quickstart for Contributors
 
@@ -75,8 +75,6 @@ cargo run --bin fastskill -- search "query"
 cargo run --bin fastskill -- serve
 ```
 
-This quickstart reduces contributor drop-off by getting you productive in under 10 minutes.
-
 ## General recommendations for all crates
 
 - Keep changes scoped to one crate responsibility at a time.
@@ -84,13 +82,18 @@ This quickstart reduces contributor drop-off by getting you productive in under 
 - Preserve stable public APIs for library crates (`fastskill-core`, `fastskill-evals`).
 - Add tests with behavior changes and keep docs aligned with new usage.
 - Prefer small, reviewable pull requests with clear problem statements.
+- Adding a command or HTTP route that mutates fastskill-managed state? Register it in the single
+  `WriteOperation`/`WriteHttpRoute` table in `crates/fastskill-core/src/write_ops.rs` — both the
+  HTTP write-gate and the MCP tool gate derive from that table, so there is no second list to keep
+  in sync.
 
 ## Source File Size
 
 Keep non-test Rust source files under 1000 lines. Move large inline test modules
 to sibling or child test modules, such as `foo/tests.rs`, before splitting
 production code. Keep comments that explain security, compatibility, public API,
-or platform invariants. Move long design history to `specs/` or this file.
+or platform invariants. Move long design history to `specs/`, a local working tree
+that `.gitignore` excludes, or to this file.
 
 ## Setup
 
@@ -112,7 +115,7 @@ cargo install cargo-insta
 
 ## Testing
 
-For running tests, we recommend [nextest](https://nexte.st/), a fast, parallel test runner with excellent output and caching.
+For running tests, use [nextest](https://nexte.st/), a fast, parallel test runner with excellent output and caching.
 
 To run all tests:
 
@@ -185,6 +188,10 @@ fastskill supports several feature flags that affect available functionality:
 
 Tests requiring optional features will be skipped if those features are not enabled.
 
+`crates/fastskill-cli/tests/docs_subcommand_lists_test.rs` and `spec_docs_parity_test.rs` gate
+documented command lists against `fastskill spec`; a new or renamed command that isn't
+reflected in the docs tables they scan fails `cargo nextest run`.
+
 ### Local testing
 
 You can invoke your development version of fastskill with `cargo run --bin fastskill -- <args>`. For example:
@@ -200,7 +207,7 @@ cargo run --bin fastskill -- search "data processing"
 cargo run --bin fastskill -- serve
 
 # List installed skills
-cargo run --bin fastskill -- show
+cargo run --bin fastskill -- list
 ```
 
 #### Running Tests with nextest
@@ -209,9 +216,9 @@ cargo run --bin fastskill -- show
 # Run all tests (recommended - much faster than cargo test)
 cargo nextest run
 
-# Run specific test suites
-cargo nextest run --package cli_tests
-cargo nextest run --package integration_tests
+# Run a specific integration test binary
+cargo nextest run -p fastskill-cli --test cli_tests
+cargo nextest run -p fastskill-core --test core_manifest_tests
 
 # Run tests matching a pattern
 cargo nextest run search
@@ -440,22 +447,24 @@ cargo install cargo-tree
 cargo tree
 ```
 
+`crates/fastskill-cli/build.rs` reads `Cargo.lock` at build time to record the locked
+`aikit-evals` version/git-rev for eval-scorecard provenance. `crates/fastskill-cli/assets/fonts/`
+holds the IBM Plex Mono/Sans fonts embedded into the `eval scorecard` HTML report so it stays
+self-contained without a CDN.
+
 ## Running inside a Docker container
 
 Skills can potentially execute arbitrary code when loaded. For security when testing skills from untrusted sources, consider running fastskill in a container:
 
 ```shell
-# Build a containerized version for testing
-docker build -t fastskill-testing -f Dockerfile .
-docker run --rm -it -v $(pwd)/skills:/app/skills fastskill-testing
-
-# Or use the musl binary in a minimal container for maximum security
+# Use the musl binary in a minimal container for maximum security
 docker run --rm -it -v $(pwd)/skills:/app/skills \
   -v $(pwd)/target/x86_64-unknown-linux-musl/release:/app/bin \
   alpine:latest /app/bin/fastskill
 ```
 
-We recommend using containers when testing skills from untrusted sources or when you want to isolate skill execution from your development environment.
+Use containers when testing skills from untrusted sources or to isolate skill execution from your
+development environment.
 
 ## Tracing and Logging
 
@@ -565,10 +574,12 @@ fastskill uses automated release workflows to ensure consistent builds across pl
 - Create a version tag (`v1.2.3`) or use workflow dispatch
 - Triggers the release workflow which:
   - Verifies version matches Cargo.toml
-  - Builds binaries for 3 targets:
+  - Builds binaries for 5 targets:
     - `x86_64-unknown-linux-gnu` (glibc/dynamic linking)
     - `x86_64-unknown-linux-musl` (static linking, maximum compatibility)
     - `x86_64-pc-windows-msvc` (Windows)
+    - `aarch64-apple-darwin` (Apple Silicon: M1/M2/M3+)
+    - `x86_64-apple-darwin` (Intel Macs)
   - Creates GitHub release with artifacts
   - Updates Homebrew (macOS) and Scoop (Windows) package managers
 
@@ -583,11 +594,13 @@ The `rust-toolchain.toml` file ensures all builds (local development, CI, releas
 | `fastskill-x86_64-unknown-linux-musl.tar.gz` | musl static   | Universal compatibility | Works on any Linux, containers, CI/CD |
 | `fastskill-x86_64-unknown-linux-gnu.tar.gz`  | glibc dynamic | FIPS/compliance         | Requires glibc 2.38+                  |
 | `fastskill-x86_64-pc-windows-msvc.zip`       | Windows MSVC  | Windows users           | Windows 10+                           |
+| `fastskill-aarch64-apple-darwin.tar.gz`      | Apple Silicon | Apple Silicon Macs      | macOS on M1/M2/M3+                    |
+| `fastskill-x86_64-apple-darwin.tar.gz`       | Intel macOS   | Intel Macs               | macOS on Intel hardware               |
 
 ### Release Artifacts
 
 All releases include:
 
-- Pre-built binaries for Linux (2 variants) and Windows
+- Pre-built binaries for Linux (2 variants), Windows, and macOS (2 variants)
 - SHA256 checksums
 - Installation instructions in release notes

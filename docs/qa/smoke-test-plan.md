@@ -507,7 +507,7 @@ rm -rf "$SBX"
 List every step you marked ⚙️ (or any 🤖 step you think is under-covered by the test suite).
 These are candidate integration tests. Starter set (extend as you go):
 
-- [ ] MCP `install` config-write shape per target (6.2–6.7) — assert exact file + JSON/TOML key per agent, plus `register` rejection (6.8).
+- [ ] MCP `install` config-write shape per target (6.2–6.7) — assert exact file + JSON/TOML key per agent, plus that the withdrawn `register` alias still writes the same config as `install` but is no longer advertised by `--help`/`spec` (6.8).
 - [ ] MCP `serve` protocol handshake `tools/list` over stdio and http (6.9–6.10) — assert the tool set and that `serve` is excluded.
 - [ ] MCP stdio flag-rejection `[E004]` (6.11).
 - [ ] Serve write-gating returns 403 (not 404) without `--enable-write` (5.7).
