@@ -58,6 +58,25 @@ fn bundle_build_explains_the_required_bundle_declaration() {
 }
 
 #[test]
+fn bundle_build_help_shows_a_complete_bundle_declaration() {
+    let project = TempDir::new().unwrap();
+
+    let output = run(project.path(), &["bundle", "build", "--help"]);
+
+    let help = assert_success(output);
+    assert!(
+        help.contains("Add this to skill-project.toml before building:"),
+        "{help}"
+    );
+    assert!(help.contains("[bundle]"), "{help}");
+    assert!(help.contains("format = \"fastskill-bundle-v1\""), "{help}");
+    assert!(help.contains("id = \"payments-team\""), "{help}");
+    assert!(help.contains("version = \"1.2.0\""), "{help}");
+    assert!(help.contains("[bundle.members.code-review]"), "{help}");
+    assert!(help.contains("code-review = \"1.0.0\""), "{help}");
+}
+
+#[test]
 fn bundle_commands_build_install_list_update_and_remove() {
     let author = TempDir::new().unwrap();
     let dist = author.path().join("dist");
