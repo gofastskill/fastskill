@@ -41,6 +41,23 @@ fn assert_success(output: std::process::Output) -> String {
 }
 
 #[test]
+fn bundle_build_explains_the_required_bundle_declaration() {
+    let project = TempDir::new().unwrap();
+    fs::write(
+        project.path().join("skill-project.toml"),
+        "[tool.fastskill]\nskills_directory = \"skills\"\n\n[dependencies]\ncode-review = \"1.0.0\"\n",
+    )
+    .unwrap();
+
+    let output = run(project.path(), &["bundle", "build"]);
+
+    assert!(!output.status.success());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("has no [bundle] declaration"), "{error}");
+    assert!(error.contains("fastskill bundle build --help"), "{error}");
+}
+
+#[test]
 fn bundle_commands_build_install_list_update_and_remove() {
     let author = TempDir::new().unwrap();
     let dist = author.path().join("dist");

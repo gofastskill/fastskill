@@ -67,6 +67,33 @@ struct SkillDependencyTable {
     dependencies: BTreeMap<String, toml::Value>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct BundleProject {
+    bundle: BundleDescriptor,
+    #[serde(default)]
+    dependencies: BTreeMap<String, toml::Value>,
+}
+
+pub(super) fn parse_bundle_descriptor(bytes: &[u8]) -> Result<BundleDescriptor, ServiceError> {
+    let content = std::str::from_utf8(bytes).map_err(|error| {
+        ServiceError::Validation(format!("Bundle skill-project.toml is not UTF-8: {error}"))
+    })?;
+    let value: toml::Value = toml::from_str(content).map_err(|error| {
+        ServiceError::Validation(format!("Invalid bundle skill-project.toml: {error}"))
+    })?;
+    if value.get("bundle").is_none() {
+        return Err(ServiceError::Validation(
+            "skill-project.toml has no [bundle] declaration. Add [bundle] with format, id, version, and at least one [bundle.members.<skill-id>] entry; run `fastskill bundle build --help` for an example."
+                .to_string(),
+        ));
+    }
+    let project: BundleProject = value.try_into().map_err(|error| {
+        ServiceError::Validation(format!("Invalid bundle skill-project.toml: {error}"))
+    })?;
+    project.bundle.validate(&project.dependencies)?;
+    Ok(project.bundle)
+}
+
 pub(crate) fn prepare_members(
     skills_directory: &Path,
     descriptor: &BundleDescriptor,

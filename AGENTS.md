@@ -68,6 +68,14 @@ typos
 cargo shear
 ```
 
+### Source File Size
+
+Production Rust files MUST remain at or below 1,000 lines. Before editing a production Rust file
+with more than 900 lines, agents MUST either reduce it first or keep the change size-neutral.
+New behavior in a file near that limit MUST be extracted into an appropriate sibling module;
+agents MUST NOT delete documentation or compress statements solely to fit the limit. Before every
+commit that changes Rust source, agents MUST run `bash scripts/check-source-size.sh`.
+
 ### Logging and Debugging
 
 ```bash

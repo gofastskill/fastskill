@@ -6,8 +6,8 @@
 //! the installed membership.
 
 use crate::core::bundle_persistence::{
-    apply_personal_override, digest_directory, digest_release, prepare_members,
-    remove_skill_directory, replace_skill_directory, restore_personal_overrides,
+    apply_personal_override, digest_directory, digest_release, parse_bundle_descriptor,
+    prepare_members, remove_skill_directory, replace_skill_directory, restore_personal_overrides,
     save_bundle_declarations, BundleHistory, BundleOverrideDeclaration, BundleTransaction,
 };
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
@@ -78,7 +78,7 @@ impl BundleService {
     pub fn build(&self, output_directory: &Path) -> Result<BundleBuildResult, ServiceError> {
         let manifest_path = self.project_root.join("skill-project.toml");
         let manifest_bytes = fs::read(&manifest_path).map_err(ServiceError::Io)?;
-        let descriptor = BundleDescriptor::parse(&manifest_bytes)?;
+        let descriptor = parse_bundle_descriptor(&manifest_bytes)?;
         let members = prepare_members(&self.skills_directory, &descriptor)?;
         fs::create_dir_all(output_directory).map_err(ServiceError::Io)?;
 
@@ -119,7 +119,7 @@ impl BundleService {
         if value.get("bundle").is_none() {
             return Ok(false);
         }
-        BundleDescriptor::parse(&manifest)?;
+        parse_bundle_descriptor(&manifest)?;
         Ok(true)
     }
 
@@ -747,13 +747,6 @@ struct BundleReplacement {
     source: PathBuf,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct BundleProject {
-    bundle: BundleDescriptor,
-    #[serde(default)]
-    dependencies: BTreeMap<String, toml::Value>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct BundleDescriptor {
     #[serde(rename = "format")]
@@ -765,18 +758,10 @@ pub(crate) struct BundleDescriptor {
 }
 
 impl BundleDescriptor {
-    fn parse(bytes: &[u8]) -> Result<Self, ServiceError> {
-        let content = std::str::from_utf8(bytes).map_err(|error| {
-            ServiceError::Validation(format!("Bundle skill-project.toml is not UTF-8: {error}"))
-        })?;
-        let project: BundleProject = toml::from_str(content).map_err(|error| {
-            ServiceError::Validation(format!("Invalid bundle skill-project.toml: {error}"))
-        })?;
-        project.bundle.validate(&project.dependencies)?;
-        Ok(project.bundle)
-    }
-
-    fn validate(&self, dependencies: &BTreeMap<String, toml::Value>) -> Result<(), ServiceError> {
+    pub(super) fn validate(
+        &self,
+        dependencies: &BTreeMap<String, toml::Value>,
+    ) -> Result<(), ServiceError> {
         if self.format_marker != BUNDLE_FORMAT {
             return Err(ServiceError::Validation(format!(
                 "Archive is not a supported FastSkill bundle (expected format '{BUNDLE_FORMAT}')"
@@ -830,7 +815,7 @@ impl PreparedBundle {
                     "Bundle archive is missing root skill-project.toml".to_string(),
                 )
             })?;
-        let descriptor = BundleDescriptor::parse(&manifest_bytes)?;
+        let descriptor = parse_bundle_descriptor(&manifest_bytes)?;
         let members = prepare_members(&temporary.path().join("skills"), &descriptor)?;
         let lock_content =
             fs::read_to_string(temporary.path().join("skills.lock")).map_err(|_| {
