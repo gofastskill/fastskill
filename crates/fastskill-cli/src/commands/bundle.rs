@@ -20,7 +20,7 @@ pub struct BuildArgs {
 impl IntoCommandSpec for BuildArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
-            summary: "Build a self-contained skill bundle",
+            summary: "Build the bundle declared in skill-project.toml's [bundle] section",
             syntax: Some("bundle build [--output DIRECTORY]"),
             category: Some("packages"),
             examples: vec![
