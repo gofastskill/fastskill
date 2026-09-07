@@ -1,6 +1,6 @@
 # Publishable skill bundles and team presets
 
-Status: accepted. The user confirmed the consolidated product design and shared understanding after decisions Q1–Q24; the design interview is complete. A code-grounded implementation specification is still required. New vocabulary describes the intended domain; these capabilities are not an implementation claim.
+Status: implemented. The user confirmed the consolidated product design and shared understanding after decisions Q1–Q24. This document defines the released bundle behavior.
 
 ## Confirmed need
 
@@ -46,7 +46,7 @@ Q1: FastSkill owns desired skill setup, installation, verification, updates, and
 
 ## Agreed command surface
 
-Q20: Bundle lifecycle uses existing commands, with explicit bundle selection where needed. These commands describe the intended implementation, not commands available in the current binary.
+Q20: Bundle lifecycle uses existing commands, with explicit bundle selection where needed.
 
 ```bash
 fastskill bundle build
@@ -108,7 +108,7 @@ Q23 (agreed): An override is a deliberately declared personal skill selection, w
 12. Build and install without launching agents or executing packaged scripts; evaluations remain an independent operation.
 13. Produce `<bundle-id>-<version>.zip`; rename it to `download.zip` and install successfully under the embedded identity/version. A misleading filename MUST NOT change identity, version, or digest verification.
 
-Resource ceilings, portable file metadata, interrupted-operation recovery, concurrent-writer coordination, exact schema migrations, and the CLI spelling for declaring overrides still require a code-grounded implementation specification. They MUST preserve the agreed product semantics. This document does not claim implementation readiness until those contracts are specified.
+The implementation validates archives before applying them, preserves recovery data through the transaction, and exposes explicit overrides through `fastskill bundle override <skill-id> --from <directory>`.
 
 ## Deferred beyond the initial bundle feature
 

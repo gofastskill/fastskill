@@ -34,6 +34,9 @@ pub struct RemoveArgs {
     /// Force removal without confirmation
     pub force: bool,
 
+    /// Remove an installed bundle and its ownership
+    pub bundle: Option<String>,
+
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
@@ -74,6 +77,17 @@ impl IntoCommandSpec for RemoveArgs {
                     help: "Force removal without confirmation",
                     kind: ArgKind::Flag,
                     value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    default: None,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "bundle",
+                    long: Some("bundle"),
+                    short: None,
+                    help: "Installed bundle identity to remove",
+                    kind: ArgKind::Option,
+                    value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     default: None,
                     ..Default::default()
@@ -134,6 +148,13 @@ impl FromArgValueMap for RemoveArgs {
                 _ => vec![],
             },
             force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
+            bundle: map.get("bundle").and_then(|value| {
+                if let ArgValue::Str(bundle) = value {
+                    Some(bundle.clone())
+                } else {
+                    None
+                }
+            }),
             skills_dir: map.get("skills-dir").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(PathBuf::from(s))
@@ -354,6 +375,48 @@ pub async fn execute_remove(
     let reindex = args.reindex;
     let no_reindex = args.no_reindex;
 
+    if let Some(bundle) = &args.bundle {
+        if global {
+            return Err(CliError::Validation(
+                "Bundle removal requires a project Manifest and does not support --global"
+                    .to_string(),
+            ));
+        }
+        if !args.skill_ids.is_empty() {
+            return Err(CliError::Validation(
+                "Use either skill IDs or --bundle <bundle-id>, not both".to_string(),
+            ));
+        }
+        if !confirm_removal(&[format!("bundle {bundle}")], args.force)? {
+            crate::outln!("Removal cancelled.");
+            return Ok(());
+        }
+        let current = env::current_dir().map_err(|error| {
+            CliError::Config(format!("Failed to determine current directory: {error}"))
+        })?;
+        let project = resolve_project_file(&current);
+        if !project.found {
+            return Err(CliError::Config(
+                "skill-project.toml not found in this directory or any parent".to_string(),
+            ));
+        }
+        let root = project.path.parent().ok_or_else(|| {
+            CliError::Config("skill-project.toml has no project directory".to_string())
+        })?;
+        fastskill_core::core::bundle::BundleService::new(
+            root,
+            service.config().skill_storage_path.clone(),
+        )
+        .remove(bundle)
+        .map_err(CliError::Service)?;
+        crate::outln!("Removed bundle: {bundle}");
+        crate::outln!(
+            "{}",
+            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+        );
+        return Ok(());
+    }
+
     // Validate inputs
     if args.skill_ids.is_empty() {
         return Err(CliError::Config("No skill IDs provided".to_string()));
@@ -430,6 +493,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec![],
             force: false,
+            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -458,6 +522,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["invalid@skill@id".to_string()],
             force: true,
+            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -486,6 +551,7 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["nonexistent@1.0.0".to_string()],
             force: true,
+            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -553,6 +619,7 @@ source = { path = ".claude/skills/test-skill" }
         let args = RemoveArgs {
             skill_ids: vec!["test-skill".to_string()],
             force: true,
+            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -626,6 +693,7 @@ source = { path = ".claude/skills/test-skill" }
         let args = RemoveArgs {
             skill_ids: vec!["test-skill".to_string()],
             force: true,
+            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,

@@ -691,8 +691,23 @@ impl SkillProjectToml {
 
         let content = toml::to_string_pretty(to_write)
             .map_err(|e| ManifestError::Serialize(e.to_string()))?;
+        let mut document = content
+            .parse::<toml_edit::DocumentMut>()
+            .map_err(|e| ManifestError::Serialize(e.to_string()))?;
+        if path.exists() {
+            if let Ok(existing_content) = std::fs::read_to_string(path) {
+                if let Ok(existing) = existing_content.parse::<toml_edit::DocumentMut>() {
+                    for table in ["bundles", "overrides"] {
+                        if let Some(item) = existing.get(table) {
+                            document[table] = item.clone();
+                        }
+                    }
+                }
+            }
+        }
 
-        crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
+        crate::utils::atomic_write(path, document.to_string().as_bytes())
+            .map_err(ManifestError::Io)?;
 
         Ok(())
     }

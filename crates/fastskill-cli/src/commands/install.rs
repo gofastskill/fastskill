@@ -8,6 +8,7 @@ use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality}
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
+    bundle::BundleService,
     dependency_resolver::{DependencyResolver, SkillInstallItem},
     lock::{project_lock_path, ProjectSkillsLock},
     manifest::{SkillEntry, SkillProjectToml},
@@ -255,6 +256,23 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
 
     // Resolve skills directory from config
     let skills_dir = crate::config::resolve_skills_storage_directory(false)?;
+
+    let restored_bundles = if project_file_result.found {
+        let project_root = project_file_path.parent().ok_or_else(|| {
+            CliError::Config("skill-project.toml has no project directory".to_string())
+        })?;
+        BundleService::new(project_root, skills_dir.clone())
+            .install_declared()
+            .map_err(CliError::Service)?
+    } else {
+        Vec::new()
+    };
+    for bundle in restored_bundles.iter().filter(|bundle| !bundle.unchanged) {
+        crate::outln!(
+            "  {}",
+            messages::ok(&format!("Restored bundle {}@{}", bundle.id, bundle.version))
+        );
+    }
 
     // Initialize service
     // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up

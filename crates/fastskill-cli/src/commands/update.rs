@@ -1,6 +1,6 @@
 //! Update command - updates skills in the configured skills directory
 
-use crate::config::create_service_config;
+use crate::config::{create_service_config, resolve_skills_storage_directory};
 use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::messages;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -16,7 +16,9 @@ use fastskill_core::core::{
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
+use tempfile::TempDir;
 
 /// Update skills to latest versions (behavior matrix affects manifest, lock, and installed state)
 ///
@@ -46,6 +48,12 @@ pub struct UpdateArgs {
     /// Update from specific source
     #[allow(dead_code)]
     source: Option<String>,
+
+    /// Installed bundle identity to update
+    bundle: Option<String>,
+
+    /// Replacement bundle artifact
+    from: Option<String>,
 
     /// Update strategy: latest, patch, minor, major
     strategy: String,
@@ -114,6 +122,24 @@ impl IntoCommandSpec for UpdateArgs {
                     ..Default::default()
                 },
                 ArgSpec {
+                    name: "bundle",
+                    kind: ArgKind::Option,
+                    long: Some("bundle"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Update this installed bundle",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "from",
+                    kind: ArgKind::Option,
+                    long: Some("from"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Replacement bundle ZIP artifact",
+                    ..Default::default()
+                },
+                ArgSpec {
                     name: "strategy",
                     kind: ArgKind::Option,
                     long: Some("strategy"),
@@ -164,6 +190,8 @@ impl FromArgValueMap for UpdateArgs {
             dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
             version: map.get("to-version").and_then(opt_str),
             source: map.get("source").and_then(opt_str),
+            bundle: map.get("bundle").and_then(opt_str),
+            from: map.get("from").and_then(opt_str),
             strategy: map
                 .get("strategy")
                 .and_then(opt_str)
@@ -174,11 +202,92 @@ impl FromArgValueMap for UpdateArgs {
     }
 }
 
-pub async fn execute_update(args: UpdateArgs, global: bool) -> CliResult<()> {
+pub async fn execute_update(
+    args: UpdateArgs,
+    global: bool,
+    skills_dir_override: Option<PathBuf>,
+) -> CliResult<()> {
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
             "--reindex and --no-reindex cannot be used together".to_string(),
         ));
+    }
+    if args.bundle.is_some() || args.from.is_some() {
+        if global {
+            return Err(CliError::Validation(
+                "Bundle updates require a project Manifest and do not support --global".to_string(),
+            ));
+        }
+        let bundle = args.bundle.as_deref().ok_or_else(|| {
+            CliError::Validation("--from requires --bundle <bundle-id>".to_string())
+        })?;
+        let artifact = args.from.as_deref().ok_or_else(|| {
+            CliError::Validation("--bundle requires --from <bundle.zip>".to_string())
+        })?;
+        if args.skill_id.is_some() {
+            return Err(CliError::Validation(
+                "A bundle update does not accept a skill ID positional argument".to_string(),
+            ));
+        }
+        let current = env::current_dir().map_err(|error| {
+            CliError::Config(format!("Failed to determine current directory: {error}"))
+        })?;
+        let project = resolve_project_file(&current);
+        if !project.found {
+            return Err(CliError::Config(manifest_required_message().to_string()));
+        }
+        let root = project.path.parent().ok_or_else(|| {
+            CliError::Config("skill-project.toml has no project directory".to_string())
+        })?;
+        let downloaded_artifact;
+        let artifact_path = if artifact.starts_with("https://") {
+            let response = reqwest::get(artifact)
+                .await
+                .map_err(|error| {
+                    CliError::InvalidSource(format!("Failed to download '{artifact}': {error}"))
+                })?
+                .error_for_status()
+                .map_err(|error| {
+                    CliError::InvalidSource(format!("Failed to download '{artifact}': {error}"))
+                })?;
+            let bytes = response.bytes().await.map_err(|error| {
+                CliError::InvalidSource(format!("Failed to read '{artifact}': {error}"))
+            })?;
+            downloaded_artifact = TempDir::new().map_err(CliError::Io)?;
+            let path = downloaded_artifact.path().join("bundle.zip");
+            fs::write(&path, bytes).map_err(CliError::Io)?;
+            path
+        } else if artifact.contains("://") {
+            return Err(CliError::Validation(
+                "Bundle URLs must use HTTPS. Download private artifacts with your authenticated tool, then pass the local ZIP."
+                    .to_string(),
+            ));
+        } else {
+            PathBuf::from(artifact)
+        };
+        let skills_directory = match skills_dir_override {
+            Some(path) => path,
+            None => resolve_skills_storage_directory(false)?,
+        };
+        let service = fastskill_core::core::bundle::BundleService::new(root, skills_directory);
+        let preview = service
+            .preview_update(bundle, &artifact_path)
+            .map_err(CliError::Service)?;
+        for change in preview {
+            crate::outln!("  {change}");
+        }
+        if args.dry_run || args.check {
+            return Ok(());
+        }
+        let result = service
+            .update(bundle, &artifact_path)
+            .map_err(CliError::Service)?;
+        crate::outln!("Updated bundle {}@{}", result.id, result.version);
+        crate::outln!(
+            "{}",
+            messages::ok("Updated skill-project.toml and skills.lock")
+        );
+        return Ok(());
     }
     let reindex = args.reindex;
     let no_reindex = args.no_reindex;
@@ -522,12 +631,14 @@ mod tests {
             dry_run: false,
             version: None,
             source: None,
+            bundle: None,
+            from: None,
             strategy: "latest".to_string(),
             reindex: false,
             no_reindex: false,
         };
 
-        let result = execute_update(args, false).await;
+        let result = execute_update(args, false, None).await;
         assert!(result.is_err());
         if let Err(CliError::Config(msg)) = result {
             assert!(
@@ -618,12 +729,14 @@ version = "1.0.0"
             dry_run: false,
             version: None,
             source: None,
+            bundle: None,
+            from: None,
             strategy: "invalid-strategy".to_string(),
             reindex: false,
             no_reindex: false,
         };
 
-        let result = execute_update(args, false).await;
+        let result = execute_update(args, false, None).await;
         // Should fail for invalid strategy or missing skills_directory
         assert!(result.is_err(), "Expected error, got: {:?}", result);
         if let Err(CliError::Config(msg)) = result {
@@ -678,13 +791,15 @@ version = "1.0.0"
             dry_run: false,
             version: None,
             source: None,
+            bundle: None,
+            from: None,
             strategy: "latest".to_string(),
             reindex: false,
             no_reindex: false,
         };
 
         // Should succeed in check mode even with no skills
-        let result = execute_update(args, false).await;
+        let result = execute_update(args, false, None).await;
         // May succeed or fail depending on lock file, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
     }
@@ -740,12 +855,14 @@ source = { path = ".claude/skills/test-skill" }
             dry_run: false,
             version: None,
             source: None,
+            bundle: None,
+            from: None,
             strategy: "latest".to_string(),
             reindex: false,
             no_reindex: false,
         };
 
-        let result = execute_update(args, false).await;
+        let result = execute_update(args, false, None).await;
         // Should succeed in check mode or fail with appropriate error
         assert!(result.is_ok() || result.is_err());
     }

@@ -1,0 +1,42 @@
+---
+title: Bundle command
+description: Build and customize self-contained team skill bundles.
+---
+
+# Bundle command
+
+Bundles package a selected team setup into a versioned ZIP. A recipient installs it with `fastskill add <bundle.zip>`, lists installed bundles with `fastskill list --bundles`, and applies a selected replacement with `fastskill update --bundle <id> --from <bundle.zip-or-https-url>`.
+
+## Build
+
+`fastskill bundle build` creates `<bundle-id>-<version>.zip` from the current project's `[bundle]` declaration, selected skills, resource files, and their installed dependency closure. The artifact contains its own content digests and can be renamed after publication.
+
+```bash
+fastskill bundle build
+fastskill bundle build --output dist
+```
+
+The source project needs a bundle declaration:
+
+```toml
+[bundle]
+format = "fastskill-bundle-v1"
+id = "payments-team"
+version = "1.2.0"
+
+[bundle.members.code-review]
+overridable = false
+
+[dependencies]
+code-review = "1.0.0"
+```
+
+## Personal overrides
+
+An edited installed file is not an approved override. Put the customized skill in a separate directory and declare it explicitly. Every installed bundle that owns the skill must mark the member as `overridable = true`.
+
+```bash
+fastskill bundle override code-review --from ./my-code-review
+```
+
+`fastskill install` restores declared bundles and valid personal overrides when their local artifacts and override sources are available.
