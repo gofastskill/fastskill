@@ -36,6 +36,9 @@ pub struct ListArgs {
     /// Show detailed information (version, manifest/lock/installed status, source path, type)
     pub details: bool,
 
+    /// List installed bundles rather than individual skills
+    pub bundles: bool,
+
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
     pub skills_dir: Option<std::path::PathBuf>,
@@ -57,7 +60,11 @@ impl IntoCommandSpec for ListArgs {
             summary: "List locally installed skills",
             syntax: Some("list [OPTIONS]"),
             category: Some("discovery"),
-            examples: vec!["fastskill list", "fastskill list --details --format json"],
+            examples: vec![
+                "fastskill list",
+                "fastskill list --details --format json",
+                "fastskill list --bundles",
+            ],
             args: vec![
                 ArgSpec {
                     name: "format",
@@ -86,6 +93,15 @@ impl IntoCommandSpec for ListArgs {
                     help: "Show detailed information",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "bundles",
+                    kind: ArgKind::Flag,
+                    long: Some("bundles"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "List installed bundles",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -107,6 +123,7 @@ impl FromArgValueMap for ListArgs {
                 .and_then(parse_output_format),
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
             details: matches!(map.get("details"), Some(ArgValue::Bool(true))),
+            bundles: matches!(map.get("bundles"), Some(ArgValue::Bool(true))),
             // skills_dir is omitted from the spec; rely on the global --skills-dir flag
             skills_dir: None,
         }
@@ -161,6 +178,35 @@ pub async fn execute_list(
     }
 
     let project_file_path = project_file_result.path;
+    if args.bundles {
+        let root = project_file_path.parent().ok_or_else(|| {
+            CliError::Config("skill-project.toml has no project directory".to_string())
+        })?;
+        let bundles = fastskill_core::core::bundle::BundleService::new(
+            root,
+            service.config().skill_storage_path.clone(),
+        )
+        .list()
+        .map_err(CliError::Service)?;
+        if matches!(format, OutputFormat::Json) {
+            let rendered = serde_json::to_string_pretty(&bundles).map_err(|error| {
+                CliError::Config(format!("Failed to format bundle list as JSON: {error}"))
+            })?;
+            crate::outln!("{rendered}");
+        } else if bundles.is_empty() {
+            crate::outln!("No bundles installed");
+        } else {
+            for bundle in bundles {
+                crate::outln!(
+                    "{} {} [{}]",
+                    bundle.id,
+                    bundle.version,
+                    bundle.members.join(", ")
+                );
+            }
+        }
+        return Ok(());
+    }
     let lock_path = project_file_path
         .parent()
         .map(|p| p.join("skills.lock"))
@@ -318,6 +364,7 @@ mod tests {
             format: Some(OutputFormat::Table),
             json: true,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 
@@ -372,6 +419,7 @@ mod tests {
             format: None,
             json: false,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 
@@ -427,6 +475,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 
@@ -501,6 +550,7 @@ source = { path = ".claude/skills/test-skill" }
             format: None,
             json: false,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 
@@ -549,6 +599,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 
@@ -597,6 +648,7 @@ skills_directory = ".claude/skills"
             format: None,
             json: false,
             details: false,
+            bundles: false,
             skills_dir: None,
         };
 

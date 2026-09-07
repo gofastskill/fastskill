@@ -60,6 +60,34 @@ pub struct ProjectSkillsLock {
     pub metadata: ProjectLockMetadata,
     #[serde(default)]
     pub skills: Vec<ProjectLockedSkillEntry>,
+    #[serde(default)]
+    pub bundles: Vec<ProjectLockedBundleEntry>,
+    #[serde(default)]
+    pub overrides: Vec<ProjectLockedPersonalOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectLockedBundleMember {
+    pub id: String,
+    pub digest: String,
+    #[serde(default)]
+    pub overridable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectLockedBundleEntry {
+    pub id: String,
+    pub version: String,
+    pub artifact: String,
+    pub digest: String,
+    pub members: Vec<ProjectLockedBundleMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectLockedPersonalOverride {
+    pub id: String,
+    pub origin: String,
+    pub digest: String,
 }
 
 impl ProjectSkillsLock {
@@ -70,6 +98,8 @@ impl ProjectSkillsLock {
                 fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             },
             skills: Vec::new(),
+            bundles: Vec::new(),
+            overrides: Vec::new(),
         }
     }
 
@@ -204,6 +234,8 @@ impl ProjectSkillsLock {
 
     fn sort_entries(&mut self) {
         self.skills.sort_by(|a, b| a.id.cmp(&b.id));
+        self.bundles.sort_by(|a, b| a.id.cmp(&b.id));
+        self.overrides.sort_by(|a, b| a.id.cmp(&b.id));
     }
 }
 
@@ -388,6 +420,8 @@ impl LegacyProjectSkillsLock {
                 fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             },
             skills,
+            bundles: Vec::new(),
+            overrides: Vec::new(),
         })
     }
 }

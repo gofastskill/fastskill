@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Usage: [FASTSKILL_BIN] <command> [arguments]
@@ -33,6 +34,7 @@ Setup:
           Usage: doctor [OPTIONS]
 Other:
   analyze      Diagnostic and analysis commands
+  bundle       Build and manage publishable skill bundles
   cache        Inspect and reclaim the on-disk skill content cache
   completion   Emit a shell completion stub for top-level subcommands
   eval         Evaluation commands for skill quality assurance

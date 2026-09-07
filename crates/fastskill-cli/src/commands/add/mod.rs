@@ -1,5 +1,6 @@
 //! Add command implementation
 
+pub mod bundle;
 pub mod install;
 pub mod skill_def;
 pub mod sources;
@@ -528,6 +529,13 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
 
     if !global {
         ensure_manifest()?;
+    }
+
+    if !global
+        && !args.recursive
+        && bundle::install_if_bundle(service, &source, &args, reindex, no_reindex).await?
+    {
+        return Ok(());
     }
 
     // `--global` and `--recursive` are not (yet) expressible through the core

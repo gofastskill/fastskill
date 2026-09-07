@@ -691,7 +691,6 @@ impl SkillProjectToml {
 
         let content = toml::to_string_pretty(to_write)
             .map_err(|e| ManifestError::Serialize(e.to_string()))?;
-
         crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
 
         Ok(())

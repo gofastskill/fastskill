@@ -93,8 +93,8 @@ fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
 }
 
 use commands::{
-    add, analyze, cache, doctor, eval, init, install, list, marketplace, mcp, read, reindex,
-    remove, repos, search, serve, skillopt, update,
+    add, analyze, bundle, cache, doctor, eval, init, install, list, marketplace, mcp, read,
+    reindex, remove, repos, search, serve, skillopt, update,
 };
 
 /// The binary's name, as reported by `--version` and used to derive MCP tool
@@ -310,12 +310,44 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         )?
         .register_out(path!["update"], |ctx, args: update::UpdateArgs| {
             let global = ctx_global(ctx);
+            let skills_dir = ctx_skills_dir(ctx);
             async move {
-                update::execute_update(args, global)
+                update::execute_update(args, global, skills_dir)
                     .await
                     .map_err(anyhow::Error::from)
             }
         })?;
+
+    let builder = {
+        use cli_framework::spec::command_tree::GroupMetadata;
+        builder
+            .register_group(
+                &path!["bundle"],
+                GroupMetadata {
+                    summary: "Build and manage publishable skill bundles",
+                    hidden: false,
+                },
+            )?
+            .register_out(path!["bundle", "build"], |ctx, args: bundle::BuildArgs| {
+                let skills_dir = ctx_skills_dir(ctx);
+                async move {
+                    bundle::execute_build(args, skills_dir)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            })?
+            .register_out(
+                path!["bundle", "override"],
+                |ctx, args: bundle::OverrideArgs| {
+                    let skills_dir = ctx_skills_dir(ctx);
+                    async move {
+                        bundle::execute_override(args, skills_dir)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                },
+            )?
+    };
 
     // ── Typed commands that need FsState (service injection) ─────────────────
     let builder = {

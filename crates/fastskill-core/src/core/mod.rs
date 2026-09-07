@@ -2,6 +2,8 @@
 
 pub mod analysis;
 pub mod build_cache;
+pub mod bundle;
+pub(crate) mod bundle_persistence;
 pub mod cache;
 pub mod change_detection;
 pub mod context_resolver;
@@ -37,6 +39,7 @@ pub mod version_bump;
 // Re-export main types for convenience
 // Note: Selective re-exports to avoid conflicts
 pub use build_cache::{BuildCache, SkillCacheEntry};
+pub use bundle::{BundleBuildResult, BundleService, InstalledBundle, BUNDLE_FORMAT};
 // cache (PRD 006 / RFQ 004): on-disk skill content + index cache. `SkillCache`
 // is the single seam for it -- `install.rs` (US-002/003/004) fetches through
 // it, `repos refresh` (US-005) writes its index through it, and `fastskill
@@ -59,7 +62,8 @@ pub use embedding::{EmbeddingService, OpenAIEmbeddingService};
 // lock
 pub use lock::{
     global_lock_path, project_lock_path, GlobalLockMetadata, GlobalLockedSkillEntry,
-    GlobalSkillsLock, LockError, LockMismatch, ProjectLockMetadata, ProjectLockedSkillEntry,
+    GlobalSkillsLock, LockError, LockMismatch, ProjectLockMetadata, ProjectLockedBundleEntry,
+    ProjectLockedBundleMember, ProjectLockedPersonalOverride, ProjectLockedSkillEntry,
     ProjectSkillsLock,
 };
 

@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Uninstall skills (removes from manifest and local installation)
@@ -11,10 +12,11 @@ Arguments:
 
 Options:
   -f, --force                    Force removal without confirmation
+      --bundle <bundle>          Installed bundle identity to remove
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --skills-dir <skills-dir>  Skills directory path (overrides default discovery)
-      --reindex                  Trigger reindex after removal (overrides config)
   -v, --verbose                  Enable verbose output
+      --reindex                  Trigger reindex after removal (overrides config)
       --no-reindex               Skip reindex after removal
   -h, --help                     Print help
   -V, --version                  Print version
