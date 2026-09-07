@@ -669,6 +669,27 @@ impl SkillProjectToml {
         Ok(project)
     }
 
+    fn validate_manifest_path(path: &Path) -> Result<PathBuf, ManifestError> {
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let base = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+
+        let resolved = if path.exists() {
+            path.canonicalize().map_err(ManifestError::Io)?
+        } else {
+            base.join(path.file_name().ok_or_else(|| {
+                ManifestError::Parse("Invalid manifest path: missing file name".to_string())
+            })?)
+        };
+
+        if !resolved.starts_with(&base) {
+            return Err(ManifestError::Parse(
+                "Invalid manifest path: path escapes project directory".to_string(),
+            ));
+        }
+
+        Ok(resolved)
+    }
+
     /// Save skill-project.toml to file, stamping the current schema version.
     ///
     /// This is where a legacy manifest becomes a current one on disk. Reading never writes,
@@ -678,6 +699,8 @@ impl SkillProjectToml {
     ///
     /// Stamping here rather than at every call site means no writer can forget.
     pub fn save_to_file(&self, path: &Path) -> Result<(), ManifestError> {
+        let validated_path = Self::validate_manifest_path(path)?;
+
         let stamped;
         let to_write = if self.schema_version.as_deref() == Some(MANIFEST_SCHEMA_VERSION) {
             self
@@ -694,8 +717,8 @@ impl SkillProjectToml {
         let mut document = content
             .parse::<toml_edit::DocumentMut>()
             .map_err(|e| ManifestError::Serialize(e.to_string()))?;
-        if path.exists() {
-            if let Ok(existing_content) = std::fs::read_to_string(path) {
+        if validated_path.exists() {
+            if let Ok(existing_content) = std::fs::read_to_string(&validated_path) {
                 if let Ok(existing) = existing_content.parse::<toml_edit::DocumentMut>() {
                     for table in ["bundles", "overrides"] {
                         if let Some(item) = existing.get(table) {
@@ -706,7 +729,7 @@ impl SkillProjectToml {
             }
         }
 
-        crate::utils::atomic_write(path, document.to_string().as_bytes())
+        crate::utils::atomic_write(&validated_path, document.to_string().as_bytes())
             .map_err(ManifestError::Io)?;
 
         Ok(())
