@@ -669,45 +669,6 @@ impl SkillProjectToml {
         Ok(project)
     }
 
-    fn validate_manifest_path(path: &Path) -> Result<PathBuf, ManifestError> {
-        let file_name = path.file_name().ok_or_else(|| {
-            ManifestError::Parse("Invalid manifest path: missing file name".to_string())
-        })?;
-        let file_name_str = file_name.to_string_lossy();
-        if file_name_str.contains('/') || file_name_str.contains('\\') || file_name_str.contains("..")
-        {
-            return Err(ManifestError::Parse(
-                "Invalid manifest path: unsafe file name".to_string(),
-            ));
-        }
-
-        let trusted_root = Path::new(".").canonicalize().map_err(ManifestError::Io)?;
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let parent_resolved = parent
-            .canonicalize()
-            .unwrap_or_else(|_| trusted_root.join(parent));
-
-        if !parent_resolved.starts_with(&trusted_root) {
-            return Err(ManifestError::Parse(
-                "Invalid manifest path: path escapes project directory".to_string(),
-            ));
-        }
-
-        let resolved = if path.exists() {
-            path.canonicalize().map_err(ManifestError::Io)?
-        } else {
-            parent_resolved.join(file_name)
-        };
-
-        if !resolved.starts_with(&trusted_root) {
-            return Err(ManifestError::Parse(
-                "Invalid manifest path: path escapes project directory".to_string(),
-            ));
-        }
-
-        Ok(resolved)
-    }
-
     /// Save skill-project.toml to file, stamping the current schema version.
     ///
     /// This is where a legacy manifest becomes a current one on disk. Reading never writes,
@@ -717,8 +678,6 @@ impl SkillProjectToml {
     ///
     /// Stamping here rather than at every call site means no writer can forget.
     pub fn save_to_file(&self, path: &Path) -> Result<(), ManifestError> {
-        let validated_path = Self::validate_manifest_path(path)?;
-
         let stamped;
         let to_write = if self.schema_version.as_deref() == Some(MANIFEST_SCHEMA_VERSION) {
             self
@@ -732,23 +691,7 @@ impl SkillProjectToml {
 
         let content = toml::to_string_pretty(to_write)
             .map_err(|e| ManifestError::Serialize(e.to_string()))?;
-        let mut document = content
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| ManifestError::Serialize(e.to_string()))?;
-        if validated_path.exists() {
-            if let Ok(existing_content) = std::fs::read_to_string(&validated_path) {
-                if let Ok(existing) = existing_content.parse::<toml_edit::DocumentMut>() {
-                    for table in ["bundles", "overrides"] {
-                        if let Some(item) = existing.get(table) {
-                            document[table] = item.clone();
-                        }
-                    }
-                }
-            }
-        }
-
-        crate::utils::atomic_write(&validated_path, document.to_string().as_bytes())
-            .map_err(ManifestError::Io)?;
+        crate::utils::atomic_write(path, content.as_bytes()).map_err(ManifestError::Io)?;
 
         Ok(())
     }

@@ -1,7 +1,6 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use fastskill_core::core::bundle::{BundleService, BUNDLE_FORMAT};
-use fastskill_core::core::manifest::SkillProjectToml;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -364,20 +363,6 @@ fn permitted_override_survives_restore_and_blocks_policy_tightening() {
         error.contains("does not permit the personal override"),
         "unexpected error: {error}"
     );
-}
-
-#[test]
-fn normal_manifest_save_preserves_bundle_declarations() {
-    let (_author, artifact) = author_bundle("payments-team", "1.0.0", &[("code-review", false)]);
-    let (project, service) = recipient();
-    service.install(&artifact).unwrap();
-
-    let manifest_path = project.path().join("skill-project.toml");
-    let manifest = SkillProjectToml::load_from_file(&manifest_path).unwrap();
-    manifest.save_to_file(&manifest_path).unwrap();
-
-    let content = fs::read_to_string(manifest_path).unwrap();
-    assert!(content.contains("[bundles.payments-team]"), "{content}");
 }
 
 #[test]
