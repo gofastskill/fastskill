@@ -10,11 +10,11 @@ FastSkill is a package manager and operational toolkit for Claude Code-compatibl
 A unit of agent capability defined by a `SKILL.md` (frontmatter + body) plus an optional base directory of resources. Identified by a **Skill ID** derived from its directory name.
 
 **Manifest**:
-`skill-project.toml` — the *desired* set of skills (dependencies, groups, repositories). The declarative source of intent.
+`skill-project.toml` — the *desired* set of skills and bundles, with their dependencies, groups, and repositories. The declarative source of intent.
 _Avoid_: project file, config.
 
 **Lock**:
-`skills.lock` — the *pinned* exact versions resolved from the Manifest. Used by `install --lock` for reproducible installs.
+`skills.lock` — the *pinned* exact skill versions and bundle releases resolved from the Manifest. Used by `install --lock` for reproducible installs.
 _Avoid_: lockfile (in prose), pin file.
 
 **Installed skill**:
@@ -26,6 +26,36 @@ The comparison of the three states — Manifest (desired), Lock (pinned), skills
 **Version constraint**:
 The *allowed range* a Manifest dependency accepts, used only to filter candidate versions during resolution — distinct from the Lock, which pins the one chosen version. A **bare version (`1.2.3`) means exactly that version**, not a compatible range; ranges are opt-in via explicit `^`/`~`/`>=`/`<=`/comma operators. See [ADR-0004](./docs/adr/0004-bare-version-is-exact.md).
 _Avoid_: version requirement, semver range (a bare version is *not* a range here).
+
+### Team presets
+
+**Bundle**:
+A named, versioned collection distributed as a self-contained ZIP package containing a `skill-project.toml` and the exact contents of its skills and their skill dependencies.
+_Avoid_: skill (when referring to the whole package).
+
+**Installed bundle**:
+A bundle recorded on a target with its identity, version, and skill membership, so its skills can be managed together while remaining individually inspectable.
+
+**Bundle release**:
+An immutable set of packaged contents identified by a bundle identity and version. Its version is independent of the versions of its member skills.
+
+**Skill ownership**:
+The recorded bundle memberships and explicit individual installation that require an installed skill to remain present. Multiple bundles may share a skill when its contents are identical.
+
+**Personal override**:
+An explicitly declared personal skill selection with its own origin that replaces bundled contents where every owning bundle permits it. An untracked edit is not an approved override.
+
+**Preset**:
+A named selection of skills and customization rules for a team or project.
+
+**Required skill**:
+A skill that a setup must contain at an allowed revision to satisfy its preset.
+
+**Overridable default**:
+A preset skill selection that a user may replace within the preset's customization rules.
+
+**Permitted addition**:
+A skill outside the preset's selections that its customization rules allow a user to add.
 
 ### Discovery axes
 
