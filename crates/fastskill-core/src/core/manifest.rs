@@ -670,18 +670,36 @@ impl SkillProjectToml {
     }
 
     fn validate_manifest_path(path: &Path) -> Result<PathBuf, ManifestError> {
+        let file_name = path.file_name().ok_or_else(|| {
+            ManifestError::Parse("Invalid manifest path: missing file name".to_string())
+        })?;
+        let file_name_str = file_name.to_string_lossy();
+        if file_name_str.contains('/') || file_name_str.contains('\\') || file_name_str.contains("..")
+        {
+            return Err(ManifestError::Parse(
+                "Invalid manifest path: unsafe file name".to_string(),
+            ));
+        }
+
+        let trusted_root = Path::new(".").canonicalize().map_err(ManifestError::Io)?;
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let base = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+        let parent_resolved = parent
+            .canonicalize()
+            .unwrap_or_else(|_| trusted_root.join(parent));
+
+        if !parent_resolved.starts_with(&trusted_root) {
+            return Err(ManifestError::Parse(
+                "Invalid manifest path: path escapes project directory".to_string(),
+            ));
+        }
 
         let resolved = if path.exists() {
             path.canonicalize().map_err(ManifestError::Io)?
         } else {
-            base.join(path.file_name().ok_or_else(|| {
-                ManifestError::Parse("Invalid manifest path: missing file name".to_string())
-            })?)
+            parent_resolved.join(file_name)
         };
 
-        if !resolved.starts_with(&base) {
+        if !resolved.starts_with(&trusted_root) {
             return Err(ManifestError::Parse(
                 "Invalid manifest path: path escapes project directory".to_string(),
             ));
