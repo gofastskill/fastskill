@@ -468,6 +468,8 @@ mod tests {
             "fastskill_repos_update",
             "fastskill_repos_refresh",
             "fastskill_marketplace_create",
+            "fastskill_bundle_build",
+            "fastskill_bundle_override",
             "fastskill_optimize_run",
         ] {
             assert!(names.contains(expected), "{} was not gated", expected);

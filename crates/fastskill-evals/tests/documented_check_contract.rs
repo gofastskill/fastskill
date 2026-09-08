@@ -5,6 +5,8 @@
 //! this shim. If a pin bump changes them, the docs are wrong and must be
 //! updated in the same PR — that is the point of this test.
 
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use fastskill_evals::{run_checks, suite_passes, ChecksToml};
 use std::path::Path;
 

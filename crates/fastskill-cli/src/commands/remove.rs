@@ -425,6 +425,27 @@ pub async fn execute_remove(
     // Validate all skills exist; get back parsed SkillIds
     let parsed_ids = validate_skills_exist(service, &args.skill_ids, global).await?;
 
+    if !global {
+        let current = env::current_dir().map_err(|error| {
+            CliError::Config(format!("Failed to determine current directory: {error}"))
+        })?;
+        let project = resolve_project_file(&current);
+        if project.found {
+            let root = project.path.parent().ok_or_else(|| {
+                CliError::Config("skill-project.toml has no project directory".to_string())
+            })?;
+            let bundle_service = fastskill_core::core::bundle::BundleService::new(
+                root,
+                service.config().skill_storage_path.clone(),
+            );
+            for raw_id in &args.skill_ids {
+                bundle_service
+                    .ensure_individual_removal_allowed(raw_id)
+                    .map_err(CliError::Service)?;
+            }
+        }
+    }
+
     // Get user confirmation
     if !confirm_removal(&args.skill_ids, args.force)? {
         crate::outln!("Removal cancelled.");

@@ -3,6 +3,7 @@
 pub mod analysis;
 pub mod build_cache;
 pub mod bundle;
+pub(crate) mod bundle_archive;
 pub(crate) mod bundle_persistence;
 pub mod cache;
 pub mod change_detection;

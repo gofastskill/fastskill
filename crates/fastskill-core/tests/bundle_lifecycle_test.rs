@@ -100,6 +100,34 @@ fn build_creates_a_versioned_self_contained_archive() {
 }
 
 #[test]
+fn build_rejects_a_member_version_outside_the_declared_constraint() {
+    let author = TempDir::new().unwrap();
+    write_bundle_project(
+        author.path(),
+        "payments-team",
+        "1.0.0",
+        &[("code-review", false)],
+    );
+    write_skill(author.path(), "code-review", "review");
+    fs::write(
+        author.path().join("skills/code-review/SKILL.md"),
+        "---\nname: code-review\nversion: \"9.0.0\"\ndescription: wrong version\n---\nreview\n",
+    )
+    .unwrap();
+
+    let error = BundleService::new(author.path(), author.path().join("skills"))
+        .build(author.path())
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains("does not satisfy declared dependency"),
+        "{error}"
+    );
+    assert!(!author.path().join("payments-team-1.0.0.zip").exists());
+}
+
+#[test]
 fn renamed_artifact_installs_members_and_records_the_bundle() {
     let (_author, artifact) = author_bundle("payments-team", "1.2.0", &[("code-review", false)]);
     let (project, service) = recipient();
@@ -250,6 +278,46 @@ fn declared_artifact_can_be_restored_after_the_skill_directory_is_removed() {
         .path()
         .join(".claude/skills/code-review/SKILL.md")
         .exists());
+}
+
+#[test]
+fn locked_restore_uses_the_pinned_bundle_release() {
+    let (_initial_author, initial) =
+        author_bundle("payments-team", "1.0.0", &[("code-review", false)]);
+    let updated_author = TempDir::new().unwrap();
+    write_bundle_project(
+        updated_author.path(),
+        "payments-team",
+        "1.1.0",
+        &[("code-review", false)],
+    );
+    write_skill(updated_author.path(), "code-review", "review-v2");
+    let updated = BundleService::new(updated_author.path(), updated_author.path().join("skills"))
+        .build(updated_author.path())
+        .unwrap()
+        .artifact;
+    let (project, service) = recipient();
+    service.install(&initial).unwrap();
+    let bundle_dir = project.path().join(".fastskill/bundles");
+    fs::copy(&updated, bundle_dir.join("payments-team-1.1.0.zip")).unwrap();
+    let manifest = project.path().join("skill-project.toml");
+    let drifted = fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("version = \"1.0.0\"", "version = \"1.1.0\"")
+        .replace("payments-team-1.0.0.zip", "payments-team-1.1.0.zip");
+    fs::write(&manifest, drifted).unwrap();
+    fs::remove_dir_all(project.path().join(".claude/skills")).unwrap();
+    fs::create_dir_all(project.path().join(".claude/skills")).unwrap();
+
+    service.install_declared_locked().unwrap();
+
+    let installed =
+        fs::read_to_string(project.path().join(".claude/skills/code-review/SKILL.md")).unwrap();
+    assert!(installed.contains("member-code-review"), "{installed}");
+    assert!(!installed.contains("review-v2"), "{installed}");
+    let repaired_manifest = fs::read_to_string(manifest).unwrap();
+    assert!(repaired_manifest.contains("version = \"1.0.0\""));
+    assert!(repaired_manifest.contains("payments-team-1.0.0.zip"));
 }
 
 #[test]

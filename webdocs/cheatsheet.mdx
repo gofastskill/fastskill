@@ -23,6 +23,20 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 | Remove skill | `fastskill remove my-skill-id` | Removes from skills dir, updates manifest and lock; prompts for confirmation |
 | Force remove | `fastskill remove my-skill-id --force` | Removes without confirmation |
 
+## Team bundles
+
+| Operation | Command | What It Does |
+|-----------|---------|--------------|
+| Build release | `fastskill bundle build --output dist` | Validates declared member versions and creates a self-contained `<id>-<version>.zip` |
+| Install bundle | `fastskill add ./team-1.0.0.zip` | Installs members and records bundle ownership in the manifest and lock |
+| List bundles | `fastskill list --bundles` | Shows installed bundle identities, versions, and members |
+| Restore locked | `fastskill install --lock` | Restores the exact bundle releases and digests in `skills.lock` |
+| Update bundle | `fastskill update --bundle team --from ./team-1.1.0.zip` | Verifies and applies an explicitly selected release |
+| Remove bundle | `fastskill remove --bundle team` | Removes bundle ownership and only deletes members with no other owner |
+| Personal override | `fastskill bundle override member --from ./custom-member` | Declares a permitted replacement for an overridable member |
+
+See [bundle command](/cli-reference/bundle-command) for the manifest shape and ownership rules.
+
 ## Add skills
 
 | Operation | Command | What It Does |

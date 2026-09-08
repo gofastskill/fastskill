@@ -4,7 +4,7 @@
 //! newline-delimited JSON-RPC, so they exercise the same surface an MCP host
 //! sees: `tools/list` for discovery and `tools/call` for dispatch.
 
-#![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use super::snapshot_helpers::get_binary_path;
 use serde_json::{json, Value};
@@ -31,6 +31,8 @@ const MUTATING_TOOLS: &[&str] = &[
     "fastskill_repos_update",
     "fastskill_repos_refresh",
     "fastskill_marketplace_create",
+    "fastskill_bundle_build",
+    "fastskill_bundle_override",
     "fastskill_optimize_run",
 ];
 

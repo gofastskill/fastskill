@@ -87,6 +87,25 @@ cargo run --bin fastskill -- serve
   HTTP write-gate and the MCP tool gate derive from that table, so there is no second list to keep
   in sync.
 
+### Bundle changes
+
+Bundle lifecycle code spans `crates/fastskill-core/src/core/bundle*.rs`, the typed CLI commands,
+and the manifest and lock files. Preserve these invariants when changing it:
+
+- `fastskill install --lock` restores bundle identity, version, artifact, digest, and members from
+  `skills.lock`; it must not select a different release from the manifest.
+- An ordinary `fastskill remove <skill>` must not delete a member owned by an installed bundle.
+- Bundle builds must reject installed member versions that do not satisfy their declared
+  dependency constraints.
+- `bundle build` and `bundle override` are mutating MCP tools and must remain in
+  `WRITE_OPERATIONS`.
+
+Run the focused regression set while iterating:
+
+```shell
+cargo nextest run --locked -E 'binary(bundle_lifecycle_test) + binary(bundle_cli_test) + test(mcp_tools_list_hides_mutating_tools_without_enable_write)'
+```
+
 ## Source File Size
 
 Keep non-test Rust source files under 1000 lines. Move large inline test modules
@@ -388,6 +407,16 @@ npx prettier --write .
 # or in Docker
 docker run --rm -v .:/src/ -w /src/ node:alpine npx prettier --write .
 ```
+
+The marketing site is the dependency-free `website/index.html`. Preview it with any static file
+server:
+
+```shell
+python3 -m http.server 3000 --directory website
+```
+
+Keep its styles and assets inline so the website remains a single file that can be copied to any
+static host.
 
 ## Linting
 

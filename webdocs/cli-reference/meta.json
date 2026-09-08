@@ -11,6 +11,7 @@
     "serve-command",
     "repository-command",
     "cache-command",
+    "bundle-command",
     "eval-command",
     "optimize-command",
     "tooling-commands"
