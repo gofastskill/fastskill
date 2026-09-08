@@ -27,23 +27,21 @@ jobs:
     name: Web docs
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: webdocs
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.21.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: webdocs/pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.21.0 --activate
       - run: pnpm install --frozen-lockfile
+        working-directory: webdocs
       - run: pnpm lint
+        working-directory: webdocs
       - run: pnpm typecheck
+        working-directory: webdocs
       - run: pnpm build
+        working-directory: webdocs
 
   clippy:
     name: Clippy Lints
