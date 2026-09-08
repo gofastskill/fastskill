@@ -105,6 +105,7 @@ desktop.ini
 *.pdf
 *.html
 !crates/fastskill-core/src/http/static/index.html
+!website/index.html
 *.epub
 *.mobi
 *.azw3
