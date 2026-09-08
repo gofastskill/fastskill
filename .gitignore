@@ -102,6 +102,11 @@ desktop.ini
 /docs/build/
 /docs/site/
 /docs/.doctrees
+/webdocs/.next/
+/webdocs/.source/
+/webdocs/out/
+/webdocs/next-env.d.ts
+/webdocs/*.tsbuildinfo
 *.pdf
 *.html
 !crates/fastskill-core/src/http/static/index.html

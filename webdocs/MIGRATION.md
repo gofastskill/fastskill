@@ -1,59 +1,39 @@
-# Fumadocs Migration Notes
+# Fumadocs site
 
-This directory contains documentation content converted from Mintlify to [Fumadocs](https://fumadocs.dev) MDX format.
+`webdocs/` is a self-contained Fumadocs application. It serves the existing MDX files at their
+current root paths, so `/quickstart` and `/cli-reference/bundle-command` remain stable.
 
-## What changed
+## Run locally
 
-### Navigation: mint.json → meta.json
-
-Mintlify's central `mint.json` was replaced with per-folder `meta.json` files. Fumadocs derives the sidebar from the folder structure plus `meta.json` ordering. The root `meta.json` uses `---Separator---` entries to recreate the original navigation groups (Getting Started, Configuration, Skill Management, etc.).
-
-### Component mappings
-
-| Mintlify | Fumadocs | Notes |
-|----------|----------|-------|
-| `<Note>` | `<Callout>` | Default type (info) |
-| `<Info>` | `<Callout type="info">` | |
-| `<Warning>` | `<Callout type="warn">` | |
-| `<Tip>` | `<Callout>` | Mapped to default (info) |
-| `<Check>` | `<Callout type="success">` | |
-| `<CardGroup>` / `<Card icon="...">` | `<Cards>` / `<Card>` | `icon` props stripped (string names need JSX components in host app) |
-| `<AccordionGroup>` / `<Accordion>` | `<Accordions>` / `<Accordion id="..." title="...">` | Slugified `id` added |
-| `<Steps>` / `<Step title="X">` | `### X [step]` headings | Requires `remark-steps` plugin in host app |
-| `<Tabs>` / `<Tab title="X">` | `<Tabs items=[...]>` / `<Tab value="X">` | |
-| `<ParamField path="..." type="...">` | `#### \`field\` (type, required/optional)` | Converted to heading + bullets |
-| `<Frame>` | removed | Content (images) kept |
-
-### Other changes
-
-- `TROUBLESHOOTING.md` renamed to `troubleshooting.mdx` for slug consistency.
-- Fixed duplicate `</Accordions>` in `skill-management/validation.mdx`.
-- Card `icon="..."` props were stripped. Fumadocs requires JSX icon components (e.g. `lucide-react`), not string names. Add icons in the host app via the `icon` handler on `loader()` or per-card.
-
-## What the hosting app needs to do
-
-This migration covers content only. To serve these docs:
-
-1. **Create a fumadocs app** (Next.js recommended): `pnpm create fumadocs-app`
-2. **Point content source at this directory**: set `dir: 'content/docs'` (or wherever you place these files) in `source.config.ts` → `defineDocs()`.
-3. **Enable remark-steps**: the `[step]` heading markers require the `remark-steps` plugin. Add it to `mdxOptions` in `source.config.ts`.
-4. **Place static assets in `public/`**: images referenced as `/images/...` and logos in `/logo/` must live in the host app's `public/` directory.
-5. **Configure theme and search**: colors, logo, topbar CTA, and search (Algolia/Orama) are host-app concerns, not content-level config.
-6. **Map card icons** (optional): if you want icons on cards, pass an `icon` handler to `loader()` that resolves icon names to `lucide-react` components.
-
-### File structure
-
+```shell
+cd webdocs
+pnpm install --frozen-lockfile
+pnpm dev
 ```
-webdocs/
-  meta.json              ← root navigation (groups + ordering)
-  index.mdx              ← landing page
-  welcome.mdx
-  quickstart.mdx
-  ...
-  cli-reference/
-    meta.json            ← folder page ordering
-    overview.mdx
-    ...
-  images/                ← static assets (move to public/ in host app)
-  logo/                  ← logo SVGs (move to public/ in host app)
-```
+
+Open <http://localhost:3000>. Run `pnpm build`, `pnpm lint`, and `pnpm typecheck` before changing
+the app shell, theme, or MDX components. The build exports a static site to `webdocs/out/`.
+
+## Structure
+
+- Root and topic-folder `.mdx` files are the documentation source. `lib/source.ts` lists the
+  included folders explicitly so application code and dependencies are never treated as content.
+- `app/` contains the static Next.js routes and FastSkill theme.
+- `components/` contains the shared brand, search, MDX, and documentation-hero components.
+- `public/` contains images, logos, and the favicon.
+- Folder `meta.json` files control navigation order.
+
+## Visual system
+
+The theme in `app/global.css` shares the marketing site's palette and visual language:
+
+| Token | Value | Use |
+|---|---|---|
+| Ink | `#14251d` | Primary text, actions, terminal surfaces |
+| Paper | `#f7f8f2` | Page background |
+| Lime | `#c9f75b` | Focus, status, and brand accents |
+| Green | `#1f7a4d` | Links, labels, and navigation emphasis |
+| Blue | `#264fdd` | Team-bundle emphasis |
+
+Keep Fumadocs color variables and custom components aligned with `website/index.html` when the
+brand changes. Preserve readable contrast and the reduced-motion fallback in both themes.
