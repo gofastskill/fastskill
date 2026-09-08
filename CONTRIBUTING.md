@@ -418,6 +418,22 @@ python3 -m http.server 3000 --directory website
 Keep its styles and assets inline so the website remains a single file that can be copied to any
 static host.
 
+The documentation site is a Fumadocs application whose content and app shell live in `webdocs/`.
+Its palette, typography, brand mark, and terminal treatment track the marketing site. Preview and
+validate it separately:
+
+```shell
+cd webdocs
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm build
+pnpm lint
+pnpm typecheck
+```
+
+`pnpm build` writes a static export to `webdocs/out/`. Keep existing documentation URLs stable and
+update `webdocs/lib/source.ts` when adding a new content folder.
+
 ## Linting
 
 Linting requires [shellcheck](https://github.com/koalaman/shellcheck) and

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="142" height="36" viewBox="0 0 142 36" role="img" aria-labelledby="title">
+  <title id="title">FastSkill</title>
+  <rect width="36" height="36" rx="9" fill="#c9f75b"/>
+  <path d="M18 7v7m0 8v7M7 18h7m8 0h7M10 10l5 5m6 6 5 5m0-16-5 5m-6 6-5 5" fill="none" stroke="#14251d" stroke-linecap="round" stroke-width="2"/>
+  <text x="48" y="24" fill="#eef9f0" font-family="Inter,system-ui,sans-serif" font-size="18" font-weight="750" letter-spacing="-.5">FastSkill</text>
+</svg>
