@@ -99,6 +99,20 @@ The HTTP API is available under `/api/v1/…`, e.g.:
 - `GET http://localhost:8080/healthz` — liveness probe
 - `GET http://localhost:8080/readyz` — readiness probe
 
+### 7. Optional: share the setup as one bundle
+
+Teams can add a `[bundle]` declaration to `skill-project.toml`, then package the selected
+skills and their dependency closure:
+
+```bash
+fastskill bundle build --output dist
+fastskill add dist/<bundle-id>-<version>.zip
+fastskill list --bundles
+```
+
+Continue with the [bundle guide](/cli-reference/bundle-command) for a complete manifest, updates,
+locked restoration, removal, and personal overrides.
+
 ## Use-case quick recipes
 
 - **Install skills from different sources**

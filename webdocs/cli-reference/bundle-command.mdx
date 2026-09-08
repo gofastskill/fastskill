@@ -1,22 +1,17 @@
 ---
 title: Bundle command
-description: Build and customize self-contained team skill bundles.
+description: Build, install, update, restore, and customize self-contained team skill bundles.
 ---
 
 # Bundle command
 
-Bundles package a selected team setup into a versioned ZIP. A recipient installs it with `fastskill add <bundle.zip>`, lists installed bundles with `fastskill list --bundles`, and applies a selected replacement with `fastskill update --bundle <id> --from <bundle.zip-or-https-url>`.
+Bundles turn a selected team setup into one versioned ZIP. The artifact contains the selected
+skills, their installed dependency closure, resource files, and content digests. A recipient can
+install it without access to the original repositories.
 
-## Build
+## Build a bundle
 
-`fastskill bundle build` creates `<bundle-id>-<version>.zip` from the current project's `[bundle]` declaration, selected skills, resource files, and their installed dependency closure. The artifact contains its own content digests and can be renamed after publication.
-
-```bash
-fastskill bundle build
-fastskill bundle build --output dist
-```
-
-The source project needs a bundle declaration:
+Add a bundle declaration to the project that already contains the skills you want to ship:
 
 ```toml
 [bundle]
@@ -27,16 +22,96 @@ version = "1.2.0"
 [bundle.members.code-review]
 overridable = false
 
+[bundle.members.payments-debugging]
+overridable = true
+
 [dependencies]
-code-review = "1.0.0"
+code-review = "2.1.0"
+payments-debugging = "1.4.0"
 ```
+
+Every bundle member must also appear in `[dependencies]`. The installed member version must
+satisfy that declaration. FastSkill stops before writing an artifact when a declared member is
+missing, has invalid frontmatter, or has a different version.
+
+Build the release:
+
+```bash
+fastskill install
+fastskill bundle build --output dist
+```
+
+The result is `dist/payments-team-1.2.0.zip`. Its embedded identity, version, membership, and
+digests are authoritative, so renaming the download does not change the release.
+
+## Install and inspect
+
+Install a local artifact or an HTTPS download with `add`:
+
+```bash
+fastskill add ./payments-team-1.2.0.zip
+fastskill add https://releases.example.com/payments-team-1.2.0.zip
+fastskill list --bundles
+```
+
+Installation copies the artifact into `.fastskill/bundles/`, adds its declaration to
+`skill-project.toml`, and records the exact release and members in `skills.lock`.
+
+Commit these files when teammates and CI need the same setup:
+
+```bash
+git add skill-project.toml skills.lock .fastskill/bundles/
+```
+
+Then restore the exact locked release:
+
+```bash
+fastskill install --lock
+```
+
+`--lock` uses the bundle artifact, version, digest, and membership recorded in `skills.lock`.
+It does not switch to a different release if the manifest has drifted.
+
+## Update a bundle
+
+Bundle updates are explicit. Preview and apply a selected replacement:
+
+```bash
+fastskill update --bundle payments-team --from ./payments-team-1.3.0.zip --dry-run
+fastskill update --bundle payments-team --from ./payments-team-1.3.0.zip
+```
+
+FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
+before it changes installed members.
+
+## Remove a bundle
+
+Remove the bundle identity and the members that have no other owner:
+
+```bash
+fastskill remove --bundle payments-team
+fastskill remove --bundle payments-team --force
+```
+
+An ordinary `fastskill remove code-review` is refused while an installed bundle owns
+`code-review`. This prevents a required member from disappearing while the bundle remains
+declared. Remove the owning bundle instead. A member stays installed when another bundle, a direct
+project dependency, or a personal override still owns it.
 
 ## Personal overrides
 
-An edited installed file is not an approved override. Put the customized skill in a separate directory and declare it explicitly. Every installed bundle that owns the skill must mark the member as `overridable = true`.
+An edited installed file is not an approved override. Put the customized skill in a separate
+directory and declare it explicitly. Every installed bundle that owns the skill must mark the
+member as `overridable = true`.
 
 ```bash
-fastskill bundle override code-review --from ./my-code-review
+fastskill bundle override payments-debugging --from ./my-payments-debugging
 ```
 
-`fastskill install` restores declared bundles and valid personal overrides when their local artifacts and override sources are available.
+`fastskill install` and `fastskill install --lock` restore valid personal overrides after
+bundle members. Updates stop when a new bundle policy no longer permits an existing override.
+
+<Callout type="info">
+`bundle build` and `bundle override` change files. The MCP server hides and refuses both tools
+unless it starts with `fastskill mcp serve --enable-write`.
+</Callout>

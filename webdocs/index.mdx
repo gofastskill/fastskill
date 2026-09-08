@@ -11,7 +11,7 @@ New here? Read the [Welcome](/welcome) page for the full story, then [Quick star
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **validation**, optional **`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
+**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation**, optional **`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
 
@@ -24,6 +24,10 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
 
   <Card title="Validation">
     Structure checks on install and reconciliation across manifest, lock, and disk. See [Skill validation](/skill-management/validation).
+  </Card>
+
+  <Card title="Team bundles">
+    Build one verified, versioned ZIP containing a complete skill setup and dependency closure. See [bundle command](/cli-reference/bundle-command).
   </Card>
 
   <Card title="Evals">
@@ -65,7 +69,7 @@ Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill
 
 - **Authors**: init, validate, eval, and ship skills via the platform.
 - **Developers**: install, list, read, search for what agents load.
-- **Teams**: shared manifest + lock; groups for optional stacks.
+- **Teams**: shared manifest + lock, groups for optional stacks, and self-contained bundle releases.
 - **Automation**: `install --lock` and reproducible installs in CI.
 
 ## Next steps
