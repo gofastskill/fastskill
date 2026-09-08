@@ -83,6 +83,7 @@ mod tests {
     /// go through `SkillProjectToml::from_toml_str`, which upgrades it in memory. Parsing it
     /// raw rejects the `[dependencies]` table with an opaque untagged-enum error, so
     /// `fastskill eval` would refuse a project that `list` and `install` accept.
+    #[allow(clippy::expect_used)]
     #[test]
     fn test_resolve_eval_config_accepts_legacy_manifest() {
         let dir = TempDir::new().unwrap();

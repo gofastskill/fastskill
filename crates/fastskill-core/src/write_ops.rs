@@ -183,6 +183,16 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         http_routes: &[],
     },
     WriteOperation {
+        id: "bundle-build",
+        command_path: Some(&["bundle", "build"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "bundle-override",
+        command_path: Some(&["bundle", "override"]),
+        http_routes: &[],
+    },
+    WriteOperation {
         id: "marketplace-create",
         command_path: Some(&["marketplace", "create"]),
         http_routes: &[],

@@ -261,9 +261,16 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
         let project_root = project_file_path.parent().ok_or_else(|| {
             CliError::Config("skill-project.toml has no project directory".to_string())
         })?;
-        BundleService::new(project_root, skills_dir.clone())
-            .install_declared()
-            .map_err(CliError::Service)?
+        let bundle_service = BundleService::new(project_root, skills_dir.clone());
+        if args.lock {
+            bundle_service
+                .install_declared_locked()
+                .map_err(CliError::Service)?
+        } else {
+            bundle_service
+                .install_declared()
+                .map_err(CliError::Service)?
+        }
     } else {
         Vec::new()
     };

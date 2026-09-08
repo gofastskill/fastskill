@@ -3,7 +3,10 @@ use crate::core::bundle::{
     BundleMemberPolicy, BundleService, PreparedMember, BUNDLE_FORMAT,
 };
 use crate::core::lock::{ProjectLockedPersonalOverride, ProjectSkillsLock};
+use crate::core::manifest::DependencySpec;
+use crate::core::origin::Origin;
 use crate::core::service::{ServiceError, SkillId};
+use crate::core::version::VersionConstraint;
 use crate::utils::atomic_write;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -64,17 +67,23 @@ pub(crate) struct BundleOverrideDeclaration {
 #[derive(Debug, Default, Deserialize)]
 struct SkillDependencyTable {
     #[serde(default)]
-    dependencies: BTreeMap<String, toml::Value>,
+    dependencies: BTreeMap<String, DependencySpec>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct BundleProject {
     bundle: BundleDescriptor,
     #[serde(default)]
-    dependencies: BTreeMap<String, toml::Value>,
+    dependencies: BTreeMap<String, DependencySpec>,
 }
 
 pub(super) fn parse_bundle_descriptor(bytes: &[u8]) -> Result<BundleDescriptor, ServiceError> {
+    parse_bundle_project(bytes).map(|(descriptor, _)| descriptor)
+}
+
+pub(super) fn parse_bundle_project(
+    bytes: &[u8],
+) -> Result<(BundleDescriptor, BTreeMap<String, DependencySpec>), ServiceError> {
     let content = std::str::from_utf8(bytes).map_err(|error| {
         ServiceError::Validation(format!("Bundle skill-project.toml is not UTF-8: {error}"))
     })?;
@@ -91,17 +100,21 @@ pub(super) fn parse_bundle_descriptor(bytes: &[u8]) -> Result<BundleDescriptor, 
         ServiceError::Validation(format!("Invalid bundle skill-project.toml: {error}"))
     })?;
     project.bundle.validate(&project.dependencies)?;
-    Ok(project.bundle)
+    Ok((project.bundle, project.dependencies))
 }
 
 pub(crate) fn prepare_members(
     skills_directory: &Path,
     descriptor: &BundleDescriptor,
+    dependencies: &BTreeMap<String, DependencySpec>,
 ) -> Result<BTreeMap<String, PreparedMember>, ServiceError> {
     let mut policies = descriptor.members.clone();
-    let mut pending = policies.keys().cloned().collect::<VecDeque<_>>();
+    let mut pending = policies
+        .keys()
+        .filter_map(|id| dependencies.get(id).cloned().map(|spec| (id.clone(), spec)))
+        .collect::<VecDeque<_>>();
     let mut members = BTreeMap::new();
-    while let Some(id) = pending.pop_front() {
+    while let Some((id, requirement)) = pending.pop_front() {
         let policy = policies.get(&id).cloned().ok_or_else(|| {
             ServiceError::Validation(format!("Bundle member '{id}' has no policy"))
         })?;
@@ -111,16 +124,17 @@ pub(crate) fn prepare_members(
                 "Bundle member '{id}' is missing skills/{id}/SKILL.md"
             )));
         }
+        validate_member_version(&id, &source, &requirement)?;
         let member_manifest = source.join("skill-project.toml");
         if member_manifest.is_file() {
             let content = fs::read_to_string(&member_manifest).map_err(ServiceError::Io)?;
             let child: SkillDependencyTable = toml::from_str(&content).map_err(|error| {
                 ServiceError::Validation(format!("Invalid dependency manifest for '{id}': {error}"))
             })?;
-            for dependency in child.dependencies.into_keys() {
+            for (dependency, requirement) in child.dependencies {
                 if !policies.contains_key(&dependency) {
                     policies.insert(dependency.clone(), BundleMemberPolicy::default());
-                    pending.push_back(dependency);
+                    pending.push_back((dependency, requirement));
                 }
             }
         }
@@ -135,6 +149,47 @@ pub(crate) fn prepare_members(
         );
     }
     Ok(members)
+}
+
+fn validate_member_version(
+    id: &str,
+    source: &Path,
+    requirement: &DependencySpec,
+) -> Result<(), ServiceError> {
+    let constraint = match requirement {
+        DependencySpec::Version(raw) => Some(VersionConstraint::parse(raw).map_err(|error| {
+            ServiceError::Validation(format!(
+                "Bundle dependency '{id}' has invalid version constraint '{raw}': {error}"
+            ))
+        })?),
+        DependencySpec::Inline {
+            origin:
+                Origin::Repository {
+                    version: Some(constraint),
+                    ..
+                },
+            ..
+        } => Some(constraint.clone()),
+        DependencySpec::Inline { .. } => None,
+    };
+    let Some(constraint) = constraint else {
+        return Ok(());
+    };
+    let skill = fs::read_to_string(source.join("SKILL.md")).map_err(ServiceError::Io)?;
+    let metadata = crate::core::frontmatter::parse_skill_frontmatter(&skill).map_err(|error| {
+        ServiceError::Validation(format!(
+            "Bundle member '{id}' has invalid SKILL.md frontmatter: {error}"
+        ))
+    })?;
+    let version = metadata.version.as_deref().unwrap_or("1.0.0");
+    if constraint.satisfies(version).map_err(|error| {
+        ServiceError::Validation(format!("Bundle member '{id}' has invalid version: {error}"))
+    })? {
+        return Ok(());
+    }
+    Err(ServiceError::Validation(format!(
+        "Bundle member '{id}' is version {version}, which does not satisfy declared dependency {constraint}"
+    )))
 }
 
 pub(crate) fn digest_release(

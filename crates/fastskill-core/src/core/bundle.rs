@@ -5,8 +5,9 @@
 //! archive, plans all member changes, and persists the Manifest and Lock with
 //! the installed membership.
 
+use crate::core::bundle_archive::{write_bundle_archive, BundleArchiveLock};
 use crate::core::bundle_persistence::{
-    apply_personal_override, digest_directory, digest_release, parse_bundle_descriptor,
+    apply_personal_override, digest_directory, parse_bundle_descriptor, parse_bundle_project,
     prepare_members, remove_skill_directory, replace_skill_directory, restore_personal_overrides,
     save_bundle_declarations, BundleHistory, BundleOverrideDeclaration, BundleTransaction,
 };
@@ -18,15 +19,12 @@ use crate::utils::atomic_write;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
-use walkdir::WalkDir;
 
 /// The marker that prevents a bundle archive from being mistaken for an
 /// existing single-skill ZIP.
 pub const BUNDLE_FORMAT: &str = "fastskill-bundle-v1";
-const BUNDLE_LOCK_FORMAT: &str = "fastskill-bundle-lock-v1";
 const BUNDLE_STATE_DIRECTORY: &str = ".fastskill/bundles";
 const BUNDLE_HISTORY_FILE: &str = ".fastskill/bundle-history.toml";
 
@@ -78,8 +76,8 @@ impl BundleService {
     pub fn build(&self, output_directory: &Path) -> Result<BundleBuildResult, ServiceError> {
         let manifest_path = self.project_root.join("skill-project.toml");
         let manifest_bytes = fs::read(&manifest_path).map_err(ServiceError::Io)?;
-        let descriptor = parse_bundle_descriptor(&manifest_bytes)?;
-        let members = prepare_members(&self.skills_directory, &descriptor)?;
+        let (descriptor, dependencies) = parse_bundle_project(&manifest_bytes)?;
+        let members = prepare_members(&self.skills_directory, &descriptor, &dependencies)?;
         fs::create_dir_all(output_directory).map_err(ServiceError::Io)?;
 
         let artifact =
@@ -91,7 +89,7 @@ impl BundleService {
             id: descriptor.id,
             version: descriptor.version,
             artifact,
-            digest: archive_lock.release_digest,
+            digest: archive_lock.release_digest().to_string(),
         })
     }
 
@@ -248,6 +246,42 @@ impl BundleService {
         Ok(results)
     }
 
+    /// Restore the exact bundle releases recorded in `skills.lock`.
+    pub fn install_declared_locked(&self) -> Result<Vec<BundleApplyResult>, ServiceError> {
+        let (_, lock) = self.load_project_state()?;
+        let mut results = Vec::new();
+        for expected in lock.bundles {
+            let artifact = self.project_root.join(&expected.artifact);
+            results.push(self.apply(
+                &artifact,
+                ApplyMode::RestoreLocked {
+                    expected: &expected,
+                },
+            )?);
+        }
+        restore_personal_overrides(self)?;
+        Ok(results)
+    }
+
+    /// Reject ordinary skill removal while an installed bundle owns the skill.
+    pub fn ensure_individual_removal_allowed(&self, id: &str) -> Result<(), ServiceError> {
+        let (_, lock) = self.load_project_state()?;
+        let mut owners: Vec<_> = lock
+            .bundles
+            .iter()
+            .filter(|bundle| bundle.members.iter().any(|member| member.id == id))
+            .map(|bundle| bundle.id.as_str())
+            .collect();
+        owners.sort_unstable();
+        if owners.is_empty() {
+            return Ok(());
+        }
+        Err(ServiceError::InvalidOperation(format!(
+            "Skill '{id}' is managed by installed bundle(s): {}. Remove the owning bundle with 'fastskill remove --bundle <bundle-id>'",
+            owners.join(", ")
+        )))
+    }
+
     fn apply(
         &self,
         artifact: &Path,
@@ -261,6 +295,10 @@ impl BundleService {
             .iter()
             .find(|bundle| bundle.id == prepared.descriptor.id)
             .cloned();
+
+        if let ApplyMode::RestoreLocked { expected } = mode {
+            prepared.verify_locked_release(expected)?;
+        }
 
         if let Some(installed) = &existing {
             if installed.version == prepared.descriptor.version
@@ -315,6 +353,29 @@ impl BundleService {
                 if let Some(installed) = &existing {
                     if installed.version == prepared.descriptor.version
                         && installed.digest == prepared.release_digest
+                        && self.bundle_members_match(installed)
+                    {
+                        return Ok(BundleApplyResult {
+                            id: installed.id.clone(),
+                            version: installed.version.clone(),
+                            changed_members: Vec::new(),
+                            unchanged: true,
+                        });
+                    }
+                }
+            }
+            ApplyMode::RestoreLocked { expected } => {
+                let declaration_matches =
+                    manifest
+                        .bundles
+                        .get(&expected.id)
+                        .is_some_and(|dependency| {
+                            dependency.version == expected.version
+                                && dependency.artifact == expected.artifact
+                        });
+                if let Some(installed) = &existing {
+                    if installed == expected
+                        && declaration_matches
                         && self.bundle_members_match(installed)
                     {
                         return Ok(BundleApplyResult {
@@ -710,8 +771,15 @@ impl BundleService {
 #[derive(Debug, Clone, Copy)]
 enum ApplyMode<'a> {
     Add,
-    Update { id: &'a str },
-    Restore { id: &'a str },
+    Update {
+        id: &'a str,
+    },
+    Restore {
+        id: &'a str,
+    },
+    RestoreLocked {
+        expected: &'a ProjectLockedBundleEntry,
+    },
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -760,7 +828,7 @@ pub(crate) struct BundleDescriptor {
 impl BundleDescriptor {
     pub(super) fn validate(
         &self,
-        dependencies: &BTreeMap<String, toml::Value>,
+        dependencies: &BTreeMap<String, crate::core::manifest::DependencySpec>,
     ) -> Result<(), ServiceError> {
         if self.format_marker != BUNDLE_FORMAT {
             return Err(ServiceError::Validation(format!(
@@ -815,8 +883,9 @@ impl PreparedBundle {
                     "Bundle archive is missing root skill-project.toml".to_string(),
                 )
             })?;
-        let descriptor = parse_bundle_descriptor(&manifest_bytes)?;
-        let members = prepare_members(&temporary.path().join("skills"), &descriptor)?;
+        let (descriptor, dependencies) = parse_bundle_project(&manifest_bytes)?;
+        let members =
+            prepare_members(&temporary.path().join("skills"), &descriptor, &dependencies)?;
         let lock_content =
             fs::read_to_string(temporary.path().join("skills.lock")).map_err(|_| {
                 ServiceError::Validation("Bundle archive is missing root skills.lock".to_string())
@@ -829,8 +898,31 @@ impl PreparedBundle {
             _temporary: temporary,
             descriptor,
             members,
-            release_digest: archive_lock.release_digest,
+            release_digest: archive_lock.release_digest().to_string(),
         })
+    }
+
+    fn verify_locked_release(
+        &self,
+        expected: &ProjectLockedBundleEntry,
+    ) -> Result<(), ServiceError> {
+        let members_match = expected.members.len() == self.members.len()
+            && expected.members.iter().all(|locked| {
+                self.members.get(&locked.id).is_some_and(|member| {
+                    member.digest == locked.digest && member.overridable == locked.overridable
+                })
+            });
+        if self.descriptor.id != expected.id
+            || self.descriptor.version != expected.version
+            || self.release_digest != expected.digest
+            || !members_match
+        {
+            return Err(ServiceError::Validation(format!(
+                "Locked bundle '{}@{}' does not match its cached artifact",
+                expected.id, expected.version
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -842,136 +934,8 @@ pub(crate) struct PreparedMember {
     pub(crate) overridable: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct BundleArchiveLock {
-    format: String,
-    id: String,
-    version: String,
-    release_digest: String,
-    members: BTreeMap<String, BundleArchiveLockMember>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct BundleArchiveLockMember {
     pub(crate) digest: String,
     pub(crate) overridable: bool,
-}
-
-impl BundleArchiveLock {
-    fn from_members(
-        descriptor: &BundleDescriptor,
-        members: &BTreeMap<String, PreparedMember>,
-    ) -> Self {
-        let members: BTreeMap<_, _> = members
-            .iter()
-            .map(|(id, member)| {
-                (
-                    id.clone(),
-                    BundleArchiveLockMember {
-                        digest: member.digest.clone(),
-                        overridable: member.overridable,
-                    },
-                )
-            })
-            .collect();
-        let release_digest = digest_release(descriptor, &members);
-        Self {
-            format: BUNDLE_LOCK_FORMAT.to_string(),
-            id: descriptor.id.clone(),
-            version: descriptor.version.clone(),
-            release_digest,
-            members,
-        }
-    }
-
-    fn verify(
-        &self,
-        descriptor: &BundleDescriptor,
-        members: &BTreeMap<String, PreparedMember>,
-    ) -> Result<(), ServiceError> {
-        if self.format != BUNDLE_LOCK_FORMAT
-            || self.id != descriptor.id
-            || self.version != descriptor.version
-        {
-            return Err(ServiceError::Validation(
-                "Bundle skills.lock does not match bundle identity and version".to_string(),
-            ));
-        }
-        let expected = Self::from_members(descriptor, members);
-        if self.members != expected.members || self.release_digest != expected.release_digest {
-            return Err(ServiceError::Validation(
-                "Bundle contents do not match the digests in skills.lock".to_string(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-fn write_bundle_archive(
-    artifact: &Path,
-    manifest: &[u8],
-    archive_lock: &BundleArchiveLock,
-    members: &BTreeMap<String, PreparedMember>,
-) -> Result<(), ServiceError> {
-    let file = fs::File::create(artifact).map_err(ServiceError::Io)?;
-    let mut writer = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
-    write_zip_file(&mut writer, "skill-project.toml", manifest, options)?;
-    let lock_content = toml::to_string_pretty(archive_lock).map_err(|error| {
-        ServiceError::Config(format!("Failed to serialize bundle skills.lock: {error}"))
-    })?;
-    write_zip_file(&mut writer, "skills.lock", lock_content.as_bytes(), options)?;
-    for member in members.values() {
-        for entry in WalkDir::new(&member.source).sort_by_file_name() {
-            let entry = entry.map_err(|error| ServiceError::Io(io_error(error)))?;
-            if entry.file_type().is_symlink() {
-                return Err(ServiceError::Validation(format!(
-                    "Bundle member '{}' contains a symbolic link: {}",
-                    member.id,
-                    entry.path().display()
-                )));
-            }
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let relative = entry.path().strip_prefix(&member.source).map_err(|error| {
-                ServiceError::Custom(format!("Failed to form bundle member path: {error}"))
-            })?;
-            let archive_path = format!(
-                "skills/{}/{}",
-                member.id,
-                relative.to_string_lossy().replace('\\', "/")
-            );
-            write_zip_file(
-                &mut writer,
-                &archive_path,
-                &fs::read(entry.path()).map_err(ServiceError::Io)?,
-                options,
-            )?;
-        }
-    }
-    writer.finish().map_err(|error| {
-        ServiceError::Validation(format!("Failed to finish bundle ZIP: {error}"))
-    })?;
-    Ok(())
-}
-
-fn write_zip_file(
-    writer: &mut zip::ZipWriter<fs::File>,
-    name: &str,
-    content: &[u8],
-    options: zip::write::SimpleFileOptions,
-) -> Result<(), ServiceError> {
-    writer.start_file(name, options).map_err(|error| {
-        ServiceError::Validation(format!(
-            "Failed to write bundle ZIP entry '{name}': {error}"
-        ))
-    })?;
-    writer.write_all(content).map_err(ServiceError::Io)
-}
-
-fn io_error(error: walkdir::Error) -> std::io::Error {
-    std::io::Error::other(error)
 }

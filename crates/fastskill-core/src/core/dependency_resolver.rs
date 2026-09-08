@@ -255,6 +255,7 @@ mod tests {
     /// The oracle is the *effect*, not an error string: a manifest is planted
     /// outside the skills directory declaring a marker dependency, so if the
     /// marker ever shows up in the resolution, the read demonstrably escaped.
+    #[allow(clippy::panic)]
     #[tokio::test]
     async fn transitive_dependency_id_cannot_escape_the_skills_directory() {
         let tmp = TempDir::new().unwrap();
