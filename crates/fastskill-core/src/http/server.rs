@@ -14,7 +14,6 @@ use axum::{
 };
 use cli_framework::api::{ApiServerBuilder, ApiVersion, ApiVersionName, DefaultVersion, Stability};
 use include_dir::{include_dir, Dir};
-use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -346,17 +345,10 @@ impl FastSkillServer {
 
     /// Start the server using cli-framework ApiServerBuilder
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
-        // Load project configuration (same as previous create_router logic)
-        let current_dir = env::current_dir()?;
-        let project_config = crate::core::load_project_config(&current_dir).ok();
-        if project_config.is_none() {
-            tracing::warn!(
-                "No skill-project.toml found in {} or any parent. \
-                 Project-level features (manifest, skills install) will be unavailable. \
-                 Run `fastskill init` in your project root to create one.",
-                current_dir.display()
-            );
-        }
+        let project_config = self
+            .service
+            .project_root()
+            .and_then(|root| crate::core::load_project_config(root).ok());
 
         let mut state = AppState::new(self.service.clone())?;
         if let Some(cfg) = project_config {
@@ -365,6 +357,8 @@ impl FastSkillServer {
                 cfg.project_file_path,
                 cfg.skills_directory,
             );
+        } else {
+            state = state.with_global_scope(self.service.config().skill_storage_path.clone());
         }
         state = state.with_enable_write(self.enable_write);
 

@@ -80,9 +80,9 @@ working installation is replaced, and persistence failures MUST NOT be reported 
 successful installation. The recovery unit and acceptance scenarios are specified
 in the local [state and ownership PRD](../../specs/lifecycle-state-and-ownership-prd.md).
 
-This clarifies the architectural contract; the September 2026 command audit found
-remaining CLI and HTTP paths that do not implement it. Lock-first defaults and
-floating-version freshness are proposed separately in
+The September 2026 lifecycle implementation applies this contract to the CLI and
+HTTP paths identified by the audit. Lock-first defaults and floating-version freshness are
+defined in
 [ADR-0009](0009-resolution-and-restoration-policy.md).
 
 ## Intended consequences

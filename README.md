@@ -64,8 +64,8 @@ fastskill -V
 ```bash
 fastskill init                              # scaffold skill-project.toml
 fastskill add ./skills/my-skill -e --group dev   # add a local skill (editable), in the dev group
-fastskill install                           # apply the manifest, write skills.lock
-fastskill list                              # see installed skills + reconciliation status
+fastskill install                           # restore compatible pins, resolve anything not locked
+fastskill list --check                      # verify desired, locked, and installed state
 ```
 
 Optional semantic search (needs an embedding provider — set `OPENAI_API_KEY`):
@@ -84,14 +84,21 @@ fastskill add ./skills/pptx-helper -e             # local folder, editable (syml
 fastskill add ./skills -r --group dev             # every SKILL.md under a folder
 fastskill add https://github.com/org/skill.git --branch main
 fastskill add "https://github.com/org/repo/tree/main/path/to/skill"   # git subdirectory
-fastskill add scope/pptx@1.0.0                    # a pinned registry skill
+fastskill add scope/pptx@1.0.0 --repository team  # exact repository version
+fastskill add scope/pptx@latest --repository team # newest stable version
 ```
+
+For repository skills, an omitted version and `@latest` both mean the newest stable release.
+`@1.2.0` is an exact selection; prereleases require an explicit prerelease selector. Use
+`--offline` with `add`, `install`, or `update` when the operation must use local and verified
+cached inputs without network access or automatic indexing.
 
 **Reproducible install in CI**
 
 ```bash
-fastskill install --lock          # install exact versions from skills.lock
-fastskill install --without dev   # skip the dev group for production
+fastskill install --lock --offline # verify and restore exact locked contents
+fastskill install --without dev    # skip dev roots, retain their declarations and files
+fastskill list --check --without dev # CI check for the same selected closure
 ```
 
 **Build and share a team bundle**
@@ -119,12 +126,17 @@ stay protected from ordinary `remove`; remove the owning setup with
 `fastskill remove --bundle platform-team --force`. See the [bundle guide](webdocs/cli-reference/bundle-command.mdx)
 for updates, lock-based restoration, and personal overrides.
 
+Reset a permitted personal replacement to the packaged member with
+`fastskill bundle override <member-id> --reset`. FastSkill keeps a shared member until its last
+direct, transitive, bundle, or override owner is removed.
+
 **Use a shared catalog (repository)**
 
 ```bash
 fastskill repos add team-skills --repo-type git-marketplace https://github.com/org/team-skills.git
 fastskill repos list
-fastskill search "web scraping"   # remote catalogs by default
+fastskill search "web scraping" --repository team-skills
+fastskill add scope/scraper@latest --repository team-skills
 ```
 
 **Test and refine a skill you're authoring**
@@ -146,8 +158,9 @@ fastskill serve                                        # local HTTP API + web UI
 Both servers are read-only by default, from one table of mutating operations. Without
 `--enable-write`, `fastskill mcp serve` omits the mutating tools (`init`, `add`, `install`,
 `update`, `remove`, `reindex`, `repos add/remove/update/refresh`, `cache clean`,
-`bundle build/override`, `marketplace create`, `optimize run/resume`) from `tools/list` and refuses a `tools/call` naming one with JSON-RPC
-`-32005 MCP_TOOL_DENIED`; `fastskill serve` likewise mounts no write routes. Pass
+`bundle build/override`, `marketplace create`, evaluation or optimization execution, and artifact
+exports) from `tools/list` and refuses a `tools/call` naming one with JSON-RPC
+`-32005 MCP_TOOL_DENIED`; `fastskill serve` likewise rejects write routes. Pass
 `--enable-write` to either one to allow mutation.
 
 ## Command reference
@@ -155,11 +168,11 @@ Both servers are read-only by default, from one table of mutating operations. Wi
 | Command | What it does |
 |---------|--------------|
 | `fastskill init` | Scaffold `skill-project.toml` in the current project or skill |
-| `fastskill add <source>` | Add a skill from a local path, zip, git URL, or registry ID |
-| `fastskill install` | Apply the manifest (`--lock`, `--only`, `--without`) |
-| `fastskill update [id]` | Move installed skills forward from their source (`--check`, `--dry-run`) |
+| `fastskill add <source>` | Add a skill and its required closure (`--repository`, `--offline`) |
+| `fastskill install` | Restore the manifest, preferring compatible pins (`--lock`, `--only`, `--without`, `--offline`) |
+| `fastskill update [id]` | Resolve deliberate changes (`--to-version`, `--strategy`, `--repository`, `--check`, `--dry-run`, `--offline`) |
 | `fastskill remove <id>…` | Uninstall skills and update the manifest + lock |
-| `fastskill list` | List installed skills with reconciliation status (`--format`, `--json`) |
+| `fastskill list` | Compare desired, locked, and installed state (`--check`, `--only`, `--without`, `--json`) |
 | `fastskill read <id>` | Print a skill's `SKILL.md` (`--meta`, `--tree`) |
 | `fastskill search <query>` | Search remote catalogs (default) or installed skills (`--local`) |
 | `fastskill reindex` | Rebuild the local semantic search index |

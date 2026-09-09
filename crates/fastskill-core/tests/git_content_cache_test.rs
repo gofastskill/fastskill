@@ -20,6 +20,7 @@ use common::{git_command, run_git, GitDaemonFixture};
 use fastskill_core::core::cache::{CacheIdentity, GitResolutions, SkillCache};
 use fastskill_core::core::{AddMode, GitRef, Origin};
 use fastskill_core::storage::git::CLONE_INVOCATIONS;
+use fastskill_core::storage::git_commit::clone_repository_at_commit;
 use fastskill_core::test_utils::{DirGuard, DIR_MUTEX};
 use fastskill_core::{FastSkillService, ServiceConfig};
 use std::path::Path;
@@ -59,6 +60,40 @@ fn seed_bare_repo(base: &Path, repo_name: &str, branch: &str) -> String {
     );
     run_git(&work, &["push", "--quiet", "origin", branch]);
 
+    let output = git_command()
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+#[tokio::test]
+async fn immutable_clone_reports_a_missing_valid_commit_as_checkout_failure() {
+    let daemon_base = TempDir::new().unwrap();
+    seed_bare_repo(daemon_base.path(), "missing-commit", "main");
+    let daemon = GitDaemonFixture::start(daemon_base);
+
+    let error = clone_repository_at_commit(&daemon.repo_url("missing-commit"), &"f".repeat(40))
+        .await
+        .expect_err("the repository does not contain this otherwise-valid object ID");
+
+    assert!(error.to_string().contains("checkout"));
+}
+
+fn advance_bare_repo(base: &Path, repo_name: &str, branch: &str) -> String {
+    let work = base.join(format!("{repo_name}-work"));
+    std::fs::write(
+        work.join("SKILL.md"),
+        VALID_SKILL_MD
+            .replace("1.0.0", "2.0.0")
+            .replace("Body", "New body"),
+    )
+    .unwrap();
+    run_git(&work, &["add", "-A"]);
+    run_git(&work, &["commit", "--quiet", "-m", "advance"]);
+    run_git(&work, &["push", "--quiet", "origin", branch]);
     let output = git_command()
         .args(["rev-parse", "HEAD"])
         .current_dir(&work)
@@ -189,6 +224,68 @@ async fn two_installs_of_the_same_ref_clone_exactly_once() {
             .unwrap();
     assert_eq!(content_a, content_b);
     assert_eq!(content_a, VALID_SKILL_MD);
+}
+
+/// A strict restoration pins acquisition to the Lock commit even when the
+/// recorded branch has advanced and the machine cache has been cleared.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn exact_locked_commit_is_restored_after_branch_moves_and_cache_is_cleared() {
+    let _lock = DIR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let daemon_base = TempDir::new().unwrap();
+    let locked_sha = seed_bare_repo(daemon_base.path(), "moving", "main");
+    let daemon_path = daemon_base.path().to_path_buf();
+    let daemon = GitDaemonFixture::start(daemon_base);
+    let repo_url = daemon.repo_url("moving");
+    let recorded = Origin::Git {
+        url: repo_url.clone(),
+        r#ref: GitRef::Branch("main".to_string()),
+        subdir: None,
+    };
+    let cache = TempDir::new().unwrap();
+    let first_storage = TempDir::new().unwrap();
+    let first = make_service(first_storage.path(), cache.path()).await;
+    let locked = first
+        .add_from_origin(recorded.clone(), AddMode::Fresh, vec![])
+        .await
+        .unwrap()
+        .resolved;
+    assert_eq!(locked.commit_hash.as_deref(), Some(locked_sha.as_str()));
+
+    let advanced_sha = advance_bare_repo(&daemon_path, "moving", "main");
+    assert_ne!(advanced_sha, locked_sha);
+    for entry in std::fs::read_dir(cache.path()).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(path).unwrap();
+        } else {
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+
+    let restored_storage = TempDir::new().unwrap();
+    let restored = make_service(restored_storage.path(), cache.path()).await;
+    let candidate = restored
+        .prepare_install_from(
+            Origin::Git {
+                url: repo_url,
+                r#ref: GitRef::Commit(locked_sha.clone()),
+                subdir: None,
+            },
+            recorded,
+            "cached-git-skill",
+            Some(&locked),
+        )
+        .await
+        .unwrap();
+    restored
+        .apply_prepared_content(candidate, AddMode::Fresh, vec![])
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(restored_storage.path().join("cached-git-skill/SKILL.md")).unwrap(),
+        VALID_SKILL_MD
+    );
 }
 
 /// Bugfix regression (cache bloat): the content cache must store only skill

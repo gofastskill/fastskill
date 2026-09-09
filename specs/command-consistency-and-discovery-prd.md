@@ -1,7 +1,7 @@
 # PRD: Predictable commands, discovery, and reconciliation
 
-Status: draft product requirements; implementation pending.
-Date: 2026-09-08. Depends on the shared operations in the
+Status: accepted and implemented.
+Date: 2026-09-08. Implemented: 2026-09-09. Depends on the shared operations in the
 [state PRD](lifecycle-state-and-ownership-prd.md) and
 [resolution PRD](reproducible-install-and-resolution-prd.md).
 

@@ -4,7 +4,7 @@
 //! using either embedding-based semantic search or fallback text search.
 
 use super::{SearchError, SearchQuery, SearchResultItem};
-use crate::{EmbeddingService, FastSkillService};
+use crate::FastSkillService;
 
 /// Execute local search query
 pub async fn execute_local_search(
@@ -80,6 +80,8 @@ async fn perform_text_search(
             similarity: Some(1.0), // Text search has no similarity score
             path: Some(skill_path.to_string_lossy().to_string()),
             repository: None,
+            version: Some(skill_def.version),
+            install_command: None,
         };
 
         results.push(result_item);
@@ -93,25 +95,14 @@ async fn perform_embedding_search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResultItem>, SearchError> {
-    let embedding_config = service
-        .config()
-        .embedding
-        .as_ref()
-        .ok_or_else(|| {
-            SearchError::Config(
-                "Embedding configuration required but not found. Please configure embedding settings in skill-project.toml and set OPENAI_API_KEY environment variable.".to_string()
-            )
-        })?;
-
     let vector_index_service = service
         .vector_index_service()
         .ok_or_else(|| SearchError::Config("Vector index service not available".to_string()))?;
-
-    // Get API key from environment
-    let api_key = load_openai_api_key()?;
-
-    // Initialize embedding service
-    let embedding_service = crate::OpenAIEmbeddingService::from_config(embedding_config, api_key);
+    let embedding_service = service.embedding_service().ok_or_else(|| {
+        SearchError::Config(
+            "Embedding provider required but not configured for this service".to_string(),
+        )
+    })?;
 
     // Generate query embedding
     let query_embedding = embedding_service.embed_query(query).await.map_err(|e| {
@@ -151,6 +142,13 @@ async fn perform_embedding_search(
                 similarity: Some(skill_match.similarity),
                 path: Some(skill_match.skill.skill_path.to_string_lossy().to_string()),
                 repository: None,
+                version: skill_match
+                    .skill
+                    .frontmatter_json
+                    .get("version")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string),
+                install_command: None,
             }
         })
         .collect();
@@ -158,51 +156,119 @@ async fn perform_embedding_search(
     Ok(results)
 }
 
-fn load_openai_api_key() -> Result<String, SearchError> {
-    let api_key = std::env::var("OPENAI_API_KEY").map_err(|e| {
-        SearchError::Config(format!(
-            "Failed to get OPENAI_API_KEY from environment: {}",
-            e
-        ))
-    })?;
-
-    if api_key.trim().is_empty() {
-        return Err(SearchError::Config(
-            "OPENAI_API_KEY environment variable is set but empty".to_string(),
-        ));
-    }
-
-    Ok(api_key)
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use super::load_openai_api_key;
-    use super::SearchError;
-    use once_cell::sync::Lazy;
-    use std::sync::Mutex;
+    use super::*;
+    use crate::{EmbeddingConfig, EmbeddingService, ServiceConfig, ServiceError};
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
-    static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    struct TestEmbedding;
 
-    #[test]
-    fn load_openai_api_key_rejects_empty_values() {
-        let _lock = ENV_LOCK.lock().expect("failed to lock env mutex");
-
-        unsafe {
-            std::env::set_var("OPENAI_API_KEY", "   ");
+    #[async_trait]
+    impl EmbeddingService for TestEmbedding {
+        async fn embed_text(&self, text: &str) -> Result<Vec<f32>, ServiceError> {
+            Ok(vec![text.len() as f32, 0.0, 0.0])
         }
 
-        let result = load_openai_api_key();
-        match result {
-            Err(SearchError::Config(msg)) => {
-                assert!(msg.contains("set but empty"), "unexpected message: {msg}");
-            }
-            other => panic!("expected config error, got: {:?}", other),
+        async fn embed_query(&self, query: &str) -> Result<Vec<f32>, ServiceError> {
+            self.embed_text(query).await
+        }
+    }
+
+    async fn service(root: &TempDir, embeddings: bool) -> FastSkillService {
+        let skills = root.path().join("skills");
+        let demo = skills.join("demo");
+        std::fs::create_dir_all(&demo).unwrap();
+        std::fs::write(
+            demo.join("SKILL.md"),
+            "---\nname: Demo\nversion: 1.2.3\ndescription: Searchable fixture\n---\n# Demo\n",
+        )
+        .unwrap();
+        let config = ServiceConfig {
+            skill_storage_path: skills,
+            embedding: embeddings.then(|| EmbeddingConfig {
+                openai_base_url: "http://unused.invalid".to_string(),
+                embedding_model: "fixture".to_string(),
+                index_path: Some(root.path().join("index.db")),
+            }),
+            ..Default::default()
+        };
+        let service = FastSkillService::new(config).await.unwrap();
+        let mut service = if embeddings {
+            service.with_embedding_service(Arc::new(TestEmbedding))
+        } else {
+            service
+        };
+        service.initialize().await.unwrap();
+        if embeddings {
+            service.reindex(None, None).await.unwrap();
+        }
+        service
+    }
+
+    #[tokio::test]
+    async fn local_text_embedding_and_auto_fallback_return_versioned_results() {
+        let text_root = TempDir::new().unwrap();
+        let text = service(&text_root, false).await;
+        for embedding in [Some(false), None] {
+            let results = execute_local_search(
+                SearchQuery {
+                    query: "demo".to_string(),
+                    scope: super::super::SearchScope::Local,
+                    limit: 1,
+                    embedding,
+                },
+                &text,
+            )
+            .await
+            .unwrap();
+            assert_eq!(results[0].version.as_deref(), Some("1.2.3"));
         }
 
-        unsafe {
-            std::env::remove_var("OPENAI_API_KEY");
-        }
+        let embedding_root = TempDir::new().unwrap();
+        let embedding = service(&embedding_root, true).await;
+        let results = execute_local_search(
+            SearchQuery {
+                query: "demo".to_string(),
+                scope: super::super::SearchScope::Local,
+                limit: 1,
+                embedding: Some(true),
+            },
+            &embedding,
+        )
+        .await
+        .unwrap();
+        assert_eq!(results[0].version.as_deref(), Some("1.2.3"));
+
+        let provider_root = TempDir::new().unwrap();
+        let skills = provider_root.path().join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        let mut without_provider = FastSkillService::new(ServiceConfig {
+            skill_storage_path: skills,
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "http://unused.invalid".to_string(),
+                embedding_model: "fixture".to_string(),
+                index_path: Some(provider_root.path().join("index.db")),
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        without_provider.initialize().await.unwrap();
+        let error = execute_local_search(
+            SearchQuery {
+                query: "demo".to_string(),
+                scope: super::super::SearchScope::Local,
+                limit: 1,
+                embedding: Some(true),
+            },
+            &without_provider,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, SearchError::Config(message) if message.contains("provider")));
     }
 }

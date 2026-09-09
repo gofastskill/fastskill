@@ -38,4 +38,5 @@ visible as an individual requirement rather than an orphaned override record.
 
 The local [state and ownership PRD](../../specs/lifecycle-state-and-ownership-prd.md)
 defines the removal and override acceptance cases. These are required semantics;
-the September 2026 audit found implementation gaps in the ordinary skill paths.
+the September 2026 lifecycle implementation applies them to ordinary skill, bundle,
+HTTP, and MCP paths.

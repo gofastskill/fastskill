@@ -173,6 +173,18 @@ fn cache_identity_rejects_path_traversal_components() {
     assert!(identity.relative_path().is_err());
 }
 
+#[test]
+fn scoped_registry_skill_has_one_safe_cache_component() {
+    let component = registry_skill_component("team/reviewer").unwrap();
+    assert!(component.starts_with("scoped-"));
+    assert!(!component.contains('/'));
+    assert_eq!(
+        component,
+        registry_skill_component("team/reviewer").unwrap()
+    );
+    assert!(registry_skill_component("too/many/parts").is_err());
+}
+
 // ── `fastskill cache info`/`clean` (PRD 006, US-006) ──────────────────
 
 /// `put` a small sample skill under `identity`. The source lives in its

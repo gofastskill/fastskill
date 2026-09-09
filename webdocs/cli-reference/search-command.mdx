@@ -7,11 +7,24 @@ description: "Search for skills using semantic embeddings or traditional keyword
 
 `fastskill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
 
+The query is required. Remote results use the catalog's canonical skill ID and include the
+repository, available version, and a copy-pasteable `fastskill add ... --repository ...` command.
+
 With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill reindex` and embedding configuration when not using keyword-only mode.
 
 <Callout type="info">
 Run `fastskill search --help` for the authoritative flag list.
 </Callout>
+
+Remote search distinguishes these outcomes:
+
+- no repositories are configured;
+- the requested repositories succeeded with zero matches;
+- some repositories returned results while others failed (partial, nonzero exit);
+- every requested repository failed (nonzero exit).
+
+JSON mode always writes one valid JSON value, including empty and partial results. Diagnostics are
+fields in that value instead of prose appended to stdout.
 
 ## Basic Usage
 

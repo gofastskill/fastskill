@@ -6,6 +6,7 @@
 //! skills dir → upsert Manifest → write Lock → reindex-if-provider). `mode` only
 //! governs the id-conflict policy. `add`/`update` are one operation.
 
+use crate::core::bundle_persistence::digest_directory;
 use crate::core::cache::{CacheIdentity, SkillCache, SourceIndex, SourceIndexEntry, ZipValidator};
 use crate::core::lock::{project_lock_path, ProjectSkillsLock};
 use crate::core::manifest::{
@@ -59,10 +60,27 @@ pub enum UpdatePreflight {
 
 /// A fetched skill sitting in a temp dir, plus the facts the fetch resolved.
 /// The `TempDir` guards the extracted contents until `commit` moves them.
+#[derive(Debug)]
 pub struct Fetched {
     pub temp_dir: TempDir,
     pub skill_path: PathBuf,
     pub resolved: Resolved,
+}
+
+/// A fully fetched and validated skill that has not changed installed state.
+/// Install orchestration can inspect its dependency manifest and validate an
+/// entire closure before applying any candidate.
+#[derive(Debug)]
+pub struct PreparedSkill {
+    fetched: Fetched,
+    origin: Origin,
+    id: String,
+    dependencies: Vec<crate::core::manifest::SkillEntry>,
+}
+
+/// Compute the canonical content digest used by Lock and bundle ownership.
+pub fn content_digest(path: &Path) -> Result<String, ServiceError> {
+    digest_directory(path)
 }
 
 impl FastSkillService {
@@ -77,8 +95,276 @@ impl FastSkillService {
         mode: AddMode,
         groups: Vec<String>,
     ) -> Result<AddOutcome, ServiceError> {
+        let refreshed = if let Origin::Repository {
+            repo,
+            skill,
+            version,
+        } = &origin
+        {
+            if version
+                .as_ref()
+                .and_then(VersionConstraint::as_exact)
+                .is_none()
+            {
+                Some(self.refresh_repository_requirement(repo, skill).await?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let fetched = self.fetch(&origin).await?;
-        self.commit(fetched, origin, mode, groups).await
+        let mut outcome = self
+            .commit(fetched, origin, mode, groups, true, true)
+            .await?;
+        if let Some(repo) = refreshed {
+            outcome.warnings.push(format!(
+                "Resolved using refreshed metadata from repository '{repo}'"
+            ));
+        }
+        Ok(outcome)
+    }
+
+    /// Refresh the catalog used for an online floating/range resolution.
+    /// Callers orchestrating a closure deduplicate this once per repository.
+    pub async fn refresh_repository_metadata(&self, repo: &str) -> Result<String, ServiceError> {
+        let manager = self
+            .repository_manager()
+            .ok_or_else(|| ServiceError::Config("No repositories configured".to_string()))?;
+        let name = resolve_repo_name(manager, repo)?;
+        manager.refresh_index(self.skill_cache(), &name).await?;
+        Ok(name)
+    }
+
+    /// Refresh the metadata needed to resolve one repository requirement.
+    /// HTTP registries expose version listings per skill rather than a global
+    /// marketplace listing; other adapters refresh their repository catalog.
+    pub async fn refresh_repository_requirement(
+        &self,
+        repo: &str,
+        skill: &str,
+    ) -> Result<String, ServiceError> {
+        let manager = self
+            .repository_manager()
+            .ok_or_else(|| ServiceError::Config("No repositories configured".to_string()))?;
+        let name = resolve_repo_name(manager, repo)?;
+        let definition = manager.get_repository(&name).ok_or_else(|| {
+            ServiceError::Config(format!("Repository '{name}' is not configured"))
+        })?;
+        if definition.repo_type == crate::core::repository::RepositoryType::HttpRegistry {
+            let client = manager.get_client(&name).await.map_err(|error| {
+                ServiceError::Custom(format!("failed to connect to repository '{name}': {error}"))
+            })?;
+            let versions = client.get_versions(skill).await.map_err(|error| {
+                ServiceError::Config(format!(
+                    "failed to refresh versions for '{skill}' from repository '{name}': {error}; run `fastskill repos refresh {name}` and retry"
+                ))
+            })?;
+            upsert_source_index_entry(self.skill_cache(), &name, skill, &versions)?;
+        } else {
+            manager.refresh_index(self.skill_cache(), &name).await?;
+        }
+        Ok(name)
+    }
+
+    /// Fetch and validate an install candidate without mutating the skills
+    /// directory, Manifest, Lock, or vector index. When `expected` is supplied,
+    /// all immutable resolved facts must match before the candidate is returned.
+    pub async fn prepare_install(
+        &self,
+        origin: Origin,
+        expected_id: &str,
+        expected: Option<&Resolved>,
+    ) -> Result<PreparedSkill, ServiceError> {
+        self.prepare_install_from(origin.clone(), origin, expected_id, expected)
+            .await
+    }
+
+    /// Fetch and validate a new candidate while allowing the source metadata to
+    /// establish its canonical ID. Repository callers should pass their known
+    /// catalog ID so a mismatched artifact is rejected.
+    pub async fn prepare_add(
+        &self,
+        origin: Origin,
+        expected_id: Option<&str>,
+    ) -> Result<PreparedSkill, ServiceError> {
+        let fetched = self.fetch(&origin).await?;
+        self.prepare_fetched(fetched, origin, expected_id, None)
+            .await
+    }
+
+    /// Variant used by locked restoration: acquisition can be pinned to a
+    /// concrete commit/version while the recorded origin remains the user's
+    /// branch/range intent.
+    pub async fn prepare_install_from(
+        &self,
+        acquisition_origin: Origin,
+        recorded_origin: Origin,
+        expected_id: &str,
+        expected: Option<&Resolved>,
+    ) -> Result<PreparedSkill, ServiceError> {
+        let fetched = self.fetch(&acquisition_origin).await?;
+        self.prepare_fetched(fetched, recorded_origin, Some(expected_id), expected)
+            .await
+    }
+
+    /// Prepare from local or already cached bytes only. The caller must supply
+    /// locked resolved facts for immutable remote origins so the cache identity
+    /// is exact and no catalog/network fallback is possible.
+    pub async fn prepare_install_offline(
+        &self,
+        recorded_origin: Origin,
+        expected_id: &str,
+        expected: &Resolved,
+    ) -> Result<PreparedSkill, ServiceError> {
+        let fetched = self.fetch_offline(&recorded_origin, expected).await?;
+        self.prepare_fetched(fetched, recorded_origin, Some(expected_id), Some(expected))
+            .await
+    }
+
+    /// Prepare a new requirement without network access. Repository ranges use
+    /// the saved catalog index; Git refs use a saved ref resolution; ZIP URLs
+    /// use their saved validator. The returned resolved facts establish the
+    /// first Lock entry for those already-cached bytes.
+    pub async fn prepare_add_offline(
+        &self,
+        recorded_origin: Origin,
+        expected_id: Option<&str>,
+    ) -> Result<PreparedSkill, ServiceError> {
+        if matches!(recorded_origin, Origin::Local { .. }) {
+            let fetched = self.fetch(&recorded_origin).await?;
+            return self
+                .prepare_fetched(fetched, recorded_origin, expected_id, None)
+                .await;
+        }
+        let expected = offline_resolution(self, &recorded_origin)?;
+        let fetched = self.fetch_offline(&recorded_origin, &expected).await?;
+        self.prepare_fetched(fetched, recorded_origin, expected_id, None)
+            .await
+    }
+
+    async fn prepare_fetched(
+        &self,
+        fetched: Fetched,
+        recorded_origin: Origin,
+        expected_id: Option<&str>,
+        expected: Option<&Resolved>,
+    ) -> Result<PreparedSkill, ServiceError> {
+        let frontmatter = read_skill_frontmatter(&fetched.skill_path).await?;
+        let (id, _) = derive_skill_id_and_version(&fetched.skill_path, &frontmatter)?;
+        if let Some(expected_id) = expected_id {
+            if id.as_str() != expected_id {
+                return Err(ServiceError::Validation(format!(
+                    "origin for '{expected_id}' produced skill '{}'; refusing to install under the wrong identity",
+                    id.as_str()
+                )));
+            }
+        }
+
+        if let Some(expected) = expected {
+            verify_resolved_facts(
+                expected_id.unwrap_or(id.as_str()),
+                &recorded_origin,
+                expected,
+                &fetched.resolved,
+            )?;
+        }
+
+        let manifest_path = fetched.skill_path.join("skill-project.toml");
+        let dependencies = if manifest_path.exists() {
+            let manifest = SkillProjectToml::load_from_file(&manifest_path)
+                .map_err(|error| ServiceError::Validation(error.to_string()))?;
+            dependencies::durable_dependencies(
+                self,
+                &manifest,
+                &fetched.skill_path,
+                &recorded_origin,
+            )?
+        } else {
+            Vec::new()
+        };
+
+        Ok(PreparedSkill {
+            fetched,
+            origin: recorded_origin,
+            id: id.into_string(),
+            dependencies,
+        })
+    }
+
+    async fn fetch_offline(
+        &self,
+        origin: &Origin,
+        expected: &Resolved,
+    ) -> Result<Fetched, ServiceError> {
+        if matches!(origin, Origin::Local { .. }) {
+            return self.fetch(origin).await;
+        }
+
+        let (identity, subdir) = match origin {
+            Origin::Git { subdir, .. } => {
+                let sha = expected.commit_hash.clone().ok_or_else(|| {
+                    ServiceError::Validation(
+                        "offline Git restoration requires a locked commit".to_string(),
+                    )
+                })?;
+                (CacheIdentity::Git { sha }, subdir.clone())
+            }
+            Origin::Repository { repo, skill, .. } => {
+                let manager = self.repository_manager().ok_or_else(|| {
+                    ServiceError::Config("No repositories configured".to_string())
+                })?;
+                let repo_name = resolve_repo_name(manager, repo)?;
+                (
+                    CacheIdentity::Registry {
+                        source: repo_name,
+                        skill: skill.clone(),
+                        version: expected.version.clone(),
+                    },
+                    None,
+                )
+            }
+            Origin::ZipUrl { url } => {
+                let validators = self.skill_cache().read_zip_validators()?;
+                let validator = validators.get(url).ok_or_else(|| {
+                    ServiceError::Config(format!(
+                        "offline cache has no verified artifact for ZIP URL '{url}'"
+                    ))
+                })?;
+                (
+                    CacheIdentity::ZipUrl {
+                        content_hash: validator.content_hash.clone(),
+                    },
+                    None,
+                )
+            }
+            Origin::Local { .. } => unreachable!(),
+        };
+        let cached = self.skill_cache().get(&identity).ok_or_else(|| {
+            ServiceError::Config(format!(
+                "required offline artifact is missing from the cache: {identity:?}"
+            ))
+        })?;
+        let temp_dir = TempDir::new()?;
+        let copied = temp_dir.path().join("cached");
+        copy_dir_recursive(&cached.path, &copied).await?;
+        let skill_base = if let Some(subdir) = subdir {
+            safe_subdir_join(&copied, &subdir)?
+        } else {
+            copied
+        };
+        let skill_path = crate::storage::git::validate_cloned_skill(&skill_base)?;
+        let frontmatter = read_skill_frontmatter(&skill_path).await?;
+        let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
+        Ok(Fetched {
+            temp_dir,
+            resolved: Resolved {
+                version,
+                commit_hash: expected.commit_hash.clone(),
+                checksum: Some(digest_directory(&skill_path)?),
+            },
+            skill_path,
+        })
     }
 
     /// Fetch a skill described by `origin` into a temp dir, capturing the resolved
@@ -107,17 +393,9 @@ impl FastSkillService {
     ) -> Result<Fetched, ServiceError> {
         let (branch, tag) = match git_ref {
             GitRef::Default => (None, None),
-            GitRef::Branch(b) => (Some(b.as_str()), None),
-            GitRef::Tag(t) => (None, Some(t.as_str())),
-            GitRef::Commit(_) => {
-                // No clone-by-commit primitive exists yet (`clone_repository` only
-                // takes branch/tag). Surface a clear error rather than mishandling it.
-                return Err(ServiceError::InvalidOperation(
-                    "Installing a skill pinned to a git commit is not yet supported (no \
-                     clone-by-commit primitive)"
-                        .to_string(),
-                ));
-            }
+            GitRef::Branch(branch) => (Some(branch.as_str()), None),
+            GitRef::Tag(tag) => (None, Some(tag.as_str())),
+            GitRef::Commit(_) => (None, None),
         };
 
         // PRD 006 / RFQ 004 (US-002): resolve the ref to a SHA before deciding
@@ -125,7 +403,10 @@ impl FastSkillService {
         // from a different project — never re-clones.
         let cache = self.skill_cache();
         let ref_key = git_ref_cache_key(git_ref);
-        let resolved_sha = resolve_git_sha(cache, url, &ref_key, branch, tag).await?;
+        let resolved_sha = match git_ref {
+            GitRef::Commit(commit) => commit.clone(),
+            _ => resolve_git_sha(cache, url, &ref_key, branch, tag).await?,
+        };
 
         let (temp_dir, commit_hash) = if let Some(cached) = cache.get(&CacheIdentity::Git {
             sha: resolved_sha.clone(),
@@ -142,7 +423,12 @@ impl FastSkillService {
             // moved between the `ls_remote` above and this clone (a race,
             // not an error); using it here self-heals the index instead of
             // caching under a now-stale SHA.
-            let temp_dir = crate::storage::git::clone_repository(url, branch, tag, None).await?;
+            let temp_dir = match git_ref {
+                GitRef::Commit(commit) => {
+                    crate::storage::git_commit::clone_repository_at_commit(url, commit).await?
+                }
+                _ => crate::storage::git::clone_repository(url, branch, tag, None).await?,
+            };
             let actual_sha = git_head_commit(temp_dir.path()).await?;
             // `.git` metadata is only ever needed transiently, to resolve the
             // commit just cloned to (just done, above) — the content cache is
@@ -195,13 +481,14 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
+        let checksum = digest_directory(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
             resolved: Resolved {
                 version,
                 commit_hash: Some(commit_hash),
-                checksum: None,
+                checksum: Some(checksum),
             },
         })
     }
@@ -250,13 +537,18 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
+        let checksum = if editable {
+            None
+        } else {
+            Some(digest_directory(&skill_path)?)
+        };
         Ok(Fetched {
             temp_dir,
             skill_path,
             resolved: Resolved {
                 version,
                 commit_hash: None,
-                checksum: None,
+                checksum,
             },
         })
     }
@@ -280,13 +572,14 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
+        let checksum = digest_directory(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
             resolved: Resolved {
                 version,
                 commit_hash: None,
-                checksum: None,
+                checksum: Some(checksum),
             },
         })
     }
@@ -364,13 +657,14 @@ impl FastSkillService {
         // own metadata, not the registry's version string).
         let (_, version_from_skill) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
+        let checksum = digest_directory(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
             resolved: Resolved {
                 version: version_from_skill,
                 commit_hash: None,
-                checksum: None,
+                checksum: Some(checksum),
             },
         })
     }
@@ -386,6 +680,8 @@ impl FastSkillService {
         origin: Origin,
         mode: AddMode,
         groups: Vec<String>,
+        persist_state: bool,
+        reindex: bool,
     ) -> Result<AddOutcome, ServiceError> {
         let Fetched {
             temp_dir,
@@ -429,16 +725,24 @@ impl FastSkillService {
             .force_register_skill(skill_def.clone())
             .await?;
 
-        let warnings = self.upsert_manifest_and_lock(&skill_def, &groups)?;
+        let warnings = if persist_state {
+            self.upsert_manifest_and_lock(&skill_def, &groups)?
+        } else {
+            Vec::new()
+        };
 
-        let reindexed = match self.reindex(None, None).await {
-            Ok(outcome) => outcome.reindexed,
-            Err(e) => {
-                // A reindex failure must not fail the commit (ADR-0005 §Q3): the
-                // skill is already installed and recorded; reindexing is retried
-                // by any subsequent `reindex` call.
-                tracing::warn!("post-install reindex failed (non-fatal): {}", e);
-                false
+        let reindexed = if !reindex {
+            false
+        } else {
+            match self.reindex(None, None).await {
+                Ok(outcome) => outcome.reindexed,
+                Err(e) => {
+                    // A reindex failure must not fail the commit (ADR-0005 §Q3): the
+                    // skill is already installed and recorded; reindexing is retried
+                    // by any subsequent `reindex` call.
+                    tracing::warn!("post-install reindex failed (non-fatal): {}", e);
+                    false
+                }
             }
         };
 
@@ -540,8 +844,7 @@ impl FastSkillService {
             );
         }
 
-        project
-            .save_to_file(&project_file_path)
+        crate::core::project_state::save_project_preserving(&project_file_path, &project)
             .map_err(|e| ServiceError::Config(format!("Failed to save skill-project.toml: {e}")))?;
 
         let lock_path = project_lock_path(&project_file_path);
@@ -668,10 +971,15 @@ impl FastSkillService {
     }
 }
 
+mod dependencies;
+mod prepared_apply;
 mod support;
+mod verification;
 
+pub(crate) use support::read_skill_identity;
 use support::*;
 pub use support::{LOCAL_COPY_INVOCATIONS, ZIP_URL_BODY_BYTES_DOWNLOADED};
+use verification::*;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

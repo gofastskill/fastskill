@@ -65,7 +65,7 @@ impl VersionConstraint {
     pub fn parse(constraint: &str) -> Result<Self, VersionError> {
         let constraint = constraint.trim();
 
-        if constraint.is_empty() || constraint == "*" {
+        if constraint.is_empty() || constraint == "*" || constraint.eq_ignore_ascii_case("latest") {
             return Ok(VersionConstraint {
                 req: VersionReq::STAR,
             });
@@ -182,6 +182,14 @@ mod tests {
         let constraint = VersionConstraint::parse("1.2.3").unwrap();
         assert!(constraint.satisfies("1.2.3").unwrap());
         assert!(!constraint.satisfies("1.2.4").unwrap());
+    }
+
+    #[test]
+    fn latest_is_the_documented_floating_selector() {
+        let constraint = VersionConstraint::parse("latest").unwrap();
+        assert!(constraint.satisfies("1.2.3").unwrap());
+        assert!(!constraint.satisfies("2.0.0-beta.1").unwrap());
+        assert!(constraint.as_exact().is_none());
     }
 
     #[test]

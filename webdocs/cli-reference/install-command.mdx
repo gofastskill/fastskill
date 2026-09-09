@@ -5,7 +5,8 @@ api: "install"
 
 # install Command
 
-Install skills from `skill-project.toml` `[dependencies]` section into `.claude/skills/`. Creates or updates `skills.lock` for reproducible installations.
+Restore skills and their complete dependency closures from `skill-project.toml`. Compatible locked
+selections are reused; roots without coverage are resolved and added to `skills.lock`.
 
 ## Usage
 
@@ -20,6 +21,11 @@ fastskill install [OPTIONS]
 | `--without <GROUPS...>` | Exclude skills from these groups (like poetry --without dev) | None |
 | `--only <GROUPS...>` | Only install skills from these groups | None |
 | `--lock` | Install from `skills.lock` (exact versions) instead of resolving from `skill-project.toml` | `false` |
+| `--offline` | Use verified local and cached inputs without network, refresh, or automatic indexing | `false` |
+| `--dry-run` | Validate and show the installation plan without changing managed state | `false` |
+| `--json` | Emit one machine-readable plan or result object | `false` |
+| `--depth <N>` | Permit at most N dependency levels, including roots at level 1 | configured limit |
+| `--reindex` / `--no-reindex` | Override configured post-install indexing | config |
 
 ## Examples
 
@@ -69,11 +75,12 @@ fastskill install --only prod test
 Install exact versions from `skills.lock`:
 
 ```bash
-fastskill install --lock
+fastskill install --lock --offline
 ```
 
 <Callout type="success">
-Use `--lock` for production deployments to ensure you install the exact same versions that were used in development.
+Use `--lock` for production deployments. It verifies locked identity, revision, and content and
+leaves lock bytes unchanged. `--offline` also prevents network and provider calls.
 </Callout>
 
 ### Combined Example: Production Deployment
@@ -86,7 +93,7 @@ git add skill-project.toml skills.lock
 git commit -m "Lock dependency versions"
 
 # 2. Deploy with locked versions
-fastskill install --lock --without dev
+fastskill install --lock --offline --without dev
 ```
 
 ## Behavior
@@ -95,12 +102,13 @@ The `install` command:
 
 1. **Locates Project File**: Finds `skill-project.toml` at project root or walks up directory tree
 2. **Loads Dependencies**: Reads `[dependencies]` section from `skill-project.toml`
-3. **Applies Group Filters**: Filters dependencies based on `--without` and `--only` flags
+3. **Selects Roots**: Applies `--without` or `--only` to roots, then includes every required child
 4. **Resolves Skills**: For each dependency:
-   - If `--lock` is set: Resolves exact versions from `skills.lock`
-   - Otherwise: Resolves latest compatible versions from repositories
-5. **Installs Skills**: Downloads and installs skills into `.claude/skills/`
-6. **Updates Lockfile**: Writes exact versions to `skills.lock` at project root
+   - If `--lock` is set: verifies complete locked coverage and exact resolved facts
+   - Otherwise: reuses compatible pins and resolves only missing coverage
+5. **Validates a Plan**: Checks IDs, cycles, depth, digests, ownership, and destination safety
+6. **Installs Skills**: Stages and commits each overlapping dependency closure as one recovery unit
+7. **Updates Lockfile**: Records exact facts without moving unrelated compatible pins
 
 ## Dependency Groups
 
@@ -121,13 +129,15 @@ mock-skill = { origin = { type = "repository", repo = "default", skill = "mock-s
 ```
 
 <Callout type="info">
-If no `groups` are specified, the skill belongs to no groups and will always be installed.
+If no `groups` are specified, the root belongs to the implicit `default` group. Plain install
+selects every group. `--only` and `--without` cannot be combined, and unknown groups fail before
+mutation.
 </Callout>
 
 ### Default Group Behavior
 
 ```toml
-# Without groups - always installed
+# Without groups - member of the implicit default group
 web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" } }
 
 # With groups - filtered by --without/--only
@@ -185,7 +195,7 @@ version = "2.1.0"
 **Development Mode** (with `skill-project.toml`):
 
 ```bash
-# Install latest compatible versions from skill-project.toml
+# Reuse compatible pins and resolve uncovered roots
 fastskill install
 
 # This updates skills.lock with resolved versions
@@ -197,7 +207,7 @@ fastskill install
 # Install exact versions from skills.lock
 fastskill install --lock
 
-# skill-project.toml is only used for skill metadata, not version resolution
+# skill-project.toml still defines selected roots and must remain compatible with the lock
 ```
 
 ### Lock File Workflow

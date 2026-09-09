@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: Swatinem/rust-cache@v2
 
@@ -31,7 +33,20 @@ jobs:
       - name: Run tests with coverage
         env:
           NEXTEST_THREADS: "2"
-        run: cargo llvm-cov nextest --all-features -E 'not test(install_e2e_tests)' --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --all-features -E 'not test(install_e2e_tests)' --no-report
+
+      - name: Generate coverage reports
+        run: |
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --json --summary-only --output-path coverage-summary.json
+
+      - name: Enforce modified Rust file coverage
+        if: github.event_name == 'pull_request'
+        run: >-
+          python3 scripts/check-modified-rust-coverage.py
+          "${{ github.event.pull_request.base.sha }}"
+          coverage-summary.json
+          90
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4

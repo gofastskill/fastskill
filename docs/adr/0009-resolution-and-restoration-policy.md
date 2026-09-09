@@ -1,17 +1,17 @@
 # Resolve floating intent deliberately; restore pinned contents
 
-Status: proposed; implementation pending. Date: 2026-09-08.
+Status: accepted. Date: 2026-09-08. Implemented: 2026-09-09.
 
 Related: [ADR-0004](0004-bare-version-is-exact.md),
 [ADR-0005](0005-install-seam-and-origin-model.md), and
 [ADR-0007](0007-self-contained-tracked-skill-bundles.md).
 
 Users usually want a current skill when adding it, and the same environment when
-restoring a project. We propose separating those moments: `add` and `update` may
+restoring a project. We separate those moments: `add` and `update` may
 resolve new selections; `install` prefers compatible locked selections. This
-changes current defaults and remains a proposal rather than a claim about the CLI.
+changes the previous defaults and is implemented by the shared lifecycle planner.
 
-## Proposed decision
+## Decision
 
 - A repository reference `skill@1.2.0` MUST remain an exact pin under ADR-0004.
   Explicit operators retain their range meaning. Neither install nor an update

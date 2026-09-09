@@ -45,10 +45,25 @@ impl FsState {
         use crate::error::CliError;
         self.service_cell
             .get_or_try_init(|| async move {
+                let project_root = if global {
+                    None
+                } else {
+                    std::env::current_dir().ok().and_then(|current_dir| {
+                        let resolved =
+                            fastskill_core::core::project::resolve_project_file(&current_dir);
+                        resolved
+                            .found
+                            .then(|| resolved.path.parent().map(PathBuf::from))
+                            .flatten()
+                    })
+                };
                 let cfg = crate::config::create_service_config(global, skills_dir)?;
                 let mut s = FastSkillService::new(cfg)
                     .await
                     .map_err(CliError::Service)?;
+                if let Some(project_root) = project_root {
+                    s = s.with_project_root(project_root);
+                }
                 s.initialize().await.map_err(CliError::Service)?;
                 let s = crate::config::inject_edge_services(s)?;
                 Ok(Arc::new(s))

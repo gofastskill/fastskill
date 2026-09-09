@@ -39,6 +39,40 @@ fn test_lock_from_skills() {
 }
 
 #[test]
+fn project_lock_tracks_transitive_owners_and_reports_every_installed_mismatch() {
+    let mut alpha = make_skill("alpha");
+    alpha.dependencies = Some(vec!["child".to_string()]);
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.update_skill_with_depth(&alpha, 1, Some("root".to_string()));
+    assert!(lock.covered_roots.is_empty());
+    assert_eq!(lock.skills[0].required_by, vec!["root"]);
+
+    let mut missing = make_skill("missing");
+    missing.version = "2.0.0".to_string();
+    lock.update_skill(&missing);
+    assert_eq!(lock.covered_roots, vec!["missing"]);
+
+    let mut installed_alpha = alpha.clone();
+    installed_alpha.version = "9.0.0".to_string();
+    installed_alpha.commit_hash = Some("different".to_string());
+    let extra = make_skill("extra");
+    let mismatches = lock.verify_matches_installed(&[installed_alpha, extra]);
+    assert!(mismatches
+        .iter()
+        .any(|mismatch| mismatch.skill_id == "alpha" && mismatch.reason.contains("Version")));
+    assert!(mismatches
+        .iter()
+        .any(|mismatch| mismatch.skill_id == "alpha" && mismatch.reason.contains("Commit")));
+    assert!(mismatches.iter().any(
+        |mismatch| mismatch.skill_id == "missing" && mismatch.reason.contains("not installed")
+    ));
+    assert!(mismatches
+        .iter()
+        .any(|mismatch| mismatch.skill_id == "extra" && mismatch.reason.contains("not in lock")));
+    assert!(!lock.remove_skill("absent"));
+}
+
+#[test]
 fn test_project_lock_entries_sorted_on_save() {
     let tmp = TempDir::new().unwrap();
     let lock_path = tmp.path().join("skills.lock");
@@ -158,6 +192,7 @@ fn test_global_lock_upsert_and_remove() {
     assert_eq!(lock.skills.len(), 1);
     assert_eq!(lock.skills[0].id, "global-skill");
     assert_eq!(lock.skills[0].installed_at, now);
+    assert_eq!(lock.covered_roots, vec!["global-skill"]);
 
     // Upsert again (update) - should not duplicate
     lock.upsert_skill(&skill, now);
@@ -166,6 +201,36 @@ fn test_global_lock_upsert_and_remove() {
     let removed = lock.remove_skill("global-skill");
     assert!(removed);
     assert!(lock.skills.is_empty());
+    assert!(lock.covered_roots.is_empty());
+}
+
+#[test]
+fn global_lock_preserves_transitive_selection_and_handles_absent_updates() {
+    let mut lock = GlobalSkillsLock::new_empty();
+    let now = Utc::now();
+    lock.upsert_skill_with_selection(&make_skill("child"), now, false);
+    assert!(lock.covered_roots.is_empty());
+    lock.upsert_skill_with_selection(&make_skill("root"), now, true);
+    lock.upsert_skill_with_selection(&make_skill("root"), now, true);
+    assert_eq!(lock.covered_roots, vec!["root"]);
+    assert!(!lock.remove_skill("absent"));
+    lock.mark_checked("absent", now);
+    lock.mark_updated("absent", now);
+
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("global-skills.lock");
+    let mut legacy_shape = GlobalSkillsLock::new_empty();
+    legacy_shape.skills.push(
+        lock.skills
+            .iter()
+            .find(|entry| entry.id == "child")
+            .unwrap()
+            .clone(),
+    );
+    legacy_shape.save_to_file(&path).unwrap();
+    let restored = GlobalSkillsLock::load_from_file(&path).unwrap();
+    assert_eq!(restored.covered_roots, vec!["child"]);
+    assert!(GlobalSkillsLock::default_path().is_ok());
 }
 
 #[test]
@@ -197,6 +262,29 @@ fn test_global_lock_save_and_load() {
     assert_eq!(loaded.skills.len(), 1);
     assert_eq!(loaded.skills[0].id, "my-global-skill");
     assert!(loaded.skills[0].last_checked_at.is_none());
+}
+
+#[test]
+fn legacy_global_lock_migrates_every_entry_as_an_explicit_root() {
+    let tmp = TempDir::new().unwrap();
+    let lock_path = tmp.path().join("global-skills.lock");
+    let mut lock = GlobalSkillsLock::new_empty();
+    let mut root = make_skill("root");
+    root.dependencies = Some(vec!["also-selected".to_string()]);
+    lock.upsert_skill(&root, Utc::now());
+    lock.upsert_skill(&make_skill("also-selected"), Utc::now());
+    lock.save_to_file(&lock_path).unwrap();
+    let mut legacy: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&lock_path).unwrap()).unwrap();
+    legacy.as_table_mut().unwrap().remove("covered_roots");
+    std::fs::write(&lock_path, toml::to_string_pretty(&legacy).unwrap()).unwrap();
+
+    let migrated = GlobalSkillsLock::load_from_file(&lock_path).unwrap();
+
+    assert_eq!(
+        migrated.covered_roots,
+        vec!["also-selected".to_string(), "root".to_string()]
+    );
 }
 
 #[test]
@@ -232,6 +320,10 @@ fn test_project_lock_path_helper() {
     assert_eq!(
         lock_path,
         std::path::PathBuf::from("/home/user/project/skills.lock")
+    );
+    assert_eq!(
+        project_lock_path(std::path::Path::new("/")),
+        std::path::PathBuf::from("skills.lock")
     );
 }
 

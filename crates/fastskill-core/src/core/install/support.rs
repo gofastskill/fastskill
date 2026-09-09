@@ -57,6 +57,12 @@ pub(super) fn resolve_registry_version(
              `fastskill repos refresh {repo_name}` to refresh it"
             ))
         })?;
+    // Validate every advertised value before filtering. Otherwise a malicious
+    // unparseable value can be hidden behind the "stable only" policy and the
+    // caller receives a misleading no-stable-version error.
+    for advertised in &entry.versions {
+        validate_resolved_version(advertised.clone())?;
+    }
     let candidates: Vec<String> = match version {
         Some(constraint) => entry
             .versions
@@ -64,12 +70,24 @@ pub(super) fn resolve_registry_version(
             .filter(|v| constraint.satisfies(v).unwrap_or(false))
             .cloned()
             .collect(),
-        None => entry.versions.clone(),
+        None => entry
+            .versions
+            .iter()
+            .filter(|candidate| {
+                semver::Version::parse(candidate).is_ok_and(|version| version.pre.is_empty())
+            })
+            .cloned()
+            .collect(),
     };
     let newest = newest_version(&candidates).ok_or_else(|| {
+        let reason = if version.is_none() {
+            format!("no stable version of '{skill}' is available")
+        } else {
+            format!("no version of '{skill}' satisfies the requested constraint")
+        };
         ServiceError::Config(format!(
-            "no version of '{skill}' in the cached index for repository '{repo_name}' satisfies \
-             the requested constraint; run `fastskill repos refresh {repo_name}` to refresh it"
+            "{reason} in the cached index for repository '{repo_name}'; run `fastskill repos refresh \
+             {repo_name}` to refresh it"
         ))
     })?;
     validate_resolved_version(newest)
@@ -183,6 +201,15 @@ pub(super) fn derive_skill_id_and_version(
         .unwrap_or_else(|| "1.0.0".to_string());
 
     Ok((id, version))
+}
+
+/// Read the canonical package identity using the same precedence as install.
+/// Repository discovery and acquisition use this to avoid treating a display
+/// name or directory name as a different package ID.
+pub(crate) fn read_skill_identity(skill_path: &Path) -> Result<(SkillId, String), ServiceError> {
+    let content = std::fs::read_to_string(skill_path.join("SKILL.md"))?;
+    let frontmatter = parse_yaml_frontmatter(&content)?;
+    derive_skill_id_and_version(skill_path, &frontmatter)
 }
 
 /// Safely join an untrusted `subdir` (from a git tree reference) onto a trusted
@@ -762,15 +789,21 @@ pub(super) async fn move_or_copy_into_storage(
     skill_path: &Path,
     storage_dir: &Path,
 ) -> Result<(), ServiceError> {
-    remove_existing_storage_path(storage_dir).await?;
-    if let Some(parent) = storage_dir.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    if tokio::fs::rename(skill_path, storage_dir).await.is_ok() {
-        return Ok(());
-    }
-    // Cross-device (or other rename failure): fall back to a recursive copy.
-    copy_dir_recursive(skill_path, storage_dir).await
+    let parent = storage_dir.parent().ok_or_else(|| {
+        ServiceError::InvalidOperation("skill storage path has no parent".to_string())
+    })?;
+    tokio::fs::create_dir_all(parent).await?;
+    let staging = tempfile::Builder::new()
+        .prefix(".fastskill-install-")
+        .tempdir_in(parent)?;
+    let candidate = staging.path().join("candidate");
+
+    // Always copy into staging first. A same-filesystem rename of the fetched
+    // source would otherwise bypass recursive validation (notably symlink
+    // rejection) and could delete a working destination before the defect is
+    // discovered.
+    copy_dir_recursive(skill_path, &candidate).await?;
+    replace_storage_path(&candidate, storage_dir, staging.path()).await
 }
 
 /// Symlink `storage_dir` -> `skill_path` (editable local installs).
@@ -778,17 +811,21 @@ pub(super) async fn symlink_into_storage(
     skill_path: &Path,
     storage_dir: &Path,
 ) -> Result<(), ServiceError> {
-    remove_existing_storage_path(storage_dir).await?;
-    if let Some(parent) = storage_dir.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
+    let parent = storage_dir.parent().ok_or_else(|| {
+        ServiceError::InvalidOperation("skill storage path has no parent".to_string())
+    })?;
+    tokio::fs::create_dir_all(parent).await?;
+    let staging = tempfile::Builder::new()
+        .prefix(".fastskill-install-")
+        .tempdir_in(parent)?;
+    let candidate = staging.path().join("candidate");
     #[cfg(unix)]
     {
-        tokio::fs::symlink(skill_path, storage_dir).await?;
+        tokio::fs::symlink(skill_path, &candidate).await?;
     }
     #[cfg(windows)]
     {
-        std::os::windows::fs::symlink_dir(skill_path, storage_dir)?;
+        std::os::windows::fs::symlink_dir(skill_path, &candidate)?;
     }
     #[cfg(all(not(unix), not(windows)))]
     {
@@ -797,6 +834,34 @@ pub(super) async fn symlink_into_storage(
              system or Docker."
                 .to_string(),
         ));
+    }
+    replace_storage_path(&candidate, storage_dir, staging.path()).await
+}
+
+/// Swap a completely prepared candidate into place. The previous destination
+/// is kept beside it until the final rename succeeds, then removed. If that
+/// rename fails, the previous installation is restored before the error is
+/// returned.
+async fn replace_storage_path(
+    candidate: &Path,
+    storage_dir: &Path,
+    staging_root: &Path,
+) -> Result<(), ServiceError> {
+    let backup = staging_root.join("previous");
+    let had_previous = storage_dir.exists() || storage_dir.is_symlink();
+    if had_previous {
+        tokio::fs::rename(storage_dir, &backup).await?;
+    }
+
+    if let Err(error) = tokio::fs::rename(candidate, storage_dir).await {
+        if had_previous {
+            let _ = tokio::fs::rename(&backup, storage_dir).await;
+        }
+        return Err(error.into());
+    }
+
+    if had_previous {
+        remove_existing_storage_path(&backup).await?;
     }
     Ok(())
 }
@@ -829,78 +894,5 @@ pub(super) async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), Ser
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-
-    fn cache_with_versions(root: &TempDir, versions: &[&str]) -> SkillCache {
-        let cache = SkillCache::at_root(root.path());
-        cache
-            .write_source_index(
-                "acme",
-                &SourceIndex {
-                    fetched_at: chrono::Utc::now(),
-                    entries: vec![SourceIndexEntry {
-                        skill: "widget".to_string(),
-                        versions: versions.iter().map(|v| (*v).to_string()).collect(),
-                        name: String::new(),
-                        description: String::new(),
-                    }],
-                },
-            )
-            .unwrap();
-        cache
-    }
-
-    /// A registry's listing response reaches this function through the on-disk
-    /// source index, so the version strings in it are remote-controlled.
-    /// `newest_version` ranks unparseable versions lowest but still returns one
-    /// when *every* candidate is unparseable, so a traversal string can be the
-    /// selected version -- and the selection is then interpolated into
-    /// filesystem paths (`install.rs`'s `package-{version}.zip`) and into a
-    /// `CacheIdentity`. Reject it here, at the single resolution choke point,
-    /// rather than at each downstream use.
-    #[test]
-    fn a_traversal_version_from_the_cached_index_is_rejected() {
-        let root = TempDir::new().unwrap();
-        let cache = cache_with_versions(&root, &["../../../../etc/cron.d/pwned"]);
-
-        let err = resolve_registry_version(&cache, "acme", "widget", None).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("../../../../etc/cron.d/pwned"),
-            "the error should name the version it rejected, got: {msg}"
-        );
-    }
-
-    /// An absolute version string is the other shape that escapes a `join`:
-    /// `Path::join` *replaces* the root when its argument is absolute.
-    #[test]
-    fn an_absolute_version_from_the_cached_index_is_rejected() {
-        let root = TempDir::new().unwrap();
-        let cache = cache_with_versions(&root, &["/etc/cron.d/pwned"]);
-
-        assert!(resolve_registry_version(&cache, "acme", "widget", None).is_err());
-    }
-
-    /// The guard must not cost ordinary resolution: a normal semver set still
-    /// resolves, and still resolves by semver order rather than lexically.
-    #[test]
-    fn ordinary_semver_versions_still_resolve_newest_first() {
-        let root = TempDir::new().unwrap();
-        let cache = cache_with_versions(&root, &["1.2.3", "1.9.0", "1.10.0"]);
-
-        let v = resolve_registry_version(&cache, "acme", "widget", None).unwrap();
-        assert_eq!(v, "1.10.0");
-    }
-
-    /// Pre-release and build metadata are legal semver and contain characters
-    /// (`-`, `+`, `.`) a component validator could over-reject.
-    #[test]
-    fn a_prerelease_version_is_not_rejected_by_the_guard() {
-        let root = TempDir::new().unwrap();
-        let cache = cache_with_versions(&root, &["1.0.0-rc.1"]);
-
-        let v = resolve_registry_version(&cache, "acme", "widget", None).unwrap();
-        assert_eq!(v, "1.0.0-rc.1");
-    }
-}
+#[path = "support/tests.rs"]
+mod tests;

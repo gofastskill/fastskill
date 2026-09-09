@@ -8,109 +8,91 @@ use super::snapshot_helpers::{
     assert_snapshot_with_settings, cli_snapshot_settings, run_fastskill_command,
 };
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
+
+fn write_local_fixture(root: &Path) {
+    for id in ["main-skill", "dev-skill"] {
+        let source = root.join("sources").join(id);
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            format!("---\nname: {id}\nversion: 1.0.0\ndescription: fixture\n---\nBody\n"),
+        )
+        .unwrap();
+    }
+    fs::create_dir_all(root.join(".skills")).unwrap();
+    fs::write(
+        root.join("skill-project.toml"),
+        "[tool.fastskill]\nskills_directory = \".skills\"\n\n[dependencies]\nmain-skill = { origin = { type = \"local\", path = \"sources/main-skill\" }, groups = [\"main\"] }\ndev-skill = { origin = { type = \"local\", path = \"sources/dev-skill\" }, groups = [\"dev\"] }\n",
+    )
+    .unwrap();
+}
 
 #[test]
 fn test_install_from_project_toml() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Copy sample skill-project.toml
-    let sample_project = include_str!("fixtures/sample-skill-project.toml");
-    fs::write(temp_dir.path().join("skill-project.toml"), sample_project).unwrap();
+    write_local_fixture(temp_dir.path());
 
     let result = run_fastskill_command(&["install"], Some(temp_dir.path()));
 
-    // Test skills will fail to install since they don't exist
-    assert!(!result.success);
+    assert!(result.success, "{}{}", result.stdout, result.stderr);
     assert!(result.stdout.contains("Installing"));
-
-    assert_snapshot_with_settings(
-        "install_from_project",
-        &format!("{}{}", result.stdout, result.stderr),
-        &cli_snapshot_settings(),
-    );
+    assert!(temp_dir
+        .path()
+        .join(".skills/main-skill/SKILL.md")
+        .is_file());
+    assert!(temp_dir.path().join(".skills/dev-skill/SKILL.md").is_file());
+    assert!(temp_dir.path().join("skills.lock").is_file());
 }
 
 #[test]
 fn test_install_with_lock_file() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Create both project and lock files
-    let sample_project = include_str!("fixtures/sample-skill-project.toml");
-    let sample_lock = include_str!("fixtures/sample-skills-lock.toml");
-    fs::write(temp_dir.path().join("skill-project.toml"), sample_project).unwrap();
-    fs::write(temp_dir.path().join("skills.lock"), sample_lock).unwrap();
+    write_local_fixture(temp_dir.path());
+    let initial = run_fastskill_command(&["install"], Some(temp_dir.path()));
+    assert!(initial.success, "{}{}", initial.stdout, initial.stderr);
+    fs::remove_dir_all(temp_dir.path().join(".skills/main-skill")).unwrap();
+    fs::remove_dir_all(temp_dir.path().join(".skills/dev-skill")).unwrap();
 
     let result = run_fastskill_command(&["install", "--lock"], Some(temp_dir.path()));
 
-    // Using lock file - will fail because skills in lock file don't actually exist
-    assert!(!result.success);
-    assert!(
-        result.stdout.contains("lock")
-            || result.stdout.contains("Installing")
-            || result.stdout.contains("Failed to install")
-    );
-    assert!(
-        result.stdout.contains("lock")
-            || result.stdout.contains("Installing")
-            || result.stdout.contains("No skills")
-    );
-
-    assert_snapshot_with_settings(
-        "install_with_lock",
-        &result.stdout,
-        &cli_snapshot_settings(),
-    );
+    assert!(result.success, "{}{}", result.stdout, result.stderr);
+    assert!(temp_dir
+        .path()
+        .join(".skills/main-skill/SKILL.md")
+        .is_file());
+    assert!(temp_dir.path().join(".skills/dev-skill/SKILL.md").is_file());
 }
 
 #[test]
 fn test_install_without_dev_dependencies() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Copy sample skill-project.toml
-    let sample_project = include_str!("fixtures/sample-skill-project.toml");
-    fs::write(temp_dir.path().join("skill-project.toml"), sample_project).unwrap();
+    write_local_fixture(temp_dir.path());
 
     let result = run_fastskill_command(&["install", "--without", "dev"], Some(temp_dir.path()));
 
-    // Test skills will fail to install since they don't exist
-    assert!(!result.success);
-    assert!(result.stdout.contains("main") || result.stdout.contains("Installing"));
-
-    assert_snapshot_with_settings(
-        "install_without_dev",
-        &format!("{}{}", result.stdout, result.stderr),
-        &cli_snapshot_settings(),
-    );
+    assert!(result.success, "{}{}", result.stdout, result.stderr);
+    assert!(temp_dir
+        .path()
+        .join(".skills/main-skill/SKILL.md")
+        .is_file());
+    assert!(!temp_dir.path().join(".skills/dev-skill").exists());
 }
 
 #[test]
 fn test_install_only_group() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Copy sample skill-project.toml
-    let sample_project = include_str!("fixtures/sample-skill-project.toml");
-    fs::write(temp_dir.path().join("skill-project.toml"), sample_project).unwrap();
+    write_local_fixture(temp_dir.path());
 
     let result = run_fastskill_command(&["install", "--only", "main"], Some(temp_dir.path()));
 
-    // Test skills will fail to install since they don't exist
-    assert!(!result.success);
-    assert!(result.stdout.contains("main") || result.stdout.contains("Installing"));
-
-    assert_snapshot_with_settings(
-        "install_only_group",
-        &format!("{}{}", result.stdout, result.stderr),
-        &cli_snapshot_settings(),
-    );
+    assert!(result.success, "{}{}", result.stdout, result.stderr);
+    assert!(temp_dir
+        .path()
+        .join(".skills/main-skill/SKILL.md")
+        .is_file());
+    assert!(!temp_dir.path().join(".skills/dev-skill").exists());
 }
 
 #[test]

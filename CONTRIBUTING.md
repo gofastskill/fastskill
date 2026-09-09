@@ -82,6 +82,9 @@ cargo run --bin fastskill -- serve
 - Preserve stable public APIs for library crates (`fastskill-core`, `fastskill-evals`).
 - Add tests with behavior changes and keep docs aligned with new usage.
 - Prefer small, reviewable pull requests with clear problem statements.
+- Keep add, install, update, HTTP, and MCP wrappers on the shared core lifecycle operations. A
+  supported origin must use the same identity, metadata, dependency, integrity, ownership, and
+  transaction checks on every surface.
 - Adding a command or HTTP route that mutates fastskill-managed state? Register it in the single
   `WriteOperation`/`WriteHttpRoute` table in `crates/fastskill-core/src/write_ops.rs` — both the
   HTTP write-gate and the MCP tool gate derive from that table, so there is no second list to keep
@@ -94,17 +97,44 @@ and the manifest and lock files. Preserve these invariants when changing it:
 
 - `fastskill install --lock` restores bundle identity, version, artifact, digest, and members from
   `skills.lock`; it must not select a different release from the manifest.
-- An ordinary `fastskill remove <skill>` must not delete a member owned by an installed bundle.
+- Direct, transitive, bundle, and personal-override ownership must remain distinct. Removing one
+  owner must not delete content that another retained root still requires.
+- `--force` bypasses confirmation only. It must not bypass ownership, integrity, local-edit, or
+  destination-safety checks.
 - Bundle builds must reject installed member versions that do not satisfy their declared
   dependency constraints.
-- `bundle build` and `bundle override` are mutating MCP tools and must remain in
-  `WRITE_OPERATIONS`.
+- Bundle update previews and apply must run the same policy and ownership validation.
+- `bundle override --reset` must restore the packaged member and clear both Manifest and Lock
+  override records in one guarded operation.
+- Bundle mutation paths must use the same indexing policy as ordinary skill changes.
 
 Run the focused regression set while iterating:
 
 ```shell
 cargo nextest run --locked -E 'binary(bundle_lifecycle_test) + binary(bundle_cli_test) + test(mcp_tools_list_hides_mutating_tools_without_enable_write)'
 ```
+
+### Lifecycle and lock changes
+
+Treat `skill-project.toml`, `skills.lock`, ownership records, installed directories, and the
+registry as one state transition for an affected dependency closure. Validate the complete plan
+before replacing working files, acquire the project and destination mutation guards, and restore
+the previous unit if persistence fails. Use `save_project_preserving` for Manifest writes so
+bundle, override, repository, and extension tables survive unrelated changes.
+
+Keep these selection rules consistent across commands and APIs:
+
+- `id@1.2.0` is exact; omitted versions and `@latest` select the newest stable repository release.
+- strict `install --lock` verifies locked identity, revision, and digest and does not rewrite the
+  lock file;
+- ungrouped roots belong to `default`; group selection applies to roots and then includes their
+  required closure;
+- offline operations do not refresh catalogs, access the network, or invoke embedding providers;
+- editable local directories are mutable links and must never be reported as byte-verified.
+
+Add subprocess or public-core tests that compare the Manifest, Lock, installed bytes, owners, and
+exit status. A successful setup command is part of the fixture; do not use a failed setup as proof
+that a later conflict was handled.
 
 ## Source File Size
 
@@ -204,6 +234,15 @@ fastskill supports several feature flags that affect available functionality:
 | **Fast local checks**  | `cargo nextest run`                       | Unit tests, integration tests with default features |
 | **Full CI equivalent** | `cargo nextest run --all-features`        | All tests with optional features enabled            |
 | **Feature-specific**   | `cargo nextest run --features hot-reload` | Tests requiring specific optional features          |
+
+Pull requests must keep every modified production Rust file above 90% line coverage. Run the same
+gate as CI after generating the coverage report:
+
+```shell
+cargo llvm-cov nextest --all-features -E 'not test(install_e2e_tests)' --no-report
+cargo llvm-cov report --json --summary-only --output-path coverage-summary.json
+python3 scripts/check-modified-rust-coverage.py origin/main coverage-summary.json 90
+```
 
 Tests requiring optional features will be skipped if those features are not enabled.
 

@@ -1,7 +1,7 @@
 # PRD: Consistent lifecycle behavior through HTTP and MCP
 
-Status: draft product requirements; implementation pending.
-Date: 2026-09-08. Depends on shared state, resolution and command contracts.
+Status: accepted and implemented.
+Date: 2026-09-08. Implemented: 2026-09-09. Depends on shared state, resolution and command contracts.
 
 This PRD repairs the accepted shared-core and write-gate behavior in
 [ADR-0003](../docs/adr/0003-serve-trust-boundary-and-edge-auth.md) and

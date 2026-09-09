@@ -1,12 +1,12 @@
 # PRD: Reproducible installation and complete resolution
 
-Status: draft product requirements; implementation pending.
-Date: 2026-09-08. Depends on the state/graph boundary in the
+Status: accepted and implemented.
+Date: 2026-09-08. Implemented: 2026-09-09. Depends on the state/graph boundary in the
 [state and ownership PRD](lifecycle-state-and-ownership-prd.md).
 
 Strict locked restoration and complete installation repair existing promises.
 Default lock preference, `@latest`, automatic metadata refresh, and `--offline`
-are proposed changes recorded in [ADR-0009](../docs/adr/0009-resolution-and-restoration-policy.md).
+follow [ADR-0009](../docs/adr/0009-resolution-and-restoration-policy.md).
 
 ## Problem and outcome
 

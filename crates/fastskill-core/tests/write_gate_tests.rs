@@ -172,7 +172,13 @@ async fn update_rejects_unknown_skill_id() {
     std::fs::write(
         project_dir.path().join("skill-project.toml"),
         "[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n\
-         [dependencies]\nknown-skill = \"1.0.0\"\n",
+         [dependencies.known-skill.origin]\ntype = \"local\"\npath = \"known-skill\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(project_dir.path().join("known-skill")).unwrap();
+    std::fs::write(
+        project_dir.path().join("known-skill/SKILL.md"),
+        "---\nname: known-skill\ndescription: Fixture\n---\n",
     )
     .unwrap();
     std::fs::create_dir_all(project_dir.path().join(".claude/skills")).unwrap();
@@ -181,7 +187,16 @@ async fn update_rejects_unknown_skill_id() {
     let Some(port) = free_port() else {
         return;
     };
-    let service = make_service(&dir).await;
+    let config = ServiceConfig {
+        skill_storage_path: dir.path().to_path_buf(),
+        ..Default::default()
+    };
+    let mut service = FastSkillService::new(config)
+        .await
+        .unwrap()
+        .with_project_root(project_dir.path().to_path_buf());
+    service.initialize().await.unwrap();
+    let service = Arc::new(service);
     let server = FastSkillServer::new(service, "127.0.0.1", port).enable_write(true);
     let handle = tokio::spawn(async move {
         let _ = server.serve().await;
@@ -191,14 +206,16 @@ async fn update_rejects_unknown_skill_id() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://127.0.0.1:{port}/api/v1/skills/upgrade"))
-        .json(&serde_json::json!({"skillId": "-rf-nonexistent"}))
+        .json(&serde_json::json!({"skillId": "valid-but-nonexistent"}))
         .send()
         .await
         .expect("POST /api/v1/skills/upgrade");
+    let status = resp.status();
+    let body = resp.text().await.unwrap();
     assert_eq!(
-        resp.status(),
+        status,
         reqwest::StatusCode::NOT_FOUND,
-        "unknown skillId must be rejected with 404"
+        "unknown skillId must be rejected with 404; body: {body}"
     );
 
     handle.abort();

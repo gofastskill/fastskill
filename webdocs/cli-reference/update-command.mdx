@@ -5,12 +5,9 @@ api: "update"
 
 # update Command
 
-Update installed skills to the current version from their sources, then update `skills.lock`.
-
-For each skill, `update` re-resolves its origin to whatever that origin currently considers
-current — the newest allowed version for a registry/repository origin, or a fresh re-fetch for a
-git, local, or zip-url origin — and reinstalls it. There is no per-version or per-strategy
-selection (see the callout below).
+Resolve deliberate changes from each skill's recorded origin, validate the affected dependency
+closure, apply it atomically, and update `skills.lock`. Exact pins remain exact unless you name one
+repository skill and explicitly change its version.
 
 ## Usage
 
@@ -25,18 +22,18 @@ fastskill update [SKILL_ID] [OPTIONS]
 | `<SKILL_ID>` | Skill ID to update (if not specified, updates all) | None |
 | `--check` | Check for updates without installing | `false` |
 | `--dry-run` | Show what would be updated without actually updating | `false` |
+| `--to-version <VERSION>` | Set one named repository skill to an exact version | None |
+| `--strategy <patch\|minor\|latest\|major>` | Select a compatible target; `major` aliases `latest` | `latest` |
+| `--repository <NAME>` | Select a configured repository for one named repository skill | recorded repository |
+| `--source <NAME>` | Deprecated alias of `--repository` | None |
+| `--offline` | Use verified local and cached inputs without network or automatic indexing | `false` |
 | `--reindex` | Rebuild the search index after updating (overrides config) | config |
 | `--no-reindex` | Skip rebuilding the search index after updating | config |
 | `--global` | Operate on the global skill set (`~/.config/fastskill/skills`) instead of the project | `false` |
 
-<Callout type="warning">
-**`--version`, `--source`, and `--strategy` are parsed but currently have no effect.** They are
-accepted for backward compatibility, but the update seam always re-resolves each skill to what its
-origin considers current — it does not honor a requested version, alternate source, or SemVer
-strategy (`latest`/`patch`/`minor`/`major`). Do not rely on them to pin or constrain a version.
-To install an exact, reproducible set of versions, use `fastskill install --lock` against a
-committed `skills.lock`.
-</Callout>
+`--to-version` and `--repository` require one named repository-backed skill. A strategy supplied
+with `--to-version`, different values for `--source` and `--repository`, or repository/version
+controls on a local, Git, or ZIP origin fail before mutation.
 
 ## Examples
 
@@ -71,9 +68,22 @@ fastskill update --check
 ```
 
 <Callout type="info">
-`--check` reports a coarse classification per skill — Updatable, Up to date, or Immutable — and
-makes no changes to any file. Use it to review before applying updates.
+`--check` is the concise form of the validated update plan. It shows current and target revisions
+and makes no managed-state, timestamp, or index changes.
 </Callout>
+
+### Change an exact version or repository
+
+```bash
+fastskill update web-scraper --to-version 1.4.2 --dry-run
+fastskill update web-scraper --to-version 1.4.2
+fastskill update web-scraper --repository team --strategy minor
+```
+
+An exact target may be a deliberate downgrade. Without `--to-version`, FastSkill preserves the
+Manifest constraint: `patch` stays in the current major/minor, `minor` stays in the current major,
+and `latest` chooses any newer stable version already allowed by the constraint. Strategies never
+widen an exact pin.
 
 ### Dry Run
 
@@ -112,9 +122,9 @@ The `update` command:
 1. **Locates Project File**: Finds `skill-project.toml` (or, with `--global`, the global skill set)
 2. **Loads Dependencies**: Reads the declared skills
 3. **Filters Skills**: If `SKILL_ID` is specified, only that skill is considered
-4. **Re-resolves Origins**: For each skill, resolves its origin to the current version — newest
-   allowed for a registry/repository origin, or a fresh re-fetch for a git/local/zip-url origin
-5. **Updates Skills**: Downloads and installs the resolved versions into `.claude/skills/`
+4. **Re-resolves Origins**: Selects the newest target allowed by each recorded constraint and the
+   requested strategy, or obtains a fresh verified copy for a Git/local/ZIP origin
+5. **Updates Skills**: Stages and validates each affected closure before replacing installed files
 6. **Updates Lockfile**: Writes the resolved versions to `skills.lock`
 7. **Reindexes** (unless suppressed): Rebuilds the search index when an embedding provider is
    configured and reindexing is not disabled
@@ -215,12 +225,12 @@ git commit -m "Update dependencies"
 
 ### Pinning to Exact Versions
 
-`update` does not pin versions. To reproduce an exact set of versions across machines or in CI,
-commit `skills.lock` and install from it:
+Change one repository root's desired exact version with `--to-version`, then commit the resulting
+Manifest and lock. Restore that exact set in CI:
 
 ```bash
-# Reproducible install from the committed lockfile
-fastskill install --lock
+fastskill update web-scraper --to-version 1.4.2
+fastskill install --lock --offline
 ```
 
 ## Dependency Management
@@ -247,7 +257,8 @@ Updated skills.lock with 3 skill(s)
 
 ### Update Failures
 
-If one skill fails to update, the command continues with the remaining skills:
+If a later independent update fails, earlier completed units are reported and the command exits
+nonzero. A failed affected closure restores its previous files and state:
 
 ```bash
 $ fastskill update
@@ -263,7 +274,7 @@ demo-skill: Already up to date (0.1.0)
 
 Updated skills.lock with 1 skill(s)
 
-✓ Update complete with errors (1 failed)
+Update partially completed: 1 changed, 1 failed
 ```
 
 ## Error Handling

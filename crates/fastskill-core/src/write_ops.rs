@@ -16,11 +16,11 @@
 //!
 //! ## What counts as a write
 //!
-//! An operation belongs here when it changes FastSkill-managed state: the
-//! project manifest or lock, the installed skills tree, the search index, the
-//! configured repository list, the local cache, or an optimization run.
-//! Commands that only render a report to a caller-named path (`eval *`,
-//! `analyze *`, `optimize export`) are not gated.
+//! An operation belongs here when it changes managed state, writes an artifact,
+//! edits external client configuration, or executes an agent/provider. A path
+//! outside FastSkill's storage is still a write. Commands with both read-only
+//! and mutating argument variants are classified as writes until the gate can
+//! validate arguments before dispatch.
 
 use crate::http::handlers::{manifest, registry, reindex, skills, AppState};
 use axum::routing::{delete, post, put, MethodRouter};
@@ -54,6 +54,44 @@ pub struct WriteOperation {
     /// The HTTP routes that perform it. Empty for operations with no HTTP surface.
     pub http_routes: &'static [WriteHttpRoute],
 }
+
+/// Effect assigned to a command exported through MCP.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommandEffect {
+    /// Inspection and rendering only.
+    Read,
+    /// Writes state/artifacts, edits clients, or executes agents/providers.
+    WriteOrExecute,
+}
+
+/// Commands which are safe to expose on a read-only MCP server.
+///
+/// This is deliberately explicit: the command-spec coverage test fails when a
+/// new command is registered without being added here or to [`WRITE_OPERATIONS`].
+pub static READ_ONLY_COMMAND_PATHS: &[&[&str]] = &[
+    &["analyze", "cluster"],
+    &["analyze", "duplicates"],
+    &["analyze", "matrix"],
+    &["cache", "info"],
+    &["completion"],
+    &["doctor"],
+    &["eval", "report"],
+    &["eval", "score"],
+    &["eval", "validate"],
+    &["list"],
+    &["mcp", "list"],
+    &["optimize", "inspect"],
+    &["optimize", "status"],
+    &["read"],
+    &["repos", "info"],
+    &["repos", "list"],
+    &["repos", "show"],
+    &["repos", "skills"],
+    &["repos", "test"],
+    &["repos", "versions"],
+    &["search"],
+    &["spec"],
+];
 
 fn route_delete_skill() -> MethodRouter<AppState> {
     delete(skills::delete_skill)
@@ -198,6 +236,26 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         http_routes: &[],
     },
     WriteOperation {
+        id: "mcp-install",
+        command_path: Some(&["mcp", "install"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "eval-run",
+        command_path: Some(&["eval", "run"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "eval-judge",
+        command_path: Some(&["eval", "judge"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "eval-scorecard",
+        command_path: Some(&["eval", "scorecard"]),
+        http_routes: &[],
+    },
+    WriteOperation {
         id: "optimize-run",
         command_path: Some(&["optimize", "run"]),
         http_routes: &[],
@@ -205,6 +263,11 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
     WriteOperation {
         id: "optimize-resume",
         command_path: Some(&["optimize", "resume"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "optimize-export",
+        command_path: Some(&["optimize", "export"]),
         http_routes: &[],
     },
     // Manifest editing has no single CLI equivalent (`add` covers creation only).
@@ -231,6 +294,17 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
 /// The command path of every mutating operation that has one.
 pub fn write_command_paths() -> impl Iterator<Item = &'static [&'static str]> {
     WRITE_OPERATIONS.iter().filter_map(|op| op.command_path)
+}
+
+/// Return the declared effect of an MCP-capable command path.
+pub fn command_effect(path: &[&str]) -> Option<CommandEffect> {
+    if write_command_paths().any(|candidate| candidate == path) {
+        Some(CommandEffect::WriteOrExecute)
+    } else if READ_ONLY_COMMAND_PATHS.contains(&path) {
+        Some(CommandEffect::Read)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -262,5 +336,17 @@ mod tests {
         for path in write_command_paths() {
             assert!(!path.is_empty(), "empty command path in write operations");
         }
+    }
+
+    #[test]
+    fn read_and_write_command_paths_do_not_overlap() {
+        for path in READ_ONLY_COMMAND_PATHS {
+            assert_eq!(command_effect(path), Some(CommandEffect::Read));
+        }
+    }
+
+    #[test]
+    fn unknown_commands_are_not_implicitly_reads() {
+        assert_eq!(command_effect(&["future-command"]), None);
     }
 }

@@ -1454,6 +1454,7 @@ dependencies = [
  "comrak",
  "config",
  "dirs 6.0.0",
+ "fs2",
  "futures",
  "include_dir",
  "insta",

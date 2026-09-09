@@ -54,6 +54,24 @@ pub struct SearchResultItem {
     pub path: Option<String>,
     /// Optional repository name (for remote results)
     pub repository: Option<String>,
+    /// Exact version advertised by the selected repository result.
+    pub version: Option<String>,
+    /// Copy-pasteable command which selects this exact remote result.
+    pub install_command: Option<String>,
+}
+
+/// One repository that could not participate in a multi-repository search.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RepositorySearchFailure {
+    pub repository: String,
+    pub message: String,
+}
+
+/// Search results together with any incomplete repository coverage.
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchExecution {
+    pub results: Vec<SearchResultItem>,
+    pub failures: Vec<RepositorySearchFailure>,
 }
 
 impl fmt::Display for SearchResultItem {
@@ -84,13 +102,51 @@ pub enum SearchError {
 pub async fn execute(
     query: SearchQuery,
     service: &crate::FastSkillService,
-) -> Result<Vec<SearchResultItem>, SearchError> {
+) -> Result<SearchExecution, SearchError> {
     let scope = query.scope.clone();
     match scope {
-        SearchScope::Local => local::execute_local_search(query, service).await,
-        SearchScope::Remote => remote::execute_remote_search(query, None).await,
+        SearchScope::Local => Ok(SearchExecution {
+            results: local::execute_local_search(query, service).await?,
+            failures: Vec::new(),
+        }),
+        SearchScope::Remote => remote::execute_remote_search(query, None, service).await,
         SearchScope::RemoteRepo(repo_name) => {
-            remote::execute_remote_search(query, Some(repo_name)).await
+            remote::execute_remote_search(query, Some(repo_name), service).await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn result_and_error_display_are_complete() {
+        let with_description = SearchResultItem {
+            id: "demo".to_string(),
+            name: "Demo".to_string(),
+            description: Some("Useful".to_string()),
+            source: "local".to_string(),
+            similarity: None,
+            path: None,
+            repository: None,
+            version: None,
+            install_command: None,
+        };
+        assert_eq!(with_description.to_string(), "Demo: Useful");
+        let without_description = SearchResultItem {
+            description: None,
+            ..with_description
+        };
+        assert_eq!(without_description.to_string(), "Demo: No description");
+        assert!(SearchError::Config("bad".to_string())
+            .to_string()
+            .contains("Configuration"));
+        assert!(SearchError::Validation("bad".to_string())
+            .to_string()
+            .contains("Validation"));
+        assert!(SearchError::Repository("bad".to_string())
+            .to_string()
+            .contains("Repository"));
     }
 }

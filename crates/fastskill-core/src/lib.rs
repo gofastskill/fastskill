@@ -75,7 +75,10 @@ pub use core::vector_index::{
 
 // Re-export search and output types
 pub use output::OutputFormat;
-pub use search::{execute, SearchError, SearchQuery, SearchResultItem, SearchScope};
+pub use search::{
+    execute, RepositorySearchFailure, SearchError, SearchExecution, SearchQuery, SearchResultItem,
+    SearchScope,
+};
 
 /// Version of the service layer
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -99,7 +102,10 @@ pub fn init_logging_with_verbose(verbose: bool) {
         };
         let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| default_level.into());
 
-        let subscriber = tracing_subscriber::fmt().with_env_filter(filter).finish();
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_writer(std::io::stderr)
+            .finish();
 
         // This will fail silently if already initialized
         let _ = tracing::subscriber::set_global_default(subscriber);

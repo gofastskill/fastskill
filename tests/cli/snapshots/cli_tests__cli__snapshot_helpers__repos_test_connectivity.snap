@@ -1,6 +1,9 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 [INFO] Testing repository: testable-repo...
-[OK] Repository 'testable-repo' is accessible (0 skills found)
+[OK] Connectivity: repository 'testable-repo' is reachable
+[OK] Catalog: valid (0 skills found)
+[INFO] Acquisition: supported through registry download metadata

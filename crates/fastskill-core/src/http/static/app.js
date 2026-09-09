@@ -372,6 +372,10 @@ class FastSkillApp {
         return parts.length ? parts.join(', ') : 'No skills to update';
     }
 
+    updateResults(data) {
+        return data && data.data && Array.isArray(data.data.results) ? data.data.results : null;
+    }
+
     async updateAll() {
         const btn = document.getElementById('update-all-btn');
         if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
@@ -382,9 +386,10 @@ class FastSkillApp {
                 body: JSON.stringify({}),
             });
             const data = await res.json().catch(() => null);
-            if (res.ok && data && data.success && Array.isArray(data.data)) {
-                this.toast(this.summarizeUpdateResults(data.data), 'success');
-                await this.loadAll();
+            const results = this.updateResults(data);
+            if (res.ok && results) {
+                this.toast(this.summarizeUpdateResults(results), data.success ? 'success' : 'error');
+                if (results.some((result) => result.outcome === 'updated')) await this.loadAll();
             } else if (res.status === 403) {
                 this.toast('Read-only — start with --enable-write to update skills', 'error');
             } else {
@@ -405,9 +410,10 @@ class FastSkillApp {
                 body: JSON.stringify({ skillId }),
             });
             const data = await res.json().catch(() => null);
-            if (res.ok && data && data.success && Array.isArray(data.data)) {
-                this.toast(this.summarizeUpdateResults(data.data), 'success');
-                await this.loadAll();
+            const results = this.updateResults(data);
+            if (res.ok && results) {
+                this.toast(this.summarizeUpdateResults(results), data.success ? 'success' : 'error');
+                if (results.some((result) => result.outcome === 'updated')) await this.loadAll();
             } else if (res.status === 403) {
                 this.toast('Read-only — start with --enable-write to update skills', 'error');
             } else {
@@ -710,8 +716,9 @@ class FastSkillApp {
                 body: JSON.stringify({ skillId: skill.id, version: select.value }),
             });
             const data = await res.json().catch(() => null);
-            if (res.ok && data && data.success && Array.isArray(data.data)) {
-                this.toast(this.summarizeUpdateResults(data.data), 'success');
+            const results = this.updateResults(data);
+            if (res.ok && results) {
+                this.toast(this.summarizeUpdateResults(results), data.success ? 'success' : 'error');
                 await this.loadAll();
                 // Refresh the drawer in place so metadata/version reflect
                 // the just-applied change, if the skill is still installed.

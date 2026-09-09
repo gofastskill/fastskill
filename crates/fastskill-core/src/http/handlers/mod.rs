@@ -9,7 +9,7 @@ pub mod skills;
 pub mod status;
 
 // Re-export AppState (used by all handlers)
-pub use status::AppState;
+pub use status::{AppState, ServedScope};
 
 // Note: Handler functions are accessed via module paths (e.g., skills::list_skills)
 // to avoid ambiguous re-exports between modules.

@@ -224,6 +224,7 @@ pub struct ManifestSkillResponse {
     pub groups: Vec<String>,
     pub editable: bool,
     pub source_type: String,
+    pub reconciliation_required: bool,
 }
 
 /// Add skill to manifest request
@@ -240,13 +241,47 @@ pub struct AddSkillRequest {
     pub editable: Option<bool>,
 }
 
+/// A PATCH-like JSON field that distinguishes omission from a supplied value.
+/// Deserializing `null` as `T` fails, so callers cannot accidentally clear a
+/// field that has no null semantics.
+#[derive(Debug, Clone, Default)]
+pub enum PatchField<T> {
+    #[default]
+    Missing,
+    Value(T),
+}
+
+impl<'de, T> Deserialize<'de> for PatchField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Value)
+    }
+}
+
+impl<T> PatchField<T> {
+    pub fn as_ref(&self) -> Option<&T> {
+        match self {
+            Self::Missing => None,
+            Self::Value(value) => Some(value),
+        }
+    }
+}
+
 /// Update skill in manifest request
 #[derive(Debug, Deserialize, Validate, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSkillRequest {
-    pub groups: Option<Vec<String>>,
-    pub editable: Option<bool>,
-    pub version: Option<String>,
+    #[serde(default)]
+    pub groups: PatchField<Vec<String>>,
+    #[serde(default)]
+    pub editable: PatchField<bool>,
+    #[serde(default)]
+    pub version: PatchField<String>,
 }
 
 /// POST /api/v1/skills/install request body: a fresh install from an **Origin
@@ -260,6 +295,7 @@ pub struct InstallSkillRequest {
     pub origin: String,
     #[serde(default)]
     pub groups: Vec<String>,
+    pub repository: Option<String>,
 }
 
 /// POST /api/v1/skills/install response (201) / success shape.
@@ -361,4 +397,70 @@ pub struct SkillUpdateResult {
     pub outcome: String,
     pub reason: Option<String>,
     pub resolved_version: Option<String>,
+}
+
+/// Truthful aggregate status for an update batch. `outcome` is one of
+/// `changed`, `would_change`, `unchanged`, `partial`, or `failed`.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSkillsResponse {
+    pub outcome: String,
+    pub results: Vec<SkillUpdateResult>,
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn success_with_meta_preserves_data_and_pagination() {
+        let response = ApiResponse::success_with_meta(
+            "value",
+            ResponseMeta {
+                total_count: Some(2),
+                page: Some(1),
+                page_size: Some(10),
+                has_next: Some(false),
+            },
+        );
+
+        assert!(response.success);
+        assert_eq!(response.data, Some("value"));
+        assert_eq!(response.meta.unwrap().total_count, Some(2));
+    }
+
+    #[test]
+    fn response_constructors_and_content_formats_are_explicit() {
+        let response = ApiResponse::success("value");
+        assert!(response.success);
+        assert_eq!(response.data, Some("value"));
+        assert!(response.error.is_none());
+
+        let response = ApiResponse::<()>::error(ErrorResponse {
+            code: "invalid".to_string(),
+            message: "bad request".to_string(),
+            details: None,
+        });
+        assert!(!response.success);
+        assert_eq!(response.error.unwrap().code, "invalid");
+        assert_eq!(ContentFormat::Raw.as_str(), "raw");
+        assert_eq!(ContentFormat::Html.as_str(), "html");
+    }
+
+    #[test]
+    fn patch_fields_distinguish_missing_values_and_reject_null() {
+        let missing: UpdateSkillRequest = serde_json::from_str("{}").unwrap();
+        assert!(missing.groups.as_ref().is_none());
+        assert!(missing.editable.as_ref().is_none());
+        assert!(missing.version.as_ref().is_none());
+
+        let supplied: UpdateSkillRequest =
+            serde_json::from_str(r#"{"groups":["dev"],"editable":false,"version":"1.2.3"}"#)
+                .unwrap();
+        assert_eq!(supplied.groups.as_ref().unwrap(), &["dev"]);
+        assert_eq!(supplied.editable.as_ref(), Some(&false));
+        assert_eq!(supplied.version.as_ref().map(String::as_str), Some("1.2.3"));
+        assert!(serde_json::from_str::<UpdateSkillRequest>(r#"{"editable":null}"#).is_err());
+    }
 }

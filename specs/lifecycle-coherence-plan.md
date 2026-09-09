@@ -1,9 +1,10 @@
 # FastSkill lifecycle coherence: PRD index and delivery plan
 
-Status: draft plan; no implementation changes in this document set.
-Date: 2026-09-08.
+Status: implemented.
+Date: 2026-09-08. Implemented: 2026-09-09.
 
-These PRDs turn the command-coherence audit into local repository specifications.
+These PRDs turn the command-coherence audit into local repository specifications and record the
+implemented lifecycle contract.
 They belong in `specs/`, which this repository intentionally Git-ignores. They MUST
 NOT be created or mirrored as GitHub issues. Existing ADR clarifications retain
 accepted architectural boundaries; new resolution defaults are explicitly proposed.
@@ -81,11 +82,11 @@ locations (R-03). No separate status/why/sync command family is planned.
   shared-core requirement explicitly to context, planning and all lifecycle callers.
 - [ADR-0008](../docs/adr/0008-bundle-ownership-and-local-changes.md): clarify transitive
   requirements, removing intent, ordinary-path protection and override lifecycle.
-- [ADR-0009](../docs/adr/0009-resolution-and-restoration-policy.md): proposed
+- [ADR-0009](../docs/adr/0009-resolution-and-restoration-policy.md): accepted
   lock-first installation, latest-stable resolution and explicit offline behavior.
 - ADR-0001/0002/0004/0006/0007 retain their command-removal, indexing, exact-pin,
   deployment and self-contained-bundle decisions. The
-  [bundle PRD](publishable-skill-bundles-prd.md) remains the original product scope;
+  [bundle requirements](../docs/requirements/team-skill-presets.md) remain the original product scope;
   its historical implementation-status prose is not current evidence of feature absence.
 
 ADRs express decisions, not proof of implementation. The PRDs distinguish current
@@ -107,3 +108,21 @@ fleet orchestration or automatic bundle catalog is included.
    tracked separately rather than silently assumed complete.
 5. Exact pins, bundle release immutability, protected local changes and external
    deployment/authentication boundaries remain intact.
+
+## Implementation evidence
+
+- The complete all-features workspace suite completed 1,743 tests with no failures. The clean coverage
+  run completed its 1,730-test instrumented selection with no failures; 15 environment-specific tests
+  are excluded from coverage collection and remain covered by the normal release suite.
+- All 73 instrumented production Rust files changed by this implementation have full-file line coverage
+  above 90%. The lowest result is 90.17%. Three changed module declaration files contain no
+  instrumentable lines and are reported as not applicable by the CI gate.
+- Focused CLI, core, HTTP, and real stdio MCP scenarios cover the 55 PRD acceptance cases, including
+  lock integrity, first-install closure, shared ownership, rollback, JSON output, scope routing, bundle
+  preview/reset, repository selection, and read-only write denial.
+- An independent adversarial review reran the original lifecycle counterexamples and added checks for
+  stale plans, local edits, incomplete integrity evidence, partial application, ownership retention,
+  missing dependencies, and HTTP transport failures. No reproducible lifecycle defect remains in the
+  accepted scope.
+- README, contributor guidance, ADRs, command help, webdocs, and the external FastSkill skill describe
+  the implemented command and lifecycle behavior.

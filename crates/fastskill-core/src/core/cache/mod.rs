@@ -146,7 +146,7 @@ impl CacheIdentity {
                 version,
             } => Ok(PathBuf::from("registry")
                 .join(validate_component(source)?)
-                .join(validate_component(skill)?)
+                .join(registry_skill_component(skill)?)
                 .join(validate_component(version)?)),
             CacheIdentity::Local { tree_hash } => {
                 Ok(PathBuf::from("local").join(validate_component(tree_hash)?))
@@ -156,6 +156,26 @@ impl CacheIdentity {
             }
         }
     }
+}
+
+fn registry_skill_component(skill: &str) -> Result<String, ServiceError> {
+    if !skill.contains('/') {
+        return Ok(validate_component(skill)?.to_string());
+    }
+    let parts: Vec<&str> = skill.split('/').collect();
+    if parts.len() != 2 {
+        return Err(ServiceError::Validation(
+            "registry skill must be 'name' or 'scope/name'".to_string(),
+        ));
+    }
+    for part in parts {
+        validate_component(part)?;
+    }
+    use sha2::Digest;
+    Ok(format!(
+        "scoped-{}",
+        crate::utils::to_hex_lower(&sha2::Sha256::digest(skill.as_bytes()))
+    ))
 }
 
 /// Validate a single identity path component: non-empty, no separators, no

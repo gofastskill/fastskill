@@ -71,9 +71,8 @@ stays on the record.
 Both gates read **one** definition — `fastskill_core::write_ops::WRITE_OPERATIONS` — which names
 each mutating operation once and carries its HTTP routes and its command path. `serve` mounts its
 write routes from that table and `mcp serve` derives blocked tool names from it. A shared table
-avoids divergent gate lists, but does not prove that every mutating command was classified.
-The September 2026 audit found `optimize export` callable through read-only MCP despite writing
-its selected output. Completeness therefore requires validation against command registration.
+avoids divergent gate lists. Registration coverage requires every exported command to have an
+explicit classification and prevents an unknown command from becoming a read-only tool.
 
 ### Effect classification clarification (2026-09-08)
 
@@ -102,8 +101,8 @@ or integrity checks. HTTP handlers and MCP tools MUST call the same domain opera
 - **A read-only exposed instance still discloses skill data** (and is subject to SEC-7 dashboard
   XSS). That residual is the operator's call when they expose the port; it is not a mutation risk.
 - Introducing default-read-only serving changed the original invocation contract. Server
-  references MUST document the flag and the effects it enables; newly covered tools MUST be
-  included when gate completeness is repaired.
+  references MUST document the flag and the effects it enables; registration coverage MUST keep
+  newly added tools classified.
 - No `FASTSKILL_API_TOKEN`, no `--insecure`, no bind-address policing — the app stays thin.
 
 ## Considered alternatives

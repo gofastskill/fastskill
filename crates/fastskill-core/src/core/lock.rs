@@ -52,6 +52,10 @@ pub struct ProjectLockedSkillEntry {
     /// ID of the skill that pulled this one in (for transitive deps)
     #[serde(default)]
     pub parent_skill: Option<String>,
+    /// Every skill that directly requires this entry. `parent_skill` remains
+    /// for compatibility with older Locks; new writers populate both.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_by: Vec<String>,
 }
 
 /// Project-scoped lock file. Serialized to `<project_root>/skills.lock`.
@@ -64,6 +68,10 @@ pub struct ProjectSkillsLock {
     pub bundles: Vec<ProjectLockedBundleEntry>,
     #[serde(default)]
     pub overrides: Vec<ProjectLockedPersonalOverride>,
+    /// Dependency roots for which `skills` contains a complete verified
+    /// closure. A group-limited resolution only records the selected roots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub covered_roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -100,6 +108,7 @@ impl ProjectSkillsLock {
             skills: Vec::new(),
             bundles: Vec::new(),
             overrides: Vec::new(),
+            covered_roots: Vec::new(),
         }
     }
 
@@ -162,6 +171,7 @@ impl ProjectSkillsLock {
         parent_skill: Option<String>,
     ) {
         self.skills.retain(|s| s.id != skill.id.as_str());
+        let required_by = parent_skill.clone().into_iter().collect();
         let entry = ProjectLockedSkillEntry {
             id: skill.id.to_string(),
             name: skill.name.clone(),
@@ -175,7 +185,16 @@ impl ProjectSkillsLock {
             groups: Vec::new(),
             depth,
             parent_skill,
+            required_by,
         };
+        if depth == 0
+            && !self
+                .covered_roots
+                .iter()
+                .any(|root| root == skill.id.as_str())
+        {
+            self.covered_roots.push(skill.id.to_string());
+        }
         self.skills.push(entry);
     }
 
@@ -234,6 +253,14 @@ impl ProjectSkillsLock {
 
     fn sort_entries(&mut self) {
         self.skills.sort_by(|a, b| a.id.cmp(&b.id));
+        self.covered_roots.sort();
+        self.covered_roots.dedup();
+        for skill in &mut self.skills {
+            skill.dependencies.sort();
+            skill.dependencies.dedup();
+            skill.required_by.sort();
+            skill.required_by.dedup();
+        }
         self.bundles.sort_by(|a, b| a.id.cmp(&b.id));
         self.overrides.sort_by(|a, b| a.id.cmp(&b.id));
     }
@@ -403,7 +430,8 @@ impl LegacyProjectLockedSkill {
             dependencies: self.dependencies,
             groups: self.groups,
             depth: self.depth,
-            parent_skill: self.parent_skill,
+            parent_skill: self.parent_skill.clone(),
+            required_by: self.parent_skill.into_iter().collect(),
         })
     }
 }
@@ -422,6 +450,7 @@ impl LegacyProjectSkillsLock {
             skills,
             bundles: Vec::new(),
             overrides: Vec::new(),
+            covered_roots: Vec::new(),
         })
     }
 }
@@ -459,6 +488,10 @@ pub struct GlobalLockedSkillEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalSkillsLock {
     pub metadata: GlobalLockMetadata,
+    /// User-selected global requirements. Transitive entries remain installed
+    /// only while reachable from one of these roots.
+    #[serde(default)]
+    pub covered_roots: Vec<String>,
     #[serde(default)]
     pub skills: Vec<GlobalLockedSkillEntry>,
 }
@@ -470,6 +503,7 @@ impl GlobalSkillsLock {
                 version: LOCK_FORMAT_VERSION.to_string(),
                 fastskill_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             },
+            covered_roots: Vec::new(),
             skills: Vec::new(),
         }
     }
@@ -486,13 +520,26 @@ impl GlobalSkillsLock {
         let safe_path = path.canonicalize().map_err(LockError::Io)?;
         let content = std::fs::read_to_string(&safe_path).map_err(LockError::Io)?;
         check_lock_format_version(&content)?;
-        let lock: GlobalSkillsLock =
+        let covered_roots_missing = toml::from_str::<toml::Value>(&content)
+            .map(|value| value.get("covered_roots").is_none())
+            .unwrap_or(false);
+        let mut lock: GlobalSkillsLock =
             toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
+        if covered_roots_missing {
+            lock.covered_roots = lock.skills.iter().map(|entry| entry.id.clone()).collect();
+        }
         Ok(lock)
     }
 
     pub fn save_to_file(&self, path: &Path) -> Result<(), LockError> {
         let mut lock = self.clone();
+        // A non-empty global lock cannot consist only of transitive entries:
+        // without a selected root there is no requirement that owns them.
+        // Treat the pre-selection shape conservatively so callers constructing
+        // the old public structure do not silently create an unrestorable lock.
+        if lock.covered_roots.is_empty() && !lock.skills.is_empty() {
+            lock.covered_roots = lock.skills.iter().map(|entry| entry.id.clone()).collect();
+        }
         lock.sort_entries();
         lock.metadata.fastskill_version = Some(env!("CARGO_PKG_VERSION").to_string());
         let content =
@@ -502,6 +549,15 @@ impl GlobalSkillsLock {
     }
 
     pub fn upsert_skill(&mut self, skill: &SkillDefinition, installed_at: DateTime<Utc>) {
+        self.upsert_skill_with_selection(skill, installed_at, true);
+    }
+
+    pub fn upsert_skill_with_selection(
+        &mut self,
+        skill: &SkillDefinition,
+        installed_at: DateTime<Utc>,
+        selected: bool,
+    ) {
         self.skills.retain(|s| s.id != skill.id.as_str());
         let entry = GlobalLockedSkillEntry {
             id: skill.id.to_string(),
@@ -519,11 +575,15 @@ impl GlobalSkillsLock {
             last_updated_at: None,
         };
         self.skills.push(entry);
+        if selected && !self.covered_roots.iter().any(|id| id == skill.id.as_str()) {
+            self.covered_roots.push(skill.id.to_string());
+        }
     }
 
     pub fn remove_skill(&mut self, skill_id: &str) -> bool {
         let initial_len = self.skills.len();
         self.skills.retain(|s| s.id != skill_id);
+        self.covered_roots.retain(|id| id != skill_id);
         self.skills.len() < initial_len
     }
 
@@ -540,6 +600,8 @@ impl GlobalSkillsLock {
     }
 
     fn sort_entries(&mut self) {
+        self.covered_roots.sort();
+        self.covered_roots.dedup();
         self.skills.sort_by(|a, b| a.id.cmp(&b.id));
     }
 }

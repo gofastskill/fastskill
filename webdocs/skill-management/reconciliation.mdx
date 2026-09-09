@@ -5,13 +5,15 @@ description: "Understanding how FastSkill reconciles installed skills with proje
 
 ## Overview
 
-The FastSkill reconciliation system compares three sources of truth to ensure consistency across your skill ecosystem:
+FastSkill compares three views of an environment:
 
 1. **Installed Skills** - Skills actually present in `.claude/skills/`
 2. **Project Manifest** - Skills declared in `skill-project.toml`
 3. **Lockfile** - Exact versions pinned in `skills.lock`
 
-Reconciliation helps you identify discrepancies and maintain reproducible installations across environments.
+The comparison includes canonical identity, desired constraints, locked origin and revision,
+content digest, dependency edges, groups, and every direct, transitive, bundle, or override owner.
+An installed directory alone does not prove that the environment matches its desired state.
 
 ## Reconciliation States
 
@@ -19,10 +21,13 @@ When you run `fastskill list`, each skill is assigned a reconciliation status:
 
 | Status | Description | Action Required |
 |---------|-------------|-----------------|
-| `ok` | Skill is installed and matches project/lock files | None |
-| `missing` | Skill is in `skill-project.toml` but not installed | Run `fastskill install` |
-| `extraneous` | Skill is installed but not in `skill-project.toml` | Remove or add to manifest |
-| `mismatch` | Installed version differs from `skills.lock` | Run `fastskill install --lock` or `fastskill update` |
+| `ok` | Required identity, constraint, locked facts, contents, and ownership agree | None |
+| `missing` | A selected root or required dependency is absent | Run `fastskill install` |
+| `extraneous` | Installed content has no managed owner | Review it; this alone does not fail `--check` |
+| `mismatch` | Desired, locked, or actual version/content differs | Restore with `install --lock` or deliberately `update` |
+| `unverifiable` | A required immutable selection lacks integrity evidence | Update explicitly to establish a verified selection |
+| `mutable` | An editable local selection is structurally valid but its bytes are intentionally mutable | Review the linked source when needed |
+| `conflict` | Retained owners require incompatible content or constraints | Resolve the listed owners before applying changes |
 
 ### Status Details
 
@@ -31,7 +36,9 @@ When you run `fastskill list`, each skill is assigned a reconciliation status:
 Skill is in the desired state:
 - Present in `.claude/skills/`
 - Declared in `skill-project.toml` (if applicable)
-- Version matches `skills.lock` (if lockfile exists)
+- Desired constraint accepts the locked version
+- Installed identity, version, and digest match the lock (editable links are reported as mutable)
+- Every required owner and dependency edge is present
 
 **Example:**
 ```bash
@@ -173,17 +180,9 @@ fastskill install --lock
 ### CI/CD Deployment
 
 ```bash
-# CI/CD: Verify installation
-fastskill list --format json > skills-status.json
-
-# Check for reconciliation issues
-if jq '.[] | select(.status != "ok")' skills-status.json; then
-  echo "Reconciliation issues found"
-  exit 1
-fi
-
-# Install from lock for reproducibility
-fastskill install --lock
+# Restore without network access, then verify the same selected closure
+fastskill install --lock --offline --without dev
+fastskill list --check --without dev --json > skills-status.json
 ```
 
 ### Troubleshooting Discrepancies
@@ -217,7 +216,7 @@ fastskill install --lock
 
 # Verify reconciliation
 fastskill list
-# All skills should be "ok"
+# Required immutable skills should be "ok"; editable skills are labeled "mutable"
 ```
 
 ### Version Drift Detection

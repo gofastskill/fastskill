@@ -1,11 +1,12 @@
 use crate::core::bundle::{
     BundleArchiveLockMember, BundleDependency, BundleDescriptor, BundleManifestTables,
-    BundleMemberPolicy, BundleService, PreparedMember, BUNDLE_FORMAT,
+    BundleMemberPolicy, BundleOverridePreview, BundleService, PreparedMember, BUNDLE_FORMAT,
 };
 use crate::core::lock::{ProjectLockedPersonalOverride, ProjectSkillsLock};
 use crate::core::manifest::DependencySpec;
 use crate::core::origin::Origin;
 use crate::core::service::{ServiceError, SkillId};
+use crate::core::state_guard::{StateMutationGuard, StateMutationLease};
 use crate::core::version::VersionConstraint;
 use crate::utils::atomic_write;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,23 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+#[cfg(test)]
+thread_local! {
+    static OVERRIDE_TEST_CHANGE: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn take_override_test_change(expected: u8) -> bool {
+    OVERRIDE_TEST_CHANGE.with(|change| {
+        if change.get() == expected {
+            change.set(0);
+            true
+        } else {
+            false
+        }
+    })
+}
 
 pub(crate) fn save_bundle_declarations(
     manifest_path: &Path,
@@ -59,7 +77,7 @@ pub(crate) fn save_bundle_declarations(
     atomic_write(manifest_path, document.to_string().as_bytes()).map_err(ServiceError::Io)
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct BundleOverrideDeclaration {
     pub(crate) origin: String,
 }
@@ -267,6 +285,14 @@ pub(crate) fn apply_personal_override(
     id: &str,
     source: &Path,
 ) -> Result<(), ServiceError> {
+    let preview = preview_personal_override(service, id, source)?;
+    if !preview.changed {
+        return Ok(());
+    }
+    #[cfg(test)]
+    if take_override_test_change(1) {
+        fs::remove_file(source.join("SKILL.md")).map_err(ServiceError::Io)?;
+    }
     SkillId::new(id.to_string())?;
     if !source.join("SKILL.md").is_file() {
         return Err(ServiceError::Validation(format!(
@@ -275,7 +301,16 @@ pub(crate) fn apply_personal_override(
     }
     let source = source.canonicalize().map_err(ServiceError::Io)?;
     let digest = digest_directory(&source)?;
+    if preview.target_revision.as_deref() != Some(digest.as_str()) {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Personal override source for '{id}' changed while the operation was prepared; retry"
+        )));
+    }
     let manifest_path = service.project_root.join("skill-project.toml");
+    #[cfg(test)]
+    if take_override_test_change(2) {
+        fs::write(&manifest_path, "invalid = [").map_err(ServiceError::Io)?;
+    }
     let raw_manifest = fs::read_to_string(&manifest_path).map_err(ServiceError::Io)?;
     let mut tables: BundleManifestTables = toml::from_str(&raw_manifest).map_err(|error| {
         ServiceError::Config(format!("Failed to load bundle declarations: {error}"))
@@ -283,6 +318,10 @@ pub(crate) fn apply_personal_override(
     let lock_path = service.project_root.join("skills.lock");
     let mut lock = ProjectSkillsLock::load_from_file(&lock_path)
         .map_err(|error| ServiceError::Config(format!("Failed to load skills.lock: {error}")))?;
+    #[cfg(test)]
+    if take_override_test_change(3) {
+        lock.bundles[0].members[0].overridable = false;
+    }
     let owners = lock
         .bundles
         .iter()
@@ -299,12 +338,91 @@ pub(crate) fn apply_personal_override(
             "Every bundle owning '{id}' must permit a personal override"
         )));
     }
+    let state_guard = StateMutationGuard::acquire_for(
+        &service.project_root,
+        Some(&service.skills_directory),
+        "bundle override",
+    )?;
+    #[cfg(test)]
+    if take_override_test_change(4) {
+        fs::write(&lock_path, "invalid = [").map_err(ServiceError::Io)?;
+    }
+    #[cfg(test)]
+    if take_override_test_change(5) {
+        fs::write(&manifest_path, "invalid = [").map_err(ServiceError::Io)?;
+    }
+    #[cfg(test)]
+    if take_override_test_change(6) {
+        let mut changed = lock.clone();
+        changed.covered_roots.push("concurrent".to_string());
+        changed
+            .save_to_file(&lock_path)
+            .map_err(|error| ServiceError::Config(error.to_string()))?;
+    }
+    let current_lock = match ProjectSkillsLock::load_from_file(&lock_path) {
+        Ok(lock) => lock,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(ServiceError::Config(format!(
+                "Failed to reload skills.lock before override: {error}"
+            )));
+        }
+    };
+    let current_tables = match fs::read_to_string(&manifest_path)
+        .map_err(ServiceError::Io)
+        .and_then(|content| {
+            toml::from_str::<BundleManifestTables>(&content).map_err(|error| {
+                ServiceError::Config(format!("Failed to reload bundle declarations: {error}"))
+            })
+        }) {
+        Ok(tables) => tables,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(error);
+        }
+    };
+    if current_lock.bundles != lock.bundles
+        || current_lock.overrides != lock.overrides
+        || current_lock.skills != lock.skills
+        || current_lock.covered_roots != lock.covered_roots
+        || current_tables != tables
+    {
+        state_guard.recovered()?;
+        return Err(ServiceError::InvalidOperation(format!(
+            "Ownership for '{id}' changed while the override was being prepared; retry"
+        )));
+    }
+    lock = current_lock;
+    tables = current_tables;
+    #[cfg(test)]
+    if take_override_test_change(7) {
+        fs::remove_file(source.join("SKILL.md")).map_err(ServiceError::Io)?;
+    }
+    let current_digest = match digest_directory(&source) {
+        Ok(current_digest) => current_digest,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(error);
+        }
+    };
+    if current_digest != digest {
+        state_guard.recovered()?;
+        return Err(ServiceError::InvalidOperation(format!(
+            "Personal override source for '{id}' changed while the operation was prepared; retry"
+        )));
+    }
     let ids = vec![id.to_string()];
-    let mut transaction = BundleTransaction::capture(
+    let mut transaction = match BundleTransaction::capture(
         &service.skills_directory,
         &ids,
         &[manifest_path.clone(), lock_path.clone()],
-    )?;
+    ) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(error);
+        }
+    };
     let result = (|| {
         replace_skill_directory(&service.skills_directory.join(id), &source)?;
         tables.overrides.insert(
@@ -324,27 +442,189 @@ pub(crate) fn apply_personal_override(
             .map_err(|error| ServiceError::Config(format!("Failed to save skills.lock: {error}")))
     })();
     if let Err(error) = result {
-        transaction.rollback()?;
+        if let Err(recovery_error) = transaction.rollback() {
+            return Err(ServiceError::Custom(format!(
+                "Override failed: {error}; recovery also failed: {recovery_error}"
+            )));
+        }
+        state_guard.recovered()?;
         return Err(error);
     }
     transaction.commit();
+    state_guard.commit()?;
     Ok(())
 }
 
+pub(crate) fn preview_personal_override(
+    service: &BundleService,
+    id: &str,
+    source: &Path,
+) -> Result<BundleOverridePreview, ServiceError> {
+    SkillId::new(id.to_string())?;
+    if !source.join("SKILL.md").is_file() {
+        return Err(ServiceError::Validation(format!(
+            "Personal override '{id}' must contain SKILL.md"
+        )));
+    }
+    let source = source.canonicalize().map_err(ServiceError::Io)?;
+    let target = digest_directory(&source)?;
+    let manifest_path = service.project_root.join("skill-project.toml");
+    let content = fs::read_to_string(&manifest_path).map_err(ServiceError::Io)?;
+    let tables: BundleManifestTables = toml::from_str(&content).map_err(|error| {
+        ServiceError::Config(format!("Failed to load bundle declarations: {error}"))
+    })?;
+    let lock_path = service.project_root.join("skills.lock");
+    let lock = ProjectSkillsLock::load_from_file(&lock_path)
+        .map_err(|error| ServiceError::Config(format!("Failed to load skills.lock: {error}")))?;
+    let owners = lock
+        .bundles
+        .iter()
+        .flat_map(|bundle| bundle.members.iter())
+        .filter(|member| member.id == id)
+        .collect::<Vec<_>>();
+    if owners.is_empty() {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Skill '{id}' is not owned by an installed bundle"
+        )));
+    }
+    if owners.iter().any(|member| !member.overridable) {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Every bundle owning '{id}' must permit a personal override"
+        )));
+    }
+    let owner_digest = &owners[0].digest;
+    if owners.iter().any(|member| member.digest != *owner_digest) {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Bundle owners of '{id}' disagree on packaged contents"
+        )));
+    }
+    let existing_override = lock.overrides.iter().find(|entry| entry.id == id);
+    match (tables.overrides.get(id), existing_override) {
+        (None, None) => {}
+        (Some(declaration), Some(locked)) if declaration.origin == locked.origin => {}
+        _ => {
+            return Err(ServiceError::Config(format!(
+                "Personal override '{id}' is inconsistent between the Manifest and Lock"
+            )));
+        }
+    }
+    let current = existing_override
+        .map(|entry| entry.digest.clone())
+        .unwrap_or_else(|| owner_digest.clone());
+    let installed = service.skills_directory.join(id);
+    if installed.exists() && digest_directory(&installed)? != current {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Skill '{id}' is locally modified; FastSkill will not discard those edits while setting an override"
+        )));
+    }
+    let changed = current != target || existing_override.is_none();
+    Ok(BundleOverridePreview {
+        id: id.to_string(),
+        current_revision: Some(current),
+        target_revision: Some(target),
+        changed,
+        changes: if changed {
+            vec![
+                "content".to_string(),
+                "manifest".to_string(),
+                "lock".to_string(),
+            ]
+        } else {
+            Vec::new()
+        },
+        retained: Vec::new(),
+    })
+}
+
 pub(crate) fn restore_personal_overrides(service: &BundleService) -> Result<(), ServiceError> {
+    restore_personal_overrides_impl(service, None)
+}
+
+pub(crate) fn restore_personal_overrides_with_guard(
+    service: &BundleService,
+    guard: &StateMutationGuard,
+) -> Result<(), ServiceError> {
+    restore_personal_overrides_impl(service, Some(guard))
+}
+
+fn restore_personal_overrides_impl(
+    service: &BundleService,
+    existing_guard: Option<&StateMutationGuard>,
+) -> Result<(), ServiceError> {
     let manifest_path = service.project_root.join("skill-project.toml");
     let raw_manifest = fs::read_to_string(&manifest_path).map_err(ServiceError::Io)?;
-    let tables: BundleManifestTables = toml::from_str(&raw_manifest).map_err(|error| {
+    let mut tables: BundleManifestTables = toml::from_str(&raw_manifest).map_err(|error| {
         ServiceError::Config(format!("Failed to load bundle declarations: {error}"))
     })?;
     if tables.overrides.is_empty() {
         return Ok(());
     }
     let lock_path = service.project_root.join("skills.lock");
-    let lock = ProjectSkillsLock::load_from_file(&lock_path)
+    let mut lock = ProjectSkillsLock::load_from_file(&lock_path)
         .map_err(|error| ServiceError::Config(format!("Failed to load skills.lock: {error}")))?;
     let ids = tables.overrides.keys().cloned().collect::<Vec<_>>();
-    let mut transaction = BundleTransaction::capture(&service.skills_directory, &ids, &[])?;
+    let state_guard = StateMutationLease::acquire_or_borrow(
+        &service.project_root,
+        Some(&service.skills_directory),
+        "restore overrides",
+        existing_guard,
+    )?;
+    #[cfg(test)]
+    if take_override_test_change(8) {
+        fs::write(&manifest_path, "invalid = [").map_err(ServiceError::Io)?;
+    }
+    #[cfg(test)]
+    if take_override_test_change(9) {
+        fs::write(&lock_path, "invalid = [").map_err(ServiceError::Io)?;
+    }
+    #[cfg(test)]
+    if take_override_test_change(10) {
+        let mut changed = lock.clone();
+        changed.bundles.clear();
+        changed
+            .save_to_file(&lock_path)
+            .map_err(|error| ServiceError::Config(error.to_string()))?;
+    }
+    let current_tables = match fs::read_to_string(&manifest_path)
+        .map_err(ServiceError::Io)
+        .and_then(|content| {
+            toml::from_str::<BundleManifestTables>(&content).map_err(|error| {
+                ServiceError::Config(format!("Failed to reload bundle declarations: {error}"))
+            })
+        }) {
+        Ok(tables) => tables,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(error);
+        }
+    };
+    let current_lock = match ProjectSkillsLock::load_from_file(&lock_path) {
+        Ok(lock) => lock,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(ServiceError::Config(format!(
+                "Failed to reload skills.lock before restoring overrides: {error}"
+            )));
+        }
+    };
+    if current_tables != tables
+        || current_lock.bundles != lock.bundles
+        || current_lock.overrides != lock.overrides
+    {
+        state_guard.recovered()?;
+        return Err(ServiceError::InvalidOperation(
+            "Bundle ownership changed while overrides were being prepared; retry".to_string(),
+        ));
+    }
+    tables = current_tables;
+    lock = current_lock;
+    let mut transaction = match BundleTransaction::capture(&service.skills_directory, &ids, &[]) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            state_guard.recovered()?;
+            return Err(error);
+        }
+    };
     let result = (|| {
         for (id, declaration) in &tables.overrides {
             let locked = lock
@@ -378,10 +658,16 @@ pub(crate) fn restore_personal_overrides(service: &BundleService) -> Result<(), 
         Ok(())
     })();
     if let Err(error) = result {
-        transaction.rollback()?;
+        if let Err(recovery_error) = transaction.rollback() {
+            return Err(ServiceError::Custom(format!(
+                "Override restoration failed: {error}; recovery also failed: {recovery_error}"
+            )));
+        }
+        state_guard.recovered()?;
         return Err(error);
     }
     transaction.commit();
+    state_guard.commit()?;
     Ok(())
 }
 
@@ -510,3 +796,8 @@ impl BundleTransaction {
 fn io_error(error: walkdir::Error) -> std::io::Error {
     std::io::Error::other(error)
 }
+
+#[cfg(test)]
+#[path = "bundle_persistence_tests.rs"]
+#[allow(clippy::unwrap_used)]
+mod tests;

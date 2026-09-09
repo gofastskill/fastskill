@@ -211,7 +211,7 @@ fn test_list_conflicting_flags_error() {
 }
 
 #[test]
-fn test_list_skills_dir_with_global_warning() {
+fn test_list_skills_dir_with_global_is_rejected() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     let custom_dir = temp_dir.path().join("custom-skills");
@@ -234,12 +234,12 @@ fn test_list_skills_dir_with_global_warning() {
         Some(temp_dir.path()),
     );
 
-    assert!(result.success);
+    assert!(!result.success);
     assert!(
-        result.stderr.contains("warning")
-            && result.stderr.contains("--skills-dir")
-            && result.stderr.contains("--global"),
-        "Expected warning about --skills-dir and --global, got: {}",
+        result
+            .stderr
+            .contains("--global and --skills-dir cannot be combined"),
+        "Expected explicit scope conflict, got: {}",
         result.stderr
     );
 }

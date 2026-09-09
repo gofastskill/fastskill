@@ -1,27 +1,8 @@
-//! Unified skill installation function replacing install_local_skill + install_copied_skill.
+//! Filesystem helpers used by add and global update operations.
 
 use crate::error::{CliError, CliResult};
-use crate::utils::install_utils;
 use std::path::{Path, PathBuf};
-use tracing::info;
 use walkdir::WalkDir;
-
-/// Install a skill from `src` into `dst`.
-///
-/// When `editable` is `true` a symlink is created (like `poetry add -e`).
-/// When `editable` is `false` the directory is copied recursively.
-#[allow(dead_code)]
-pub async fn install_skill(src: &Path, dst: &Path, editable: bool) -> CliResult<()> {
-    // Remove any existing destination (directory, symlink, or file)
-    if dst.exists() || dst.is_symlink() {
-        if dst.is_symlink() || dst.is_file() {
-            tokio::fs::remove_file(dst).await.map_err(CliError::Io)?;
-        } else {
-            tokio::fs::remove_dir_all(dst).await.map_err(CliError::Io)?;
-        }
-    }
-    crate::utils::install_utils::setup_skill_in_storage(src, dst, editable).await
-}
 
 fn component_is_hidden(c: std::path::Component<'_>) -> bool {
     matches!(c, std::path::Component::Normal(name) if name.to_string_lossy().starts_with('.'))
@@ -78,130 +59,6 @@ pub(super) fn get_skill_dirs_recursive(base: &Path) -> CliResult<Vec<PathBuf>> {
     Ok(skill_dirs)
 }
 
-/// Shared post-copy logic: update skill_def fields, register, persist metadata and manifest.
-pub(super) async fn finish_skill_install(
-    ctx: &super::AddContext<'_>,
-    mut skill_def: fastskill_core::SkillDefinition,
-    storage_dir: &Path,
-    meta: super::SourceMeta,
-    version_display: &str,
-) -> CliResult<()> {
-    use chrono::Utc;
-    skill_def.skill_file = storage_dir.join("SKILL.md");
-    skill_def.origin = meta.origin;
-    skill_def.fetched_at = Some(Utc::now());
-
-    super::register_skill_once(ctx, &skill_def).await?;
-
-    let update = fastskill_core::core::skill_manager::SkillUpdate {
-        origin: Some(skill_def.origin.clone()),
-        fetched_at: skill_def.fetched_at,
-        ..Default::default()
-    };
-    ctx.service
-        .skill_manager()
-        .update_skill(&skill_def.id, update)
-        .await
-        .map_err(|e| {
-            crate::utils::service_error_to_cli(
-                e,
-                ctx.service.config().skill_storage_path.as_path(),
-                ctx.global,
-            )
-        })?;
-
-    if ctx.global {
-        super::update_global_files(&skill_def)?;
-        crate::outln!(
-            "Successfully added skill: {} (v{})",
-            skill_def.name,
-            version_display
-        );
-        crate::outln!(
-            "{}",
-            crate::utils::messages::ok("Updated global-skills.lock")
-        );
-    } else {
-        super::update_project_files(&skill_def, ctx.groups.clone())?;
-        crate::outln!(
-            "Successfully added skill: {} (v{})",
-            skill_def.name,
-            version_display
-        );
-        crate::outln!(
-            "{}",
-            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-        );
-    }
-    Ok(())
-}
-
-/// Copy skill to storage, then delegate to `finish_skill_install`.
-pub(super) async fn install_via_download(
-    ctx: &super::AddContext<'_>,
-    skill_path: &Path,
-    skill_def: fastskill_core::SkillDefinition,
-    target: super::InstallTarget,
-) -> CliResult<()> {
-    if target.storage_dir.exists() {
-        if !ctx.force {
-            return Err(CliError::Config(format!(
-                "Skill directory '{}' already exists. Use --force to overwrite.",
-                target.storage_dir.display()
-            )));
-        }
-        tokio::fs::remove_dir_all(&target.storage_dir)
-            .await
-            .map_err(CliError::Io)?;
-    }
-    copy_dir_recursive(skill_path, &target.storage_dir).await?;
-    finish_skill_install(
-        ctx,
-        skill_def,
-        &target.storage_dir,
-        target.meta,
-        &target.version_display,
-    )
-    .await
-}
-
-/// Install a local skill using symlink (editable) or copy (non-editable).
-pub(super) async fn install_via_local_path(
-    ctx: &super::AddContext<'_>,
-    skill_path: &Path,
-    skill_def: fastskill_core::SkillDefinition,
-    target: super::InstallTarget,
-) -> CliResult<()> {
-    // Check existence (including broken symlinks) before proceeding
-    let path_exists = target.storage_dir.exists() || target.storage_dir.is_symlink();
-    if path_exists {
-        if !ctx.force {
-            return Err(CliError::Config(format!(
-                "Skill directory '{}' already exists. Use --force to overwrite.",
-                target.storage_dir.display()
-            )));
-        }
-        if target.storage_dir.is_symlink() || target.storage_dir.is_file() {
-            tokio::fs::remove_file(&target.storage_dir)
-                .await
-                .map_err(CliError::Io)?;
-        } else {
-            tokio::fs::remove_dir_all(&target.storage_dir)
-                .await
-                .map_err(CliError::Io)?;
-        }
-    }
-    install_utils::setup_skill_in_storage(skill_path, &target.storage_dir, ctx.editable).await?;
-    finish_skill_install(
-        ctx,
-        skill_def,
-        &target.storage_dir,
-        target.meta,
-        &target.version_display,
-    )
-    .await
-}
-
 /// Recursively copy a directory from src to dst
 pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
     // Create destination directory
@@ -240,55 +97,6 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> CliResult<()> {
     Ok(())
 }
 
-/// Add all skills under a directory (--recursive flag)
-pub(super) async fn handle_recursive_add(
-    ctx: &super::AddContext<'_>,
-    path: &Path,
-) -> CliResult<()> {
-    info!(
-        "Adding skills recursively from directory: {}",
-        path.display()
-    );
-    let skill_dirs = get_skill_dirs_recursive(path)?;
-    if skill_dirs.is_empty() {
-        return Err(CliError::Validation(format!(
-            "No skill directories found under {}",
-            path.display()
-        )));
-    }
-    crate::outln!(
-        "Found {} skill(s) in directory {}",
-        skill_dirs.len(),
-        path.display()
-    );
-
-    let mut failed: Vec<(PathBuf, CliError)> = Vec::new();
-    let mut success_count = 0;
-    for skill_path in skill_dirs {
-        match super::sources::add_from_folder(ctx, &skill_path).await {
-            Ok(()) => success_count += 1,
-            Err(e) => {
-                eprintln!("Skill at {}: {}", skill_path.display(), e);
-                failed.push((skill_path, e));
-            }
-        }
-    }
-    if failed.is_empty() {
-        return Ok(());
-    }
-    let total = success_count + failed.len();
-    Err(CliError::Validation(format!(
-        "{} of {} skills failed:\n{}",
-        failed.len(),
-        total,
-        failed
-            .iter()
-            .map(|(path, err)| format!("  - {}: {}", path.display(), err))
-            .collect::<Vec<_>>()
-            .join("\n")
-    )))
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -296,13 +104,6 @@ mod tests {
     use fastskill_core::{FastSkillService, ServiceConfig};
     use std::fs;
     use tempfile::TempDir;
-
-    fn create_skill_dir(parent: &Path, name: &str) -> std::path::PathBuf {
-        let dir = parent.join(name);
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("SKILL.md"), "# Test Skill\n").unwrap();
-        dir
-    }
 
     // Unix-gated on purpose: builds the test fixture with
     // std::os::unix::fs::symlink. The product code's rejection path
@@ -362,60 +163,6 @@ mod tests {
 
         assert!(dst.join("SKILL.md").exists());
         assert!(dst.join("nested/file.txt").exists());
-    }
-
-    #[tokio::test]
-    async fn test_install_skill_editable_creates_symlink() {
-        let tmp = TempDir::new().unwrap();
-        let src = create_skill_dir(tmp.path(), "source-skill");
-        let dst = tmp.path().join("installed-skill");
-
-        install_skill(&src, &dst, true).await.unwrap();
-
-        assert!(
-            dst.is_symlink(),
-            "editable install must create a symlink, not a copy"
-        );
-        let link_target = fs::read_link(&dst).unwrap();
-        assert_eq!(
-            link_target.canonicalize().unwrap(),
-            src.canonicalize().unwrap()
-        );
-    }
-
-    #[tokio::test]
-    async fn test_install_skill_non_editable_creates_copy() {
-        let tmp = TempDir::new().unwrap();
-        let src = create_skill_dir(tmp.path(), "source-skill");
-        let dst = tmp.path().join("installed-skill");
-
-        install_skill(&src, &dst, false).await.unwrap();
-
-        assert!(
-            !dst.is_symlink(),
-            "non-editable install must create a copy, not a symlink"
-        );
-        assert!(dst.is_dir(), "non-editable install must create a directory");
-        assert!(
-            dst.join("SKILL.md").exists(),
-            "SKILL.md must be present in copied directory"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_install_skill_overwrites_existing() {
-        let tmp = TempDir::new().unwrap();
-        let src = create_skill_dir(tmp.path(), "source-skill");
-        let dst = tmp.path().join("installed-skill");
-
-        // First install
-        install_skill(&src, &dst, false).await.unwrap();
-        assert!(dst.exists());
-
-        // Second install should overwrite
-        install_skill(&src, &dst, false).await.unwrap();
-        assert!(dst.exists());
-        assert!(!dst.is_symlink());
     }
 
     fn make_test_skill(dir: &std::path::Path) {
@@ -486,6 +233,7 @@ skills_directory = ".claude/skills"
         let args = super::super::AddArgs {
             source: source_dir.display().to_string(),
             source_type: Some("local".to_string()),
+            repository: None,
             branch: None,
             tag: None,
             force: false,
@@ -494,6 +242,9 @@ skills_directory = ".claude/skills"
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = super::super::execute_add(&service, args, false).await;
@@ -551,6 +302,7 @@ skills_directory = ".claude/skills"
         let args = super::super::AddArgs {
             source: source_dir.display().to_string(),
             source_type: Some("local".to_string()),
+            repository: None,
             branch: None,
             tag: None,
             force: false,
@@ -559,6 +311,9 @@ skills_directory = ".claude/skills"
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = super::super::execute_add(&service, args, false).await;

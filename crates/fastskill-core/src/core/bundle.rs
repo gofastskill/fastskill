@@ -8,19 +8,29 @@
 use crate::core::bundle_archive::{write_bundle_archive, BundleArchiveLock};
 use crate::core::bundle_persistence::{
     apply_personal_override, digest_directory, parse_bundle_descriptor, parse_bundle_project,
-    prepare_members, remove_skill_directory, replace_skill_directory, restore_personal_overrides,
-    save_bundle_declarations, BundleHistory, BundleOverrideDeclaration, BundleTransaction,
+    prepare_members, preview_personal_override, remove_skill_directory, replace_skill_directory,
+    save_bundle_declarations, BundleHistory, BundleTransaction,
 };
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
 use crate::core::manifest::SkillProjectToml;
-use crate::core::service::{ServiceError, SkillId};
+use crate::core::ownership::ProjectOwnership;
+use crate::core::service::ServiceError;
+use crate::core::state_guard::{StateMutationGuard, StateMutationLease};
 use crate::storage::zip::ZipHandler;
 use crate::utils::atomic_write;
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use serde::Serialize;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
+
+pub(crate) use crate::core::bundle_types::{
+    BundleArchiveLockMember, BundleDependency, BundleDescriptor, BundleManifestTables,
+    BundleMemberPolicy, PreparedBundle, PreparedMember, ProjectBundleManifest,
+};
+pub use crate::core::bundle_types::{
+    BundleInstallPreview, BundleOverridePreview, BundleRemovalPreview, BundleUpdatePreview,
+};
 
 /// The marker that prevents a bundle archive from being mistaken for an
 /// existing single-skill ZIP.
@@ -53,6 +63,15 @@ pub struct BundleApplyResult {
     pub version: String,
     pub changed_members: Vec<String>,
     pub unchanged: bool,
+}
+
+/// A member selected by a fully validated declared-bundle plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredBundleMember {
+    pub bundle_id: String,
+    pub id: String,
+    pub digest: String,
+    pub overridable: bool,
 }
 
 /// The public lifecycle seam for bundle build, installation, update, removal,
@@ -124,71 +143,85 @@ impl BundleService {
     /// Add a local bundle. Adding a different release for an installed identity
     /// is refused; callers must use [`Self::update`] to make replacement explicit.
     pub fn install(&self, artifact: &Path) -> Result<BundleApplyResult, ServiceError> {
-        self.apply(artifact, ApplyMode::Add)
+        self.apply(artifact, ApplyMode::Add, None)
+    }
+
+    /// Validate an add artifact and report its complete effects without mutation.
+    pub fn plan_install(&self, artifact: &Path) -> Result<BundleInstallPreview, ServiceError> {
+        crate::core::bundle_plan::preview_install(self, artifact)
     }
 
     /// Preview a selected replacement artifact without changing project state.
     pub fn preview_update(&self, id: &str, artifact: &Path) -> Result<Vec<String>, ServiceError> {
-        let prepared = PreparedBundle::load(artifact)?;
-        if prepared.descriptor.id != id {
-            return Err(ServiceError::InvalidOperation(format!(
-                "Bundle artifact identifies '{}', not requested bundle '{}'",
-                prepared.descriptor.id, id
-            )));
-        }
-        let (_, lock) = self.load_project_state()?;
-        let current = lock
-            .bundles
-            .iter()
-            .find(|bundle| bundle.id == id)
-            .ok_or_else(|| {
-                ServiceError::SkillNotFound(format!("Bundle '{id}' is not installed"))
-            })?;
-        let current_ids: BTreeSet<_> = current
-            .members
-            .iter()
-            .map(|member| member.id.as_str())
-            .collect();
-        let proposed_ids: BTreeSet<_> = prepared.members.keys().map(String::as_str).collect();
+        self.plan_update(id, artifact)
+            .map(|preview| preview.changes)
+    }
 
-        let mut changes = Vec::new();
-        for member in proposed_ids.difference(&current_ids) {
-            changes.push(format!("add {member}"));
-        }
-        for member in current_ids.difference(&proposed_ids) {
-            changes.push(format!("remove {member}"));
-        }
-        for member in current_ids.intersection(&proposed_ids) {
-            let current_digest = current
-                .members
-                .iter()
-                .find(|candidate| candidate.id == *member)
-                .map(|candidate| candidate.digest.as_str());
-            let proposed_digest = prepared
-                .members
-                .get(*member)
-                .map(|candidate| candidate.digest.as_str());
-            if current_digest != proposed_digest {
-                changes.push(format!("replace {member}"));
-            }
-        }
-        changes.sort();
-        Ok(changes)
+    /// Validate a selected replacement and report revisions and ownership effects.
+    pub fn plan_update(
+        &self,
+        id: &str,
+        artifact: &Path,
+    ) -> Result<BundleUpdatePreview, ServiceError> {
+        crate::core::bundle_plan::preview_update(self, id, artifact)
     }
 
     /// Update one installed bundle from an explicitly selected artifact.
     pub fn update(&self, id: &str, artifact: &Path) -> Result<BundleApplyResult, ServiceError> {
-        self.apply(artifact, ApplyMode::Update { id })
+        self.apply(artifact, ApplyMode::Update { id }, None)
     }
 
     pub fn override_member(&self, id: &str, source: &Path) -> Result<(), ServiceError> {
         apply_personal_override(self, id, source)
     }
 
+    /// Validate a personal override without modifying files or project state.
+    pub fn preview_override(
+        &self,
+        id: &str,
+        source: &Path,
+    ) -> Result<BundleOverridePreview, ServiceError> {
+        preview_personal_override(self, id, source)
+    }
+
+    /// Restore a personally overridden member to the packaged contents agreed
+    /// by all retained bundle owners. Returns `false` when no override exists.
+    pub fn reset_override(&self, id: &str) -> Result<bool, ServiceError> {
+        crate::core::bundle_override::reset_personal_override(self, id)
+    }
+
+    /// Validate an override reset without modifying files or project state.
+    pub fn preview_reset_override(&self, id: &str) -> Result<BundleOverridePreview, ServiceError> {
+        crate::core::bundle_override::preview_reset_personal_override(self, id)
+    }
+
     /// Remove a bundle's ownership. Members remain when another bundle or a
     /// direct project dependency still owns them.
     pub fn remove(&self, id: &str) -> Result<(), ServiceError> {
+        let prepared = self.prepare_remove(id)?;
+        self.persist_transaction(
+            &prepared.preview.delete_members,
+            &[],
+            &prepared.manifest,
+            &prepared.lock,
+            &prepared.baseline_manifest,
+            &prepared.baseline_lock,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Validate bundle removal and report ownership effects without mutation.
+    pub fn preview_remove(&self, id: &str) -> Result<BundleRemovalPreview, ServiceError> {
+        self.prepare_remove(id).map(|prepared| prepared.preview)
+    }
+
+    fn prepare_remove(&self, id: &str) -> Result<PreparedBundleRemoval, ServiceError> {
+        crate::core::service::SkillId::new(id.to_string())?;
         let (mut manifest, mut lock) = self.load_project_state()?;
+        let baseline_manifest = manifest.clone();
+        let baseline_lock = lock.clone();
         let current = lock
             .bundles
             .iter()
@@ -198,10 +231,27 @@ impl BundleService {
                 ServiceError::SkillNotFound(format!("Bundle '{id}' is not installed"))
             })?;
 
+        let override_ids: BTreeSet<_> = lock
+            .overrides
+            .iter()
+            .map(|entry| entry.id.clone())
+            .collect();
+        crate::core::bundle_override::retain_final_personal_overrides(
+            &self.project_root,
+            id,
+            &mut manifest.project,
+            &mut manifest.overrides,
+            &mut lock,
+        )?;
+
         let mut deletes = Vec::new();
+        let individual_ownership = ProjectOwnership::new(&manifest.project, &lock);
         for member in &current.members {
             if self.has_other_owner(&lock, id, &member.id)
                 || self.has_direct_dependency(&manifest.project, &member.id)
+                || !individual_ownership
+                    .roots_requiring_skill(&member.id)
+                    .is_empty()
                 || self.has_personal_override(&lock, &member.id)
             {
                 continue;
@@ -212,83 +262,93 @@ impl BundleService {
 
         lock.bundles.retain(|bundle| bundle.id != id);
         manifest.bundles.remove(id);
-
-        self.persist_transaction(&deletes, &[], &manifest, &lock, None, None)
+        let retained_members = current
+            .members
+            .iter()
+            .map(|member| member.id.clone())
+            .filter(|member| !deletes.contains(member))
+            .collect();
+        let promoted_overrides = override_ids
+            .into_iter()
+            .filter(|override_id| !lock.overrides.iter().any(|entry| entry.id == *override_id))
+            .collect();
+        Ok(PreparedBundleRemoval {
+            manifest,
+            lock,
+            baseline_manifest,
+            baseline_lock,
+            preview: BundleRemovalPreview {
+                id: id.to_string(),
+                current_revision: current.version,
+                delete_members: deletes,
+                retained_members,
+                promoted_overrides,
+            },
+        })
     }
 
     pub fn list(&self) -> Result<Vec<InstalledBundle>, ServiceError> {
-        let (_, lock) = self.load_project_state()?;
-        let mut bundles: Vec<_> = lock
-            .bundles
-            .into_iter()
-            .map(|bundle| InstalledBundle {
-                id: bundle.id,
-                version: bundle.version,
-                digest: bundle.digest,
-                members: bundle.members.into_iter().map(|member| member.id).collect(),
-            })
-            .collect();
-        bundles.sort_by(|left, right| left.id.cmp(&right.id));
-        Ok(bundles)
+        crate::core::bundle_declared::list(self)
     }
 
     /// Restore all declared bundle artifacts. The declared artifact is always
     /// relative to the project root, making an installed local release portable
     /// with the project when its artifact directory is retained.
     pub fn install_declared(&self) -> Result<Vec<BundleApplyResult>, ServiceError> {
-        let (manifest, _) = self.load_project_state()?;
-        let mut results = Vec::new();
-        for (id, dependency) in manifest.bundles {
-            let artifact = self.project_root.join(&dependency.artifact);
-            results.push(self.apply(&artifact, ApplyMode::Restore { id: &id })?);
-        }
-        restore_personal_overrides(self)?;
-        Ok(results)
+        crate::core::bundle_declared::install_declared(self, false, None)
+    }
+
+    /// Restore declared bundles while a caller retains the combined writer lease.
+    pub fn install_declared_with_guard(
+        &self,
+        guard: &StateMutationGuard,
+    ) -> Result<Vec<BundleApplyResult>, ServiceError> {
+        crate::core::bundle_declared::install_declared(self, false, Some(guard))
     }
 
     /// Restore the exact bundle releases recorded in `skills.lock`.
     pub fn install_declared_locked(&self) -> Result<Vec<BundleApplyResult>, ServiceError> {
-        let (_, lock) = self.load_project_state()?;
-        let mut results = Vec::new();
-        for expected in lock.bundles {
-            let artifact = self.project_root.join(&expected.artifact);
-            results.push(self.apply(
-                &artifact,
-                ApplyMode::RestoreLocked {
-                    expected: &expected,
-                },
-            )?);
-        }
-        restore_personal_overrides(self)?;
-        Ok(results)
+        crate::core::bundle_declared::install_declared(self, true, None)
+    }
+
+    /// Restore locked bundles while a caller retains the combined writer lease.
+    pub fn install_declared_locked_with_guard(
+        &self,
+        guard: &StateMutationGuard,
+    ) -> Result<Vec<BundleApplyResult>, ServiceError> {
+        crate::core::bundle_declared::install_declared(self, true, Some(guard))
+    }
+
+    /// Validate every declared bundle and their combined ownership without
+    /// mutating files or project state.
+    pub fn validate_declared(&self, locked: bool) -> Result<(), ServiceError> {
+        self.validated_declared_members(locked).map(|_| ())
+    }
+
+    /// Return the complete member selections after running the same validation
+    /// used by declared-bundle installation.
+    pub fn validated_declared_members(
+        &self,
+        locked: bool,
+    ) -> Result<Vec<DeclaredBundleMember>, ServiceError> {
+        crate::core::bundle_plan::validate_declared(self, locked)
     }
 
     /// Reject ordinary skill removal while an installed bundle owns the skill.
     pub fn ensure_individual_removal_allowed(&self, id: &str) -> Result<(), ServiceError> {
-        let (_, lock) = self.load_project_state()?;
-        let mut owners: Vec<_> = lock
-            .bundles
-            .iter()
-            .filter(|bundle| bundle.members.iter().any(|member| member.id == id))
-            .map(|bundle| bundle.id.as_str())
-            .collect();
-        owners.sort_unstable();
-        if owners.is_empty() {
-            return Ok(());
-        }
-        Err(ServiceError::InvalidOperation(format!(
-            "Skill '{id}' is managed by installed bundle(s): {}. Remove the owning bundle with 'fastskill remove --bundle <bundle-id>'",
-            owners.join(", ")
-        )))
+        crate::core::bundle_declared::ensure_individual_removal_allowed(self, id)
     }
 
-    fn apply(
+    pub(crate) fn apply(
         &self,
         artifact: &Path,
         mode: ApplyMode<'_>,
+        guard: Option<&StateMutationGuard>,
     ) -> Result<BundleApplyResult, ServiceError> {
         let prepared = PreparedBundle::load(artifact)?;
         let (mut manifest, mut lock) = self.load_project_state()?;
+        let baseline_manifest = manifest.clone();
+        let baseline_lock = lock.clone();
         let mut history = self.load_history()?;
         let existing = lock
             .bundles
@@ -342,6 +402,18 @@ impl BundleService {
                         "Bundle '{id}' is not installed"
                     )));
                 }
+                if let Some(installed) = &existing {
+                    if installed.digest == prepared.release_digest
+                        && self.bundle_members_match(installed, &lock)
+                    {
+                        return Ok(BundleApplyResult {
+                            id: installed.id.clone(),
+                            version: installed.version.clone(),
+                            changed_members: Vec::new(),
+                            unchanged: true,
+                        });
+                    }
+                }
             }
             ApplyMode::Restore { id } => {
                 if prepared.descriptor.id != id {
@@ -353,7 +425,7 @@ impl BundleService {
                 if let Some(installed) = &existing {
                     if installed.version == prepared.descriptor.version
                         && installed.digest == prepared.release_digest
-                        && self.bundle_members_match(installed)
+                        && self.bundle_members_match(installed, &lock)
                     {
                         return Ok(BundleApplyResult {
                             id: installed.id.clone(),
@@ -376,7 +448,7 @@ impl BundleService {
                 if let Some(installed) = &existing {
                     if installed == expected
                         && declaration_matches
-                        && self.bundle_members_match(installed)
+                        && self.bundle_members_match(installed, &lock)
                     {
                         return Ok(BundleApplyResult {
                             id: installed.id.clone(),
@@ -441,6 +513,8 @@ impl BundleService {
             &changes.replacements,
             &manifest,
             &lock,
+            &baseline_manifest,
+            &baseline_lock,
             Some((
                 &history,
                 artifact,
@@ -450,6 +524,7 @@ impl BundleService {
                 )),
             )),
             Some(&prepared.descriptor),
+            guard,
         )?;
 
         Ok(BundleApplyResult {
@@ -460,7 +535,7 @@ impl BundleService {
         })
     }
 
-    fn load_project_state(
+    pub(crate) fn load_project_state(
         &self,
     ) -> Result<(ProjectBundleManifest, ProjectSkillsLock), ServiceError> {
         let manifest_path = self.project_root.join("skill-project.toml");
@@ -490,7 +565,7 @@ impl BundleService {
         ))
     }
 
-    fn load_history(&self) -> Result<BundleHistory, ServiceError> {
+    pub(crate) fn load_history(&self) -> Result<BundleHistory, ServiceError> {
         let path = self.project_root.join(BUNDLE_HISTORY_FILE);
         if !path.exists() {
             return Ok(BundleHistory::default());
@@ -501,7 +576,7 @@ impl BundleService {
         })
     }
 
-    fn preflight_apply(
+    pub(crate) fn preflight_apply(
         &self,
         prepared: &PreparedBundle,
         existing: Option<&ProjectLockedBundleEntry>,
@@ -529,6 +604,8 @@ impl BundleService {
         }
 
         for member in prepared.members.values() {
+            let individual_roots =
+                ProjectOwnership::new(&manifest.project, lock).roots_requiring_skill(&member.id);
             let owners =
                 self.owners_for(lock, &member.id, existing.map(|bundle| bundle.id.as_str()));
             if self.has_personal_override(lock, &member.id) {
@@ -546,9 +623,30 @@ impl BundleService {
                     member.id
                 )));
             }
+            if !individual_roots.is_empty() {
+                let selected_digest = lock
+                    .skills
+                    .iter()
+                    .find(|entry| entry.id == member.id)
+                    .and_then(|entry| entry.resolved.checksum.as_deref());
+                if selected_digest.is_some_and(|digest| digest != member.digest) {
+                    return Err(ServiceError::InvalidOperation(format!(
+                        "Skill '{}' has conflicting contents required by individual root(s): {}",
+                        member.id,
+                        individual_roots.join(", ")
+                    )));
+                }
+            }
             let destination = self.skills_directory.join(&member.id);
             if destination.exists() {
                 let actual = digest_directory(&destination)?;
+                if !individual_roots.is_empty() && actual != member.digest {
+                    return Err(ServiceError::InvalidOperation(format!(
+                        "Skill '{}' has conflicting contents required by individual root(s): {}",
+                        member.id,
+                        individual_roots.join(", ")
+                    )));
+                }
                 let expected_existing =
                     owners
                         .first()
@@ -580,7 +678,7 @@ impl BundleService {
         Ok(())
     }
 
-    fn plan_changes(
+    pub(crate) fn plan_changes(
         &self,
         prepared: &PreparedBundle,
         existing: Option<&ProjectLockedBundleEntry>,
@@ -684,10 +782,28 @@ impl BundleService {
             .any(|override_entry| override_entry.id == id)
     }
 
-    fn bundle_members_match(&self, bundle: &ProjectLockedBundleEntry) -> bool {
+    fn bundle_members_match(
+        &self,
+        bundle: &ProjectLockedBundleEntry,
+        lock: &ProjectSkillsLock,
+    ) -> bool {
         bundle.members.iter().all(|member| {
+            let effective_digest = lock
+                .overrides
+                .iter()
+                .find(|candidate| candidate.id == member.id)
+                .filter(|_| {
+                    lock.bundles
+                        .iter()
+                        .flat_map(|owner| owner.members.iter())
+                        .filter(|owned| owned.id == member.id)
+                        .all(|owned| owned.overridable)
+                })
+                .map_or(member.digest.as_str(), |override_entry| {
+                    override_entry.digest.as_str()
+                });
             digest_directory(&self.skills_directory.join(&member.id))
-                .map(|digest| digest == member.digest)
+                .map(|digest| digest == effective_digest)
                 .unwrap_or(false)
         })
     }
@@ -698,8 +814,11 @@ impl BundleService {
         replacements: &[BundleReplacement],
         manifest: &ProjectBundleManifest,
         lock: &ProjectSkillsLock,
+        baseline_manifest: &ProjectBundleManifest,
+        baseline_lock: &ProjectSkillsLock,
         history_and_artifact: Option<(&BundleHistory, &Path, &Path)>,
         _descriptor: Option<&BundleDescriptor>,
+        existing_guard: Option<&StateMutationGuard>,
     ) -> Result<(), ServiceError> {
         let affected: Vec<_> = deletions
             .iter()
@@ -718,8 +837,34 @@ impl BundleService {
         if let Some((_, _, destination)) = history_and_artifact {
             transaction_files.push(destination.to_path_buf());
         }
+        let state_guard = StateMutationLease::acquire_or_borrow(
+            &self.project_root,
+            Some(&self.skills_directory),
+            "bundle lifecycle",
+            existing_guard,
+        )?;
+        let current = match self.load_project_state() {
+            Ok(current) => current,
+            Err(error) => {
+                state_guard.recovered()?;
+                return Err(error);
+            }
+        };
+        if !same_project_state(&current.0, &current.1, baseline_manifest, baseline_lock) {
+            state_guard.recovered()?;
+            return Err(ServiceError::InvalidOperation(
+                "Bundle state changed while the operation was prepared; retry".to_string(),
+            ));
+        }
         let mut transaction =
-            BundleTransaction::capture(&self.skills_directory, &affected, &transaction_files)?;
+            match BundleTransaction::capture(&self.skills_directory, &affected, &transaction_files)
+            {
+                Ok(transaction) => transaction,
+                Err(error) => {
+                    state_guard.recovered()?;
+                    return Err(error);
+                }
+            };
         let result = (|| {
             for id in deletions {
                 remove_skill_directory(&self.skills_directory.join(id))?;
@@ -730,12 +875,13 @@ impl BundleService {
                     &replacement.source,
                 )?;
             }
-            manifest
-                .project
-                .save_to_file(&self.project_root.join("skill-project.toml"))
-                .map_err(|error| {
-                    ServiceError::Config(format!("Failed to save skill-project.toml: {error}"))
-                })?;
+            crate::core::project_state::save_project_preserving(
+                &self.project_root.join("skill-project.toml"),
+                &manifest.project,
+            )
+            .map_err(|error| {
+                ServiceError::Config(format!("Failed to save skill-project.toml: {error}"))
+            })?;
             save_bundle_declarations(
                 &self.project_root.join("skill-project.toml"),
                 &manifest.bundles,
@@ -760,16 +906,38 @@ impl BundleService {
             Ok(())
         })();
         if let Err(error) = result {
-            transaction.rollback()?;
+            if let Err(recovery_error) = transaction.rollback() {
+                return Err(ServiceError::Custom(format!(
+                    "Bundle operation failed: {error}; recovery also failed: {recovery_error}"
+                )));
+            }
+            state_guard.recovered()?;
             return Err(error);
         }
         transaction.commit();
+        state_guard.commit()?;
         Ok(())
     }
 }
 
+fn same_project_state(
+    left_manifest: &ProjectBundleManifest,
+    left_lock: &ProjectSkillsLock,
+    right_manifest: &ProjectBundleManifest,
+    right_lock: &ProjectSkillsLock,
+) -> bool {
+    toml::to_string(&left_manifest.project).ok() == toml::to_string(&right_manifest.project).ok()
+        && left_manifest.bundles == right_manifest.bundles
+        && left_manifest.overrides == right_manifest.overrides
+        && left_lock.metadata == right_lock.metadata
+        && left_lock.skills == right_lock.skills
+        && left_lock.bundles == right_lock.bundles
+        && left_lock.overrides == right_lock.overrides
+        && left_lock.covered_roots == right_lock.covered_roots
+}
+
 #[derive(Debug, Clone, Copy)]
-enum ApplyMode<'a> {
+pub(crate) enum ApplyMode<'a> {
     Add,
     Update {
         id: &'a str,
@@ -782,160 +950,27 @@ enum ApplyMode<'a> {
     },
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub(crate) struct BundleManifestTables {
-    #[serde(default)]
-    pub(crate) bundles: BTreeMap<String, BundleDependency>,
-    #[serde(default)]
-    pub(crate) overrides: BTreeMap<String, BundleOverrideDeclaration>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct BundleDependency {
-    pub(crate) version: String,
-    pub(crate) artifact: String,
-}
-
-#[derive(Debug, Clone)]
-struct ProjectBundleManifest {
-    project: SkillProjectToml,
-    bundles: BTreeMap<String, BundleDependency>,
-    overrides: BTreeMap<String, BundleOverrideDeclaration>,
-}
-
 #[derive(Debug, Default)]
-struct BundleChanges {
-    replacements: Vec<BundleReplacement>,
-    deletions: Vec<String>,
+pub(crate) struct BundleChanges {
+    pub(crate) replacements: Vec<BundleReplacement>,
+    pub(crate) deletions: Vec<String>,
+}
+
+struct PreparedBundleRemoval {
+    manifest: ProjectBundleManifest,
+    lock: ProjectSkillsLock,
+    baseline_manifest: ProjectBundleManifest,
+    baseline_lock: ProjectSkillsLock,
+    preview: BundleRemovalPreview,
 }
 
 #[derive(Debug, Clone)]
-struct BundleReplacement {
-    id: String,
+pub(crate) struct BundleReplacement {
+    pub(crate) id: String,
     source: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct BundleDescriptor {
-    #[serde(rename = "format")]
-    pub(crate) format_marker: String,
-    pub(crate) id: String,
-    pub(crate) version: String,
-    #[serde(default)]
-    pub(crate) members: BTreeMap<String, BundleMemberPolicy>,
-}
-
-impl BundleDescriptor {
-    pub(super) fn validate(
-        &self,
-        dependencies: &BTreeMap<String, crate::core::manifest::DependencySpec>,
-    ) -> Result<(), ServiceError> {
-        if self.format_marker != BUNDLE_FORMAT {
-            return Err(ServiceError::Validation(format!(
-                "Archive is not a supported FastSkill bundle (expected format '{BUNDLE_FORMAT}')"
-            )));
-        }
-        SkillId::new(self.id.clone())?;
-        semver::Version::parse(&self.version).map_err(|error| {
-            ServiceError::Validation(format!(
-                "Bundle version '{}' is not valid SemVer: {error}",
-                self.version
-            ))
-        })?;
-        if self.members.is_empty() {
-            return Err(ServiceError::Validation(
-                "Bundle must declare at least one member".to_string(),
-            ));
-        }
-        for member in self.members.keys() {
-            SkillId::new(member.clone())?;
-            if !dependencies.contains_key(member) {
-                return Err(ServiceError::Validation(format!(
-                    "Bundle member '{member}' is not declared in [dependencies]"
-                )));
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct BundleMemberPolicy {
-    #[serde(default)]
-    pub(crate) overridable: bool,
-}
-
-#[derive(Debug)]
-struct PreparedBundle {
-    _temporary: TempDir,
-    descriptor: BundleDescriptor,
-    members: BTreeMap<String, PreparedMember>,
-    release_digest: String,
-}
-
-impl PreparedBundle {
-    fn load(artifact: &Path) -> Result<Self, ServiceError> {
-        let temporary = TempDir::new().map_err(ServiceError::Io)?;
-        ZipHandler::new()?.extract_to_dir(artifact, temporary.path())?;
-        let manifest_bytes =
-            fs::read(temporary.path().join("skill-project.toml")).map_err(|_| {
-                ServiceError::Validation(
-                    "Bundle archive is missing root skill-project.toml".to_string(),
-                )
-            })?;
-        let (descriptor, dependencies) = parse_bundle_project(&manifest_bytes)?;
-        let members =
-            prepare_members(&temporary.path().join("skills"), &descriptor, &dependencies)?;
-        let lock_content =
-            fs::read_to_string(temporary.path().join("skills.lock")).map_err(|_| {
-                ServiceError::Validation("Bundle archive is missing root skills.lock".to_string())
-            })?;
-        let archive_lock: BundleArchiveLock = toml::from_str(&lock_content).map_err(|error| {
-            ServiceError::Validation(format!("Invalid bundle skills.lock: {error}"))
-        })?;
-        archive_lock.verify(&descriptor, &members)?;
-        Ok(Self {
-            _temporary: temporary,
-            descriptor,
-            members,
-            release_digest: archive_lock.release_digest().to_string(),
-        })
-    }
-
-    fn verify_locked_release(
-        &self,
-        expected: &ProjectLockedBundleEntry,
-    ) -> Result<(), ServiceError> {
-        let members_match = expected.members.len() == self.members.len()
-            && expected.members.iter().all(|locked| {
-                self.members.get(&locked.id).is_some_and(|member| {
-                    member.digest == locked.digest && member.overridable == locked.overridable
-                })
-            });
-        if self.descriptor.id != expected.id
-            || self.descriptor.version != expected.version
-            || self.release_digest != expected.digest
-            || !members_match
-        {
-            return Err(ServiceError::Validation(format!(
-                "Locked bundle '{}@{}' does not match its cached artifact",
-                expected.id, expected.version
-            )));
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PreparedMember {
-    pub(crate) id: String,
-    pub(crate) source: PathBuf,
-    pub(crate) digest: String,
-    pub(crate) overridable: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct BundleArchiveLockMember {
-    pub(crate) digest: String,
-    pub(crate) overridable: bool,
-}
+#[cfg(test)]
+#[path = "bundle_tests.rs"]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests;

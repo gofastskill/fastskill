@@ -75,7 +75,7 @@ impl IntoCommandSpec for SearchArgs {
                     help: "Search query string",
                     kind: ArgKind::Positional,
                     value_type: ArgValueType::String,
-                    cardinality: Cardinality::Optional,
+                    cardinality: Cardinality::Required,
                     default: None,
                     ..Default::default()
                 },
@@ -217,16 +217,10 @@ impl FromArgValueMap for SearchArgs {
                     None
                 }
             }),
-            limit: map
-                .get("limit")
-                .and_then(|v| {
-                    if let ArgValue::Int(n) = v {
-                        Some(*n as usize)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(10),
+            limit: match map.get("limit") {
+                Some(ArgValue::Int(n)) => usize::try_from(*n).unwrap_or(0),
+                _ => 10,
+            },
             format: map.get("format").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(s.clone())
@@ -296,18 +290,54 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     };
 
     // Execute search
-    let results = fastskill_core::execute(query, service).await?;
+    let execution = fastskill_core::execute(query, service).await?;
+    let results = execution.results;
 
-    // Format and output results
-    if results.is_empty() {
-        crate::outln!("No skills found matching '{}'", args.query);
-        return Ok(());
+    if matches!(format, OutputFormat::Json) && !execution.failures.is_empty() {
+        crate::outln!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "outcome": "partial",
+                "results": results,
+                "failures": execution.failures,
+            }))
+            .map_err(|error| CliError::Validation(format!(
+                "Failed to serialize partial search result: {error}"
+            )))?
+        );
+        return Err(CliError::Search(fastskill_core::SearchError::Repository(
+            "Search results are incomplete".to_string(),
+        )));
     }
 
-    let formatted_output = output::format_search_results(&results, format, &args.query)
-        .map_err(CliError::Validation)?;
+    // Format and output results
+    if results.is_empty() && !matches!(format, OutputFormat::Json) {
+        crate::outln!("No skills found matching '{}'", args.query);
+    } else {
+        let show_install_commands = matches!(format, OutputFormat::Table | OutputFormat::Grid);
+        let formatted_output = output::format_search_results(&results, format, &args.query)
+            .map_err(CliError::Validation)?;
 
-    crate::outln!("{}", formatted_output);
+        crate::outln!("{}", formatted_output);
+        if show_install_commands {
+            for result in &results {
+                if let Some(command) = &result.install_command {
+                    crate::outln!("Install {}: {}", result.id, command);
+                }
+            }
+        }
+    }
+    if !execution.failures.is_empty() {
+        let diagnostics = execution
+            .failures
+            .iter()
+            .map(|failure| format!("{}: {}", failure.repository, failure.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(CliError::Search(fastskill_core::SearchError::Repository(
+            format!("Search results are incomplete: {diagnostics}"),
+        )));
+    }
     Ok(())
 }
 
@@ -351,6 +381,24 @@ fn parse_content_mode(s: &str) -> CliResult<ContentMode> {
 
 /// Validate search arguments for conflicting options
 fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
+    if args.query.trim().is_empty() {
+        return Err(CliError::Config(
+            "Error: search query must not be empty.".to_string(),
+        ));
+    }
+
+    if !(1..=1000).contains(&args.limit) {
+        return Err(CliError::Config(
+            "Error: --limit must be between 1 and 1000.".to_string(),
+        ));
+    }
+
+    if args.local && args.remote {
+        return Err(CliError::Config(
+            "Error: --local and --remote cannot be used together.".to_string(),
+        ));
+    }
+
     // Validate --repository flag only works with remote search
     if args.repository.is_some() && args.local {
         return Err(CliError::Config(
@@ -379,10 +427,26 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
         ));
     }
 
+    if let Some(embedding) = args.embedding.as_deref() {
+        if !matches!(embedding, "true" | "false" | "auto") {
+            return Err(CliError::Config(format!(
+                "Invalid --embedding value '{}': must be true, false, or auto",
+                embedding
+            )));
+        }
+    }
+
     // Validate the content mode value eagerly so an invalid value is rejected
     // regardless of whether --paths is also present.
     if let Some(content) = args.content.as_deref() {
         parse_content_mode(content)?;
+    }
+
+    if args.content.is_some() && !args.paths {
+        return Err(CliError::Config(
+            "--content requires --paths so returned content has a resolved file context."
+                .to_string(),
+        ));
     }
 
     Ok(())
@@ -433,6 +497,35 @@ mod tests {
     use super::*;
     use fastskill_core::ServiceConfig;
     use tempfile::TempDir;
+
+    #[test]
+    fn argument_map_ignores_values_with_the_wrong_type() {
+        let values = HashMap::from([
+            ("query".to_string(), ArgValue::Bool(true)),
+            ("repository".to_string(), ArgValue::Bool(true)),
+            ("limit".to_string(), ArgValue::Str("many".to_string())),
+            ("format".to_string(), ArgValue::Bool(true)),
+            ("embedding".to_string(), ArgValue::Bool(true)),
+            ("skills-dir".to_string(), ArgValue::Bool(true)),
+            ("content".to_string(), ArgValue::Bool(true)),
+        ]);
+        let panic = std::panic::catch_unwind(|| SearchArgs::from_arg_value_map(&values));
+        assert!(
+            panic.is_err(),
+            "required query must never be silently defaulted"
+        );
+
+        let mut valid = values;
+        valid.insert("query".to_string(), ArgValue::Str("demo".to_string()));
+        let args = SearchArgs::from_arg_value_map(&valid);
+        assert_eq!(args.query, "demo");
+        assert_eq!(args.repository, None);
+        assert_eq!(args.limit, 10);
+        assert_eq!(args.format, None);
+        assert_eq!(args.embedding, None);
+        assert_eq!(args.skills_dir, None);
+        assert_eq!(args.content, None);
+    }
 
     #[test]
     fn test_validate_search_args_local_and_repository_conflict() {
@@ -751,5 +844,68 @@ mod tests {
 
         let mode = determine_embedding_mode(&args);
         assert_eq!(mode, None);
+    }
+
+    #[test]
+    fn query_is_required_by_the_command_schema() {
+        let spec = SearchArgs::command_spec();
+        let query = spec
+            .args
+            .iter()
+            .find(|arg| arg.name == "query")
+            .expect("query argument");
+        assert_eq!(query.cardinality, Cardinality::Required);
+    }
+
+    #[test]
+    fn validation_rejects_empty_query_and_zero_limit() {
+        let mut args = SearchArgs {
+            query: "  ".to_string(),
+            local: true,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: Some("false".to_string()),
+            skills_dir: None,
+            paths: false,
+            content: None,
+        };
+        assert!(
+            matches!(validate_search_args(&args), Err(CliError::Config(message)) if message.contains("query"))
+        );
+
+        args.query = "demo".to_string();
+        args.limit = 0;
+        assert!(
+            matches!(validate_search_args(&args), Err(CliError::Config(message)) if message.contains("--limit"))
+        );
+    }
+
+    #[test]
+    fn validation_rejects_conflicting_scope_and_invalid_embedding() {
+        let mut args = SearchArgs {
+            query: "demo".to_string(),
+            local: true,
+            remote: true,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: None,
+            skills_dir: None,
+            paths: false,
+            content: None,
+        };
+        assert!(
+            matches!(validate_search_args(&args), Err(CliError::Config(message)) if message.contains("--local") && message.contains("--remote"))
+        );
+
+        args.remote = false;
+        args.embedding = Some("sometimes".to_string());
+        assert!(
+            matches!(validate_search_args(&args), Err(CliError::Config(message)) if message.contains("--embedding"))
+        );
     }
 }

@@ -380,7 +380,10 @@ async fn test_repos_test_connectivity_reachable() {
         "repos test failed: {}{}",
         result.stdout, result.stderr
     );
-    assert!(result.stdout.contains("accessible"));
+    assert!(result.stdout.contains("Connectivity:"));
+    assert!(result.stdout.contains("reachable"));
+    assert!(result.stdout.contains("Catalog: valid"));
+    assert!(result.stdout.contains("Acquisition: supported"));
 
     assert_snapshot_with_settings(
         "repos_test_connectivity",

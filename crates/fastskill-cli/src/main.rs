@@ -15,17 +15,21 @@ mod commands;
 mod config;
 mod config_file;
 mod context;
+mod dispatch_context;
 mod error;
+mod json_boundary;
 mod output;
 mod registration;
 pub mod runtime_selector;
 mod shorthand;
 mod utils;
 
-use cli_framework::app::context::AppContext;
 use cli_framework::prelude::AppBuilder;
-use cli_framework::spec::value::ArgValue;
 use context::{FsCtx, FsState};
+use dispatch_context::{global as ctx_global, skills_directory as ctx_skills_dir};
+use json_boundary::{
+    emit_json_error, emit_lifecycle_json_error, is_json_lifecycle, requests_json_output,
+};
 use std::sync::Arc;
 
 fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
@@ -65,31 +69,6 @@ fn is_mcp_serve(args: &[String]) -> bool {
         .map(String::as_str)
         .collect();
     matches!(positionals.first(), Some(&"mcp")) && positionals.contains(&"serve")
-}
-
-fn ctx_global(ctx: &dyn AppContext) -> bool {
-    ctx.opt_global_args()
-        .and_then(|m| m.get("global"))
-        .and_then(|v| {
-            if let ArgValue::Bool(b) = v {
-                Some(*b)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(false)
-}
-
-fn ctx_skills_dir(ctx: &dyn AppContext) -> Option<std::path::PathBuf> {
-    ctx.opt_global_args()
-        .and_then(|m| m.get("skills-dir"))
-        .and_then(|v| {
-            if let ArgValue::Str(s) = v {
-                Some(std::path::PathBuf::from(s))
-            } else {
-                None
-            }
-        })
 }
 
 use commands::{
@@ -208,9 +187,39 @@ async fn main() {
         }
     };
 
-    match app.run_with_args(raw).await {
-        Ok(()) => std::process::exit(0),
+    let json_output = requests_json_output(&raw);
+    let lifecycle_json = is_json_lifecycle(&raw);
+    let global_scope = raw.iter().any(|arg| arg == "--global");
+    let dry_run = raw
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--dry-run" | "--check"));
+    let (result, captured) = if json_output {
+        output::capture(app.run_with_args(raw)).await
+    } else {
+        (app.run_with_args(raw).await, String::new())
+    };
+
+    match result {
+        Ok(()) => {
+            if json_output && !captured.trim().is_empty() {
+                output::emit(captured.trim_end());
+            }
+            std::process::exit(0)
+        }
         Err(e) => {
+            if json_output {
+                if serde_json::from_str::<serde_json::Value>(captured.trim()).is_ok() {
+                    output::emit(captured.trim_end());
+                } else if lifecycle_json {
+                    emit_lifecycle_json_error(&e, global_scope, dry_run);
+                } else {
+                    emit_json_error(&e);
+                }
+                if !lifecycle_json {
+                    eprintln!("Error: {e}");
+                }
+                std::process::exit(1);
+            }
             // A bare word only reaches `read` because it matched no command.
             // When it then dies for want of a project, the generic manifest
             // error is the very message `fastskill list` prints -- it never
@@ -300,14 +309,15 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .map_err(anyhow::Error::from)
             }
         })?
-        .register_out(
-            path!["install"],
-            |_ctx, args: install::InstallArgs| async move {
-                install::execute_install(args)
+        .register_out(path!["install"], |ctx, args: install::InstallArgs| {
+            let global = ctx_global(ctx);
+            let skills_dir = ctx_skills_dir(ctx);
+            async move {
+                install::execute_install_scoped(args, global, skills_dir)
                     .await
                     .map_err(anyhow::Error::from)
-            },
-        )?
+            }
+        })?
         .register_out(path!["update"], |ctx, args: update::UpdateArgs| {
             let global = ctx_global(ctx);
             let skills_dir = ctx_skills_dir(ctx);
@@ -320,6 +330,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
 
     let builder = {
         use cli_framework::spec::command_tree::GroupMetadata;
+        let state_bundle = Arc::clone(&state);
         builder
             .register_group(
                 &path!["bundle"],
@@ -330,18 +341,28 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
             )?
             .register_out(path!["bundle", "build"], |ctx, args: bundle::BuildArgs| {
                 let skills_dir = ctx_skills_dir(ctx);
+                let global = ctx_global(ctx);
                 async move {
-                    bundle::execute_build(args, skills_dir)
+                    bundle::execute_build(args, skills_dir, global)
                         .await
                         .map_err(anyhow::Error::from)
                 }
             })?
             .register_out(
                 path!["bundle", "override"],
-                |ctx, args: bundle::OverrideArgs| {
+                move |ctx, args: bundle::OverrideArgs| {
                     let skills_dir = ctx_skills_dir(ctx);
+                    let global = ctx_global(ctx);
+                    let state = Arc::clone(&state_bundle);
                     async move {
-                        bundle::execute_override(args, skills_dir)
+                        if global {
+                            return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                                "Bundle operations require a project Manifest and do not support --global"
+                                    .to_string(),
+                            )));
+                        }
+                        let service = state.service_with(false, skills_dir).await?;
+                        bundle::execute_override(args, service.as_ref(), false)
                             .await
                             .map_err(anyhow::Error::from)
                     }
@@ -359,6 +380,11 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_list);
                 async move {
+                    if global && skills_dir.is_some() {
+                        return Err(anyhow::anyhow!(
+                            "--global and --skills-dir cannot be combined"
+                        ));
+                    }
                     let svc = state.service_with(global, skills_dir).await?;
                     list::execute_list(&svc, args, global)
                         .await
@@ -370,8 +396,13 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_read);
                 async move {
+                    if global && skills_dir.is_some() {
+                        return Err(anyhow::anyhow!(
+                            "--global and --skills-dir cannot be combined"
+                        ));
+                    }
                     let svc = state.service_with(global, skills_dir).await?;
-                    read::execute_read(svc, args)
+                    read::execute_read(svc, args, global)
                         .await
                         .map_err(anyhow::Error::from)
                 }
@@ -643,6 +674,12 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
             let skills_dir = ctx_skills_dir(ctx);
             let state = Arc::clone(&state_add);
             async move {
+                if global && skills_dir.is_some() {
+                    return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                        "--global and --skills-dir cannot be used together".to_string(),
+                    )));
+                }
+                add::validate_add_args(&args, global).map_err(anyhow::Error::from)?;
                 let svc = state.service_with(global, skills_dir).await?;
                 add::execute_add(&svc, args, global)
                     .await
@@ -739,6 +776,11 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_remove);
                 async move {
+                    if global && skills_dir.is_some() {
+                        return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                            "--global and --skills-dir cannot be combined".to_string(),
+                        )));
+                    }
                     let svc = state.service_with(global, skills_dir).await?;
                     remove::execute_remove(&svc, args, global)
                         .await
@@ -775,7 +817,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 let state = Arc::clone(&state_doctor);
                 async move {
                     let svc = state.service_with(global, skills_dir).await?;
-                    doctor::execute_doctor(&svc, args)
+                    doctor::execute_doctor(&svc, args, global)
                         .await
                         .map_err(anyhow::Error::from)
                 }

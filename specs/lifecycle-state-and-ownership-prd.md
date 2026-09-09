@@ -1,13 +1,13 @@
 # PRD: Consistent lifecycle state and ownership
 
-Status: draft product requirements; implementation pending.
-Date: 2026-09-08. Priority: first implementation phase.
+Status: accepted and implemented.
+Date: 2026-09-08. Implemented: 2026-09-09.
 
-This PRD implements the shared-core and ownership contracts in
+This PRD defines the implemented shared-core and ownership contracts in
 [ADR-0005](../docs/adr/0005-install-seam-and-origin-model.md) and
 [ADR-0008](../docs/adr/0008-bundle-ownership-and-local-changes.md). The new override
 reset and scope restrictions below are proposed command behavior. MUST, MUST NOT,
-SHOULD, and MAY express requirement strength, not implementation status.
+SHOULD, and MAY express requirement strength.
 
 ## Problem and outcome
 

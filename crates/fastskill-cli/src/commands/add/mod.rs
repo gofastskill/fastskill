@@ -2,121 +2,33 @@
 
 pub mod bundle;
 pub mod install;
-pub mod skill_def;
-pub mod sources;
+mod origin;
+mod project;
+mod sources;
 
 // Re-export public API consumed by install_utils.rs
 use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::{detect_skill_source, validate_skill_structure, SkillSource};
-use chrono::Utc;
 use clap::Args;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
-use fastskill_core::core::origin::{GitRef, Origin};
+use fastskill_core::core::origin::Origin;
 use fastskill_core::core::project::resolve_project_file;
-use fastskill_core::core::repository::RepositoryManager;
-use fastskill_core::core::version::VersionConstraint;
-use fastskill_core::core::AddMode;
-use fastskill_core::{FastSkillService, SkillDefinition};
+use fastskill_core::FastSkillService;
 pub use install::copy_dir_recursive;
-pub use skill_def::create_skill_from_path;
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 
-/// Bundled options for add operations (reduces argument count)
-struct AddContext<'a> {
-    service: &'a FastSkillService,
-    force: bool,
-    editable: bool,
-    groups: Vec<String>,
-    global: bool,
-}
-
-/// Source metadata to record after installing a skill.
-///
-/// `Origin` (install intent) is now the single source of truth for provenance,
-/// so this is a thin wrapper rather than a flat bag of source_* fields.
-struct SourceMeta {
-    origin: Origin,
-}
-
-/// Target for install: where to copy and what to record
-struct InstallTarget {
-    storage_dir: PathBuf,
-    meta: SourceMeta,
-    version_display: String,
-}
-
-fn update_project_files(skill_def: &SkillDefinition, groups: Vec<String>) -> CliResult<()> {
-    use crate::utils::manifest_utils;
-    let warnings = manifest_utils::add_skill_to_project_toml(skill_def, groups.clone())
-        .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
-    // Printed, not `tracing::warn!`-ed: the CLI installs no subscriber, so a
-    // traced warning about an unportable Manifest path would reach nobody.
-    for warning in &warnings {
-        eprintln!("{}", crate::utils::messages::warning(warning));
-    }
-
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-    let project_file_result = resolve_project_file(&current_dir);
-    let lock_path = if let Some(parent) = project_file_result.path.parent() {
-        parent.join("skills.lock")
-    } else {
-        PathBuf::from("skills.lock")
-    };
-    manifest_utils::update_lock_file(&lock_path, skill_def, groups)
-        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
-
-    Ok(())
-}
-
-/// Helper to update global-skills.lock (global scope only)
-fn update_global_files(skill_def: &SkillDefinition) -> CliResult<()> {
-    use crate::utils::manifest_utils;
-    manifest_utils::update_global_lock_file(skill_def, Utc::now())
-        .map_err(|e| CliError::Config(format!("Failed to update global lock file: {}", e)))?;
-    Ok(())
-}
-
-async fn register_skill_once(ctx: &AddContext<'_>, skill_def: &SkillDefinition) -> CliResult<()> {
-    if ctx.force {
-        ctx.service
-            .skill_manager()
-            .force_register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    } else {
-        if ctx
-            .service
-            .skill_manager()
-            .get_skill(&skill_def.id)
-            .await
-            .map_err(CliError::Service)?
-            .is_some()
-        {
-            return Err(CliError::Config(format!(
-                "Skill '{}' already exists. Use --force to overwrite.",
-                skill_def.id
-            )));
-        }
-        ctx.service
-            .skill_manager()
-            .register_skill(skill_def.clone())
-            .await
-            .map_err(CliError::Service)?;
-    }
-    Ok(())
-}
+use origin::build_origin;
 
 /// Add a skill (two operational modes)
 ///
 /// Mode 1: Manifest-managed (when skill-project.toml exists)
 /// Mode 2: Local-only (when no skill-project.toml or --global flag)
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct AddArgs {
     /// Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@1.2.3)
     pub source: String,
@@ -124,6 +36,10 @@ pub struct AddArgs {
     /// Override source type (registry, github/git, local)
     #[arg(long)]
     pub source_type: Option<String>,
+
+    /// Repository to use for a skill ID reference
+    #[arg(long)]
+    pub repository: Option<String>,
 
     /// Git branch to checkout (only for git URLs)
     #[arg(long)]
@@ -156,6 +72,18 @@ pub struct AddArgs {
     /// Skip reindex after adding
     #[arg(long)]
     pub no_reindex: bool,
+
+    /// Use verified local sources and cached artifacts only
+    #[arg(long)]
+    pub offline: bool,
+
+    /// Validate and preview without changing project state
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit one machine-readable lifecycle result
+    #[arg(long)]
+    pub json: bool,
 }
 
 impl IntoCommandSpec for AddArgs {
@@ -183,9 +111,18 @@ impl IntoCommandSpec for AddArgs {
                     name: "source-type",
                     kind: ArgKind::Option,
                     long: Some("source-type"),
-                    value_type: ArgValueType::String,
+                    value_type: ArgValueType::Enum(vec!["registry", "github", "git", "local"]),
                     cardinality: Cardinality::Optional,
                     help: "Override source type (registry, github/git, local)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "repository",
+                    kind: ArgKind::Option,
+                    long: Some("repository"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Use this configured repository for a skill ID reference",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -263,6 +200,33 @@ impl IntoCommandSpec for AddArgs {
                     help: "Skip reindex after adding",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "offline",
+                    kind: ArgKind::Flag,
+                    long: Some("offline"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Use verified local sources and cached artifacts only",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "dry-run",
+                    kind: ArgKind::Flag,
+                    long: Some("dry-run"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Validate and preview without changing project state",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Emit one machine-readable lifecycle result",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -283,6 +247,13 @@ impl FromArgValueMap for AddArgs {
                 })
                 .unwrap_or_default(),
             source_type: map.get("source-type").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            repository: map.get("repository").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(s.clone())
                 } else {
@@ -315,6 +286,9 @@ impl FromArgValueMap for AddArgs {
             recursive: matches!(map.get("recursive"), Some(ArgValue::Bool(true))),
             reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
             no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
+            offline: matches!(map.get("offline"), Some(ArgValue::Bool(true))),
+            dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -336,6 +310,62 @@ fn resolve_source(args: &AddArgs) -> SkillSource {
         }
         _ => detect_skill_source(&args.source),
     }
+}
+
+fn validate_source_options(args: &AddArgs, source: &SkillSource) -> CliResult<()> {
+    if let Some(source_type) = args.source_type.as_deref() {
+        if !matches!(source_type, "registry" | "github" | "git" | "local") {
+            return Err(CliError::Validation(format!(
+                "Invalid source type '{source_type}'. Use: registry, github, git, local"
+            )));
+        }
+    }
+    if args.branch.is_some() && args.tag.is_some() {
+        return Err(CliError::Validation(
+            "--branch and --tag cannot be used together".to_string(),
+        ));
+    }
+    if (args.branch.is_some() || args.tag.is_some()) && !matches!(source, SkillSource::GitUrl(_)) {
+        return Err(CliError::Validation(
+            "--branch and --tag are only valid for Git sources".to_string(),
+        ));
+    }
+    if args.recursive && !matches!(source, SkillSource::Folder(_)) {
+        return Err(CliError::Validation(
+            "Recursive add is only valid when source is a local directory".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_add_args(args: &AddArgs, global: bool) -> CliResult<()> {
+    if args.reindex && args.no_reindex {
+        return Err(CliError::Validation(
+            "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
+    if args.offline && args.reindex {
+        return Err(CliError::Validation(
+            "--offline and --reindex cannot be used together".to_string(),
+        ));
+    }
+    let source = resolve_source(args);
+    validate_source_options(args, &source)?;
+    if args.repository.is_some() && !matches!(source, SkillSource::SkillId(_)) {
+        return Err(CliError::Validation(
+            "--repository is only valid when SOURCE is a skill ID".to_string(),
+        ));
+    }
+    if args.editable && !matches!(source, SkillSource::Folder(_)) {
+        return Err(CliError::Config(
+            "--editable (-e) is only supported for local folder sources. Remove -e or use a local path."
+                .to_string(),
+        ));
+    }
+    if global && args.group.as_deref().is_some_and(str::is_empty) {
+        return Err(CliError::Validation("--group cannot be empty".to_string()));
+    }
+    Ok(())
 }
 
 fn ensure_manifest() -> CliResult<()> {
@@ -367,229 +397,103 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
     )))
 }
 
-/// Build the install-intent [`Origin`] for the common (single-skill,
-/// project-level) add path (ADR-0005 / spec 003 Phase 3: `infer_origin` is the
-/// one canonical string → `Origin` inference path — the CLI no longer keeps
-/// its own private copy of that classification logic).
-///
-/// `--source-type` is an explicit CLI override of source classification (not
-/// part of the Origin-ref inference contract itself, and not exercised by the
-/// browser UI); it keeps its own narrow per-variant construction
-/// (`build_origin_explicit_source_type`) rather than being routed through the
-/// core seam. The natural (no `--source-type`) path below — the common case —
-/// delegates the raw `args.source` string straight to
-/// `FastSkillService::infer_origin`, then applies the CLI's explicit
-/// `--branch`/`--tag`/`--editable` overrides on top of the inferred `Origin`.
-async fn build_origin(
-    service: &FastSkillService,
-    source: &SkillSource,
-    args: &AddArgs,
-) -> CliResult<Origin> {
-    if args.source_type.is_some() {
-        return build_origin_explicit_source_type(source, args);
-    }
-
-    let mut origin = service.infer_origin(&args.source).await?;
-
-    match &mut origin {
-        Origin::Local { path, editable } => {
-            // `infer_origin` deliberately does not canonicalize (the fetch
-            // step resolves relative paths against cwd) — the CLI still wants
-            // an upfront, actionable "path does not exist" error and an
-            // absolute path recorded in the Manifest, mirroring pre-seam
-            // behavior.
-            let canonical = path.canonicalize().map_err(|e| {
-                CliError::InvalidSource(format!(
-                    "Failed to resolve absolute path for '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-            *path = canonical;
-            *editable = args.editable;
-        }
-        Origin::Git { r#ref, .. } => {
-            if let Some(b) = &args.branch {
-                *r#ref = GitRef::Branch(b.clone());
-            } else if matches!(r#ref, GitRef::Default) {
-                if let Some(t) = &args.tag {
-                    *r#ref = GitRef::Tag(t.clone());
-                }
-            }
-        }
-        Origin::ZipUrl { .. } | Origin::Repository { .. } => {}
-    }
-
-    Ok(origin)
-}
-
-/// Pre-seam per-`SkillSource`-variant `Origin` construction, kept only for the
-/// explicit `--source-type` override (see `build_origin`).
-fn build_origin_explicit_source_type(source: &SkillSource, args: &AddArgs) -> CliResult<Origin> {
-    match source {
-        SkillSource::ZipFile(path) => {
-            let canonical = path.canonicalize().map_err(|e| {
-                CliError::InvalidSource(format!(
-                    "Failed to resolve absolute path for '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-            Ok(Origin::Local {
-                path: canonical,
-                editable: false,
-            })
-        }
-        SkillSource::Folder(path) => {
-            let canonical = path.canonicalize().map_err(|e| {
-                CliError::InvalidSource(format!(
-                    "Failed to resolve absolute path for '{}': {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-            Ok(Origin::Local {
-                path: canonical,
-                editable: args.editable,
-            })
-        }
-        SkillSource::GitUrl(url) => {
-            let git_info = crate::utils::parse_git_url(url)?;
-            let branch = args.branch.clone().or_else(|| git_info.branch.clone());
-            let r#ref = match (&branch, &args.tag) {
-                (Some(b), _) => GitRef::Branch(b.clone()),
-                (None, Some(t)) => GitRef::Tag(t.clone()),
-                (None, None) => GitRef::Default,
-            };
-            Ok(Origin::Git {
-                url: url.clone(),
-                r#ref,
-                subdir: git_info.subdir,
-            })
-        }
-        SkillSource::RemoteZipUrl(url) => Ok(Origin::ZipUrl { url: url.clone() }),
-        SkillSource::SkillId(skill_id_input) => {
-            let (skill_id_full, _scope, _expected_id, version_opt) =
-                sources::parse_registry_scope_id(skill_id_input)?;
-            let version = version_opt
-                .as_deref()
-                .map(VersionConstraint::parse)
-                .transpose()
-                .map_err(|e| CliError::Config(format!("Invalid version constraint: {}", e)))?;
-
-            // Resolve "default" to the concrete configured repository's name now
-            // (mirrors the pre-seam `add_from_registry`), so a missing repository
-            // config fails fast with a clear message rather than surfacing later
-            // from inside the seam.
-            let repositories = crate::config::load_repositories_from_project()?;
-            let repo_manager = RepositoryManager::from_definitions(repositories);
-            let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
-                CliError::Config(
-                    "No default repository configured. Use 'fastskill repos add' to add a \
-                     repository."
-                        .to_string(),
-                )
-            })?;
-
-            Ok(Origin::Repository {
-                repo: default_repo.name.clone(),
-                skill: skill_id_full,
-                version,
-            })
-        }
-    }
-}
-
 pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
-    if args.reindex && args.no_reindex {
-        return Err(CliError::Validation(
-            "--reindex and --no-reindex cannot be used together".to_string(),
-        ));
-    }
+    validate_add_args(&args, global)?;
     let reindex = args.reindex;
-    let no_reindex = args.no_reindex;
+    let no_reindex = args.no_reindex || args.offline;
 
     let source = resolve_source(&args);
-
-    if args.editable {
-        match &source {
-            SkillSource::Folder(_) => {}
-            SkillSource::ZipFile(_)
-            | SkillSource::GitUrl(_)
-            | SkillSource::RemoteZipUrl(_)
-            | SkillSource::SkillId(_) => {
-                return Err(CliError::Config(
-                    "--editable (-e) is only supported for local folder sources. \
-                     Remove -e or use a local path."
-                        .to_string(),
-                ));
-            }
-        }
-    }
-
     if !global {
         ensure_manifest()?;
     }
 
+    let may_probe_bundle =
+        !args.offline || matches!(source, SkillSource::ZipFile(_) | SkillSource::Folder(_));
     if !global
         && !args.recursive
-        && bundle::install_if_bundle(service, &source, &args, reindex, no_reindex).await?
+        && may_probe_bundle
+        && bundle::install_if_bundle(service, &source, &args, reindex, no_reindex || args.offline)
+            .await?
     {
         return Ok(());
     }
 
-    // `--global` and `--recursive` are not (yet) expressible through the core
-    // `add_from_origin` seam — it is single-skill + project-level only (no
-    // global-lock concept, no directory-of-skills fan-out) — so both keep the
-    // pre-seam per-source-type install path below.
-    if global || args.recursive {
-        let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
-        let ctx = AddContext {
-            service,
-            force: args.force,
-            editable: args.editable,
-            groups,
-            global,
+    if global && !args.recursive {
+        return origin::add_global_skill(service, &source, &args).await;
+    }
+
+    if args.recursive {
+        let SkillSource::Folder(path) = &source else {
+            return Err(CliError::Validation(
+                "Recursive add is only valid when source is a local directory".to_string(),
+            ));
         };
-
-        if args.recursive {
-            let path = match &source {
-                SkillSource::Folder(p) => p,
-                _ => {
-                    return Err(CliError::Config(
-                        "Recursive add is only valid when source is a local directory".to_string(),
-                    ));
-                }
-            };
-            install::handle_recursive_add(&ctx, path).await?;
-        } else {
-            match source {
-                SkillSource::ZipFile(path) => sources::add_from_zip(&ctx, &path).await?,
-                SkillSource::Folder(path) => {
-                    validate_folder_has_skill(&path)?;
-                    sources::add_from_folder(&ctx, &path).await?
-                }
-                SkillSource::GitUrl(url) => {
-                    sources::add_from_git(&ctx, &url, args.branch.as_deref(), args.tag.as_deref())
-                        .await?
-                }
-                SkillSource::RemoteZipUrl(url) => sources::add_from_zip_url(&ctx, &url).await?,
-                SkillSource::SkillId(skill_id) => {
-                    sources::add_from_registry(&ctx, &skill_id).await?
-                }
-            }
+        let directories = install::get_skill_dirs_recursive(path)?;
+        if directories.is_empty() {
+            return Err(CliError::Validation(format!(
+                "No skill directories found under {}",
+                path.display()
+            )));
         }
-
-        let auto_reindex = crate::config_file::load_auto_reindex_config();
-        return crate::utils::reindex_utils::maybe_auto_reindex(
+        if !args.json {
+            crate::outln!(
+                "Found {} skill(s) in directory {}",
+                directories.len(),
+                path.display()
+            );
+        }
+        let mut origins = Vec::with_capacity(directories.len());
+        for directory in directories {
+            validate_skill_structure(&directory)?;
+            origins.push(Origin::Local {
+                path: directory.canonicalize().map_err(CliError::Io)?,
+                editable: args.editable,
+            });
+        }
+        if global {
+            return origin::add_global_origins(service, origins, &args).await;
+        }
+        let groups = args
+            .group
+            .clone()
+            .map(|group| vec![group])
+            .unwrap_or_default();
+        let outcomes = project::add_project_skills(
             service,
-            "add",
-            reindex,
-            no_reindex,
-            auto_reindex,
-            false,
+            origins,
+            groups,
+            args.force,
+            args.offline,
+            args.dry_run,
         )
-        .await;
+        .await?;
+        let indexing = if args.json {
+            Some(
+                crate::utils::reindex_utils::lifecycle_reindex_result(
+                    service,
+                    "add",
+                    reindex,
+                    no_reindex || args.dry_run,
+                    crate::config_file::load_auto_reindex_config(),
+                )
+                .await,
+            )
+        } else {
+            None
+        };
+        project::emit_project_adds(&outcomes, args.dry_run, args.json, indexing.as_ref())?;
+        if !args.json && !args.dry_run && !args.offline {
+            crate::utils::reindex_utils::maybe_auto_reindex(
+                service,
+                "add",
+                reindex,
+                no_reindex,
+                crate::config_file::load_auto_reindex_config(),
+                false,
+            )
+            .await?;
+        }
+        return Ok(());
     }
 
     // Common path: single skill, project-level → core install seam (ADR-0005).
@@ -602,49 +506,47 @@ pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool
     }
 
     let origin = build_origin(service, &source, &args).await?;
-    let mode = if args.force {
-        AddMode::Update
-    } else {
-        AddMode::Fresh
-    };
     let groups = args.group.clone().map(|g| vec![g]).unwrap_or_default();
-    let outcome = service
-        .add_from_origin(origin, mode, groups)
-        .await
-        .map_err(CliError::Service)?;
+    let outcome = project::add_project_skill(
+        service,
+        origin,
+        groups,
+        args.force,
+        args.offline,
+        args.dry_run,
+    )
+    .await?;
 
-    // `AddOutcome` only carries the skill `id`, not its display `name`; look the
-    // freshly-registered skill back up for a nicer message, falling back to the
-    // id (which is always a valid, if less friendly, thing to print).
-    let display_name = match fastskill_core::SkillId::new(outcome.id.clone()) {
-        Ok(id) => service
-            .skill_manager()
-            .get_skill(&id)
-            .await
-            .ok()
-            .flatten()
-            .map(|s| s.name)
-            .unwrap_or_else(|| outcome.id.clone()),
-        Err(_) => outcome.id.clone(),
+    let indexing = if args.json {
+        Some(
+            crate::utils::reindex_utils::lifecycle_reindex_result(
+                service,
+                "add",
+                reindex,
+                no_reindex || args.dry_run,
+                crate::config_file::load_auto_reindex_config(),
+            )
+            .await,
+        )
+    } else {
+        None
     };
 
-    crate::outln!(
-        "Successfully added skill: {} (v{})",
-        display_name,
-        outcome.resolved.version
-    );
-    crate::outln!(
-        "{}",
-        crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-    );
-    // A local origin outside the project tree could not be recorded portably.
-    // The CLI installs no tracing subscriber, so this has to be printed to be
-    // seen at all — and it is printed here, next to the write it describes,
-    // rather than surfacing later as a mystery `install` failure elsewhere.
-    for warning in &outcome.warnings {
-        eprintln!("{}", crate::utils::messages::warning(warning));
+    if project::emit_project_add(
+        service,
+        &outcome,
+        args.dry_run,
+        args.json,
+        indexing.as_ref(),
+    )
+    .await?
+    {
+        return Ok(());
     }
 
+    if args.offline {
+        return Ok(());
+    }
     let auto_reindex = crate::config_file::load_auto_reindex_config();
     crate::utils::reindex_utils::maybe_auto_reindex(
         service,
@@ -680,6 +582,7 @@ mod tests {
         let args = AddArgs {
             source: source.to_string(),
             source_type: source_type.map(String::from),
+            repository: None,
             branch: None,
             tag: None,
             force,
@@ -688,6 +591,9 @@ mod tests {
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
         let result = execute_add(&service, args, false).await;
         assert!(result.is_err());
@@ -737,6 +643,7 @@ mod tests {
         let args = AddArgs {
             source: "scope/some-skill".to_string(),
             source_type: Some("registry".to_string()),
+            repository: None,
             branch: None,
             tag: None,
             force: false,
@@ -745,6 +652,9 @@ mod tests {
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = execute_add(&service, args, false).await;
@@ -821,6 +731,7 @@ mod tests {
         let args = AddArgs {
             source: src.display().to_string(),
             source_type: None,
+            repository: None,
             branch: None,
             tag: None,
             force: false,
@@ -829,6 +740,9 @@ mod tests {
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = execute_add(&service, args, false).await;
@@ -889,6 +803,7 @@ mod tests {
         let make_args = |force: bool| AddArgs {
             source: src.display().to_string(),
             source_type: None,
+            repository: None,
             branch: None,
             tag: None,
             force,
@@ -897,6 +812,9 @@ mod tests {
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         execute_add(&service, make_args(false), false)
@@ -964,6 +882,7 @@ mod tests {
         let args = AddArgs {
             source: format!("{}/pkg.zip", server.uri()),
             source_type: None,
+            repository: None,
             branch: None,
             tag: None,
             force: false,
@@ -972,6 +891,9 @@ mod tests {
             recursive: false,
             reindex: false,
             no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
         };
 
         // Before the fix, `detect_skill_source` classified this as `GitUrl` and

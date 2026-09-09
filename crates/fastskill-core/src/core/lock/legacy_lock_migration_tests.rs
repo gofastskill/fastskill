@@ -194,3 +194,68 @@ fn unknown_source_type_is_reported_by_name() {
         "unhelpful: {msg}"
     );
 }
+
+#[test]
+fn zip_and_repository_sources_migrate_without_losing_intent() {
+    let lock = load(
+        r#"
+[metadata]
+version = "1.0.0"
+
+[[skills]]
+id = "archive"
+version = "1.0.0"
+[skills.source]
+type = "zip-url"
+url = "https://example.test/archive.zip"
+
+[[skills]]
+id = "catalog"
+version = "2.0.0"
+parent_skill = "root"
+[skills.source]
+type = "repository"
+name = "main"
+skill = "published-name"
+version = "^2.0"
+"#,
+    );
+    assert!(matches!(
+        &entry(&lock, "archive").origin,
+        Origin::ZipUrl { url } if url.ends_with("archive.zip")
+    ));
+    assert!(matches!(
+        &entry(&lock, "catalog").origin,
+        Origin::Repository { repo, skill, version: Some(_) }
+            if repo == "main" && skill == "published-name"
+    ));
+    assert_eq!(entry(&lock, "catalog").required_by, vec!["root"]);
+}
+
+#[test]
+fn malformed_legacy_source_fields_report_actionable_entry_errors() {
+    for (source, expected) in [
+        ("type = \"git\"", "url"),
+        ("type = \"local\"", "path"),
+        ("type = \"zip-url\"", "zip_url"),
+        ("type = \"repository\"\nskill = \"demo\"", "name"),
+    ] {
+        let content = format!(
+            "[metadata]\nversion = \"1.0.0\"\n\n[[skills]]\nid = \"broken\"\nversion = \"1.0.0\"\n[skills.source]\n{source}\n"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skills.lock");
+        std::fs::write(&path, content).unwrap();
+        let error = ProjectSkillsLock::load_from_file(&path).unwrap_err();
+        assert!(error.to_string().contains(expected));
+    }
+
+    let invalid_constraint = "[metadata]\nversion = \"1.0.0\"\n\n[[skills]]\nid = \"broken\"\nversion = \"1.0.0\"\n[skills.source]\ntype = \"repository\"\nname = \"main\"\nversion = \"not a constraint\"\n";
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("skills.lock");
+    std::fs::write(&path, invalid_constraint).unwrap();
+    assert!(ProjectSkillsLock::load_from_file(&path)
+        .unwrap_err()
+        .to_string()
+        .contains("unparseable version constraint"));
+}
