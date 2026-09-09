@@ -115,6 +115,36 @@ fn recorded_root_validation_rejects_missing_changed_and_incomplete_facts() {
         .contains("no commit"));
 }
 
+#[tokio::test]
+async fn strict_prepare_requires_an_existing_lock() {
+    let project = tempfile::tempdir().unwrap();
+    let service = FastSkillService::new(ServiceConfig {
+        skill_storage_path: project.path().join("skills"),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let result = prepare(
+        &service,
+        &project.path().join("skills.lock"),
+        project.path(),
+        InstallSelection {
+            roots: vec![root("demo", &[])],
+            only: None,
+            without: None,
+            max_levels: 5,
+            skip_transitive: false,
+            strict: true,
+            offline: false,
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(error) if error.to_string().contains("skills.lock not found")
+    ));
+}
+
 fn write_skill(path: &Path, id: &str, version: &str, body: &str) {
     std::fs::create_dir_all(path).unwrap();
     std::fs::write(

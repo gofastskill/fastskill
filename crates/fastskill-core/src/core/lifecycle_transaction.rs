@@ -305,6 +305,17 @@ mod tests {
     }
 
     #[test]
+    fn rollback_error_display_names_the_retained_backup() {
+        let error = LifecycleRollbackError {
+            source: ServiceError::Validation("restore failed".to_string()),
+            backup_path: PathBuf::from("/tmp/recovery"),
+        };
+        let message = error.to_string();
+        assert!(message.contains("restore failed"));
+        assert!(message.contains("/tmp/recovery"));
+    }
+
+    #[test]
     fn failed_rollback_retains_file_backups_for_manual_recovery() {
         let root = TempDir::new().unwrap();
         let destination = root.path().join("skills");

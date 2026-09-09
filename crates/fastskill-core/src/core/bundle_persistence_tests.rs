@@ -338,6 +338,7 @@ fn directory_helpers_stage_replacements_and_refuse_non_directories() {
 fn digest_and_copy_reject_links_inside_managed_content() {
     let root = TempDir::new().unwrap();
     let source = root.path().join("source");
+    assert!(digest_directory(&root.path().join("missing")).is_err());
     fs::create_dir_all(&source).unwrap();
     fs::write(source.join("SKILL.md"), "demo").unwrap();
     std::os::unix::fs::symlink(source.join("SKILL.md"), source.join("linked")).unwrap();

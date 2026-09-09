@@ -291,6 +291,20 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(error, RepositoryClientError::NotImplemented));
+
+        assert!(download(
+            &RepositoryConfig::GitMarketplace {
+                url: root.path().join("missing.git").display().to_string(),
+                branch: None,
+                tag: None,
+            },
+            &sources,
+            "git",
+            "team/demo",
+            "1.2.3",
+        )
+        .await
+        .is_err());
     }
 
     #[tokio::test]

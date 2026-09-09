@@ -45,6 +45,20 @@ fn ordinary_semver_versions_still_resolve_newest_first() {
 }
 
 #[test]
+fn cached_resolution_reports_an_unknown_skill() {
+    let root = TempDir::new().unwrap();
+    let cache = cache_with_versions(&root, &["1.0.0"]);
+    let error = resolve_registry_version(&cache, "acme", "missing", None).unwrap_err();
+    assert!(error.to_string().contains("not found in the cached index"));
+}
+
+#[test]
+fn safe_subdir_join_rejects_traversal_components() {
+    let root = TempDir::new().unwrap();
+    assert!(safe_subdir_join(root.path(), Path::new("safe/../outside")).is_err());
+}
+
+#[test]
 fn unconstrained_resolution_chooses_newest_stable() {
     let root = TempDir::new().unwrap();
     let cache = cache_with_versions(&root, &["1.2.0", "2.0.0-beta.1", "1.9.0"]);

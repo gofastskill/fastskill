@@ -371,6 +371,23 @@ mod tests {
         (service, lock_path, id)
     }
 
+    #[tokio::test]
+    async fn validation_ignores_ids_absent_from_the_lock() {
+        let root = TempDir::new().unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        validate_unmodified(
+            &service,
+            &GlobalSkillsLock::new_empty(),
+            &["missing".to_string()],
+        )
+        .unwrap();
+    }
+
     fn assert_no_recovery_markers(root: &Path) {
         assert!(!root
             .join("config/fastskill/.fastskill/recovery-required")

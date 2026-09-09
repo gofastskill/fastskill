@@ -74,6 +74,13 @@ async fn bundle_controls_are_validated_before_artifact_access() {
     assert!(execute_update(args.clone(), true, None).await.is_err());
     assert!(execute_update(args.clone(), false, None).await.is_err());
 
+    args.skill_id = None;
+    assert!(execute_update(args.clone(), false, None).await.is_err());
+
+    let mut deprecated = validation_args();
+    deprecated.source = Some("repo".to_string());
+    assert!(execute_update(deprecated, false, None).await.is_err());
+
     std::fs::write(temp.path().join("skill-project.toml"), "[dependencies]\n").unwrap();
     assert!(execute_update(args.clone(), false, None).await.is_err());
     args.skill_id = None;

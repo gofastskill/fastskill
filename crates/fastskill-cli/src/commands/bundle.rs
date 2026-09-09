@@ -348,11 +348,27 @@ fn emit_override_result(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
     use super::*;
     use fastskill_core::core::bundle::BundleOverridePreview;
     use fastskill_core::ServiceConfig;
+
+    #[tokio::test]
+    async fn build_reports_the_missing_project_manifest() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::TempDir::new().unwrap();
+        let original = std::env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        std::env::set_current_dir(root.path()).unwrap();
+
+        assert!(matches!(
+            execute_build(BuildArgs { output: None }, None, false).await,
+            Err(CliError::Config(message)) if message.contains("skill-project.toml")
+        ));
+    }
 
     #[test]
     fn argument_maps_ignore_values_with_the_wrong_type() {

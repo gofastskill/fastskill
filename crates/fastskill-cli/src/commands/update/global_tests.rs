@@ -155,6 +155,34 @@ fn global_json_result_covers_changed_unchanged_failed_partial_and_blocked() {
 }
 
 #[tokio::test]
+async fn applying_a_consumed_global_plan_is_rejected() {
+    let root = TempDir::new().unwrap();
+    let mut service = FastSkillService::new(fastskill_core::ServiceConfig {
+        skill_storage_path: root.path().join("skills"),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    service.initialize().await.unwrap();
+    let mut lock = GlobalSkillsLock::new_empty();
+    let mut plans = vec![plan(true, false)];
+
+    let result = apply_global_plan(
+        &service,
+        &root.path().join("global-skills.lock"),
+        &mut lock,
+        &mut plans,
+        &[],
+        true,
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(error) if error.to_string().contains("already applied")
+    ));
+}
+
+#[tokio::test]
 async fn directory_snapshots_restore_existing_and_remove_new_directories() {
     let root = TempDir::new().unwrap();
     let storage = root.path().join("skills");
@@ -163,7 +191,12 @@ async fn directory_snapshots_restore_existing_and_remove_new_directories() {
     let backup = TempDir::new().unwrap();
     let snapshots = capture_directories(
         &storage,
-        ["existing".to_string(), "new".to_string()].into_iter(),
+        [
+            "existing".to_string(),
+            "new".to_string(),
+            "new-file".to_string(),
+        ]
+        .into_iter(),
         backup.path(),
     )
     .await
@@ -171,6 +204,7 @@ async fn directory_snapshots_restore_existing_and_remove_new_directories() {
     fs::write(storage.join("existing/SKILL.md"), "after").unwrap();
     fs::create_dir_all(storage.join("new")).unwrap();
     fs::write(storage.join("new/SKILL.md"), "new").unwrap();
+    fs::write(storage.join("new-file"), "new").unwrap();
 
     restore_directories(&snapshots).await.unwrap();
 
@@ -179,6 +213,7 @@ async fn directory_snapshots_restore_existing_and_remove_new_directories() {
         "before"
     );
     assert!(!storage.join("new").exists());
+    assert!(!storage.join("new-file").exists());
 }
 
 #[tokio::test]

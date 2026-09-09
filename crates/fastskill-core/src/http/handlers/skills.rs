@@ -629,9 +629,13 @@ fn update_batch_response(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::core::service::{FastSkillService, SkillId};
+    use crate::core::skill_manager::SkillDefinition;
+    use crate::http::handlers::ServedScope;
+    use std::sync::Arc;
 
     fn result(id: &str, outcome: &str) -> SkillUpdateResult {
         SkillUpdateResult {
@@ -664,5 +668,95 @@ mod tests {
 
         let (_, Json(response)) = update_batch_response(vec![result("one", "updated")], false);
         assert_eq!(response.data.expect("data").outcome, "changed");
+    }
+
+    #[tokio::test]
+    async fn content_and_remove_handlers_report_relative_escape_missing_and_absent_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let skills = root.path().join("skills");
+        std::fs::create_dir_all(skills.join("demo")).unwrap();
+        std::fs::write(skills.join("demo/SKILL.md"), "# demo").unwrap();
+        let service = Arc::new(
+            FastSkillService::new(crate::ServiceConfig {
+                skill_storage_path: skills.clone(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+        );
+        let id = SkillId::new("demo".to_string()).unwrap();
+        let mut definition = SkillDefinition::new(
+            id.clone(),
+            "demo".to_string(),
+            "demo".to_string(),
+            "1.0.0".to_string(),
+            Origin::Local {
+                path: root.path().join("source"),
+                editable: false,
+            },
+        );
+        definition.skill_file = std::path::PathBuf::from("demo/SKILL.md");
+        service
+            .skill_manager()
+            .force_register_skill(definition.clone())
+            .await
+            .unwrap();
+        let project_file = root.path().join("skill-project.toml");
+        std::fs::write(&project_file, "[dependencies]\n").unwrap();
+        let state = AppState {
+            service: service.clone(),
+            start_time: std::time::SystemTime::now(),
+            project_file_path: project_file,
+            project_root: root.path().to_path_buf(),
+            skills_directory: skills,
+            served_scope: ServedScope::Project,
+            enable_write: true,
+        };
+
+        assert!(get_skill_content(
+            State(state.clone()),
+            Path("demo".to_string()),
+            Query(ContentQuery::default()),
+        )
+        .await
+        .is_ok());
+
+        let outside = root.path().join("outside.md");
+        std::fs::write(&outside, "outside").unwrap();
+        definition.skill_file = outside;
+        service
+            .skill_manager()
+            .force_register_skill(definition.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await,
+            Err(HttpError::BadRequest(_))
+        ));
+
+        definition.skill_file = std::path::PathBuf::from("missing/SKILL.md");
+        service
+            .skill_manager()
+            .force_register_skill(definition)
+            .await
+            .unwrap();
+        assert!(matches!(
+            get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await,
+            Err(HttpError::NotFound(_))
+        ));
+        assert!(matches!(
+            remove_project_skill(&state, "demo".to_string()).await,
+            Err(HttpError::NotFound(_))
+        ));
     }
 }

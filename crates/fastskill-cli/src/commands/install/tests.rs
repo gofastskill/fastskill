@@ -29,7 +29,7 @@ async fn test_execute_install_no_manifest() {
         no_reindex: false,
     };
 
-    let result = execute_install(args).await;
+    let result = execute_install(args.clone()).await;
     assert!(result.is_err(), "Expected error, got: {:?}", result);
     if let Err(CliError::Config(msg)) = result {
         assert!(
@@ -42,6 +42,12 @@ async fn test_execute_install_no_manifest() {
     } else {
         panic!("Expected Config error, got: {:?}", result);
     }
+
+    let (json_result, output) =
+        crate::output::capture(execute_install(InstallArgs { json: true, ..args })).await;
+    assert!(json_result.is_err());
+    let payload: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+    assert_eq!(payload["outcome"], "blocked");
 }
 
 #[tokio::test]

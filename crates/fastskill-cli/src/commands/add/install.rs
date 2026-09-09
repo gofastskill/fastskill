@@ -105,6 +105,18 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    #[test]
+    fn recursive_discovery_rejects_a_file_root() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("skill.zip");
+        fs::write(&file, "not a directory").unwrap();
+
+        assert!(matches!(
+            get_skill_dirs_recursive(&file),
+            Err(CliError::InvalidSource(message)) if message.contains("not a directory")
+        ));
+    }
+
     // Unix-gated on purpose: builds the test fixture with
     // std::os::unix::fs::symlink. The product code's rejection path
     // (FileType::is_symlink()) is itself cross-platform, but creating a

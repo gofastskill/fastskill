@@ -371,6 +371,9 @@ skills_directory = ".claude/skills"
 
         let result_json = execute_list_with_json(true).await;
         assert!(result_json.is_ok());
+        assert!(execute_list().await.is_ok());
+        assert!(execute_list_with_format(OutputFormat::Grid).await.is_ok());
+        assert!(execute_list_with_format(OutputFormat::Xml).await.is_ok());
     }
 
     #[tokio::test]
@@ -467,6 +470,22 @@ skills_directory = ".claude/skills"
 
         let show_result = execute_show("test-repo".to_string()).await;
         assert!(show_result.is_ok());
+        assert!(execute_show_with_json("test-repo".to_string(), true)
+            .await
+            .is_ok());
+        assert!(execute_show_with_json("test-repo".to_string(), false)
+            .await
+            .is_ok());
+        assert!(
+            execute_show_with_format("test-repo".to_string(), OutputFormat::Grid)
+                .await
+                .is_ok()
+        );
+        assert!(
+            execute_show_with_format("test-repo".to_string(), OutputFormat::Xml)
+                .await
+                .is_ok()
+        );
 
         let remove_result = execute_remove("test-repo".to_string()).await;
         assert!(remove_result.is_ok());
