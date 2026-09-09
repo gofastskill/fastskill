@@ -192,3 +192,31 @@ fn root_help_and_version_succeed() {
         );
     }
 }
+
+#[test]
+fn root_help_lists_supported_environment_variables() {
+    let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+        .arg("--help")
+        .output()
+        .expect("spawn `fastskill --help`");
+
+    assert!(output.status.success(), "fastskill --help failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Environment Variables:\n"), "{stdout}");
+
+    for name in [
+        "FASTSKILL_CACHE_DIR",
+        "FASTSKILL_EMBEDDING_MODEL",
+        "FASTSKILL_NO_PROGRESS",
+        "FORCE_COLOR",
+        "NO_COLOR",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "PAT_TOKEN",
+        "REGISTRY_INDEX_PATH",
+        "RUST_LOG",
+        "XDG_CONFIG_HOME",
+    ] {
+        assert!(stdout.contains(name), "missing {name} from help:\n{stdout}");
+    }
+}

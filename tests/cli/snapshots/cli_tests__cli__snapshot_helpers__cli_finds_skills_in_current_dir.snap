@@ -49,3 +49,16 @@ Options:
   --skills-dir <skills-dir> Override the skills directory path
   --global        Use global skills directory (~/.config/fastskill/skills)
   --verbose, -v   Enable verbose output
+
+Environment Variables:
+  FASTSKILL_CACHE_DIR        Override the shared skill cache directory
+  FASTSKILL_EMBEDDING_MODEL  Override the configured embedding model
+  FASTSKILL_NO_PROGRESS      Disable progress indicators when set
+  FORCE_COLOR                Force ANSI color output when supported
+  NO_COLOR                   Disable ANSI color output
+  OPENAI_API_KEY             API key for semantic search and embeddings
+  OPENAI_BASE_URL            Override the embedding provider base URL
+  PAT_TOKEN                  Default token for authenticated HTTP registries
+  REGISTRY_INDEX_PATH        Override the local registry index path
+  RUST_LOG                   Override the FastSkill logging filter
+  XDG_CONFIG_HOME            Override the global configuration directory on Unix
