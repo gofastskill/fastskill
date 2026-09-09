@@ -464,6 +464,30 @@ fn override_validation_rejects_missing_sources_and_inconsistent_state() {
 }
 
 #[test]
+fn override_preview_and_restore_refuse_untracked_content_drift() {
+    let (_root, service, source) = override_fixture();
+    fs::write(service.skills_directory.join("demo/SKILL.md"), "local edit").unwrap();
+    let modified = preview_personal_override(&service, "demo", &source).unwrap_err();
+    assert!(modified.to_string().contains("locally modified"));
+
+    let (_root, service, source) = override_fixture();
+    apply_personal_override(&service, "demo", &source).unwrap();
+    fs::remove_file(source.join("SKILL.md")).unwrap();
+    let unavailable = restore_personal_overrides(&service).unwrap_err();
+    assert!(unavailable.to_string().contains("source is unavailable"));
+
+    let (_root, service, source) = override_fixture();
+    apply_personal_override(&service, "demo", &source).unwrap();
+    fs::write(
+        source.join("SKILL.md"),
+        "---\nname: demo\nversion: 3.0.0\ndescription: drifted\n---\ndrifted\n",
+    )
+    .unwrap();
+    let drifted = restore_personal_overrides(&service).unwrap_err();
+    assert!(drifted.to_string().contains("locked digest"));
+}
+
+#[test]
 fn override_apply_revalidates_every_input_after_preview_and_writer_acquisition() {
     assert!(!take_override_test_change(99));
     for mode in 1..=7 {

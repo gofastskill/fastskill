@@ -328,3 +328,8 @@ pub fn is_valid_origin(origin: &str) -> bool {
 
     matches!(after_proto, Some(after) if !after.is_empty())
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests;

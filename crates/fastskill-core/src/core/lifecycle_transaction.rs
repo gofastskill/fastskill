@@ -173,7 +173,9 @@ fn remove_path(path: &Path) -> Result<(), ServiceError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(ServiceError::Io(error)),
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
+    if metadata.file_type().is_symlink() {
+        remove_symlink(path, &metadata)
+    } else if metadata.is_file() {
         fs::remove_file(path).map_err(ServiceError::Io)
     } else if metadata.is_dir() {
         fs::remove_dir_all(path).map_err(ServiceError::Io)
@@ -183,6 +185,20 @@ fn remove_path(path: &Path) -> Result<(), ServiceError> {
             path.display()
         )))
     }
+}
+
+#[cfg(windows)]
+fn remove_symlink(path: &Path, metadata: &fs::Metadata) -> Result<(), ServiceError> {
+    if symlink_is_directory(metadata) {
+        fs::remove_dir(path).map_err(ServiceError::Io)
+    } else {
+        fs::remove_file(path).map_err(ServiceError::Io)
+    }
+}
+
+#[cfg(not(windows))]
+fn remove_symlink(path: &Path, _metadata: &fs::Metadata) -> Result<(), ServiceError> {
+    fs::remove_file(path).map_err(ServiceError::Io)
 }
 
 fn copy_directory(source: &Path, destination: &Path) -> Result<(), ServiceError> {
