@@ -102,6 +102,29 @@ async fn bundle_controls_are_validated_before_artifact_access() {
     assert!(execute_update(args, false, None).await.is_err());
 }
 
+#[tokio::test]
+async fn bundle_indexing_reports_an_invalid_storage_override() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = TempDir::new().unwrap();
+    let result = bundle_update_indexing(&validation_args(), temp.path().join("missing")).await;
+    assert_eq!(result.outcome, "failed");
+    assert!(result
+        .diagnostic
+        .as_deref()
+        .is_some_and(|message| message.contains("Index setup failed")));
+
+    let storage_file = temp.path().join("storage-file");
+    fs::write(&storage_file, "not a directory").unwrap();
+    let result = bundle_update_indexing(&validation_args(), storage_file).await;
+    assert_eq!(result.outcome, "failed");
+    assert!(result
+        .diagnostic
+        .as_deref()
+        .is_some_and(|message| message.contains("Index setup failed")));
+}
+
 #[test]
 fn explicit_version_requires_one_target_and_no_strategy() {
     let mut args = validation_args();

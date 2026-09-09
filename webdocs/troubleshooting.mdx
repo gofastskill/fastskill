@@ -167,9 +167,16 @@ dir $env:APPDATA\fastskill\
    chmod 755 ~/.config/fastskill
    ```
 
-3. **Set XDG_CONFIG_HOME explicitly** (Linux/macOS advanced):
+3. **Set XDG_CONFIG_HOME explicitly** (advanced):
    ```bash
+   # Linux/macOS
    export XDG_CONFIG_HOME="$HOME/.config"
+   fastskill add --global <skill>
+   ```
+
+   ```powershell
+   # Windows PowerShell
+   $env:XDG_CONFIG_HOME = "$HOME\.config"
    fastskill add --global <skill>
    ```
 

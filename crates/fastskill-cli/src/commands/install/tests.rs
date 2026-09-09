@@ -430,7 +430,6 @@ async fn failure_after_bundle_apply_restores_all_project_state() {
             artifact
         );
     fs::write(project.path().join("skill-project.toml"), &manifest).unwrap();
-    FAIL_AFTER_BUNDLE_APPLY.store(true, std::sync::atomic::Ordering::SeqCst);
     let args = InstallArgs {
         without: None,
         only: None,
@@ -443,6 +442,18 @@ async fn failure_after_bundle_apply_restores_all_project_state() {
         no_reindex: true,
     };
 
+    FAIL_DURING_BUNDLE_APPLY.store(true, std::sync::atomic::Ordering::SeqCst);
+    let error = execute_install(args.clone()).await.unwrap_err();
+    assert!(error.to_string().contains("during bundle apply"));
+    assert_eq!(
+        fs::read_to_string(project.path().join("skill-project.toml")).unwrap(),
+        manifest
+    );
+    assert!(!project.path().join("skills.lock").exists());
+    assert!(!project.path().join("skills/bundle-member").exists());
+    assert!(!project.path().join("skills/ordinary").exists());
+
+    FAIL_AFTER_BUNDLE_APPLY.store(true, std::sync::atomic::Ordering::SeqCst);
     let error = execute_install(args.clone()).await.unwrap_err();
 
     assert!(error.to_string().contains("injected failure"));
@@ -634,6 +645,18 @@ async fn validation_rejects_conflicting_flags_depth_and_global_destination() {
         serde_json::from_str::<serde_json::Value>(output.trim()).unwrap()["outcome"],
         "blocked"
     );
+
+    fs::write(
+        project.path().join("skill-project.toml"),
+        "[dependencies]\n",
+    )
+    .unwrap();
+    let invalid_storage = project.path().join("storage-file");
+    fs::write(&invalid_storage, "not a directory").unwrap();
+    assert!(matches!(
+        execute_install_scoped(base_args(), false, Some(invalid_storage)).await,
+        Err(CliError::Service(_))
+    ));
 }
 
 #[tokio::test]

@@ -368,6 +368,11 @@ mod tests {
             execute_build(BuildArgs { output: None }, None, false).await,
             Err(CliError::Config(message)) if message.contains("skill-project.toml")
         ));
+
+        assert!(matches!(
+            execute_build(BuildArgs { output: None }, None, true).await,
+            Err(CliError::Validation(message)) if message.contains("do not support --global")
+        ));
     }
 
     #[test]
@@ -408,6 +413,20 @@ mod tests {
         assert!(execute_override(override_args, &service, true)
             .await
             .is_err());
+
+        let conflicting_reindex = OverrideArgs {
+            id: "demo".to_string(),
+            from: Some(root.path().join("demo")),
+            reset: false,
+            reindex: true,
+            no_reindex: true,
+            dry_run: false,
+            json: false,
+        };
+        assert!(matches!(
+            execute_override(conflicting_reindex, &service, false).await,
+            Err(CliError::Validation(message)) if message.contains("--reindex and --no-reindex")
+        ));
     }
 
     #[tokio::test]

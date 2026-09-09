@@ -223,6 +223,23 @@ fn persistence_recovers_when_apply_fails_and_clears_pre_mutation_errors() {
 }
 
 #[test]
+fn replacing_a_skill_copies_nested_content() {
+    let root = TempDir::new().unwrap();
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("references")).unwrap();
+    fs::write(source.join("SKILL.md"), "---\nname: demo\n---\n").unwrap();
+    fs::write(source.join("references/guide.md"), "guide").unwrap();
+    let destination = root.path().join("skills/demo");
+
+    replace_skill_directory(&destination, &source).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(destination.join("references/guide.md")).unwrap(),
+        "guide"
+    );
+}
+
+#[test]
 fn artifact_and_installed_content_validation_report_invalid_versions_and_local_edits() {
     let (root, service) = fixture();
     let descriptor = BundleDescriptor {

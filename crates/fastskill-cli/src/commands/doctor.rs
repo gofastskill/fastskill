@@ -435,7 +435,13 @@ mod tests {
             crate::output::capture(execute_doctor(&service, DoctorArgs { json: true }, false))
                 .await;
         result.unwrap();
-        assert!(output.contains(project_root.join("skill-project.toml").to_str().unwrap()));
+        let checks: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(checks.as_array().unwrap().iter().any(|check| {
+            check["check"] == "scope"
+                && check["message"].as_str().is_some_and(|message| {
+                    message.contains(project_root.join("skill-project.toml").to_str().unwrap())
+                })
+        }));
         assert!(output.contains("FASTSKILL_DOCTOR_TEST_MISSING_TOKEN"));
         assert!(!output.contains("FASTSKILL_AUTH_TOKEN"));
     }

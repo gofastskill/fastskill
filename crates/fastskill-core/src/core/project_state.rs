@@ -11,6 +11,7 @@ use std::path::Path;
 
 /// Persist the typed Manifest fields while retaining unrelated and unknown
 /// tables already present in the document.
+#[allow(clippy::expect_used)]
 pub fn save_project_preserving(
     path: &Path,
     project: &SkillProjectToml,
@@ -27,12 +28,13 @@ pub fn save_project_preserving(
         toml::Value::Table(toml::Table::new())
     };
 
-    let document_table = document.as_table_mut().ok_or_else(|| {
-        ManifestError::Parse("skill-project.toml root must be a table".to_string())
-    })?;
-    let next_table = next.as_table().ok_or_else(|| {
-        ManifestError::Serialize("serialized Manifest root is not a table".to_string())
-    })?;
+    // TOML documents and struct serialization always produce a root table.
+    let document_table = document
+        .as_table_mut()
+        .expect("parsed TOML document root must be a table");
+    let next_table = next
+        .as_table()
+        .expect("serialized Manifest root must be a table");
 
     if let Some(schema) = next_table.get("schema_version") {
         document_table.insert("schema_version".to_string(), schema.clone());

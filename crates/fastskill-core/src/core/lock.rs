@@ -690,9 +690,16 @@ pub fn project_lock_path(project_file: &Path) -> PathBuf {
     }
 }
 
-/// Returns the global lock path (platform-specific config directory).
+/// Returns the global lock path, honoring an absolute `XDG_CONFIG_HOME`
+/// override before the platform-specific config directory.
 pub fn global_lock_path() -> Result<PathBuf, LockError> {
-    dirs::config_dir()
+    // `dirs::config_dir()` already honors XDG_CONFIG_HOME on Unix. Check it
+    // explicitly so the same override also works on Windows, where the dirs
+    // crate otherwise always resolves the Known Folder location.
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(dirs::config_dir)
         .map(|d| d.join("fastskill").join("global-skills.lock"))
         .ok_or_else(|| {
             LockError::GlobalConfigUnavailable(

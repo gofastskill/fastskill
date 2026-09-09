@@ -314,6 +314,27 @@ fn test_global_lock_path_returns_result() {
 }
 
 #[test]
+fn global_lock_path_honors_xdg_override_on_every_platform() {
+    let _mutex = crate::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let temp = TempDir::new().unwrap();
+    let previous = std::env::var_os("XDG_CONFIG_HOME");
+    std::env::set_var("XDG_CONFIG_HOME", temp.path());
+
+    assert_eq!(
+        global_lock_path().unwrap(),
+        temp.path().join("fastskill/global-skills.lock")
+    );
+
+    if let Some(previous) = previous {
+        std::env::set_var("XDG_CONFIG_HOME", previous);
+    } else {
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+}
+
+#[test]
 fn test_project_lock_path_helper() {
     let project_file = std::path::PathBuf::from("/home/user/project/skill-project.toml");
     let lock_path = project_lock_path(&project_file);

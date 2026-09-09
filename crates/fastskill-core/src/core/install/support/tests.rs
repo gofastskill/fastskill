@@ -58,6 +58,16 @@ fn safe_subdir_join_rejects_traversal_components() {
     assert!(safe_subdir_join(root.path(), Path::new("safe/../outside")).is_err());
 }
 
+#[cfg(unix)]
+#[test]
+fn safe_subdir_join_rejects_non_utf8_components() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let root = TempDir::new().unwrap();
+    let invalid = std::ffi::OsString::from_vec(vec![0xff]);
+    assert!(safe_subdir_join(root.path(), Path::new(&invalid)).is_err());
+}
+
 #[test]
 fn unconstrained_resolution_chooses_newest_stable() {
     let root = TempDir::new().unwrap();

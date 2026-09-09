@@ -111,15 +111,18 @@ fleet orchestration or automatic bundle catalog is included.
 
 ## Implementation evidence
 
-- The complete all-features workspace suite completed 1,755 tests with no failures. The clean coverage
-  run completed its 1,741-test instrumented selection with no failures; 15 environment-specific tests
+- The complete all-features workspace suite completed 1,759 tests with no failures. The clean coverage
+  run completed its 1,745-test instrumented selection with no failures; 15 environment-specific tests
   are excluded from coverage collection and remain covered by the normal release suite.
 - All 73 instrumented production Rust files changed by this implementation have full-file line coverage
-  above 90%. The lowest result is 90.27%. Three changed module declaration files contain no
+  above 90%. The lowest result is 90.28%. Three changed module declaration files contain no
   instrumentable lines and are reported as not applicable by the CI gate.
 - Focused CLI, core, HTTP, and real stdio MCP scenarios cover the 55 PRD acceptance cases, including
   lock integrity, first-install closure, shared ownership, rollback, JSON output, scope routing, bundle
   preview/reset, repository selection, and read-only write denial.
+- Windows validation covers immutable Git checkout line endings, isolated global state through
+  `XDG_CONFIG_HOME`, JSON path rendering, and repeated editable installs without a second symlink
+  privilege during transaction capture.
 - An independent adversarial review reran the original lifecycle counterexamples and added checks for
   stale plans, local edits, incomplete integrity evidence, partial application, ownership retention,
   missing dependencies, and HTTP transport failures. No reproducible lifecycle defect remains in the

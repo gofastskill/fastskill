@@ -10,7 +10,12 @@ use walkdir::WalkDir;
 enum Backup {
     Missing,
     Directory(PathBuf),
-    Symlink(PathBuf),
+    /// The link target itself; keeping another live link in the backup tree
+    /// would require an unnecessary second symlink privilege on Windows.
+    Symlink {
+        target: PathBuf,
+        directory: bool,
+    },
     File(PathBuf),
 }
 
@@ -96,8 +101,8 @@ impl LifecycleTransaction {
                 match backup {
                     Backup::Missing => {}
                     Backup::Directory(source) => copy_directory(source, path)?,
-                    Backup::Symlink(source) => {
-                        create_symlink(&fs::read_link(source).map_err(ServiceError::Io)?, path)?
+                    Backup::Symlink { target, directory } => {
+                        create_symlink(target, path, *directory)?
                     }
                     Backup::File(source) => {
                         atomic_write(path, &fs::read(source).map_err(ServiceError::Io)?)
@@ -130,9 +135,21 @@ fn capture_path(temporary: &TempDir, index: usize, path: &Path) -> Result<Backup
     };
     if metadata.file_type().is_symlink() {
         let target = fs::read_link(path).map_err(ServiceError::Io)?;
-        let backup = temporary.path().join(format!("{index}.link"));
-        create_symlink(&target, &backup)?;
-        return Ok(Backup::Symlink(backup));
+        let directory = symlink_is_directory(&metadata);
+        // Keep a passive record for manual recovery if a later rollback step
+        // fails. Recording bytes avoids creating a second live link, which can
+        // require elevated privileges on Windows.
+        fs::write(
+            temporary.path().join(format!("{index}.link-target")),
+            target.as_os_str().as_encoded_bytes(),
+        )
+        .map_err(ServiceError::Io)?;
+        fs::write(
+            temporary.path().join(format!("{index}.link-kind")),
+            symlink_kind_label(directory),
+        )
+        .map_err(ServiceError::Io)?;
+        return Ok(Backup::Symlink { target, directory });
     }
     if metadata.is_file() {
         let backup = temporary.path().join(format!("{index}.file"));
@@ -194,13 +211,42 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<(), ServiceError>
 }
 
 #[cfg(unix)]
-fn create_symlink(target: &Path, link: &Path) -> Result<(), ServiceError> {
+fn create_symlink(target: &Path, link: &Path, _directory: bool) -> Result<(), ServiceError> {
     std::os::unix::fs::symlink(target, link).map_err(ServiceError::Io)
 }
 
 #[cfg(windows)]
-fn create_symlink(target: &Path, link: &Path) -> Result<(), ServiceError> {
-    std::os::windows::fs::symlink_dir(target, link).map_err(ServiceError::Io)
+fn create_symlink(target: &Path, link: &Path, directory: bool) -> Result<(), ServiceError> {
+    if directory {
+        std::os::windows::fs::symlink_dir(target, link).map_err(ServiceError::Io)
+    } else {
+        std::os::windows::fs::symlink_file(target, link).map_err(ServiceError::Io)
+    }
+}
+
+#[cfg(windows)]
+fn symlink_is_directory(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::FileTypeExt;
+    metadata.file_type().is_symlink_dir()
+}
+
+#[cfg(not(windows))]
+fn symlink_is_directory(_metadata: &fs::Metadata) -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn symlink_kind_label(directory: bool) -> &'static str {
+    if directory {
+        "directory"
+    } else {
+        "file"
+    }
+}
+
+#[cfg(not(windows))]
+fn symlink_kind_label(_directory: bool) -> &'static str {
+    "generic"
 }
 
 #[cfg(test)]
@@ -322,9 +368,13 @@ mod tests {
         fs::create_dir_all(&destination).unwrap();
         fs::write(root.path().join("skill-project.toml"), "before").unwrap();
         fs::write(destination.join("item"), "before").unwrap();
-        let transaction =
-            LifecycleTransaction::capture(root.path(), &destination, &["item".to_string()])
-                .unwrap();
+        let mut ids = vec!["item".to_string()];
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("item", destination.join("link")).unwrap();
+            ids.push("link".to_string());
+        }
+        let transaction = LifecycleTransaction::capture(root.path(), &destination, &ids).unwrap();
         fs::remove_dir_all(&destination).unwrap();
         fs::write(&destination, "blocks child restoration").unwrap();
 
@@ -338,5 +388,21 @@ mod tests {
                 .path()
                 .extension()
                 .is_some_and(|value| value == "file")));
+        #[cfg(unix)]
+        assert!(fs::read_dir(error.backup_path())
+            .unwrap()
+            .flatten()
+            .any(|entry| entry
+                .path()
+                .extension()
+                .is_some_and(|value| value == "link-target")));
+        #[cfg(unix)]
+        assert!(fs::read_dir(error.backup_path())
+            .unwrap()
+            .flatten()
+            .any(|entry| entry
+                .path()
+                .extension()
+                .is_some_and(|value| value == "link-kind")));
     }
 }

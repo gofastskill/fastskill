@@ -20,6 +20,9 @@ use tempfile::TempDir;
 #[cfg(test)]
 static FAIL_AFTER_BUNDLE_APPLY: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static FAIL_DURING_BUNDLE_APPLY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) mod change;
 mod global;
@@ -483,7 +486,16 @@ async fn execute_install_inner(
     };
     let restored_bundles = if project_file_result.found {
         let bundle_service = BundleService::new(manifest_dir, skills_dir);
-        let restored = if args.lock {
+        #[cfg(test)]
+        let injected_failure =
+            FAIL_DURING_BUNDLE_APPLY.swap(false, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(test))]
+        let injected_failure = false;
+        let restored = if injected_failure {
+            Err(fastskill_core::core::service::ServiceError::Config(
+                "injected failure during bundle apply".to_string(),
+            ))
+        } else if args.lock {
             bundle_service.install_declared_locked_with_guard(&state_guard)
         } else {
             bundle_service.install_declared_with_guard(&state_guard)
