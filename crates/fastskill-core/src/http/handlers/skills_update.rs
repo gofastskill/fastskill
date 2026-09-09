@@ -2,7 +2,7 @@
 
 use super::project_candidate;
 use crate::core::lock::ProjectSkillsLock;
-use crate::core::manifest::{SkillEntry, SkillProjectToml};
+use crate::core::manifest::{ManifestError, SkillEntry, SkillProjectToml};
 use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::project_apply::ProjectApplyPlan;
 use crate::core::resolution::{
@@ -36,14 +36,13 @@ pub async fn update_skills(
     let payload = payload.unwrap_or_default();
     let project_path = &state.project_file_path;
 
-    if !project_path.exists() {
-        return Err(HttpError::NotFound(
-            "skill-project.toml not found".to_string(),
-        ));
-    }
-
-    let project = SkillProjectToml::load_from_file(project_path).map_err(|e| {
-        HttpError::InternalServerError(format!("Failed to load skill-project.toml: {}", e))
+    let project = SkillProjectToml::load_from_file(project_path).map_err(|error| match error {
+        ManifestError::NotFound(_) => {
+            HttpError::NotFound("skill-project.toml not found".to_string())
+        }
+        error => {
+            HttpError::InternalServerError(format!("Failed to load skill-project.toml: {error}"))
+        }
     })?;
 
     let mut entries = project
