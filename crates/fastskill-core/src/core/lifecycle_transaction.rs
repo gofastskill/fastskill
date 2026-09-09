@@ -174,7 +174,7 @@ fn remove_path(path: &Path) -> Result<(), ServiceError> {
         Err(error) => return Err(ServiceError::Io(error)),
     };
     if metadata.file_type().is_symlink() {
-        remove_symlink(path, &metadata)
+        unlink_symlink(path, &metadata)
     } else if metadata.is_file() {
         fs::remove_file(path).map_err(ServiceError::Io)
     } else if metadata.is_dir() {
@@ -188,7 +188,11 @@ fn remove_path(path: &Path) -> Result<(), ServiceError> {
 }
 
 #[cfg(windows)]
-fn remove_symlink(path: &Path, metadata: &fs::Metadata) -> Result<(), ServiceError> {
+/// Unlink a symbolic link without following it.
+///
+/// Windows requires directory links to be removed with `remove_dir` and file
+/// links with `remove_file`; `metadata` MUST come from `symlink_metadata`.
+pub fn unlink_symlink(path: &Path, metadata: &fs::Metadata) -> Result<(), ServiceError> {
     if symlink_is_directory(metadata) {
         fs::remove_dir(path).map_err(ServiceError::Io)
     } else {
@@ -197,7 +201,10 @@ fn remove_symlink(path: &Path, metadata: &fs::Metadata) -> Result<(), ServiceErr
 }
 
 #[cfg(not(windows))]
-fn remove_symlink(path: &Path, _metadata: &fs::Metadata) -> Result<(), ServiceError> {
+/// Unlink a symbolic link without following it.
+///
+/// `metadata` MUST come from `symlink_metadata` for the same `path`.
+pub fn unlink_symlink(path: &Path, _metadata: &fs::Metadata) -> Result<(), ServiceError> {
     fs::remove_file(path).map_err(ServiceError::Io)
 }
 

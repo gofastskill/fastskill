@@ -397,6 +397,35 @@ fn clean_never_follows_or_deletes_through_a_symlinked_entry() {
     );
 }
 
+#[cfg(unix)]
+fn cache_directory_symlink(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn cache_directory_symlink(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_dir(target, link).unwrap();
+}
+
+#[test]
+fn recursive_cache_removal_unlinks_directory_symlinks_without_following_them() {
+    let root = TempDir::new().unwrap();
+    let leaf = root.path().join("leaf");
+    let outside = root.path().join("outside");
+    std::fs::create_dir_all(&leaf).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("sentinel"), "keep").unwrap();
+    cache_directory_symlink(&outside, &leaf.join("link"));
+
+    remove_dir_no_symlinks(&leaf).unwrap();
+
+    assert!(!leaf.exists());
+    assert_eq!(
+        std::fs::read_to_string(outside.join("sentinel")).unwrap(),
+        "keep"
+    );
+}
+
 #[test]
 fn content_source_kind_from_str_round_trips_and_rejects_unknown() {
     use std::str::FromStr;

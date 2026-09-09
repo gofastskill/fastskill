@@ -213,7 +213,10 @@ fn remove_path(path: &Path) -> CliResult<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(CliError::Io(error)),
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
+    if metadata.file_type().is_symlink() {
+        fastskill_core::core::lifecycle_transaction::unlink_symlink(path, &metadata)
+            .map_err(CliError::Service)
+    } else if metadata.is_file() {
         fs::remove_file(path).map_err(CliError::Io)
     } else if metadata.is_dir() {
         fs::remove_dir_all(path).map_err(CliError::Io)

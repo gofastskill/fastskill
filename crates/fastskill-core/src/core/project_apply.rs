@@ -543,7 +543,9 @@ fn remove_managed_path(path: &Path) -> Result<(), ServiceError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(ServiceError::Io(error)),
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
+    if metadata.file_type().is_symlink() {
+        crate::core::lifecycle_transaction::unlink_symlink(path, &metadata)
+    } else if metadata.is_file() {
         std::fs::remove_file(path).map_err(ServiceError::Io)
     } else if metadata.is_dir() {
         std::fs::remove_dir_all(path).map_err(ServiceError::Io)

@@ -766,7 +766,8 @@ fn remove_dir_no_symlinks(dir: &Path) -> Result<(), ServiceError> {
         let file_type = entry.file_type()?;
         let path = entry.path();
         if file_type.is_symlink() {
-            fs::remove_file(&path)?;
+            let metadata = fs::symlink_metadata(&path)?;
+            crate::core::lifecycle_transaction::unlink_symlink(&path, &metadata)?;
         } else if file_type.is_dir() {
             remove_dir_no_symlinks(&path)?;
         } else {

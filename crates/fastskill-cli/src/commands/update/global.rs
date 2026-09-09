@@ -190,7 +190,13 @@ pub(crate) async fn capture_directories(
 pub(crate) async fn restore_directories(snapshots: &[DirectorySnapshot]) -> CliResult<()> {
     for snapshot in snapshots {
         if let Ok(metadata) = snapshot.installed.symlink_metadata() {
-            if metadata.file_type().is_symlink() || metadata.is_file() {
+            if metadata.file_type().is_symlink() {
+                fastskill_core::core::lifecycle_transaction::unlink_symlink(
+                    &snapshot.installed,
+                    &metadata,
+                )
+                .map_err(CliError::Service)?;
+            } else if metadata.is_file() {
                 fs::remove_file(&snapshot.installed).map_err(CliError::Io)?;
             } else {
                 fs::remove_dir_all(&snapshot.installed).map_err(CliError::Io)?;
@@ -247,7 +253,10 @@ fn remove_global_path(path: &Path) -> CliResult<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(CliError::Io(error)),
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
+    if metadata.file_type().is_symlink() {
+        fastskill_core::core::lifecycle_transaction::unlink_symlink(path, &metadata)
+            .map_err(CliError::Service)
+    } else if metadata.is_file() {
         fs::remove_file(path).map_err(CliError::Io)
     } else if metadata.is_dir() {
         fs::remove_dir_all(path).map_err(CliError::Io)

@@ -108,3 +108,38 @@ fn unmatched_explicit_constraint_does_not_claim_stable_versions_are_required() {
     assert!(error.contains("no version of 'widget' satisfies"));
     assert!(!error.contains("no stable version"));
 }
+
+#[cfg(unix)]
+fn directory_symlink(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn directory_symlink(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_dir(target, link).unwrap();
+}
+
+#[tokio::test]
+async fn existing_storage_removal_handles_every_supported_path_kind() {
+    let root = TempDir::new().unwrap();
+    let absent = root.path().join("absent");
+    remove_existing_storage_path(&absent).await.unwrap();
+
+    let file = root.path().join("file");
+    std::fs::write(&file, "content").unwrap();
+    remove_existing_storage_path(&file).await.unwrap();
+    assert!(!file.exists());
+
+    let directory = root.path().join("directory");
+    std::fs::create_dir_all(directory.join("nested")).unwrap();
+    remove_existing_storage_path(&directory).await.unwrap();
+    assert!(!directory.exists());
+
+    let target = root.path().join("target");
+    let link = root.path().join("link");
+    std::fs::create_dir_all(&target).unwrap();
+    directory_symlink(&target, &link);
+    remove_existing_storage_path(&link).await.unwrap();
+    assert!(target.is_dir());
+    assert!(std::fs::symlink_metadata(&link).is_err());
+}

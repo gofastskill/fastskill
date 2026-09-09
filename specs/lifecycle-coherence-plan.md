@@ -111,8 +111,8 @@ fleet orchestration or automatic bundle catalog is included.
 
 ## Implementation evidence
 
-- The complete all-features workspace suite completed 1,765 tests with no failures. The clean coverage
-  run completed its 1,751-test instrumented selection with no failures; 15 environment-specific tests
+- The complete all-features workspace suite completed 1,767 tests with no failures. The clean coverage
+  run completed its 1,753-test instrumented selection with no failures; 15 environment-specific tests
   are excluded from coverage collection and remain covered by the normal release suite.
 - All 73 instrumented production Rust files changed by this implementation have full-file line coverage
   above 90%. The lowest result is 90.28%. Three changed module declaration files contain no

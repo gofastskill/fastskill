@@ -761,12 +761,13 @@ pub(super) async fn strip_git_dir(repo_root: &Path) -> Result<(), ServiceError> 
         // Nothing there: already stripped, or never existed. Not an error.
         return Ok(());
     };
-    if metadata.is_dir() {
+    if metadata.file_type().is_symlink() {
+        crate::core::lifecycle_transaction::unlink_symlink(&git_dir, &metadata)?;
+    } else if metadata.is_dir() {
         tokio::fs::remove_dir_all(&git_dir).await?;
     } else {
-        // A symlink or a regular file (e.g. a `.git` gitlink file, as used
-        // by worktrees/submodules): unlink it directly either way, never
-        // following it.
+        // A regular file (e.g. a `.git` gitlink file, as used by
+        // worktrees/submodules) is unlinked directly.
         tokio::fs::remove_file(&git_dir).await?;
     }
     Ok(())
@@ -775,10 +776,22 @@ pub(super) async fn strip_git_dir(repo_root: &Path) -> Result<(), ServiceError> 
 /// Remove whatever currently sits at `path` (file, symlink, or directory), if
 /// anything, so a fresh move/copy/symlink can take its place.
 pub(super) async fn remove_existing_storage_path(path: &Path) -> Result<(), ServiceError> {
-    if path.is_symlink() || path.is_file() {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(ServiceError::Io(error)),
+    };
+    if metadata.file_type().is_symlink() {
+        crate::core::lifecycle_transaction::unlink_symlink(path, &metadata)?;
+    } else if metadata.is_file() {
         tokio::fs::remove_file(path).await?;
-    } else if path.exists() {
+    } else if metadata.is_dir() {
         tokio::fs::remove_dir_all(path).await?;
+    } else {
+        return Err(ServiceError::InvalidOperation(format!(
+            "unsupported storage destination: {}",
+            path.display()
+        )));
     }
     Ok(())
 }
