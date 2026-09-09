@@ -101,6 +101,10 @@ fastskill install --without dev    # skip dev roots, retain their declarations a
 fastskill list --check --without dev # CI check for the same selected closure
 ```
 
+Project installs, including `--lock`, require `skill-project.toml` because it defines roots,
+groups, bundles, and the install destination. Restore `global-skills.lock` with
+`fastskill install --global --lock`.
+
 **Build and share a team bundle**
 
 ```toml
@@ -134,10 +138,14 @@ direct, transitive, bundle, or override owner is removed.
 
 ```bash
 fastskill repos add team-skills --repo-type git-marketplace https://github.com/org/team-skills.git
+fastskill repos add stable-skills --repo-type git-marketplace https://github.com/org/skills.git --tag v1.2.0
 fastskill repos list
 fastskill search "web scraping" --repository team-skills
 fastskill add scope/scraper@latest --repository team-skills
 ```
+
+Git repository `--branch` and `--tag` selections are saved in `skill-project.toml` and reused by
+catalog refresh and installation.
 
 **Test and refine a skill you're authoring**
 

@@ -196,6 +196,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("branch"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
+                    conflicts_with: vec!["tag"],
                     help: "Branch for git-marketplace",
                     ..Default::default()
                 },

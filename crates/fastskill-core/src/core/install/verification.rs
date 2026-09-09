@@ -91,6 +91,19 @@ pub(super) fn verify_resolved_facts(
     Ok(())
 }
 
+pub(super) fn verify_repository_artifact_version(
+    id: &str,
+    selected: &str,
+    declared: &str,
+) -> Result<(), ServiceError> {
+    if selected == declared {
+        return Ok(());
+    }
+    Err(ServiceError::Validation(format!(
+        "repository selected '{id}@{selected}', but the downloaded artifact declares version '{declared}'"
+    )))
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -128,6 +141,15 @@ mod tests {
         assert!(
             verify_resolved_facts("x", &origin, &resolved("1.0.0", None, None), &expected).is_err()
         );
+    }
+
+    #[test]
+    fn repository_artifact_must_declare_the_selected_version() {
+        assert!(verify_repository_artifact_version("scope/widget", "2.0.0", "2.0.0").is_ok());
+        let error = verify_repository_artifact_version("scope/widget", "2.0.0", "1.0.0")
+            .expect_err("a registry must not substitute another version");
+        assert!(error.to_string().contains("scope/widget@2.0.0"));
+        assert!(error.to_string().contains("declares version '1.0.0'"));
     }
 
     #[test]

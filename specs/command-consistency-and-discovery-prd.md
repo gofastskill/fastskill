@@ -163,6 +163,8 @@ this PRD does not introduce new evaluation algorithms or rename the command tree
 | C-A12 | All supported JSON selector combinations, including meta plus tree | One parseable documented JSON result or a validation error, no appended prose. |
 | C-A13 | Preview with input fetches; inspect state before/after | No managed state, timestamps or indexes change. |
 | C-A14 | Catalog listing across all four Repository types | Generic listing works; only unsupported options are rejected. |
+| C-A15 | Add a Git marketplace with `--tag`, restart, and inspect configuration | Tag persists in the Manifest/runtime; combining branch and tag fails before mutation. |
+| C-A16 | Re-add a global root with only a different group | Lock groups change and the result reports a change without replacing identical content. |
 
 Use CLI subprocesses and controlled local catalogs. Record command, exit status,
 stdout/stderr, JSON parsing, actual files and subsequent inspection. Retain the

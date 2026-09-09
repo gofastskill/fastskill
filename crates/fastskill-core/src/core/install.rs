@@ -614,12 +614,12 @@ impl FastSkillService {
         };
 
         let temp_dir = TempDir::new()?;
-        let skill_path = if let Some(cached) = cache.get(&identity) {
+        let (skill_path, cache_miss) = if let Some(cached) = cache.get(&identity) {
             // Cache hit: copy the previously-downloaded skill out of the
             // (immutable, shared) cache entry rather than downloading again.
             let dest = temp_dir.path().join("cached");
             copy_dir_recursive(&cached.path, &dest).await?;
-            crate::storage::git::validate_cloned_skill(&dest)?
+            (crate::storage::git::validate_cloned_skill(&dest)?, false)
         } else {
             // Miss: download and extract as before, then publish into the
             // content cache under the resolved version's identity.
@@ -638,24 +638,22 @@ impl FastSkillService {
 
             let zip_handler = crate::storage::zip::ZipHandler::new()?;
             zip_handler.extract_to_dir(&zip_path, &extract_path)?;
-            let skill_path = crate::storage::git::validate_cloned_skill(&extract_path)?;
-
-            if let Err(e) = cache.put(&identity, &skill_path) {
-                // The download already succeeded and is usable; a cache-write
-                // failure only costs this run the "download once per
-                // machine" win, so it must not fail the install.
-                tracing::warn!("failed to publish registry package to content cache: {}", e);
-            }
-            skill_path
+            (
+                crate::storage::git::validate_cloned_skill(&extract_path)?,
+                true,
+            )
         };
 
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
-        // The registry-resolved version selected the package to download; the
-        // *recorded* resolved version is whatever the downloaded SKILL.md /
-        // skill-project.toml declares (matching the pre-seam CLI behavior, where
-        // the lock's `Resolved.version` always came from the installed skill's
-        // own metadata, not the registry's version string).
+        // The package metadata must agree with the catalog selection so the
+        // recorded resolution remains a trustworthy acquisition fact.
         let (_, version_from_skill) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
+        verify_repository_artifact_version(skill, &resolved_version, &version_from_skill)?;
+        if cache_miss {
+            if let Err(e) = cache.put(&identity, &skill_path) {
+                tracing::warn!("failed to publish registry package to content cache: {}", e);
+            }
+        }
 
         let checksum = digest_directory(&skill_path)?;
         Ok(Fetched {

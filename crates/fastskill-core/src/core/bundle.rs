@@ -856,7 +856,7 @@ impl BundleService {
                 "Bundle state changed while the operation was prepared; retry".to_string(),
             ));
         }
-        let mut transaction =
+        let transaction =
             match BundleTransaction::capture(&self.skills_directory, &affected, &transaction_files)
             {
                 Ok(transaction) => transaction,

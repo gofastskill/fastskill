@@ -122,6 +122,7 @@ impl<'a> ProjectOwnership<'a> {
         let delete_files: BTreeSet<&str> = removed_closure
             .difference(&retained_by_other_owner)
             .copied()
+            .filter(|id| locked_ids.contains(id))
             .collect();
         let retained_files: BTreeSet<&str> = removed_closure
             .intersection(&retained_by_other_owner)

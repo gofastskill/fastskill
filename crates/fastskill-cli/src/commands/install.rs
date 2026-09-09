@@ -310,8 +310,10 @@ async fn execute_install_inner(
     let project_file_result = resolve_project_file(&current_dir);
     let project_file_path = project_file_result.path;
 
-    // Require manifest unless installing from lock
-    if !args.lock && !project_file_result.found {
+    // Project installation always needs the Manifest to define roots, groups,
+    // bundle declarations, and the destination. Global lock restoration is a
+    // separate `install --global --lock` path.
+    if !project_file_result.found {
         return Err(CliError::Config(manifest_required_message().to_string()));
     }
 

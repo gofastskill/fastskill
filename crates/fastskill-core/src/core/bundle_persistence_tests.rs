@@ -256,7 +256,7 @@ fn transaction_rollback_restores_existing_and_removes_new_state() {
     fs::write(&state, "before").unwrap();
     let new_state = root.path().join("new-state.toml");
     let ids = vec!["existing".to_string(), "new".to_string()];
-    let mut transaction =
+    let transaction =
         BundleTransaction::capture(&skills, &ids, &[state.clone(), new_state.clone()]).unwrap();
     fs::write(existing.join("SKILL.md"), "after").unwrap();
     fs::create_dir_all(skills.join("new")).unwrap();
@@ -273,6 +273,38 @@ fn transaction_rollback_restores_existing_and_removes_new_state() {
     assert!(!skills.join("new").exists());
     assert_eq!(fs::read_to_string(state).unwrap(), "before");
     assert!(!new_state.exists());
+}
+
+#[test]
+fn failed_transaction_rollback_retains_backups_and_path_mapping() {
+    let root = TempDir::new().unwrap();
+    let skills = root.path().join("skills");
+    let existing = skills.join("existing");
+    fs::create_dir_all(&existing).unwrap();
+    fs::write(existing.join("SKILL.md"), "before").unwrap();
+    let state = root.path().join("state.toml");
+    fs::write(&state, "before").unwrap();
+    let transaction = BundleTransaction::capture(
+        &skills,
+        &["existing".to_string()],
+        std::slice::from_ref(&state),
+    )
+    .unwrap();
+    fs::remove_dir_all(&existing).unwrap();
+    fs::write(&existing, "blocks directory restoration").unwrap();
+    fs::write(&state, "after").unwrap();
+
+    let error = transaction.rollback().unwrap_err();
+
+    assert!(error.backup_path().is_dir());
+    assert!(error
+        .backup_path()
+        .join("skills/existing/SKILL.md")
+        .is_file());
+    assert!(error.backup_path().join("files/0").is_file());
+    let mapping = fs::read_to_string(error.backup_path().join("recovery-map.json")).unwrap();
+    assert!(mapping.contains(existing.to_string_lossy().as_ref()));
+    assert!(mapping.contains(state.to_string_lossy().as_ref()));
 }
 
 #[test]

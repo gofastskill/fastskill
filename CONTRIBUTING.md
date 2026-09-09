@@ -99,6 +99,8 @@ and the manifest and lock files. Preserve these invariants when changing it:
   `skills.lock`; it must not select a different release from the manifest.
 - Direct, transitive, bundle, and personal-override ownership must remain distinct. Removing one
   owner must not delete content that another retained root still requires.
+- A Manifest declaration without a Lock digest is not proof that existing destination bytes are
+  managed. Removing that declaration must not delete those bytes.
 - `--force` bypasses confirmation only. It must not bypass ownership, integrity, local-edit, or
   destination-safety checks.
 - Bundle builds must reject installed member versions that do not satisfy their declared
@@ -106,6 +108,8 @@ and the manifest and lock files. Preserve these invariants when changing it:
 - Bundle update previews and apply must run the same policy and ownership validation.
 - `bundle override --reset` must restore the packaged member and clear both Manifest and Lock
   override records in one guarded operation.
+- Promoting a personal override after its final bundle owner is removed must validate and retain
+  its complete dependency closure. A dangling dependency must block the removal before mutation.
 - Bundle mutation paths must use the same indexing policy as ordinary skill changes.
 
 Run the focused regression set while iterating:
@@ -125,12 +129,15 @@ bundle, override, repository, and extension tables survive unrelated changes.
 Keep these selection rules consistent across commands and APIs:
 
 - `id@1.2.0` is exact; omitted versions and `@latest` select the newest stable repository release.
+- downloaded repository metadata must match the catalog-selected ID and version before apply;
 - strict `install --lock` verifies locked identity, revision, and digest and does not rewrite the
   lock file;
 - ungrouped roots belong to `default`; group selection applies to roots and then includes their
   required closure;
 - offline operations do not refresh catalogs, access the network, or invoke embedding providers;
 - editable local directories are mutable links and must never be reported as byte-verified.
+- replacements must preserve retained roots' compatible shared dependency selection, and local
+  edits must block replacement even when confirmation is forced.
 
 Add subprocess or public-core tests that compare the Manifest, Lock, installed bytes, owners, and
 exit status. A successful setup command is part of the fixture; do not use a failed setup as proof

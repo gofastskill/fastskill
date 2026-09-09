@@ -121,6 +121,8 @@ enforce the published capability boundary.
 | P-A10 | Register a new command without effect classification | Coverage/registration failure; tool cannot silently become read-only. |
 | P-A11 | Equivalent CLI, HTTP and MCP install/update/remove requests | Same selected state, result, errors and restoration behavior. |
 | P-A12 | Plain read versus output-file/evaluation variant | Classification matches actual effects; gate precedes provider or output dispatch. |
+| P-A13 | HTTP batch-update roots that share a dependency | One compatible graph is planned and applied; unchanged and immutable roots report truthful outcomes. |
+| P-A14 | Reject a duplicate HTTP install using a floating repository origin | Conflict is returned before persistent catalog/cache refresh or managed-state mutation. |
 
 Use real stdio JSON-RPC and localhost HTTP handlers with disposable projects. For
 denied execution tests, use instrumented fake providers/runners and assert zero

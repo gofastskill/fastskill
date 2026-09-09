@@ -239,7 +239,12 @@ async fn install_reports_local_repository_refresh_and_lock_only_manifest_error()
     })
     .await
     .unwrap_err();
-    assert!(!error.to_string().is_empty());
+    assert!(
+        error
+            .to_string()
+            .contains(crate::error::manifest_required_message()),
+        "{error}"
+    );
     match previous_cache {
         Some(value) => std::env::set_var("FASTSKILL_CACHE_DIR", value),
         None => std::env::remove_var("FASTSKILL_CACHE_DIR"),

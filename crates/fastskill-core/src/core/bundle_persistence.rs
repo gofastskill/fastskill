@@ -412,7 +412,7 @@ pub(crate) fn apply_personal_override(
         )));
     }
     let ids = vec![id.to_string()];
-    let mut transaction = match BundleTransaction::capture(
+    let transaction = match BundleTransaction::capture(
         &service.skills_directory,
         &ids,
         &[manifest_path.clone(), lock_path.clone()],
@@ -618,7 +618,7 @@ fn restore_personal_overrides_impl(
     }
     tables = current_tables;
     lock = current_lock;
-    let mut transaction = match BundleTransaction::capture(&service.skills_directory, &ids, &[]) {
+    let transaction = match BundleTransaction::capture(&service.skills_directory, &ids, &[]) {
         Ok(transaction) => transaction,
         Err(error) => {
             state_guard.recovered()?;
@@ -732,9 +732,42 @@ pub(crate) fn remove_skill_directory(destination: &Path) -> Result<(), ServiceEr
 }
 
 pub(crate) struct BundleTransaction {
-    _temporary: TempDir,
+    temporary: TempDir,
     skill_backups: Vec<(PathBuf, Option<PathBuf>)>,
-    file_backups: Vec<(PathBuf, Option<Vec<u8>>)>,
+    file_backups: Vec<(PathBuf, Option<PathBuf>)>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BundleRollbackError {
+    source: ServiceError,
+    backup_path: PathBuf,
+}
+
+impl BundleRollbackError {
+    #[cfg(test)]
+    pub(crate) fn backup_path(&self) -> &Path {
+        &self.backup_path
+    }
+}
+
+impl std::fmt::Display for BundleRollbackError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}; recovery inputs retained at {}",
+            self.source,
+            self.backup_path.display()
+        )
+    }
+}
+
+impl std::error::Error for BundleRollbackError {}
+
+#[derive(Serialize)]
+struct BundleRecoveryPath {
+    kind: &'static str,
+    destination: String,
+    backup: Option<String>,
 }
 
 impl BundleTransaction {
@@ -756,41 +789,100 @@ impl BundleTransaction {
             };
             skill_backups.push((destination, backup));
         }
-        let file_backups = files
-            .iter()
-            .map(|file| {
-                Ok((
-                    file.clone(),
-                    file.exists().then(|| fs::read(file)).transpose()?,
-                ))
-            })
-            .collect::<Result<Vec<_>, std::io::Error>>()
-            .map_err(ServiceError::Io)?;
+        let files_root = temporary.path().join("files");
+        fs::create_dir_all(&files_root).map_err(ServiceError::Io)?;
+        let mut file_backups = Vec::with_capacity(files.len());
+        for (index, file) in files.iter().enumerate() {
+            let backup = if file.exists() {
+                let backup = files_root.join(index.to_string());
+                fs::copy(file, &backup).map_err(ServiceError::Io)?;
+                Some(backup)
+            } else {
+                None
+            };
+            file_backups.push((file.clone(), backup));
+        }
+        write_bundle_recovery_mapping(&temporary, &skill_backups, &file_backups)?;
         Ok(Self {
-            _temporary: temporary,
+            temporary,
             skill_backups,
             file_backups,
         })
     }
 
-    pub(crate) fn rollback(&mut self) -> Result<(), ServiceError> {
+    pub(crate) fn rollback(self) -> Result<(), BundleRollbackError> {
         for (destination, backup) in &self.skill_backups {
-            remove_skill_directory(destination)?;
-            if let Some(backup) = backup {
-                copy_directory(backup, destination)?;
+            let result = remove_skill_directory(destination).and_then(|()| {
+                if let Some(backup) = backup {
+                    copy_directory(backup, destination)?;
+                }
+                Ok(())
+            });
+            if let Err(source) = result {
+                return Err(BundleRollbackError {
+                    source,
+                    backup_path: self.temporary.keep(),
+                });
             }
         }
         for (path, content) in &self.file_backups {
-            if let Some(content) = content {
-                atomic_write(path, content).map_err(ServiceError::Io)?;
+            let result = if let Some(content) = content {
+                fs::read(content)
+                    .map_err(ServiceError::Io)
+                    .and_then(|content| atomic_write(path, &content).map_err(ServiceError::Io))
             } else if path.exists() {
-                fs::remove_file(path).map_err(ServiceError::Io)?;
+                fs::remove_file(path).map_err(ServiceError::Io)
+            } else {
+                Ok(())
+            };
+            if let Err(source) = result {
+                return Err(BundleRollbackError {
+                    source,
+                    backup_path: self.temporary.keep(),
+                });
             }
         }
         Ok(())
     }
 
     pub(crate) fn commit(self) {}
+}
+
+fn write_bundle_recovery_mapping(
+    temporary: &TempDir,
+    skill_backups: &[(PathBuf, Option<PathBuf>)],
+    file_backups: &[(PathBuf, Option<PathBuf>)],
+) -> Result<(), ServiceError> {
+    let paths = skill_backups
+        .iter()
+        .map(|(destination, backup)| ("skill", destination, backup))
+        .chain(
+            file_backups
+                .iter()
+                .map(|(destination, backup)| ("file", destination, backup)),
+        )
+        .map(|(kind, destination, backup)| {
+            let backup = backup
+                .as_ref()
+                .map(|path| {
+                    path.strip_prefix(temporary.path())
+                        .map(|path| path.display().to_string())
+                        .map_err(|error| {
+                            ServiceError::Custom(format!("Failed to record bundle backup: {error}"))
+                        })
+                })
+                .transpose()?;
+            Ok(BundleRecoveryPath {
+                kind,
+                destination: destination.display().to_string(),
+                backup,
+            })
+        })
+        .collect::<Result<Vec<_>, ServiceError>>()?;
+    let content = serde_json::to_vec_pretty(&paths).map_err(|error| {
+        ServiceError::Custom(format!("Failed to serialize bundle recovery map: {error}"))
+    })?;
+    fs::write(temporary.path().join("recovery-map.json"), content).map_err(ServiceError::Io)
 }
 
 fn io_error(error: walkdir::Error) -> std::io::Error {

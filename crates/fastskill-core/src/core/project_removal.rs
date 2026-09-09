@@ -384,6 +384,44 @@ mod tests {
     }
 
     #[test]
+    fn removing_manifest_only_root_preserves_existing_untracked_content() {
+        let _serial = serial();
+        let root = TempDir::new().unwrap();
+        let installed = root.path().join("skills/item");
+        fs::create_dir_all(&installed).unwrap();
+        fs::write(installed.join("USER.md"), "untracked work").unwrap();
+        SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: Some(DependenciesSection {
+                dependencies: HashMap::from([(
+                    "item".to_string(),
+                    DependencySpec::Version("1.0.0".to_string()),
+                )]),
+            }),
+            tool: None,
+        }
+        .save_to_file(&root.path().join("skill-project.toml"))
+        .unwrap();
+        let service = ProjectRemovalService::new(root.path(), root.path().join("skills"));
+
+        let plan = service.remove(&["item".to_string()]).unwrap();
+
+        assert!(plan.delete_files.is_empty());
+        assert_eq!(
+            fs::read_to_string(installed.join("USER.md")).unwrap(),
+            "untracked work"
+        );
+        let manifest =
+            SkillProjectToml::load_from_file(&root.path().join("skill-project.toml")).unwrap();
+        assert!(!manifest
+            .dependencies
+            .unwrap()
+            .dependencies
+            .contains_key("item"));
+    }
+
+    #[test]
     fn failure_after_manifest_save_rolls_back_all_authoritative_state() {
         let _serial = serial();
         let root = TempDir::new().unwrap();

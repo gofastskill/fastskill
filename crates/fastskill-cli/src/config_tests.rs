@@ -93,6 +93,7 @@ fn converts_every_repository_connection_without_losing_metadata() {
         RepositoryConnection::GitMarketplace {
             url: "https://github.com/example/skills".to_string(),
             branch: Some("stable".to_string()),
+            tag: None,
         },
         None,
     ));

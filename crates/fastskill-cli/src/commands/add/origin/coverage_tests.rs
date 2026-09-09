@@ -196,7 +196,7 @@ async fn global_replacement_updates_one_lock_entry_and_repeat_is_unchanged() {
     let previous_lock = fs::read(&lock_path).unwrap();
     let (result, output) = crate::output::capture(add_global_skill(
         &service,
-        &SkillSource::Folder(source),
+        &SkillSource::Folder(source.clone()),
         &selected,
     ))
     .await;
@@ -204,10 +204,115 @@ async fn global_replacement_updates_one_lock_entry_and_repeat_is_unchanged() {
     let output: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(output["outcome"], "unchanged");
     assert_eq!(fs::read(&lock_path).unwrap(), previous_lock);
+
+    let installed_before = fs::read(storage.join("demo/SKILL.md")).unwrap();
+    selected.group = Some("production".to_string());
+    let (result, output) = crate::output::capture(add_global_skill(
+        &service,
+        &SkillSource::Folder(source),
+        &selected,
+    ))
+    .await;
+    result.unwrap();
+    let output: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(output["outcome"], "changed");
+    assert_eq!(output["targets"][0]["changes"][0], "groups changed");
+    let lock = GlobalSkillsLock::load_from_file(&lock_path).unwrap();
+    assert_eq!(lock.skills[0].groups, ["production"]);
+    assert_eq!(
+        fs::read(storage.join("demo/SKILL.md")).unwrap(),
+        installed_before,
+        "a group-only change must not rewrite installed content"
+    );
 }
 
 #[tokio::test]
-async fn global_add_snapshot_failure_preserves_existing_files_and_clears_recovery_marker() {
+async fn global_add_rejects_incompatible_shared_content_required_by_a_retained_root() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let (root, _xdg, _cache, service, storage) = global_fixture().await;
+    let shared_v1 = root.path().join("shared-v1");
+    let shared_v2 = root.path().join("shared-v2");
+    let alpha = root.path().join("alpha");
+    let beta = root.path().join("beta");
+    write_skill(&shared_v1, "shared", "1.0.0", "shared one");
+    write_skill(&shared_v2, "shared", "2.0.0", "shared two");
+    write_skill(&alpha, "alpha", "1.0.0", "alpha");
+    write_skill(&beta, "beta", "1.0.0", "beta");
+    fs::write(
+        alpha.join("skill-project.toml"),
+        format!(
+            "[dependencies.shared.origin]\ntype = \"local\"\npath = {:?}\n",
+            shared_v1
+        ),
+    )
+    .unwrap();
+    fs::write(
+        beta.join("skill-project.toml"),
+        format!(
+            "[dependencies.shared.origin]\ntype = \"local\"\npath = {:?}\n",
+            shared_v2
+        ),
+    )
+    .unwrap();
+
+    add_global_skill(&service, &SkillSource::Folder(alpha), &args())
+        .await
+        .unwrap();
+    let lock_path = global_lock_path().unwrap();
+    let lock_before = fs::read(&lock_path).unwrap();
+    let shared_before = fs::read(storage.join("shared/SKILL.md")).unwrap();
+
+    let error = add_global_skill(&service, &SkillSource::Folder(beta), &args())
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("required by a retained root"));
+    assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
+    assert_eq!(
+        fs::read(storage.join("shared/SKILL.md")).unwrap(),
+        shared_before
+    );
+    assert!(!storage.join("beta").exists());
+}
+
+#[tokio::test]
+async fn global_force_add_rejects_locally_modified_managed_content() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let (root, _xdg, _cache, service, storage) = global_fixture().await;
+    let source = root.path().join("source");
+    write_skill(&source, "demo", "1.0.0", "original");
+    add_global_skill(&service, &SkillSource::Folder(source.clone()), &args())
+        .await
+        .unwrap();
+    let lock_path = global_lock_path().unwrap();
+    let lock_before = fs::read(&lock_path).unwrap();
+    let installed = storage.join("demo/SKILL.md");
+    fs::write(&installed, "locally edited content\n").unwrap();
+    write_skill(&source, "demo", "2.0.0", "replacement");
+    let mut forced = args();
+    forced.force = true;
+
+    for dry_run in [true, false] {
+        forced.dry_run = dry_run;
+        let error = add_global_skill(&service, &SkillSource::Folder(source.clone()), &forced)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("was modified"));
+        assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
+        assert_eq!(
+            fs::read_to_string(&installed).unwrap(),
+            "locally edited content\n"
+        );
+    }
+}
+
+#[tokio::test]
+async fn global_add_rejects_untracked_file_before_creating_lock_or_recovery_marker() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -219,7 +324,7 @@ async fn global_add_snapshot_failure_preserves_existing_files_and_clears_recover
     let error = add_global_skill(&service, &SkillSource::Folder(source), &args())
         .await
         .unwrap_err();
-    assert!(matches!(error, CliError::Io(_)));
+    assert!(error.to_string().contains("contains untracked content"));
     assert_eq!(
         fs::read_to_string(storage.join("demo")).unwrap(),
         "user-owned file"
@@ -232,6 +337,50 @@ async fn global_add_snapshot_failure_preserves_existing_files_and_clears_recover
         .join(".fastskill/recovery-required")
         .exists());
     assert!(!storage.join(".fastskill-recovery-required").exists());
+}
+
+#[tokio::test]
+async fn global_add_and_preview_preserve_untracked_root_and_dependency_directories() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let (root, _xdg, _cache, service, storage) = global_fixture().await;
+    let source = root.path().join("source");
+    let child = root.path().join("child");
+    write_skill(&source, "demo", "1.0.0", "candidate");
+    write_skill(&child, "child", "1.0.0", "dependency");
+    fs::write(
+        source.join("skill-project.toml"),
+        "[dependencies]\nchild = { origin = { type = \"local\", path = \"../child\" } }\n",
+    )
+    .unwrap();
+    for id in ["demo", "child"] {
+        let destination = storage.join(id);
+        write_skill(&destination, id, "0.1.0", "personal skill");
+        fs::write(destination.join("USER.md"), "user-owned notes\n").unwrap();
+        let original = fs::read(destination.join("SKILL.md")).unwrap();
+        for dry_run in [true, false] {
+            for force in [false, true] {
+                let mut selected = args();
+                selected.dry_run = dry_run;
+                selected.force = force;
+                let error =
+                    add_global_skill(&service, &SkillSource::Folder(source.clone()), &selected)
+                        .await
+                        .unwrap_err();
+                assert!(error.to_string().contains("contains untracked content"));
+                assert_eq!(fs::read(destination.join("SKILL.md")).unwrap(), original);
+                assert_eq!(
+                    fs::read_to_string(destination.join("USER.md")).unwrap(),
+                    "user-owned notes\n"
+                );
+                assert!(!global_lock_path().unwrap().exists());
+            }
+        }
+        fs::remove_dir_all(destination).unwrap();
+    }
+    assert!(!storage.join("demo").exists());
+    assert!(!storage.join("child").exists());
 }
 
 #[tokio::test]

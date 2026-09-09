@@ -26,6 +26,9 @@ static FAIL_ROLLBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 #[cfg(test)]
 static CHANGE_LOCK_BEFORE_COMMIT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static EDIT_CONTENT_BEFORE_COMMIT: std::sync::Mutex<Option<(PathBuf, String)>> =
+    std::sync::Mutex::new(None);
 
 pub(crate) struct DirectorySnapshot {
     installed: PathBuf,
@@ -74,6 +77,79 @@ fn selected_closure(lock: &GlobalSkillsLock, roots: &[String]) -> BTreeSet<Strin
             return selected;
         }
     }
+}
+
+pub(crate) fn validate_retained_global_candidate(
+    lock: &GlobalSkillsLock,
+    changed_roots: &[String],
+    id: &str,
+    origin: &Origin,
+    resolved: &fastskill_core::core::Resolved,
+) -> CliResult<()> {
+    let retained_roots = lock
+        .covered_roots
+        .iter()
+        .filter(|root| !changed_roots.contains(root))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !selected_closure(lock, &retained_roots).contains(id) {
+        return Ok(());
+    }
+    let existing = lock
+        .skills
+        .iter()
+        .find(|entry| entry.id == id)
+        .ok_or_else(|| {
+            CliError::Config(format!(
+                "retained global roots require '{id}', but it is absent from global-skills.lock"
+            ))
+        })?;
+    if fastskill_core::core::resolution::origins_accept_same_resolution(
+        &existing.origin,
+        origin,
+        &resolved.version,
+    ) && existing.resolved == *resolved
+    {
+        return Ok(());
+    }
+    Err(CliError::Config(format!(
+        "global skill '{id}' is required by a retained root with incompatible content; update all owning roots together"
+    )))
+}
+
+pub(crate) fn validate_global_replacement_content(
+    lock: &GlobalSkillsLock,
+    changed: &BTreeSet<String>,
+    storage: &Path,
+) -> CliResult<()> {
+    for id in changed {
+        let installed = storage.join(id);
+        if !installed.exists() && !installed.is_symlink() {
+            continue;
+        }
+        let entry = lock.skills.iter().find(|entry| entry.id == *id).ok_or_else(|| {
+            CliError::Config(format!(
+                "global destination '{id}' contains untracked content; move or explicitly remove it before installation"
+            ))
+        })?;
+        if matches!(entry.origin, Origin::Local { editable: true, .. }) {
+            continue;
+        }
+        let expected = entry.resolved.checksum.as_ref().ok_or_else(|| {
+            CliError::Config(format!(
+                "global lock has insufficient integrity evidence for '{}'; restore it before replacement",
+                entry.id
+            ))
+        })?;
+        let actual = managed_tree_digest(&installed).map_err(CliError::Service)?;
+        if &actual != expected {
+            return Err(CliError::Config(format!(
+                "installed global skill '{}' was modified; restore or remove local edits before replacement",
+                entry.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn obsolete_dependencies(
@@ -526,6 +602,15 @@ pub(super) async fn execute_update_global(
         prepare_resolution(&service, resolution_roots, &locked, u32::MAX, args.offline).await
     }
     .map_err(CliError::Service)?;
+    for candidate in &resolution.candidates {
+        validate_retained_global_candidate(
+            &lock,
+            &selected_roots,
+            candidate.prepared.id(),
+            &candidate.origin,
+            candidate.prepared.resolved(),
+        )?;
+    }
     let candidate_ids = resolution
         .candidates
         .iter()
@@ -580,6 +665,16 @@ pub(super) async fn execute_update_global(
             })
     }));
     prepared.sort_by(|left, right| left.id.cmp(&right.id));
+    let content_changes = prepared
+        .iter()
+        .filter(|plan| !plan.changes.is_empty())
+        .map(|plan| plan.id.clone())
+        .collect();
+    validate_global_replacement_content(
+        &lock,
+        &content_changes,
+        &service.config().skill_storage_path,
+    )?;
     if !args.json {
         for plan in &prepared {
             crate::outln!(
@@ -651,6 +746,22 @@ pub(super) async fn execute_update_global(
             "Global state changed while the update was being planned; retry the command"
                 .to_string(),
         ));
+    }
+    #[cfg(test)]
+    if let Some((path, content)) = EDIT_CONTENT_BEFORE_COMMIT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take()
+    {
+        fs::write(path, content).map_err(CliError::Io)?;
+    }
+    if let Err(error) = validate_global_replacement_content(
+        &lock,
+        &content_changes,
+        &service.config().skill_storage_path,
+    ) {
+        guard.recovered().map_err(CliError::Service)?;
+        return Err(error);
     }
     let snapshots = match capture_directories(
         &service.config().skill_storage_path,

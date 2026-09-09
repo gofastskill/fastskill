@@ -90,6 +90,41 @@ async fn mount_version(server: &MockServer, version: &str) {
         .await;
 }
 
+async fn mount_mismatched_version(
+    server: &MockServer,
+    selected_version: &str,
+    artifact_version: &str,
+) {
+    let zip_bytes = build_zip(artifact_version);
+    let cksum = format!(
+        "sha256:{}",
+        fastskill_core::utils::to_hex_lower(&sha2::Sha256::digest(&zip_bytes))
+    );
+    let entry = IndexEntry {
+        name: SKILL_ID.to_string(),
+        vers: selected_version.to_string(),
+        deps: vec![],
+        cksum,
+        features: std::collections::HashMap::new(),
+        yanked: false,
+        links: None,
+        download_url: format!("{}/dl/{selected_version}", server.uri()),
+        metadata: None,
+    };
+    Mock::given(method("GET"))
+        .and(path(format!("/index/{SKILL_ID}")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(serde_json::to_string(&entry).unwrap()),
+        )
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/dl/{selected_version}")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(zip_bytes))
+        .mount(server)
+        .await;
+}
+
 fn repo_manager(index_url: String) -> RepositoryManager {
     RepositoryManager::from_definitions(vec![RepositoryDefinition {
         name: REPO_NAME.to_string(),
@@ -203,6 +238,46 @@ async fn two_installs_of_the_same_pinned_version_download_exactly_once() {
         std::fs::read_to_string(storage_b.path().join(SKILL_ID).join("SKILL.md")).unwrap();
     assert_eq!(content_a, content_b);
     assert_eq!(content_a, skill_md("1.0.0"));
+}
+
+#[tokio::test]
+async fn registry_artifact_version_must_match_the_catalog_selection() {
+    let _counter_guard = DOWNLOAD_COUNTER_MUTEX.lock().await;
+    let server = MockServer::start().await;
+    mount_mismatched_version(&server, "2.0.0", "1.0.0").await;
+
+    let project = TempDir::new().unwrap();
+    setup_project(project.path());
+    let storage = TempDir::new().unwrap();
+    let cache_root = TempDir::new().unwrap();
+    let manager = repo_manager(format!("{}/index", server.uri()));
+    let service = make_service(project.path(), storage.path(), cache_root.path(), manager).await;
+    let origin = Origin::Repository {
+        repo: REPO_NAME.to_string(),
+        skill: SKILL_ID.to_string(),
+        version: Some(VersionConstraint::parse("2.0.0").unwrap()),
+    };
+
+    let error = service
+        .prepare_add(origin, Some(SKILL_ID))
+        .await
+        .expect_err("catalog and artifact version mismatch must be rejected");
+
+    let message = error.to_string();
+    assert!(message.contains("widget@2.0.0"), "{message}");
+    assert!(message.contains("declares version '1.0.0'"), "{message}");
+    assert!(!storage.path().join(SKILL_ID).exists());
+    assert!(!project.path().join("skills.lock").exists());
+    assert!(
+        SkillCache::at_root(cache_root.path())
+            .get(&CacheIdentity::Registry {
+                source: REPO_NAME.to_string(),
+                skill: SKILL_ID.to_string(),
+                version: "2.0.0".to_string(),
+            })
+            .is_none(),
+        "an artifact with contradictory metadata must not poison the cache"
+    );
 }
 
 /// A pinned version already published in the content cache installs with no

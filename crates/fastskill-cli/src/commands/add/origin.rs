@@ -90,6 +90,15 @@ pub(super) async fn add_global_origins(
             "Global add planning produced no root".to_string(),
         ));
     }
+    for candidate in &resolution.candidates {
+        crate::commands::update::global::validate_retained_global_candidate(
+            &lock,
+            &root_ids,
+            candidate.prepared.id(),
+            &candidate.origin,
+            candidate.prepared.resolved(),
+        )?;
+    }
     for (root_id, origin) in root_ids.iter().zip(&origins) {
         if let Some(existing) = lock.skills.iter().find(|entry| entry.id == *root_id) {
             if !args.force && (!lock.covered_roots.contains(root_id) || existing.origin != *origin)
@@ -117,6 +126,9 @@ pub(super) async fn add_global_origins(
             if existing.is_none_or(|entry| entry.dependencies != candidate.dependencies) {
                 changes.push("dependency ownership changed".to_string());
             }
+            if existing.is_none_or(|entry| sorted(&entry.groups) != sorted(&candidate.groups)) {
+                changes.push("groups changed".to_string());
+            }
             GlobalAddPlan {
                 id,
                 current_revision: existing.map(|entry| entry.resolved.version.clone()),
@@ -131,6 +143,20 @@ pub(super) async fn add_global_origins(
         })
         .collect::<Vec<_>>();
     plans.sort_by(|left, right| left.id.cmp(&right.id));
+    let content_changes = plans
+        .iter()
+        .filter(|plan| {
+            plan.changes
+                .iter()
+                .any(|change| change.as_str() != "groups changed")
+        })
+        .map(|plan| plan.id.clone())
+        .collect();
+    crate::commands::update::global::validate_global_replacement_content(
+        &lock,
+        &content_changes,
+        &service.config().skill_storage_path,
+    )?;
     if args.dry_run {
         if args.json {
             let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
@@ -196,6 +222,14 @@ pub(super) async fn add_global_origins(
         return Err(CliError::Config(
             "Global state changed while add was being planned; retry the command".to_string(),
         ));
+    }
+    if let Err(error) = crate::commands::update::global::validate_global_replacement_content(
+        &lock,
+        &content_changes,
+        &service.config().skill_storage_path,
+    ) {
+        guard.recovered().map_err(CliError::Service)?;
+        return Err(error);
     }
     let snapshots = match crate::commands::update::global::capture_directories(
         &service.config().skill_storage_path,
@@ -275,20 +309,26 @@ async fn apply_global_plans(
         if plan.changes.is_empty() {
             continue;
         }
-        let candidate = plan.candidate.take().ok_or_else(|| {
-            CliError::Config(format!(
-                "Global add plan for '{}' was already applied",
-                plan.id
-            ))
-        })?;
-        service
-            .apply_prepared_content(
-                candidate,
-                fastskill_core::core::AddMode::Update,
-                plan.groups.clone(),
-            )
-            .await
-            .map_err(CliError::Service)?;
+        if plan
+            .changes
+            .iter()
+            .any(|change| change.as_str() != "groups changed")
+        {
+            let candidate = plan.candidate.take().ok_or_else(|| {
+                CliError::Config(format!(
+                    "Global add plan for '{}' was already applied",
+                    plan.id
+                ))
+            })?;
+            service
+                .apply_prepared_content(
+                    candidate,
+                    fastskill_core::core::AddMode::Update,
+                    plan.groups.clone(),
+                )
+                .await
+                .map_err(CliError::Service)?;
+        }
         let now = chrono::Utc::now();
         if let Some(entry) = lock.skills.iter_mut().find(|entry| entry.id == plan.id) {
             entry.origin = plan.origin.clone();
@@ -311,6 +351,13 @@ async fn apply_global_plans(
         }
     }
     Ok(())
+}
+
+fn sorted(values: &[String]) -> Vec<String> {
+    let mut values = values.to_vec();
+    values.sort();
+    values.dedup();
+    values
 }
 
 async fn restore_global_add(
