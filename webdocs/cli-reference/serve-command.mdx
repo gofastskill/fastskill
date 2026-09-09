@@ -112,7 +112,7 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 | `/api/v1/skills/{id}` | GET | read | Get a skill |
 | `/api/v1/skills/{id}` | DELETE | **write** | Remove a skill |
 | `/api/v1/skills/install` | POST | **write** | Install a skill from an origin (`{ "origin": {...}, "groups"?: [...] }`); `201` on success, `409` if the id is already installed |
-| `/api/v1/skills/update` | POST | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin; `{ "check": true }` reports what would change without applying it. `/api/v1/skills/upgrade` is kept mounted as a back-compat alias for this same endpoint. |
+| `/api/v1/skills/update` | POST | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin as one compatible dependency plan; `{ "check": true }` reports `would_update`, `up_to_date`, or `immutable` without applying it. `/api/v1/skills/upgrade` is kept mounted as a back-compat alias for this same endpoint. |
 | `/api/v1/search` | POST | read | Search skills |
 | `/api/v1/resolve` | POST | read | Resolve context for a prompt |
 | `/api/v1/reindex` | POST | **write** | Reindex all skills. Returns `200` with `{ reindexed, count, reason }`; when no embedding provider is configured, reindex skips silently (`reindexed: false` + a `reason`), which is still `200`, not an error. |

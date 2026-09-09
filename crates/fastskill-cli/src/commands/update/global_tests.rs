@@ -113,6 +113,136 @@ fn obsolete_dependencies_remove_unreachable_members() {
     );
 }
 
+#[test]
+fn retained_global_root_blocks_an_incompatible_shared_update() {
+    let mut lock = GlobalSkillsLock::new_empty();
+    lock.covered_roots = vec!["alpha".to_string(), "beta".to_string()];
+    lock.skills = vec![
+        locked_entry("alpha", &["shared"]),
+        locked_entry("beta", &["shared"]),
+        locked_entry("shared", &[]),
+    ];
+    let replacement_origin = Origin::Local {
+        path: "shared-v2".into(),
+        editable: false,
+    };
+    let replacement = fastskill_core::core::origin::Resolved {
+        version: "2.0.0".to_string(),
+        commit_hash: None,
+        checksum: Some("new-digest".to_string()),
+    };
+
+    let error = validate_retained_global_candidate(
+        &lock,
+        &["alpha".to_string()],
+        "shared",
+        &replacement_origin,
+        &replacement,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("required by a retained root"));
+    assert!(validate_retained_global_candidate(
+        &lock,
+        &["alpha".to_string(), "beta".to_string()],
+        "shared",
+        &replacement_origin,
+        &replacement,
+    )
+    .is_ok());
+}
+
+#[test]
+fn retained_global_root_requires_complete_lock_evidence_and_identical_content() {
+    let mut lock = GlobalSkillsLock::new_empty();
+    lock.covered_roots = vec!["alpha".to_string(), "beta".to_string()];
+    lock.skills = vec![
+        locked_entry("alpha", &["shared"]),
+        locked_entry("beta", &["shared"]),
+    ];
+    let shared = locked_entry("shared", &[]);
+    let changed = ["alpha".to_string()];
+    let error = validate_retained_global_candidate(
+        &lock,
+        &changed,
+        "shared",
+        &shared.origin,
+        &shared.resolved,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("absent from global-skills.lock"));
+
+    lock.skills.push(shared.clone());
+    validate_retained_global_candidate(&lock, &changed, "shared", &shared.origin, &shared.resolved)
+        .unwrap();
+
+    let mut same_version_different_content = shared.resolved.clone();
+    same_version_different_content.checksum = Some("different-content".to_string());
+    let error = validate_retained_global_candidate(
+        &lock,
+        &changed,
+        "shared",
+        &shared.origin,
+        &same_version_different_content,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("incompatible content"));
+    assert_eq!(lock.skills[2].resolved, shared.resolved);
+}
+
+#[test]
+fn global_replacement_requires_a_digest_for_occupied_managed_content() {
+    let root = TempDir::new().unwrap();
+    let storage = root.path().join("skills");
+    let installed = storage.join("demo");
+    write_skill(&installed, "demo", "1.0.0", "personal changes");
+    let original = fs::read(installed.join("SKILL.md")).unwrap();
+    let mut lock = GlobalSkillsLock::new_empty();
+    let mut entry = locked_entry("demo", &[]);
+    entry.resolved.checksum = None;
+    lock.skills.push(entry);
+
+    let error =
+        validate_global_replacement_content(&lock, &BTreeSet::from(["demo".to_string()]), &storage)
+            .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("insufficient integrity evidence"));
+    assert_eq!(fs::read(installed.join("SKILL.md")).unwrap(), original);
+    assert!(lock.skills[0].resolved.checksum.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn global_replacement_allows_mutable_editable_sources_but_rejects_untracked_links() {
+    let root = TempDir::new().unwrap();
+    let source = root.path().join("source");
+    let storage = root.path().join("skills");
+    write_skill(&source, "demo", "2.0.0", "live edits");
+    fs::create_dir_all(&storage).unwrap();
+    create_directory_symlink(&source, &storage.join("demo")).unwrap();
+    let mut lock = GlobalSkillsLock::new_empty();
+    let mut entry = locked_entry("demo", &[]);
+    entry.origin = Origin::Local {
+        path: source.clone(),
+        editable: true,
+    };
+    entry.resolved.checksum = None;
+    lock.skills.push(entry);
+
+    let changed = BTreeSet::from(["demo".to_string()]);
+    validate_global_replacement_content(&lock, &changed, &storage).unwrap();
+    assert_eq!(fs::read_link(storage.join("demo")).unwrap(), source);
+    assert!(fs::read_to_string(source.join("SKILL.md"))
+        .unwrap()
+        .contains("live edits"));
+
+    fs::remove_dir_all(&source).unwrap();
+    lock.skills.clear();
+    let error = validate_global_replacement_content(&lock, &changed, &storage).unwrap_err();
+    assert!(error.to_string().contains("untracked content"));
+    assert_eq!(fs::read_link(storage.join("demo")).unwrap(), source);
+}
+
 fn plan(changed: bool, blocked: bool) -> PlannedGlobalUpdate {
     PlannedGlobalUpdate {
         id: "demo".to_string(),
@@ -602,6 +732,45 @@ async fn partial_apply_retains_pruned_dependencies_and_reports_failure() {
             .len(),
         2
     );
+}
+
+#[tokio::test]
+async fn global_update_preserves_content_edited_after_resolution_before_commit() {
+    let _guard = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let (_root, _xdg, _cache, state, storage) = global_fixture();
+    let source = state.join("source");
+    write_skill(&source, "demo", "2.0.0", "updated");
+    write_skill(&storage.join("demo"), "demo", "1.0.0", "installed");
+    let mut lock = GlobalSkillsLock::new_empty();
+    lock.covered_roots.push("demo".to_string());
+    let mut entry = locked_entry("demo", &[]);
+    entry.origin = Origin::Local {
+        path: source,
+        editable: false,
+    };
+    entry.resolved.checksum = Some(managed_tree_digest(&storage.join("demo")).unwrap());
+    lock.skills.push(entry);
+    let lock_path = state.join("global-skills.lock");
+    lock.save_to_file(&lock_path).unwrap();
+    let original_lock = fs::read(&lock_path).unwrap();
+    let installed = storage.join("demo/SKILL.md");
+    *EDIT_CONTENT_BEFORE_COMMIT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) =
+        Some((installed.clone(), "edited while resolving\n".to_string()));
+
+    let error = execute_update_global(args(), None).await.unwrap_err();
+
+    assert!(error.to_string().contains("was modified"));
+    assert_eq!(fs::read(&lock_path).unwrap(), original_lock);
+    assert_eq!(
+        fs::read_to_string(installed).unwrap(),
+        "edited while resolving\n"
+    );
+    assert!(!storage.join(".fastskill-state.lock.interrupted").exists());
+    assert!(!state.join(".fastskill/recovery-required").exists());
 }
 
 #[tokio::test]

@@ -10,9 +10,10 @@ use crate::core::bundle_persistence::{
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
 use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
 use crate::core::origin::{Origin, Resolved};
+use crate::core::ownership::normalize_lock_ownership;
 use crate::core::service::{ServiceError, SkillId};
 use crate::core::state_guard::StateMutationGuard;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,24 +46,21 @@ pub(crate) fn retain_final_personal_overrides(
     if final_overrides.is_empty() {
         return Ok(());
     }
-    let dependencies = project
-        .dependencies
-        .get_or_insert_with(|| DependenciesSection {
-            dependencies: HashMap::new(),
-        });
+    struct Promotion {
+        id: String,
+        origin: Origin,
+        digest: String,
+        name: String,
+        version: String,
+        required_dependencies: Vec<String>,
+    }
+    let mut promotions = Vec::with_capacity(final_overrides.len());
     for override_entry in &final_overrides {
         let absolute_origin = Origin::Local {
             path: PathBuf::from(&override_entry.origin),
             editable: false,
         };
         let (origin, _) = absolute_origin.to_manifest_relative(project_root);
-        dependencies.dependencies.insert(
-            override_entry.id.clone(),
-            DependencySpec::Inline {
-                origin: origin.clone(),
-                groups: None,
-            },
-        );
         let skill_content =
             fs::read_to_string(PathBuf::from(&override_entry.origin).join("SKILL.md"))
                 .map_err(ServiceError::Io)?;
@@ -74,61 +72,147 @@ pub(crate) fn retain_final_personal_overrides(
         let version = metadata
             .and_then(|value| value.version)
             .unwrap_or_else(|| "0.0.0".to_string());
-        let override_manifest = PathBuf::from(&override_entry.origin).join("skill-project.toml");
-        let mut required_dependencies = if override_manifest.is_file() {
-            SkillProjectToml::load_from_file(&override_manifest)
-                .map_err(|error| {
-                    ServiceError::Config(format!(
-                        "Failed to load personal override dependencies for '{}': {error}",
-                        override_entry.id
-                    ))
-                })?
-                .dependencies
-                .map(|section| section.dependencies.into_keys().collect::<Vec<_>>())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        required_dependencies.sort();
+        let required_dependencies = validate_promotion_dependencies(
+            project_root,
+            removed_bundle,
+            &override_entry.id,
+            Path::new(&override_entry.origin),
+            lock,
+        )?;
+        promotions.push(Promotion {
+            id: override_entry.id.clone(),
+            origin,
+            digest: override_entry.digest.clone(),
+            name,
+            version,
+            required_dependencies,
+        });
+    }
+    let dependencies = project
+        .dependencies
+        .get_or_insert_with(|| DependenciesSection {
+            dependencies: HashMap::new(),
+        });
+    for promotion in promotions {
+        dependencies.dependencies.insert(
+            promotion.id.clone(),
+            DependencySpec::Inline {
+                origin: promotion.origin.clone(),
+                groups: None,
+            },
+        );
         if let Some(entry) = lock
             .skills
             .iter_mut()
-            .find(|entry| entry.id == override_entry.id)
+            .find(|entry| entry.id == promotion.id)
         {
-            entry.name = name;
-            entry.origin = origin.clone();
-            entry.resolved.version = version;
+            entry.name = promotion.name;
+            entry.origin = promotion.origin.clone();
+            entry.resolved.version = promotion.version;
             entry.resolved.commit_hash = None;
-            entry.resolved.checksum = Some(override_entry.digest.clone());
-            entry.dependencies = required_dependencies;
+            entry.resolved.checksum = Some(promotion.digest);
+            entry.dependencies = promotion.required_dependencies;
             entry.depth = 0;
             entry.parent_skill = None;
             entry.required_by.clear();
         } else {
             lock.skills.push(ProjectLockedSkillEntry {
-                id: override_entry.id.clone(),
-                name,
-                origin,
+                id: promotion.id.clone(),
+                name: promotion.name,
+                origin: promotion.origin,
                 resolved: Resolved {
-                    version,
+                    version: promotion.version,
                     commit_hash: None,
-                    checksum: Some(override_entry.digest.clone()),
+                    checksum: Some(promotion.digest),
                 },
-                dependencies: required_dependencies,
+                dependencies: promotion.required_dependencies,
                 groups: Vec::new(),
                 depth: 0,
                 parent_skill: None,
                 required_by: Vec::new(),
             });
         }
-        if !lock.covered_roots.contains(&override_entry.id) {
-            lock.covered_roots.push(override_entry.id.clone());
+        if !lock.covered_roots.contains(&promotion.id) {
+            lock.covered_roots.push(promotion.id.clone());
         }
-        declarations.remove(&override_entry.id);
+        declarations.remove(&promotion.id);
     }
     lock.overrides
         .retain(|entry| !final_overrides.iter().any(|item| item.id == entry.id));
+    let roots = lock.covered_roots.clone();
+    normalize_lock_ownership(lock, &roots);
     Ok(())
+}
+
+fn validate_promotion_dependencies(
+    project_root: &Path,
+    removed_bundle: &str,
+    override_id: &str,
+    source: &Path,
+    lock: &ProjectSkillsLock,
+) -> Result<Vec<String>, ServiceError> {
+    let manifest_path = source.join("skill-project.toml");
+    if !manifest_path.is_file() {
+        return Ok(Vec::new());
+    }
+    let manifest = SkillProjectToml::load_from_file(&manifest_path).map_err(|error| {
+        ServiceError::Config(format!(
+            "Failed to load personal override dependencies for '{override_id}': {error}"
+        ))
+    })?;
+    let requirements = manifest.to_skill_entries(source).map_err(|error| {
+        ServiceError::Config(format!(
+            "Failed to load personal override dependencies for '{override_id}': {error}"
+        ))
+    })?;
+    let mut pending: VecDeque<_> = requirements.iter().map(|entry| entry.id.clone()).collect();
+    let mut visited = BTreeSet::new();
+    let mut missing = BTreeSet::new();
+    while let Some(id) = pending.pop_front() {
+        if !visited.insert(id.clone()) {
+            continue;
+        }
+        let Some(entry) = lock.skills.iter().find(|entry| entry.id == id) else {
+            missing.insert(id);
+            continue;
+        };
+        pending.extend(entry.dependencies.iter().cloned());
+    }
+    if !missing.is_empty() {
+        return Err(ServiceError::InvalidOperation(format!(
+            "Cannot remove bundle '{removed_bundle}': personal override '{override_id}' requires dependencies missing from skills.lock: {}",
+            missing.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+    for requirement in &requirements {
+        let entry = lock
+            .skills
+            .iter()
+            .find(|entry| entry.id == requirement.id)
+            .ok_or_else(|| {
+                ServiceError::InvalidOperation(format!(
+                    "Cannot remove bundle '{removed_bundle}': personal override '{override_id}' requires '{}' missing from skills.lock",
+                    requirement.id
+                ))
+            })?;
+        if !crate::core::resolution::origins_accept_same_resolution(
+            &entry.origin.resolved_against(project_root),
+            &requirement.origin,
+            &entry.resolved.version,
+        ) {
+            return Err(ServiceError::InvalidOperation(format!(
+                "Cannot remove bundle '{removed_bundle}': personal override '{override_id}' requires '{}' from an origin or version incompatible with skills.lock",
+                requirement.id
+            )));
+        }
+    }
+    let mut dependencies = requirements
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>();
+    dependencies.sort();
+    dependencies.dedup();
+    Ok(dependencies)
 }
 
 pub(crate) fn reset_personal_override(
@@ -210,7 +294,7 @@ pub(crate) fn reset_personal_override(
         }
     }
     let ids = vec![id.to_string()];
-    let mut transaction = match BundleTransaction::capture(
+    let transaction = match BundleTransaction::capture(
         &service.skills_directory,
         &ids,
         &[manifest_path.clone(), lock_path.clone()],
@@ -408,6 +492,28 @@ mod tests {
         }
     }
 
+    fn locked_skill(id: &str) -> ProjectLockedSkillEntry {
+        ProjectLockedSkillEntry {
+            id: id.to_string(),
+            name: id.to_string(),
+            origin: Origin::Repository {
+                repo: "default".to_string(),
+                skill: id.to_string(),
+                version: Some(crate::core::version::VersionConstraint::parse("1.0.0").unwrap()),
+            },
+            resolved: Resolved {
+                version: "1.0.0".to_string(),
+                commit_hash: None,
+                checksum: Some(format!("{id}-digest")),
+            },
+            dependencies: Vec::new(),
+            groups: Vec::new(),
+            depth: 1,
+            parent_skill: Some("personal".to_string()),
+            required_by: vec!["personal".to_string()],
+        }
+    }
+
     #[test]
     fn final_override_promotion_updates_an_existing_lock_root_and_dependency_edges() {
         let root = TempDir::new().unwrap();
@@ -442,24 +548,28 @@ mod tests {
             origin: source.display().to_string(),
             digest: "personal-digest".to_string(),
         }];
-        lock.skills = vec![ProjectLockedSkillEntry {
-            id: "personal".to_string(),
-            name: "old".to_string(),
-            origin: Origin::Local {
-                path: "old".into(),
-                editable: false,
+        lock.skills = vec![
+            ProjectLockedSkillEntry {
+                id: "personal".to_string(),
+                name: "old".to_string(),
+                origin: Origin::Local {
+                    path: "old".into(),
+                    editable: false,
+                },
+                resolved: Resolved {
+                    version: "0.1.0".to_string(),
+                    commit_hash: Some("old".to_string()),
+                    checksum: None,
+                },
+                dependencies: Vec::new(),
+                groups: vec!["old".to_string()],
+                depth: 1,
+                parent_skill: Some("team".to_string()),
+                required_by: vec!["team".to_string()],
             },
-            resolved: Resolved {
-                version: "0.1.0".to_string(),
-                commit_hash: Some("old".to_string()),
-                checksum: None,
-            },
-            dependencies: Vec::new(),
-            groups: vec!["old".to_string()],
-            depth: 1,
-            parent_skill: Some("team".to_string()),
-            required_by: vec!["team".to_string()],
-        }];
+            locked_skill("alpha"),
+            locked_skill("zeta"),
+        ];
 
         retain_final_personal_overrides(
             root.path(),
@@ -470,13 +580,27 @@ mod tests {
         )
         .unwrap();
 
-        let entry = &lock.skills[0];
+        let entry = lock
+            .skills
+            .iter()
+            .find(|entry| entry.id == "personal")
+            .unwrap();
         assert_eq!(entry.name, "Personal Name");
         assert_eq!(entry.resolved.version, "2.3.4");
         assert_eq!(entry.dependencies, vec!["alpha", "zeta"]);
         assert_eq!(entry.depth, 0);
         assert!(entry.parent_skill.is_none());
         assert!(entry.required_by.is_empty());
+        for dependency in ["alpha", "zeta"] {
+            let entry = lock
+                .skills
+                .iter()
+                .find(|entry| entry.id == dependency)
+                .unwrap();
+            assert_eq!(entry.depth, 1);
+            assert_eq!(entry.parent_skill.as_deref(), Some("personal"));
+            assert_eq!(entry.required_by, vec!["personal"]);
+        }
         assert_eq!(lock.covered_roots, vec!["personal"]);
         assert!(lock.overrides.is_empty());
         assert!(declarations.is_empty());
@@ -521,6 +645,143 @@ mod tests {
         assert!(error
             .to_string()
             .contains("Failed to load personal override dependencies"));
+    }
+
+    #[test]
+    fn final_override_promotion_blocks_dependencies_missing_from_the_lock() {
+        let root = TempDir::new().unwrap();
+        let source = root.path().join("personal");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "body without frontmatter").unwrap();
+        fs::write(
+            source.join("skill-project.toml"),
+            "[dependencies]\nmissing-child = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let mut project = SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: None,
+            tool: None,
+        };
+        let mut declarations = BTreeMap::from([(
+            "personal".to_string(),
+            BundleOverrideDeclaration {
+                origin: source.display().to_string(),
+            },
+        )]);
+        let mut lock = ProjectSkillsLock::new_empty();
+        lock.bundles = vec![locked_bundle("team", "personal")];
+        lock.overrides = vec![ProjectLockedPersonalOverride {
+            id: "personal".to_string(),
+            origin: source.display().to_string(),
+            digest: "personal-digest".to_string(),
+        }];
+
+        let error = retain_final_personal_overrides(
+            root.path(),
+            "team",
+            &mut project,
+            &mut declarations,
+            &mut lock,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("missing-child"));
+        assert!(project.dependencies.is_none());
+        assert!(lock.skills.is_empty());
+        assert_eq!(lock.overrides.len(), 1);
+        assert!(declarations.contains_key("personal"));
+    }
+
+    #[test]
+    fn final_override_promotion_blocks_missing_transitive_lock_closure() {
+        let root = TempDir::new().unwrap();
+        let source = root.path().join("personal");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "personal").unwrap();
+        fs::write(
+            source.join("skill-project.toml"),
+            "[dependencies]\nchild = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let mut project = SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: None,
+            tool: None,
+        };
+        let mut declarations = BTreeMap::new();
+        let mut child = locked_skill("child");
+        child.dependencies = vec!["missing-grandchild".to_string()];
+        let mut lock = ProjectSkillsLock::new_empty();
+        lock.skills.push(child);
+        lock.bundles = vec![locked_bundle("team", "personal")];
+        lock.overrides = vec![ProjectLockedPersonalOverride {
+            id: "personal".to_string(),
+            origin: source.display().to_string(),
+            digest: "personal-digest".to_string(),
+        }];
+
+        let error = retain_final_personal_overrides(
+            root.path(),
+            "team",
+            &mut project,
+            &mut declarations,
+            &mut lock,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("missing-grandchild"));
+        assert!(project.dependencies.is_none());
+        assert_eq!(lock.skills, vec![locked_skill_with_child()]);
+
+        fn locked_skill_with_child() -> ProjectLockedSkillEntry {
+            let mut child = locked_skill("child");
+            child.dependencies = vec!["missing-grandchild".to_string()];
+            child
+        }
+    }
+
+    #[test]
+    fn final_override_promotion_blocks_incompatible_locked_selection() {
+        let root = TempDir::new().unwrap();
+        let source = root.path().join("personal");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "personal").unwrap();
+        fs::write(
+            source.join("skill-project.toml"),
+            "[dependencies]\nchild = \"2.0.0\"\n",
+        )
+        .unwrap();
+        let mut project = SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: None,
+            tool: None,
+        };
+        let mut declarations = BTreeMap::new();
+        let mut lock = ProjectSkillsLock::new_empty();
+        lock.skills.push(locked_skill("child"));
+        lock.bundles = vec![locked_bundle("team", "personal")];
+        lock.overrides = vec![ProjectLockedPersonalOverride {
+            id: "personal".to_string(),
+            origin: source.display().to_string(),
+            digest: "personal-digest".to_string(),
+        }];
+
+        let error = retain_final_personal_overrides(
+            root.path(),
+            "team",
+            &mut project,
+            &mut declarations,
+            &mut lock,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("incompatible"));
+        assert!(project.dependencies.is_none());
+        assert_eq!(lock.skills, vec![locked_skill("child")]);
     }
 
     #[test]

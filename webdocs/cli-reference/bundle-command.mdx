@@ -121,7 +121,8 @@ fastskill bundle override payments-debugging --reset
 
 Reset is blocked if retained bundles disagree on the packaged bytes or if the installed member has
 untracked edits. Removing the last bundle owner of a personal replacement keeps that replacement
-as an individual requirement instead of deleting it.
+as an individual requirement instead of deleting it. FastSkill validates the replacement's complete
+dependency closure first; bundle removal is blocked if that closure cannot be retained.
 
 <Callout type="info">
 `bundle build` and `bundle override` change files. The MCP server hides and refuses both tools

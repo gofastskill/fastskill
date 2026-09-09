@@ -55,27 +55,18 @@ fastskill repos add public --repo-type http-registry https://api.fastskill.io --
 # Add Git marketplace
 fastskill repos add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
 
+# Pin catalog discovery to a Git tag
+fastskill repos add stable-skills --repo-type git-marketplace https://github.com/team/skills.git --tag v1.2.0
+
 # Add ZIP URL source
 fastskill repos add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
 
 # Add local directory
 fastskill repos add local-dev --repo-type local ./skills --priority 3
 
-# Add with authentication (PAT)
-fastskill repos add private-repo --repo-type git-marketplace https://github.com/team/private.git \
-  --auth-type pat --auth-env GITHUB_TOKEN
-
-# Add with SSH key
-fastskill repos add private-repo --repo-type git-marketplace https://github.com/team/private.git \
-  --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
-
-# Add with basic auth
+# Add a private HTTP registry with a PAT read from the environment
 fastskill repos add registry --repo-type http-registry https://api.example.com \
-  --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
-
-# Add with API key
-fastskill repos add registry --repo-type http-registry https://api.example.com \
-  --auth-type api_key --auth-env API_KEY
+  --auth-type pat --auth-env REGISTRY_TOKEN
 ```
 
 **Options**:
@@ -86,25 +77,26 @@ fastskill repos add registry --repo-type http-registry https://api.example.com \
 | `--priority` | - | number | 0 | Lower number = higher priority (used for conflict resolution) |
 | `--branch` | - | string | none | Git branch to checkout (for git-marketplace) |
 | `--tag` | - | string | none | Git tag to checkout (for git-marketplace) |
-| `--auth-type` | - | string | none | Authentication type: `pat`, `ssh-key`, `ssh`, `basic`, or `api_key` (use underscore, not hyphen) |
-| `--auth-env` | - | string | none | Environment variable for PAT, password, or API key |
-| `--auth-key-path` | - | path | none | SSH key path for ssh-key or ssh auth |
-| `--auth-username` | - | string | none | Username for basic auth |
+| `--auth-type` | - | string | none | Authentication type: `pat` (HTTP registry only) |
+| `--auth-env` | - | string | none | Environment variable containing the HTTP registry PAT |
 
 **Repository Types**:
 
+For Git marketplaces, `--branch` and `--tag` are mutually exclusive. The selected reference is
+stored in `skill-project.toml` and reused after FastSkill restarts.
+
 1. **git-marketplace**: Git repository with `marketplace.json` for skill discovery
-   - Supports PAT, SSH Key, SSH, Basic Auth
+   - Uses the system Git credential helper or an SSH remote and loaded SSH agent
    - Can specify branch or tag
    - Scans for skills across repository structure
 
 2. **http-registry**: HTTP-based registry with flat skill index
-   - Supports Basic Auth, API Key
+   - Supports PAT authentication through environment-variable indirection
    - Fast skill lookup via API
    - Best for production registries
 
 3. **zip-url**: Base URL for ZIP file downloads
-   - Supports PAT, Basic Auth
+   - Uses pre-signed URLs for private artifacts; FastSkill sends no auth header
    - Downloads skills from `{base_url}/{skill-id}-{version}.zip`
 
 4. **local**: Local filesystem path
@@ -158,6 +150,8 @@ Auth: pat (GITHUB_TOKEN)
 ### update
 
 Update repository metadata.
+
+For Git marketplaces, `--branch` replaces any configured tag; other repository types reject `--branch`.
 
 ```bash
 # Update branch

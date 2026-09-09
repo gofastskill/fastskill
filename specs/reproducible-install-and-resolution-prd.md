@@ -166,6 +166,10 @@ binary. Repository selection and update controls are specified in the
 | R-A13 | Wrong fetched ID, cycle, negative/overflow depth, missing child | Validation error; no Installed message or destination mutation. |
 | R-A14 | Local bundle plus individual root sharing a member, no member network access | Embedded closure restores and shared ownership remains valid. |
 | R-A15 | Same compatible installation twice | Same pins and bytes; unchanged result; deterministic Lock. |
+| R-A16 | Add/update one global root beside another root with a shared child | Compatible shared selection retained or the operation blocks before files and Lock change. |
+| R-A17 | Edit managed global bytes, then add/update with force | Replacement blocked; edited bytes and Lock survive. |
+| R-A18 | Catalog selects v2 but downloaded metadata declares v1 | Validation error before cache publication, installation, Manifest, or Lock mutation. |
+| R-A19 | Restore a project Lock without its Manifest; restore a global Lock explicitly | Project path gives missing-Manifest guidance; `install --global --lock` restores global state. |
 
 Test the public CLI with isolated local directories, valid ZIPs, local Git fixtures,
 and controlled catalog/download servers. Compare bytes and Lock content, not only
@@ -174,7 +178,7 @@ provider credentials or paid evaluations are needed.
 
 ## Implementation entry points and exclusions
 
-Start with [legacy install dispatch](../crates/fastskill-cli/src/utils/install_utils.rs),
+Start with [add installation orchestration](../crates/fastskill-cli/src/commands/add/install.rs),
 [install orchestration](../crates/fastskill-cli/src/commands/install.rs),
 [dependency resolver](../crates/fastskill-core/src/core/dependency_resolver.rs),
 [core acquisition](../crates/fastskill-core/src/core/install.rs),

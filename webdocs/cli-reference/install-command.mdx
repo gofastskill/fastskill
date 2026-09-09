@@ -83,6 +83,10 @@ Use `--lock` for production deployments. It verifies locked identity, revision, 
 leaves lock bytes unchanged. `--offline` also prevents network and provider calls.
 </Callout>
 
+Project lock restoration still requires `skill-project.toml`; the Manifest defines selected roots,
+groups, bundles, and the install destination. To restore `global-skills.lock` without a project
+Manifest, run `fastskill install --global --lock`.
+
 ### Combined Example: Production Deployment
 
 Install production skills with exact versions:

@@ -131,6 +131,9 @@ requirement, and recover from failure without losing another requirement or edit
 | S-A12 | Remove an editable installation | Origin files and sentinel locations outside the destination remain intact. |
 | S-A13 | Competing writer or interrupted application precedes apply | No stale plan commits; pending recovery is detected and handled or blocks mutation. |
 | S-A14 | Bundle change with indexing on/off/absent provider | Same provider/flag semantics as an ordinary skill change; state success is truthful. |
+| S-A15 | Remove a Manifest-only root whose destination contains untracked bytes | Declaration removed; destination bytes preserved because no Lock digest proves ownership. |
+| S-A16 | Remove the final bundle owner of an override with missing or incompatible dependencies | Removal blocked before mutation; valid complete closure is promoted with normalized ownership. |
+| S-A17 | Inject a bundle rollback restoration failure | Error names a retained backup and recovery map that survive transaction teardown. |
 
 Use subprocess CLI scenarios and public core operations with controlled persistence
 faults. Assertions MUST compare installed bytes, desired declarations, Lock facts,
@@ -143,7 +146,7 @@ Primary entry points: [Manifest persistence](../crates/fastskill-core/src/core/m
 [core install](../crates/fastskill-core/src/core/install.rs),
 [bundle lifecycle](../crates/fastskill-core/src/core/bundle.rs),
 [ordinary removal](../crates/fastskill-cli/src/commands/remove.rs), and
-[manifest helpers](../crates/fastskill-cli/src/utils/manifest_utils.rs).
+[project state application](../crates/fastskill-core/src/core/project_apply.rs).
 
 Implement the state/graph/planning boundary first. The
 [resolution PRD](reproducible-install-and-resolution-prd.md) populates that graph;

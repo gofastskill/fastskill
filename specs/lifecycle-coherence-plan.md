@@ -50,6 +50,11 @@ UX extension. Shipping a document or a passing help test does not complete a PRD
 | F13 | Locked group filters ignored; only includes ungrouped roots | R-12; R-15–R-16 |
 | F14 | Bundle preview reports success despite apply conflict; indexing flags diverge | S-14; C-07–C-10 |
 | F15 | Wrong fetched ID, missing-query panic, invalid depth, mixed JSON, misleading search IDs/errors | S-11; R-08; C-13–C-16 |
+| F16 | Manifest-only removal deletes an existing destination without Lock integrity evidence | S-05–S-07; S-11 |
+| F17 | Global add/update overwrites retained shared selections or locally edited managed content; group-only add is ignored | S-09–S-11; R-07; R-15–R-16; C-06–C-07 |
+| F18 | Registry artifact version can disagree with the catalog selection; repository Git tags are discarded on save | R-01–R-04 |
+| F19 | Final bundle override promotion can retain a dangling dependency graph; failed rollback deletes its recovery backup | S-10–S-13 |
+| F20 | HTTP updates plan roots independently and report unchanged selections as updates; duplicate rejection may refresh persistent catalog state first | P-01; P-07; P-12; C-07; C-09 |
 
 Small extensions from the review are assigned explicitly: repository selection
 (C-02), override reset (S-08), previews/JSON/check (C-07/C-12), latest-stable/offline
@@ -111,21 +116,18 @@ fleet orchestration or automatic bundle catalog is included.
 
 ## Implementation evidence
 
-- The complete all-features workspace suite completed 1,768 tests with no failures. The clean coverage
-  run completed its 1,754-test instrumented selection with no failures; 15 environment-specific tests
-  are excluded from coverage collection and remain covered by the normal release suite.
-- All 73 instrumented production Rust files changed by this implementation have full-file line coverage
-  above 90%. Three changed module declaration files contain no
-  instrumentable lines and are reported as not applicable by the CI gate.
+- The complete all-features workspace suite completed 1,810 tests with no failures and one skipped
+  environment-specific test.
+- The CI coverage profile reports 91.16% to 99.04% full-file line coverage for every production Rust
+  file changed by the F16-F20 follow-up.
 - Focused CLI, core, HTTP, and real stdio MCP scenarios cover the 55 PRD acceptance cases, including
   lock integrity, first-install closure, shared ownership, rollback, JSON output, scope routing, bundle
   preview/reset, repository selection, and read-only write denial.
 - Windows validation covers immutable Git checkout line endings, isolated global state through
   `XDG_CONFIG_HOME`, JSON path rendering, and repeated editable installs without a second symlink
   privilege during transaction capture.
-- An independent adversarial review reran the original lifecycle counterexamples and added checks for
-  stale plans, local edits, incomplete integrity evidence, partial application, ownership retention,
-  missing dependencies, and HTTP transport failures. No reproducible lifecycle defect remains in the
-  accepted scope.
+- A follow-up adversarial review at `089b4b9` found the F16–F20 gaps. Regression scenarios now cover
+  untracked destinations, global local edits and shared graphs, selected registry versions, retained
+  override closure and recovery data, and coordinated truthful HTTP updates.
 - README, contributor guidance, ADRs, command help, webdocs, and the external FastSkill skill describe
   the implemented command and lifecycle behavior.

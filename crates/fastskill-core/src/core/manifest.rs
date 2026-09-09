@@ -513,6 +513,8 @@ pub enum RepositoryConnection {
         url: String,
         #[serde(default)]
         branch: Option<String>,
+        #[serde(default)]
+        tag: Option<String>,
     },
     ZipUrl {
         zip_url: String,
@@ -826,11 +828,11 @@ impl From<&RepositoryDefinition> for crate::core::repository::RepositoryDefiniti
             RepositoryConnection::HttpRegistry { index_url } => RepositoryConfig::HttpRegistry {
                 index_url: index_url.clone(),
             },
-            RepositoryConnection::GitMarketplace { url, branch } => {
+            RepositoryConnection::GitMarketplace { url, branch, tag } => {
                 RepositoryConfig::GitMarketplace {
                     url: url.clone(),
                     branch: branch.clone(),
-                    tag: None,
+                    tag: tag.clone(),
                 }
             }
             RepositoryConnection::ZipUrl { zip_url } => RepositoryConfig::ZipUrl {

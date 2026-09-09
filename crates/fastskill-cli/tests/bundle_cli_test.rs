@@ -566,6 +566,23 @@ fn removing_final_bundle_owner_promotes_personal_override_to_direct_requirement(
             artifact.to_str().unwrap(),
         ],
     ));
+    let shared = recipient.path().join("shared-guidance");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(
+        shared.join("SKILL.md"),
+        "---\nname: shared-guidance\nversion: 1.0.0\ndescription: shared guidance\n---\nshared\n",
+    )
+    .unwrap();
+    assert_success(run(
+        recipient.path(),
+        &[
+            "--skills-dir",
+            storage.to_str().unwrap(),
+            "add",
+            shared.to_str().unwrap(),
+            "--no-reindex",
+        ],
+    ));
     let personal = recipient.path().join("personal");
     fs::create_dir_all(&personal).unwrap();
     fs::write(
@@ -640,6 +657,77 @@ fn removing_final_bundle_owner_promotes_personal_override_to_direct_requirement(
     assert_eq!(promoted.resolved.version, "2.0.0");
     assert_eq!(promoted.depth, 0);
     assert_eq!(promoted.dependencies, vec!["shared-guidance"]);
+    assert!(lock
+        .skills
+        .iter()
+        .any(|entry| entry.id == "shared-guidance"));
+    assert!(fs::read_to_string(storage.join("code-review/SKILL.md"))
+        .unwrap()
+        .contains("personal retained"));
+}
+
+#[test]
+fn removing_final_bundle_owner_blocks_dangling_override_dependencies() {
+    let author = TempDir::new().unwrap();
+    let artifact = build_bundle(author.path(), "payments-team", "1.0.0", "packaged", true);
+    let recipient = TempDir::new().unwrap();
+    let storage = write_recipient(recipient.path());
+    assert_success(run(
+        recipient.path(),
+        &[
+            "--skills-dir",
+            storage.to_str().unwrap(),
+            "add",
+            artifact.to_str().unwrap(),
+        ],
+    ));
+    let personal = recipient.path().join("personal");
+    fs::create_dir_all(&personal).unwrap();
+    fs::write(personal.join("SKILL.md"), "personal retained\n").unwrap();
+    fs::write(
+        personal.join("skill-project.toml"),
+        "[dependencies]\nmissing-child = \"1.0.0\"\n",
+    )
+    .unwrap();
+    assert_success(run(
+        recipient.path(),
+        &[
+            "--skills-dir",
+            storage.to_str().unwrap(),
+            "bundle",
+            "override",
+            "code-review",
+            "--from",
+            personal.to_str().unwrap(),
+            "--no-reindex",
+        ],
+    ));
+    let manifest_before = fs::read(recipient.path().join("skill-project.toml")).unwrap();
+    let lock_before = fs::read(recipient.path().join("skills.lock")).unwrap();
+
+    let output = run(
+        recipient.path(),
+        &[
+            "--skills-dir",
+            storage.to_str().unwrap(),
+            "remove",
+            "--bundle",
+            "payments-team",
+            "--force",
+            "--no-reindex",
+        ],
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing-child"));
+    assert_eq!(
+        fs::read(recipient.path().join("skill-project.toml")).unwrap(),
+        manifest_before
+    );
+    assert_eq!(
+        fs::read(recipient.path().join("skills.lock")).unwrap(),
+        lock_before
+    );
     assert!(fs::read_to_string(storage.join("code-review/SKILL.md"))
         .unwrap()
         .contains("personal retained"));

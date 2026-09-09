@@ -114,6 +114,40 @@ fn incompatible_and_missing_requirements_are_rejected() {
 }
 
 #[test]
+fn local_origin_compatibility_uses_filesystem_identity_across_path_forms() {
+    let temp = TempDir::new().unwrap();
+    let source = temp.path().join("shared");
+    let alias_parent = temp.path().join("alias");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&alias_parent).unwrap();
+    let canonical = source.canonicalize().unwrap();
+    let requested = Origin::Local {
+        path: alias_parent.join("..").join("shared"),
+        editable: false,
+    };
+    let recorded = Origin::Local {
+        path: canonical.clone(),
+        editable: false,
+    };
+
+    assert!(origins_accept_same_resolution(
+        &requested, &recorded, "1.0.0"
+    ));
+    assert_eq!(
+        merge_requirement_origins("shared", &[requested.clone(), recorded.clone()]).unwrap(),
+        requested
+    );
+    assert!(!origins_accept_same_resolution(
+        &requested,
+        &Origin::Local {
+            path: canonical,
+            editable: true,
+        },
+        "1.0.0"
+    ));
+}
+
+#[test]
 fn locked_integrity_and_constraint_error_paths_are_explicit() {
     let editable = Origin::Local {
         path: "editable".into(),

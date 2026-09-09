@@ -64,6 +64,24 @@ pub fn create_repository_config(
     }
 }
 
+pub fn validate_repository_ref_options(
+    repo_type: &RepositoryType,
+    branch: Option<&str>,
+    tag: Option<&str>,
+) -> CliResult<()> {
+    if branch.is_some() && tag.is_some() {
+        return Err(CliError::Config(
+            "--branch and --tag cannot be used together".to_string(),
+        ));
+    }
+    if !matches!(repo_type, RepositoryType::GitMarketplace) && (branch.is_some() || tag.is_some()) {
+        return Err(CliError::Config(
+            "--branch and --tag are only valid for git-marketplace repositories".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Error text shared by every auth method fastskill does not support.
 ///
 /// `ssh-key`, `ssh`, `basic` and `api_key` used to be accepted here, held in
@@ -183,6 +201,37 @@ mod tests {
         let err = parse(Some("kerberos"), None).unwrap_err().to_string();
         assert!(err.contains("Invalid auth type: kerberos"));
         assert!(err.contains("Use: pat"));
+    }
+
+    #[test]
+    fn repository_refs_are_unambiguous_and_git_only() {
+        assert!(validate_repository_ref_options(
+            &RepositoryType::GitMarketplace,
+            Some("main"),
+            None,
+        )
+        .is_ok());
+        assert!(validate_repository_ref_options(
+            &RepositoryType::GitMarketplace,
+            None,
+            Some("v1.2.0"),
+        )
+        .is_ok());
+
+        let conflicting = validate_repository_ref_options(
+            &RepositoryType::GitMarketplace,
+            Some("main"),
+            Some("v1.2.0"),
+        )
+        .unwrap_err();
+        assert!(conflicting.to_string().contains("cannot be used together"));
+
+        let wrong_type =
+            validate_repository_ref_options(&RepositoryType::HttpRegistry, None, Some("v1.2.0"))
+                .unwrap_err();
+        assert!(wrong_type
+            .to_string()
+            .contains("only valid for git-marketplace"));
     }
 
     /// Silently ignoring these would recreate the very bug being fixed.

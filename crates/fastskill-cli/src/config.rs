@@ -72,13 +72,11 @@ pub fn convert_repository_definition(
         fastskill_core::core::manifest::RepositoryConnection::HttpRegistry { index_url } => {
             RepositoryConfig::HttpRegistry { index_url }
         }
-        fastskill_core::core::manifest::RepositoryConnection::GitMarketplace { url, branch } => {
-            RepositoryConfig::GitMarketplace {
-                url,
-                branch,
-                tag: None,
-            }
-        }
+        fastskill_core::core::manifest::RepositoryConnection::GitMarketplace {
+            url,
+            branch,
+            tag,
+        } => RepositoryConfig::GitMarketplace { url, branch, tag },
         fastskill_core::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
             RepositoryConfig::ZipUrl { base_url: zip_url }
         }

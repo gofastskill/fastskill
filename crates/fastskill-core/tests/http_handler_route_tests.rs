@@ -20,6 +20,8 @@ use axum::{
     Router,
 };
 use fastskill_core::core::lock::ProjectSkillsLock;
+use fastskill_core::core::origin::Origin;
+use fastskill_core::core::AddMode;
 use fastskill_core::http::handlers::{
     manifest, registry, reindex, resolve, search, skills, status, AppState,
 };
@@ -561,6 +563,97 @@ async fn install_fresh_conflict_is_409() {
 }
 
 #[tokio::test]
+async fn duplicate_repository_install_is_rejected_before_refreshing_catalog_state() {
+    use fastskill_core::core::repository::{
+        RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
+    };
+    use wiremock::MockServer;
+
+    let storage = TempDir::new().unwrap();
+    let store = skills_root(&storage);
+    let cache = TempDir::new().unwrap();
+    let project = TempDir::new().unwrap();
+    let project_file_path = project.path().join("skill-project.toml");
+    fs::write(
+        &project_file_path,
+        format!(
+            "[tool.fastskill]\nskills_directory = '{}'\n\n[dependencies]\n\
+             widget = {{ origin = {{ type = \"repository\", repo = \"myreg\", skill = \"widget\" }} }}\n",
+            store.display()
+        ),
+    )
+    .unwrap();
+    let server = MockServer::start().await;
+    let manager = RepositoryManager::from_definitions(vec![RepositoryDefinition {
+        name: "myreg".to_string(),
+        repo_type: RepositoryType::HttpRegistry,
+        priority: 0,
+        config: RepositoryConfig::HttpRegistry {
+            index_url: format!("{}/index", server.uri()),
+        },
+        auth: None,
+        storage: None,
+    }]);
+    let mut service = FastSkillService::new(ServiceConfig {
+        skill_storage_path: store.clone(),
+        skill_cache_root: Some(cache.path().to_path_buf()),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    service.initialize().await.unwrap();
+    let service = Arc::new(
+        service
+            .with_project_root(project.path().to_path_buf())
+            .with_repository_manager(Arc::new(manager)),
+    );
+    let before = snapshot_files(cache.path());
+    let state = AppState::new(service)
+        .unwrap()
+        .with_project_config(project.path().to_path_buf(), project_file_path, store)
+        .with_enable_write(true);
+
+    let (status, body) = post_json(
+        state,
+        "/skills/install",
+        serde_json::json!({"origin": "widget"}),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert_eq!(snapshot_files(cache.path()), before);
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+fn snapshot_files(root: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
+    fn visit(
+        root: &std::path::Path,
+        current: &std::path::Path,
+        files: &mut Vec<(PathBuf, Vec<u8>)>,
+    ) {
+        let Ok(entries) = fs::read_dir(current) else {
+            return;
+        };
+        for entry in entries {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                visit(root, &path, files);
+            } else {
+                files.push((
+                    path.strip_prefix(root).unwrap().to_path_buf(),
+                    fs::read(path).unwrap(),
+                ));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    visit(root, root, &mut files);
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    files
+}
+
+#[tokio::test]
 async fn install_invalid_operation_is_400() {
     // A nonexistent local path is an InvalidOperation, mapped to 400.
     let f = fixture_for_install(true).await;
@@ -572,6 +665,25 @@ async fn install_invalid_operation_is_400() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn install_repository_selector_requires_configured_repositories_before_acquisition() {
+    let f = fixture_for_install(true).await;
+    let source = write_source_skill(f._project.path(), "local-skill");
+
+    let (status, body) = post_json(
+        f.state,
+        "/skills/install",
+        serde_json::json!({
+            "origin": source.to_string_lossy(),
+            "repository": "missing"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+    assert!(body.contains("No repositories are configured"), "{body}");
 }
 
 #[tokio::test]
@@ -633,7 +745,7 @@ async fn update_empty_deps_returns_empty_list() {
 }
 
 #[tokio::test]
-async fn update_check_mode_reports_would_update_without_applying() {
+async fn update_check_mode_reports_up_to_date_without_applying() {
     let f = fixture_for_install(true).await;
     let src = write_source_skill(f._project.path(), "chk-skill");
     let (install_status, install_body) = post_json(
@@ -651,11 +763,12 @@ async fn update_check_mode_reports_would_update_without_applying() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains("would_update"), "body: {body}");
+    assert!(body.contains("\"outcome\":\"up_to_date\""), "body: {body}");
+    assert!(body.contains("\"outcome\":\"unchanged\""), "body: {body}");
 }
 
 #[tokio::test]
-async fn update_applies_updatable_origin() {
+async fn update_without_changes_reports_up_to_date() {
     let f = fixture_for_install(true).await;
     let src = write_source_skill(f._project.path(), "upd-skill");
     let (install_status, install_body) = post_json(
@@ -668,7 +781,97 @@ async fn update_applies_updatable_origin() {
 
     let (status, body) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains("\"outcome\":\"updated\""), "body: {body}");
+    assert!(body.contains("\"outcome\":\"up_to_date\""), "body: {body}");
+    assert!(body.contains("\"outcome\":\"unchanged\""), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_reports_editable_local_root_as_immutable() {
+    let f = fixture_for_install(true).await;
+    let src = write_source_skill(f._project.path(), "editable-skill");
+    f.state
+        .service
+        .add_from_origin(
+            Origin::Local {
+                path: src,
+                editable: true,
+            },
+            AddMode::Fresh,
+            Vec::new(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"outcome\":\"immutable\""), "body: {body}");
+    assert!(body.contains("live symlink"), "body: {body}");
+}
+
+#[tokio::test]
+async fn update_coordinates_roots_that_share_an_advancing_dependency() {
+    let f = fixture_for_install(true).await;
+    let shared = write_source_skill(f._project.path(), "shared-skill");
+    let root_a = write_source_skill(f._project.path(), "root-a");
+    let root_b = write_source_skill(f._project.path(), "root-b");
+    let alias_parent = f._project.path().join("path-alias");
+    fs::create_dir_all(&alias_parent).unwrap();
+    let shared_alias = alias_parent.join("..").join("shared-skill");
+    for (root, shared_source) in [(&root_a, &shared), (&root_b, &shared_alias)] {
+        fs::write(
+            root.join("skill-project.toml"),
+            format!(
+                "[dependencies]\nshared-skill = {{ origin = {{ type = \"local\", path = '{}' }} }}\n",
+                shared_source.display()
+            ),
+        )
+        .unwrap();
+        let (status, body) = post_json(
+            f.state.clone(),
+            "/skills/install",
+            serde_json::json!({"origin": root.to_string_lossy()}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    }
+    let (status, body) = post_json(
+        f.state.clone(),
+        "/skills/update",
+        serde_json::json!({"skillId": "root-a", "check": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let unchanged: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(unchanged["data"]["outcome"], "unchanged");
+    assert_eq!(unchanged["data"]["results"][0]["outcome"], "up_to_date");
+
+    fs::write(
+        shared.join("SKILL.md"),
+        "---\nname: shared-skill\nversion: \"2.0.0\"\ndescription: shared\n---\nnew body\n",
+    )
+    .unwrap();
+
+    let (status, body) = post_json(f.state.clone(), "/skills/update", serde_json::json!({})).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(value["data"]["outcome"], "changed");
+    assert_eq!(value["data"]["results"][0]["outcome"], "updated");
+    assert_eq!(value["data"]["results"][1]["outcome"], "updated");
+    let installed =
+        fs::read_to_string(f.state.skills_directory.join("shared-skill/SKILL.md")).unwrap();
+    assert!(installed.contains("version: \"2.0.0\""), "{installed}");
+    let lock = ProjectSkillsLock::load_from_file(&f._project.path().join("skills.lock")).unwrap();
+    assert_eq!(lock.covered_roots, vec!["root-a", "root-b"]);
+    assert_eq!(
+        lock.skills
+            .iter()
+            .find(|entry| entry.id == "shared-skill")
+            .unwrap()
+            .required_by,
+        vec!["root-a", "root-b"]
+    );
 }
 
 #[tokio::test]

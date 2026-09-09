@@ -93,18 +93,17 @@ pub async fn execute_update(
         .get_repository(&name)
         .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?
         .clone();
+    super::helpers::validate_repository_ref_options(&repo.repo_type, branch.as_deref(), None)?;
 
     let updated_config = if let Some(new_branch) = branch {
         match &repo.config {
-            fastskill_core::core::repository::RepositoryConfig::GitMarketplace {
-                url,
-                branch: _,
-                tag,
-            } => fastskill_core::core::repository::RepositoryConfig::GitMarketplace {
-                url: url.clone(),
-                branch: Some(new_branch),
-                tag: tag.clone(),
-            },
+            fastskill_core::core::repository::RepositoryConfig::GitMarketplace { url, .. } => {
+                fastskill_core::core::repository::RepositoryConfig::GitMarketplace {
+                    url: url.clone(),
+                    branch: Some(new_branch),
+                    tag: None,
+                }
+            }
             _ => repo.config.clone(),
         }
     } else {
@@ -289,6 +288,7 @@ pub async fn execute_add(
     let mut repo_manager = super::helpers::load_repo_manager().await?;
 
     let repo_type = super::helpers::parse_repository_type(&repo_type)?;
+    super::helpers::validate_repository_ref_options(&repo_type, branch.as_deref(), tag.as_deref())?;
     let config =
         super::helpers::create_repository_config(repo_type.clone(), url_or_path, branch, tag);
     let auth =

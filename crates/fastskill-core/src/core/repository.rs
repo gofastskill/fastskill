@@ -294,14 +294,13 @@ impl RepositoryManager {
             RepositoryConfig::HttpRegistry { index_url } => RepositoryConnection::HttpRegistry {
                 index_url: index_url.clone(),
             },
-            RepositoryConfig::GitMarketplace {
-                url,
-                branch,
-                tag: _,
-            } => RepositoryConnection::GitMarketplace {
-                url: url.clone(),
-                branch: branch.clone(),
-            },
+            RepositoryConfig::GitMarketplace { url, branch, tag } => {
+                RepositoryConnection::GitMarketplace {
+                    url: url.clone(),
+                    branch: branch.clone(),
+                    tag: tag.clone(),
+                }
+            }
             RepositoryConfig::ZipUrl { base_url } => RepositoryConnection::ZipUrl {
                 zip_url: base_url.clone(),
             },
@@ -560,6 +559,22 @@ mod refresh_index_tests {
         }
     }
 
+    fn repository(
+        name: &str,
+        priority: u32,
+        repo_type: RepositoryType,
+        config: RepositoryConfig,
+    ) -> RepositoryDefinition {
+        RepositoryDefinition {
+            name: name.to_string(),
+            repo_type,
+            priority,
+            config,
+            auth: None,
+            storage: None,
+        }
+    }
+
     fn write_skill(dir: &Path, id: &str, version: &str) {
         let skill_dir = dir.join(id);
         std::fs::create_dir_all(&skill_dir).unwrap();
@@ -568,6 +583,249 @@ mod refresh_index_tests {
             format!("---\nname: {id}\nversion: \"{version}\"\ndescription: a skill\n---\nBody\n"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn project_manifest_round_trip_preserves_git_tag() {
+        let project = TempDir::new().unwrap();
+        let manifest_path = project.path().join("skill-project.toml");
+        let mut manager = RepositoryManager::new(manifest_path.clone());
+        manager
+            .add_repository(
+                "tagged".to_string(),
+                RepositoryDefinition {
+                    name: "tagged".to_string(),
+                    repo_type: RepositoryType::GitMarketplace,
+                    priority: 0,
+                    config: RepositoryConfig::GitMarketplace {
+                        url: "https://github.com/example/skills.git".to_string(),
+                        branch: None,
+                        tag: Some("v1.2.0".to_string()),
+                    },
+                    auth: None,
+                    storage: None,
+                },
+            )
+            .unwrap();
+
+        manager.save().unwrap();
+
+        let manifest =
+            crate::core::manifest::SkillProjectToml::load_from_file(&manifest_path).unwrap();
+        let repositories = manifest
+            .tool
+            .unwrap()
+            .fastskill
+            .unwrap()
+            .repositories
+            .unwrap();
+        assert!(matches!(
+            repositories[0].connection,
+            crate::core::manifest::RepositoryConnection::GitMarketplace {
+                branch: None,
+                tag: Some(ref tag),
+                ..
+            } if tag == "v1.2.0"
+        ));
+        let runtime = RepositoryDefinition::from(&repositories[0]);
+        assert!(matches!(
+            runtime.config,
+            RepositoryConfig::GitMarketplace {
+                branch: None,
+                tag: Some(ref tag),
+                ..
+            } if tag == "v1.2.0"
+        ));
+    }
+
+    #[tokio::test]
+    async fn legacy_config_lifecycle_preserves_priority_and_client_cache() {
+        let root = TempDir::new().unwrap();
+        let config_path = root.path().join("config/repositories.toml");
+        let source = root.path().join("skills");
+        std::fs::create_dir_all(&source).unwrap();
+        let mut manager = RepositoryManager::new(config_path.clone());
+
+        manager.load().unwrap();
+        assert!(config_path.is_file());
+        assert!(manager.list_repositories().is_empty());
+
+        std::fs::write(
+            &config_path,
+            format!(
+                "[[repositories]]\nname = \"duplicate\"\ntype = \"local\"\npath = {:?}\n\
+                 [[repositories]]\nname = \"duplicate\"\ntype = \"local\"\npriority = 9\npath = {:?}\n",
+                source,
+                root.path().join("ignored")
+            ),
+        )
+        .unwrap();
+        manager.load().unwrap();
+        assert_eq!(manager.list_repositories().len(), 1);
+        assert_eq!(manager.get_repository("duplicate").unwrap().priority, 0);
+
+        let default = local_repo("default", source.clone());
+        manager
+            .add_repository("default".to_string(), default)
+            .unwrap();
+        assert!(manager
+            .add_repository("default".to_string(), local_repo("default", source.clone()))
+            .unwrap_err()
+            .to_string()
+            .contains("already exists"));
+        assert_eq!(manager.get_default_repository().unwrap().name, "default");
+        manager.save().unwrap();
+
+        let first = manager.get_client("default").await.unwrap();
+        let second = manager.get_client("default").await.unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+        manager.remove_repository("default").unwrap();
+        assert!(manager.remove_repository("default").is_err());
+        assert!(manager.get_client("default").await.is_err());
+
+        let mut reloaded = RepositoryManager::new(config_path);
+        reloaded.load().unwrap();
+        assert_eq!(reloaded.get_repository("default").unwrap().name, "default");
+        assert!(RepositoryManager::new(root.path().join("bad.toml"))
+            .load()
+            .is_ok());
+        std::fs::write(root.path().join("bad.toml"), "not valid toml = [").unwrap();
+        assert!(RepositoryManager::new(root.path().join("bad.toml"))
+            .load()
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse"));
+    }
+
+    #[test]
+    fn project_save_converts_every_connection_and_updates_existing_tool_shapes() {
+        let root = TempDir::new().unwrap();
+        let manifest_path = root.path().join("skill-project.toml");
+        let definitions = vec![
+            repository(
+                "http",
+                1,
+                RepositoryType::HttpRegistry,
+                RepositoryConfig::HttpRegistry {
+                    index_url: "https://example.test/index".to_string(),
+                },
+            ),
+            repository(
+                "git",
+                2,
+                RepositoryType::GitMarketplace,
+                RepositoryConfig::GitMarketplace {
+                    url: "https://example.test/repo.git".to_string(),
+                    branch: None,
+                    tag: Some("v2".to_string()),
+                },
+            ),
+            repository(
+                "zip",
+                3,
+                RepositoryType::ZipUrl,
+                RepositoryConfig::ZipUrl {
+                    base_url: "https://example.test/catalog.zip".to_string(),
+                },
+            ),
+            RepositoryDefinition {
+                auth: Some(RepositoryAuth::Pat {
+                    env_var: "PRIVATE_TOKEN".to_string(),
+                }),
+                ..repository(
+                    "local",
+                    4,
+                    RepositoryType::Local,
+                    RepositoryConfig::Local {
+                        path: root.path().join("catalog"),
+                    },
+                )
+            },
+        ];
+        let mut manager = RepositoryManager::new(manifest_path.clone());
+        for definition in definitions {
+            manager
+                .add_repository(definition.name.clone(), definition)
+                .unwrap();
+        }
+
+        manager.save().unwrap();
+        let read = || {
+            crate::core::manifest::SkillProjectToml::load_from_file(&manifest_path)
+                .unwrap()
+                .tool
+                .unwrap()
+                .fastskill
+                .unwrap()
+                .repositories
+                .unwrap()
+        };
+        let repositories = read();
+        assert_eq!(repositories.len(), 4);
+        let git = repositories.iter().find(|repo| repo.name == "git").unwrap();
+        assert!(matches!(
+            &git.connection,
+            crate::core::manifest::RepositoryConnection::GitMarketplace {
+                branch: None,
+                tag: Some(tag),
+                ..
+            } if tag == "v2"
+        ));
+        let local = repositories
+            .iter()
+            .find(|repo| repo.name == "local")
+            .unwrap();
+        assert!(local.auth.is_some());
+
+        std::fs::write(&manifest_path, "[tool]\n").unwrap();
+        manager.save().unwrap();
+        assert_eq!(read().len(), 4);
+        std::fs::write(
+            &manifest_path,
+            "[tool.fastskill]\nskills_directory = \"skills\"\n",
+        )
+        .unwrap();
+        manager.save().unwrap();
+        assert_eq!(read().len(), 4);
+
+        std::fs::write(&manifest_path, "invalid = [").unwrap();
+        assert!(manager
+            .save()
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to load skill-project.toml"));
+    }
+
+    #[test]
+    fn definition_loading_deduplicates_names_and_uses_priority_fallback() {
+        let definitions = vec![
+            repository(
+                "low",
+                8,
+                RepositoryType::Local,
+                RepositoryConfig::Local { path: "low".into() },
+            ),
+            repository(
+                "preferred",
+                1,
+                RepositoryType::Local,
+                RepositoryConfig::Local {
+                    path: "preferred".into(),
+                },
+            ),
+            repository(
+                "preferred",
+                9,
+                RepositoryType::Local,
+                RepositoryConfig::Local {
+                    path: "ignored".into(),
+                },
+            ),
+        ];
+        let manager = RepositoryManager::from_definitions(definitions);
+        assert_eq!(manager.list_repositories()[0].name, "preferred");
+        assert_eq!(manager.get_default_repository().unwrap().name, "preferred");
+        assert_eq!(manager.get_repository("preferred").unwrap().priority, 1);
     }
 
     #[tokio::test]

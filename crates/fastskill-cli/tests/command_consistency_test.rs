@@ -904,3 +904,54 @@ fn list_check_reconciles_relative_intent_and_permits_extraneous_content() {
         Some("revision-mismatch" | "content-mismatch")
     ));
 }
+
+#[test]
+fn repos_add_persists_git_tag_and_rejects_ambiguous_refs() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_project(root, "");
+
+    let added = run(
+        root,
+        root,
+        &[
+            "repos",
+            "add",
+            "stable",
+            "--repo-type",
+            "git-marketplace",
+            "https://github.com/example/skills.git",
+            "--tag",
+            "v1.2.0",
+        ],
+    );
+    assert!(
+        added.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&added.stdout),
+        String::from_utf8_lossy(&added.stderr)
+    );
+    let manifest = std::fs::read_to_string(root.join("skill-project.toml")).unwrap();
+    assert!(manifest.contains("tag = \"v1.2.0\""), "{manifest}");
+
+    let ambiguous = run(
+        root,
+        root,
+        &[
+            "repos",
+            "add",
+            "ambiguous",
+            "--repo-type",
+            "git-marketplace",
+            "https://github.com/example/skills.git",
+            "--branch",
+            "main",
+            "--tag",
+            "v1.2.0",
+        ],
+    );
+    assert!(!ambiguous.status.success());
+    assert!(String::from_utf8_lossy(&ambiguous.stderr).contains("--branch conflicts with --tag"));
+    let manifest = std::fs::read_to_string(root.join("skill-project.toml")).unwrap();
+    assert!(!manifest.contains("name = \"ambiguous\""), "{manifest}");
+}
