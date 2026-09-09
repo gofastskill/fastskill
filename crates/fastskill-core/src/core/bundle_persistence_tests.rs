@@ -1,6 +1,15 @@
 use super::*;
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember};
 
+fn recovery_destinations(recovery_map: &Path) -> Vec<PathBuf> {
+    let content = fs::read_to_string(recovery_map).unwrap();
+    let entries: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+    entries
+        .into_iter()
+        .map(|entry| PathBuf::from(entry["destination"].as_str().unwrap()))
+        .collect()
+}
+
 fn bundle_manifest(format: &str, version: &str, members: &str, dependencies: &str) -> String {
     format!(
             "[bundle]\nformat = {format:?}\nid = \"team\"\nversion = {version:?}\n{members}\n{dependencies}"
@@ -302,9 +311,35 @@ fn failed_transaction_rollback_retains_backups_and_path_mapping() {
         .join("skills/existing/SKILL.md")
         .is_file());
     assert!(error.backup_path().join("files/0").is_file());
-    let mapping = fs::read_to_string(error.backup_path().join("recovery-map.json")).unwrap();
-    assert!(mapping.contains(existing.to_string_lossy().as_ref()));
-    assert!(mapping.contains(state.to_string_lossy().as_ref()));
+    let destinations = recovery_destinations(&error.backup_path().join("recovery-map.json"));
+    assert!(destinations.contains(&existing));
+    assert!(destinations.contains(&state));
+}
+
+#[test]
+fn failed_state_file_restoration_reports_and_retains_recovery_inputs() {
+    let root = TempDir::new().unwrap();
+    let skills = root.path().join("skills");
+    let state = root.path().join("state.toml");
+    fs::write(&state, "before").unwrap();
+    let transaction =
+        BundleTransaction::capture(&skills, &[], std::slice::from_ref(&state)).unwrap();
+    fs::remove_file(&state).unwrap();
+    fs::create_dir(&state).unwrap();
+
+    let error = transaction.rollback().unwrap_err();
+
+    let backup_path = error.backup_path().to_path_buf();
+    let message = error.to_string();
+    assert!(message.contains("recovery inputs retained at"));
+    assert!(message.contains(backup_path.to_string_lossy().as_ref()));
+    assert_eq!(
+        fs::read_to_string(backup_path.join("files/0")).unwrap(),
+        "before"
+    );
+    let destinations = recovery_destinations(&backup_path.join("recovery-map.json"));
+    assert!(destinations.contains(&state));
+    fs::remove_dir_all(backup_path).unwrap();
 }
 
 #[test]

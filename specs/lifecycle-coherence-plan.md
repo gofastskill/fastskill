@@ -116,9 +116,9 @@ fleet orchestration or automatic bundle catalog is included.
 
 ## Implementation evidence
 
-- The complete all-features workspace suite completed 1,805 tests with no failures and one skipped
+- The complete all-features workspace suite completed 1,810 tests with no failures and one skipped
   environment-specific test.
-- Focused coverage profiles report 90.49% to 99.04% full-file line coverage for every production Rust
+- The CI coverage profile reports 91.16% to 99.04% full-file line coverage for every production Rust
   file changed by the F16-F20 follow-up.
 - Focused CLI, core, HTTP, and real stdio MCP scenarios cover the 55 PRD acceptance cases, including
   lock integrity, first-install closure, shared ownership, rollback, JSON output, scope routing, bundle

@@ -669,7 +669,10 @@ fn merge_requirement_origins(id: &str, origins: &[Origin]) -> Result<Origin, Ser
             "dependency '{id}' has no origin"
         )));
     };
-    if origins.iter().all(|origin| origin == first) {
+    if origins
+        .iter()
+        .all(|origin| origin == first || equivalent_local_origins(origin, first))
+    {
         return Ok(first.clone());
     }
     let mut constraints = Vec::new();
@@ -725,7 +728,7 @@ fn merge_requirement_origins(id: &str, origins: &[Origin]) -> Result<Origin, Ser
 }
 
 pub fn origins_accept_same_resolution(left: &Origin, right: &Origin, version: &str) -> bool {
-    if left == right {
+    if left == right || equivalent_local_origins(left, right) {
         return true;
     }
     match (left, right) {
@@ -750,6 +753,28 @@ pub fn origins_accept_same_resolution(left: &Origin, right: &Origin, version: &s
         }
         _ => false,
     }
+}
+
+fn equivalent_local_origins(left: &Origin, right: &Origin) -> bool {
+    let (
+        Origin::Local {
+            path: left_path,
+            editable: left_editable,
+        },
+        Origin::Local {
+            path: right_path,
+            editable: right_editable,
+        },
+    ) = (left, right)
+    else {
+        return false;
+    };
+    left_editable == right_editable
+        && left_path
+            .canonicalize()
+            .ok()
+            .zip(right_path.canonicalize().ok())
+            .is_some_and(|(left, right)| left == right)
 }
 
 #[cfg(test)]

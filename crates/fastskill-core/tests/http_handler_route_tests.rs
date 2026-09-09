@@ -815,12 +815,15 @@ async fn update_coordinates_roots_that_share_an_advancing_dependency() {
     let shared = write_source_skill(f._project.path(), "shared-skill");
     let root_a = write_source_skill(f._project.path(), "root-a");
     let root_b = write_source_skill(f._project.path(), "root-b");
-    for root in [&root_a, &root_b] {
+    let alias_parent = f._project.path().join("path-alias");
+    fs::create_dir_all(&alias_parent).unwrap();
+    let shared_alias = alias_parent.join("..").join("shared-skill");
+    for (root, shared_source) in [(&root_a, &shared), (&root_b, &shared_alias)] {
         fs::write(
             root.join("skill-project.toml"),
             format!(
                 "[dependencies]\nshared-skill = {{ origin = {{ type = \"local\", path = '{}' }} }}\n",
-                shared.display()
+                shared_source.display()
             ),
         )
         .unwrap();
