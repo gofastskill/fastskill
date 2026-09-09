@@ -1,27 +1,30 @@
 //! Remove command implementation
 
-use crate::config::get_skill_search_locations_for_display;
-use crate::error::{CliError, CliResult, SkillNotFoundMessage};
-use crate::utils::manifest_utils;
+use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
-use fastskill_core::core::lock::project_lock_path;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 use std::env;
-use std::io::{self, Write};
-use std::path::PathBuf;
-use tokio::fs;
+use std::path::{Path, PathBuf};
+
+#[path = "remove/confirmation.rs"]
+mod confirmation;
+#[path = "remove/global.rs"]
+mod global_remove;
+#[path = "remove/output.rs"]
+mod output;
+use confirmation::confirm_removal;
 
 /// Uninstall skills (only way to stop using skills)
 ///
 /// This is the only command to completely stop using skills after the removal of 'disable'.
 ///
 /// Behavior:
-/// - For manifest-managed projects: Removes from skill-project.toml [dependencies] and local installation
+/// - For manifest-managed projects: Removes from the `skill-project.toml` `[dependencies]` table and local installation
 /// - For local-only skills: Removes from local installation only
 /// - Always updates skills.lock to reflect removals (when manifest exists)
 ///
@@ -46,6 +49,12 @@ pub struct RemoveArgs {
 
     /// Skip reindex after removal
     pub no_reindex: bool,
+
+    /// Validate and preview without changing managed state
+    pub dry_run: bool,
+
+    /// Emit one machine-readable lifecycle result
+    pub json: bool,
 }
 
 impl IntoCommandSpec for RemoveArgs {
@@ -125,6 +134,24 @@ impl IntoCommandSpec for RemoveArgs {
                     default: None,
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "dry-run",
+                    long: Some("dry-run"),
+                    help: "Validate and preview without changing managed state",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    long: Some("json"),
+                    help: "Emit one machine-readable lifecycle result",
+                    kind: ArgKind::Flag,
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -164,109 +191,10 @@ impl FromArgValueMap for RemoveArgs {
             }),
             reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
             no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
+            dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
         }
     }
-}
-
-/// Validate that all skills exist before removal; returns parsed SkillIds
-async fn validate_skills_exist(
-    service: &FastSkillService,
-    skill_ids: &[String],
-    global: bool,
-) -> CliResult<Vec<fastskill_core::SkillId>> {
-    let mut nonexistent_skills = Vec::new();
-    let mut parsed_ids = Vec::new();
-
-    for skill_id in skill_ids {
-        let skill_id_parsed = fastskill_core::SkillId::new(skill_id.clone())
-            .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {}", skill_id)))?;
-
-        let exists_in_registry = service
-            .skill_manager()
-            .get_skill(&skill_id_parsed)
-            .await
-            .map(|opt| opt.is_some())
-            .unwrap_or(false);
-        let exists_in_filesystem = find_skill_directory(service, skill_id, true).is_some();
-
-        if !exists_in_registry && !exists_in_filesystem {
-            nonexistent_skills.push(skill_id.clone());
-        }
-        parsed_ids.push(skill_id_parsed);
-    }
-
-    if !nonexistent_skills.is_empty() {
-        let skill_id_display = nonexistent_skills.join(", ");
-        let searched_paths = get_skill_search_locations_for_display(global).unwrap_or_else(|_| {
-            vec![(
-                service.config().skill_storage_path.clone(),
-                if global { "global" } else { "project" }.to_string(),
-            )]
-        });
-        return Err(CliError::SkillNotFound(SkillNotFoundMessage::new(
-            skill_id_display,
-            searched_paths,
-        )));
-    }
-
-    Ok(parsed_ids)
-}
-
-/// Prompt user for confirmation unless force flag is set
-fn confirm_removal(skill_ids: &[String], force: bool) -> CliResult<bool> {
-    if force {
-        return Ok(true);
-    }
-
-    crate::outln!("Warning: This will permanently remove the following skills:");
-    for skill_id in skill_ids {
-        crate::outln!("  - {}", skill_id);
-    }
-    print!("Are you sure you want to continue? (y/n): ");
-    io::stdout()
-        .flush()
-        .map_err(|e| CliError::Config(format!("Failed to flush stdout: {}", e)))?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(CliError::Io)?;
-
-    let trimmed = input.trim().to_lowercase();
-    Ok(trimmed == "yes" || trimmed == "y")
-}
-
-/// Find the skill directory, checking both direct and nested locations.
-///
-/// When `require_marker` is true a directory only matches if it also contains a
-/// `SKILL.md` file — used for existence validation. When false, an existing
-/// directory at the direct path matches even without `SKILL.md`, so that removal
-/// can still clean up partial or corrupt installations. Nested matches always
-/// require `SKILL.md` to avoid deleting unrelated directories.
-fn find_skill_directory(
-    service: &FastSkillService,
-    skill_id: &str,
-    require_marker: bool,
-) -> Option<PathBuf> {
-    let skill_dir = service.config().skill_storage_path.join(skill_id);
-
-    if skill_dir.exists() && (!require_marker || skill_dir.join("SKILL.md").exists()) {
-        return Some(skill_dir);
-    }
-
-    // Search in subdirectories (handles nested directory structures)
-    if let Ok(entries) = std::fs::read_dir(&service.config().skill_storage_path) {
-        for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let candidate_dir = entry.path().join(skill_id);
-                    if candidate_dir.exists() && candidate_dir.join("SKILL.md").exists() {
-                        return Some(candidate_dir);
-                    }
-                }
-            }
-        }
-    }
-
-    None
 }
 
 /// Unregister skill from the service
@@ -286,38 +214,6 @@ async fn unregister_skill_from_service(
     }
 }
 
-/// Delete skill directory from filesystem
-async fn delete_skill_directory(service: &FastSkillService, skill_id: &str) -> CliResult<()> {
-    if let Some(skill_dir) = find_skill_directory(service, skill_id, false) {
-        fs::remove_dir_all(&skill_dir).await.map_err(|e| {
-            CliError::Io(std::io::Error::other(format!(
-                "Failed to delete skill directory {}: {}",
-                skill_dir.display(),
-                e
-            )))
-        })?;
-    }
-    Ok(())
-}
-
-/// Remove skill from lock file
-fn remove_from_lock_file(skill_id: &str) -> CliResult<()> {
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-    let project_file_result = resolve_project_file(&current_dir);
-    let lock_path = project_lock_path(&project_file_result.path);
-
-    if lock_path.exists() {
-        let mut lock = fastskill_core::core::lock::ProjectSkillsLock::load_from_file(&lock_path)
-            .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
-        lock.remove_skill(skill_id);
-        lock.save_to_file(&lock_path)
-            .map_err(|e| CliError::Config(format!("Failed to save lock file: {}", e)))?;
-    }
-
-    Ok(())
-}
-
 /// Remove skill from vector index
 async fn remove_from_vector_index(service: &FastSkillService, skill_id: &str) {
     if let Some(vector_index_service) = service.vector_index_service() {
@@ -331,37 +227,6 @@ async fn remove_from_vector_index(service: &FastSkillService, skill_id: &str) {
     }
 }
 
-/// Remove a single skill (all cleanup steps)
-async fn remove_single_skill(
-    service: &FastSkillService,
-    skill_id: fastskill_core::SkillId,
-    raw_id: &str,
-    global: bool,
-) -> CliResult<()> {
-    // Unregister from service
-    unregister_skill_from_service(service, skill_id).await?;
-
-    // Delete directory
-    delete_skill_directory(service, raw_id).await?;
-
-    if global {
-        // Remove from global lock only; do not touch project manifest or project lock
-        manifest_utils::remove_from_global_lock_file(raw_id)
-            .map_err(|e| CliError::Config(format!("Failed to update global lock file: {}", e)))?;
-    } else {
-        // Remove from manifest
-        manifest_utils::remove_skill_from_project_toml(raw_id)
-            .map_err(|e| CliError::Config(format!("Failed to update skill-project.toml: {}", e)))?;
-        // Remove from lock file
-        remove_from_lock_file(raw_id)?;
-    }
-
-    // Remove from vector index (non-critical, just log warnings)
-    remove_from_vector_index(service, raw_id).await;
-
-    Ok(())
-}
-
 pub async fn execute_remove(
     service: &FastSkillService,
     args: RemoveArgs,
@@ -370,6 +235,15 @@ pub async fn execute_remove(
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
             "--reindex and --no-reindex cannot be used together".to_string(),
+        ));
+    }
+    if !args.dry_run
+        && !args.force
+        && (args.json || crate::output::mode() == crate::output::Mode::Capture)
+    {
+        return Err(CliError::Validation(
+            "Non-interactive removal requires --force; use --dry-run to preview changes"
+                .to_string(),
         ));
     }
     let reindex = args.reindex;
@@ -387,9 +261,61 @@ pub async fn execute_remove(
                 "Use either skill IDs or --bundle <bundle-id>, not both".to_string(),
             ));
         }
+        let current = env::current_dir().map_err(|error| {
+            CliError::Config(format!("Failed to determine current directory: {error}"))
+        })?;
+        let project = resolve_project_file(&current);
+        if !project.found {
+            return Err(CliError::Config(
+                "skill-project.toml not found in this directory or any parent".to_string(),
+            ));
+        }
+        let root = project.path.parent().unwrap_or(Path::new("."));
+        let bundles = fastskill_core::core::bundle::BundleService::new(
+            root,
+            service.config().skill_storage_path.clone(),
+        );
+        let preview = bundles.preview_remove(bundle).map_err(CliError::Service)?;
+        if args.dry_run {
+            return output::emit_bundle_removal(&preview, true, args.json);
+        }
         if !confirm_removal(&[format!("bundle {bundle}")], args.force)? {
             crate::outln!("Removal cancelled.");
             return Ok(());
+        }
+        bundles.remove(bundle).map_err(CliError::Service)?;
+        if !args.json {
+            crate::outln!("Removed bundle: {bundle}");
+            crate::outln!(
+                "{}",
+                crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+            );
+        }
+        let auto_reindex = crate::config_file::load_auto_reindex_config();
+        crate::utils::reindex_utils::maybe_auto_reindex(
+            service,
+            "remove",
+            reindex,
+            no_reindex,
+            auto_reindex,
+            false,
+        )
+        .await?;
+        if args.json {
+            output::emit_bundle_removal(&preview, false, true)?;
+        }
+        return Ok(());
+    }
+
+    // Validate inputs
+    if args.skill_ids.is_empty() {
+        return Err(CliError::Config("No skill IDs provided".to_string()));
+    }
+
+    if !global {
+        for raw_id in &args.skill_ids {
+            fastskill_core::SkillId::new(raw_id.clone())
+                .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {raw_id}")))?;
         }
         let current = env::current_dir().map_err(|error| {
             CliError::Config(format!("Failed to determine current directory: {error}"))
@@ -400,50 +326,75 @@ pub async fn execute_remove(
                 "skill-project.toml not found in this directory or any parent".to_string(),
             ));
         }
-        let root = project.path.parent().ok_or_else(|| {
-            CliError::Config("skill-project.toml has no project directory".to_string())
-        })?;
-        fastskill_core::core::bundle::BundleService::new(
+        let root = project.path.parent().unwrap_or(Path::new("."));
+        let removal = fastskill_core::core::project_removal::ProjectRemovalService::new(
             root,
             service.config().skill_storage_path.clone(),
-        )
-        .remove(bundle)
-        .map_err(CliError::Service)?;
-        crate::outln!("Removed bundle: {bundle}");
-        crate::outln!(
-            "{}",
-            crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
         );
+        let preview = removal
+            .preview(&args.skill_ids)
+            .map_err(CliError::Service)?;
+        if args.dry_run {
+            return output::emit_project_removal(&args.skill_ids, &preview, true, args.json);
+        }
+        if !confirm_removal(&args.skill_ids, args.force)? {
+            crate::outln!("Removal cancelled.");
+            return Ok(());
+        }
+        let plan = removal.remove(&args.skill_ids).map_err(CliError::Service)?;
+        for id in &plan.delete_files {
+            if let Ok(skill_id) = fastskill_core::SkillId::new(id.clone()) {
+                if let Err(error) = unregister_skill_from_service(service, skill_id).await {
+                    tracing::warn!(
+                        "removed '{id}' from managed state, but the in-memory registry could not be refreshed: {error}"
+                    );
+                }
+            }
+            remove_from_vector_index(service, id).await;
+        }
+        for id in &plan.remove_manifest_dependencies {
+            if args.json {
+                continue;
+            }
+            if plan.retained_files.contains(id) {
+                crate::outln!("Removed direct requirement: {id} (files retained by another owner)");
+            } else {
+                crate::outln!("Removed skill: {id}");
+            }
+        }
+        for id in &plan.unchanged {
+            if !args.json {
+                crate::outln!("Skill '{id}' was already absent; no changes made");
+            }
+        }
+        if !args.json
+            && (!plan.remove_manifest_dependencies.is_empty()
+                || !plan.remove_lock_entries.is_empty())
+        {
+            crate::outln!(
+                "{}",
+                crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
+            );
+        }
+        let auto_reindex = crate::config_file::load_auto_reindex_config();
+        crate::utils::reindex_utils::maybe_auto_reindex(
+            service,
+            "remove",
+            reindex,
+            no_reindex,
+            auto_reindex,
+            false,
+        )
+        .await?;
+        if args.json {
+            output::emit_project_removal(&args.skill_ids, &plan, false, true)?;
+        }
         return Ok(());
     }
 
-    // Validate inputs
-    if args.skill_ids.is_empty() {
-        return Err(CliError::Config("No skill IDs provided".to_string()));
-    }
-
-    // Validate all skills exist; get back parsed SkillIds
-    let parsed_ids = validate_skills_exist(service, &args.skill_ids, global).await?;
-
-    if !global {
-        let current = env::current_dir().map_err(|error| {
-            CliError::Config(format!("Failed to determine current directory: {error}"))
-        })?;
-        let project = resolve_project_file(&current);
-        if project.found {
-            let root = project.path.parent().ok_or_else(|| {
-                CliError::Config("skill-project.toml has no project directory".to_string())
-            })?;
-            let bundle_service = fastskill_core::core::bundle::BundleService::new(
-                root,
-                service.config().skill_storage_path.clone(),
-            );
-            for raw_id in &args.skill_ids {
-                bundle_service
-                    .ensure_individual_removal_allowed(raw_id)
-                    .map_err(CliError::Service)?;
-            }
-        }
+    if args.dry_run {
+        let plan = global_remove::preview(service, &args.skill_ids)?;
+        return output::emit_global_removal_plan(&args.skill_ids, &plan, true, args.json);
     }
 
     // Get user confirmation
@@ -452,27 +403,27 @@ pub async fn execute_remove(
         return Ok(());
     }
 
-    // Remove each skill
-    let mut removed_count = 0;
-    for (skill_id, raw_id) in parsed_ids.into_iter().zip(args.skill_ids.iter()) {
-        remove_single_skill(service, skill_id, raw_id, global).await?;
-        crate::outln!("Removed skill: {}", raw_id);
-        removed_count += 1;
+    let plan = global_remove::remove(service, &args.skill_ids).await?;
+    let removed_count = plan.remove_lock_entries.len();
+    if !args.json {
+        for id in &plan.remove_roots {
+            if plan.retained_files.contains(id) {
+                crate::outln!("Removed global requirement: {id} (retained by another root)");
+            } else {
+                crate::outln!("Removed global skill: {id}");
+            }
+        }
+        for id in &plan.unchanged {
+            crate::outln!("Global skill '{id}' was already absent; no changes made");
+        }
     }
 
     // Display success message
-    if removed_count > 0 {
-        if global {
-            crate::outln!(
-                "{}",
-                crate::utils::messages::ok("Updated global-skills.lock")
-            );
-        } else {
-            crate::outln!(
-                "{}",
-                crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-            );
-        }
+    if removed_count > 0 && !args.json {
+        crate::outln!(
+            "{}",
+            crate::utils::messages::ok("Updated global-skills.lock")
+        );
     }
 
     let auto_reindex = crate::config_file::load_auto_reindex_config();
@@ -484,7 +435,11 @@ pub async fn execute_remove(
         auto_reindex,
         false,
     )
-    .await
+    .await?;
+    if args.json {
+        output::emit_global_removal_plan(&args.skill_ids, &plan, false, true)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -496,9 +451,254 @@ pub async fn execute_remove(
 )]
 mod tests {
     use super::*;
+    use chrono::Utc;
+    use fastskill_core::core::lock::{
+        GlobalLockedSkillEntry, GlobalSkillsLock, ProjectLockedSkillEntry, ProjectSkillsLock,
+    };
+    use fastskill_core::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
+    use fastskill_core::core::origin::{Origin, Resolved};
     use fastskill_core::test_utils::DirGuard;
     use fastskill_core::ServiceConfig;
+    use std::collections::HashMap;
+    use std::fs;
     use tempfile::TempDir;
+
+    struct EnvGuard {
+        name: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(name: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var_os(name);
+            std::env::set_var(name, value);
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.name, value),
+                None => std::env::remove_var(self.name),
+            }
+        }
+    }
+
+    fn args(ids: &[&str]) -> RemoveArgs {
+        RemoveArgs {
+            skill_ids: ids.iter().map(|id| (*id).to_string()).collect(),
+            force: true,
+            bundle: None,
+            skills_dir: None,
+            reindex: false,
+            no_reindex: false,
+            dry_run: false,
+            json: false,
+        }
+    }
+
+    #[test]
+    fn remove_argument_map_ignores_wrong_typed_values() {
+        let parsed = RemoveArgs::from_arg_value_map(&HashMap::from([
+            (
+                "skill-ids".to_string(),
+                ArgValue::List(vec![ArgValue::Str("one".to_string()), ArgValue::Bool(true)]),
+            ),
+            ("bundle".to_string(), ArgValue::Bool(true)),
+            ("skills-dir".to_string(), ArgValue::Bool(true)),
+        ]));
+        assert_eq!(parsed.skill_ids, vec!["one"]);
+        assert!(parsed.bundle.is_none());
+        assert!(parsed.skills_dir.is_none());
+    }
+
+    #[tokio::test]
+    async fn remove_rejects_conflicting_modes_before_project_discovery() {
+        let root = TempDir::new().unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mut conflict = args(&["demo"]);
+        conflict.reindex = true;
+        conflict.no_reindex = true;
+        assert!(execute_remove(&service, conflict, false)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("cannot be used together"));
+
+        let mut global_bundle = args(&[]);
+        global_bundle.bundle = Some("team".to_string());
+        assert!(execute_remove(&service, global_bundle, true)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("does not support --global"));
+
+        let mut mixed = args(&["demo"]);
+        mixed.bundle = Some("team".to_string());
+        assert!(execute_remove(&service, mixed, false)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("either skill IDs or --bundle"));
+    }
+
+    #[tokio::test]
+    async fn bundle_remove_reports_a_missing_project_before_planning() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = TempDir::new().unwrap();
+        let _directory = DirGuard(std::env::current_dir().ok());
+        std::env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        let mut remove = args(&[]);
+        remove.bundle = Some("team".to_string());
+
+        let error = execute_remove(&service, remove, false).await.unwrap_err();
+
+        assert!(matches!(error, CliError::Config(message) if message.contains("not found")));
+    }
+
+    #[tokio::test]
+    async fn project_remove_reports_a_missing_project_before_planning() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = TempDir::new().unwrap();
+        let _directory = DirGuard(std::env::current_dir().ok());
+        std::env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let error = execute_remove(&service, args(&["managed"]), false)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, CliError::Config(message) if message.contains("not found")));
+    }
+
+    #[tokio::test]
+    async fn global_absent_remove_reports_noop_in_preview_and_apply_json() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = TempDir::new().unwrap();
+        let previous = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", root.path().join("config"));
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mut preview = args(&["absent"]);
+        preview.dry_run = true;
+        preview.json = true;
+        let (preview_result, preview_output) =
+            crate::output::capture(async { execute_remove(&service, preview, true).await }).await;
+        preview_result.unwrap();
+        let preview_json: serde_json::Value = serde_json::from_str(&preview_output).unwrap();
+        assert_eq!(preview_json["outcome"], "unchanged");
+        assert_eq!(preview_json["dry_run"], true);
+
+        let mut apply = args(&["absent"]);
+        apply.json = true;
+        let (apply_result, apply_output) =
+            crate::output::capture(async { execute_remove(&service, apply, true).await }).await;
+        apply_result.unwrap();
+        let apply_json: serde_json::Value = serde_json::from_str(&apply_output).unwrap();
+        assert_eq!(apply_json["outcome"], "unchanged");
+        assert_eq!(apply_json["dry_run"], false);
+
+        if let Some(value) = previous {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
+
+    #[tokio::test]
+    async fn global_remove_applies_and_reports_a_managed_root() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = TempDir::new().unwrap();
+        let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &root.path().join("config"));
+        let skills = root.path().join("skills");
+        let installed = skills.join("managed");
+        fs::create_dir_all(&installed).unwrap();
+        fs::write(
+            installed.join("SKILL.md"),
+            "---\nname: managed\nversion: 1.0.0\ndescription: fixture\n---\nmanaged\n",
+        )
+        .unwrap();
+        let origin = Origin::Local {
+            path: root.path().join("source/managed"),
+            editable: false,
+        };
+        let mut lock = GlobalSkillsLock::new_empty();
+        lock.covered_roots.push("managed".to_string());
+        lock.skills.push(GlobalLockedSkillEntry {
+            id: "managed".to_string(),
+            name: "managed".to_string(),
+            origin,
+            resolved: Resolved {
+                version: "1.0.0".to_string(),
+                commit_hash: None,
+                checksum: Some(fastskill_core::core::install::content_digest(&installed).unwrap()),
+            },
+            dependencies: Vec::new(),
+            groups: Vec::new(),
+            installed_at: Utc::now(),
+            last_checked_at: None,
+            last_updated_at: None,
+        });
+        lock.save_to_file(&root.path().join("config/fastskill/global-skills.lock"))
+            .unwrap();
+        let mut service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: skills,
+            skill_cache_root: Some(root.path().join("cache")),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        service.initialize().await.unwrap();
+
+        let mut cancelled = args(&["managed"]);
+        cancelled.force = false;
+        let (result, output) =
+            crate::output::capture(async { execute_remove(&service, cancelled, true).await }).await;
+        assert!(result.unwrap_err().to_string().contains("requires --force"));
+        assert!(output.is_empty());
+        assert!(installed.exists());
+
+        let (result, output) = crate::output::capture(async {
+            execute_remove(&service, args(&["managed"]), true).await
+        })
+        .await;
+        result.unwrap();
+
+        assert!(output.contains("Removed global skill: managed"));
+        assert!(output.contains("Updated global-skills.lock"));
+        assert!(!installed.exists());
+    }
 
     #[tokio::test]
     async fn test_execute_remove_empty_args() {
@@ -518,6 +718,8 @@ mod tests {
             skills_dir: None,
             reindex: false,
             no_reindex: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -547,6 +749,8 @@ mod tests {
             skills_dir: None,
             reindex: false,
             no_reindex: false,
+            dry_run: false,
+            json: false,
         };
 
         let result = execute_remove(&service, args, false).await;
@@ -576,6 +780,8 @@ mod tests {
             skills_dir: None,
             reindex: false,
             no_reindex: false,
+            dry_run: false,
+            json: false,
         };
 
         // This should fail because the skill doesn't exist
@@ -584,7 +790,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_remove_success() {
+    async fn project_remove_applies_a_valid_plan_and_reports_changed_and_absent_targets() {
         let _lock = fastskill_core::test_utils::DIR_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -601,34 +807,46 @@ mod tests {
 
         let skill_dir = skills_dir.join("test-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
-        let skill_content = r#"# Test Skill
-
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
+        let skill_content =
+            "---\nname: test-skill\nversion: 1.0.0\ndescription: fixture\n---\ncontent\n";
         std::fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[dependencies]
-test-skill = "1.0.0"
-"#;
-        std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let lock_content = r#"version = "1.0.0"
-generated_at = "2024-01-01T00:00:00Z"
-fastskill_version = "0.1.0"
-
-[[skills]]
-id = "test-skill"
-name = "test-skill"
-version = "1.0.0"
-source_type = "local"
-source = { path = ".claude/skills/test-skill" }
-"#;
-        std::fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
+        SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: Some(DependenciesSection {
+                dependencies: HashMap::from([(
+                    "test-skill".to_string(),
+                    DependencySpec::Version("1.0.0".to_string()),
+                )]),
+            }),
+            tool: None,
+        }
+        .save_to_file(&temp_dir.path().join("skill-project.toml"))
+        .unwrap();
+        let mut lock = ProjectSkillsLock::new_empty();
+        lock.covered_roots.push("test-skill".to_string());
+        lock.skills.push(ProjectLockedSkillEntry {
+            id: "test-skill".to_string(),
+            name: "test-skill".to_string(),
+            origin: Origin::Local {
+                path: temp_dir.path().join("source/test-skill"),
+                editable: false,
+            },
+            resolved: Resolved {
+                version: "1.0.0".to_string(),
+                commit_hash: None,
+                checksum: Some(
+                    fastskill_core::core::project_removal::managed_tree_digest(&skill_dir).unwrap(),
+                ),
+            },
+            dependencies: Vec::new(),
+            groups: Vec::new(),
+            depth: 0,
+            parent_skill: None,
+            required_by: Vec::new(),
+        });
+        lock.save_to_file(&temp_dir.path().join("skills.lock"))
+            .unwrap();
 
         let config = ServiceConfig {
             skill_storage_path: skills_dir,
@@ -637,92 +855,32 @@ source = { path = ".claude/skills/test-skill" }
         let mut service = FastSkillService::new(config).await.unwrap();
         service.initialize().await.unwrap();
 
-        let args = RemoveArgs {
-            skill_ids: vec!["test-skill".to_string()],
-            force: true,
-            bundle: None,
-            skills_dir: None,
-            reindex: false,
-            no_reindex: false,
-        };
+        let mut cancelled = args(&["test-skill"]);
+        cancelled.force = false;
+        let (result, output) =
+            crate::output::capture(async { execute_remove(&service, cancelled, false).await })
+                .await;
+        assert!(result.unwrap_err().to_string().contains("requires --force"));
+        assert!(output.is_empty());
+        assert!(skill_dir.exists());
 
-        let result = execute_remove(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        assert!(result.is_ok() || result.is_err());
-    }
+        let (result, output) = crate::output::capture(async {
+            execute_remove(&service, args(&["test-skill", "absent"]), false).await
+        })
+        .await;
+        result.unwrap();
 
-    #[tokio::test]
-    async fn test_remove_calls_vector_index_remove_skill() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        std::fs::create_dir_all(&skills_dir).unwrap();
-
-        let skill_dir = skills_dir.join("test-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        let skill_content = r#"# Test Skill
-
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
-        std::fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[dependencies]
-test-skill = "1.0.0"
-"#;
-        std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let lock_content = r#"version = "1.0.0"
-generated_at = "2024-01-01T00:00:00Z"
-fastskill_version = "0.1.0"
-
-[[skills]]
-id = "test-skill"
-name = "test-skill"
-version = "1.0.0"
-source_type = "local"
-source = { path = ".claude/skills/test-skill" }
-"#;
-        std::fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir.clone(),
-            embedding: Some(fastskill_core::EmbeddingConfig {
-                openai_base_url: "https://api.openai.com/v1".to_string(),
-                embedding_model: "text-embedding-3-small".to_string(),
-                index_path: None,
-            }),
-            ..Default::default()
-        };
-
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = RemoveArgs {
-            skill_ids: vec!["test-skill".to_string()],
-            force: true,
-            bundle: None,
-            skills_dir: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_remove(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        // The important part is that it attempts to remove from vector index
-        assert!(result.is_ok() || result.is_err());
+        assert!(output.contains("Removed skill: test-skill"));
+        assert!(output.contains("already absent"));
+        assert!(!skill_dir.exists());
+        let manifest =
+            SkillProjectToml::load_from_file(&temp_dir.path().join("skill-project.toml")).unwrap();
+        assert!(manifest.dependencies.unwrap().dependencies.is_empty());
+        assert!(
+            ProjectSkillsLock::load_from_file(&temp_dir.path().join("skills.lock"))
+                .unwrap()
+                .skills
+                .is_empty()
+        );
     }
 }

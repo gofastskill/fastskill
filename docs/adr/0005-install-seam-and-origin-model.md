@@ -53,10 +53,48 @@ The genuinely CLI-flavoured concerns are **construction-time dependencies, not l
 - `Origin::repository` is a *reference into* a configured **Repository** — the two are kept distinct (a typed-in GitHub URL is an `Origin::git`, **not** a `git-marketplace` Repository).
 - The persisted manifest/lock serde representation changes outright (`"source"` → `"repository"`, flat fields → nested `origin`). This is a **greenfield break with no back-compat shim** — consistent with the project's break-for-better-design stance.
 
-## Consequences
+### 3. Lifecycle consistency clarification (2026-09-08)
+
+The shared-core decision applies to ordinary skills, bundles, recursive installation,
+project/global operations, and every CLI, HTTP, or MCP caller. Separate entry points
+may select different policies; they MUST NOT implement separate ownership, origin,
+validation, or persistence rules. A capability that is unsupported in a scope MUST
+be rejected before mutation, rather than silently using another scope.
+
+Each operation MUST resolve one installation context: the project root or global
+selection, its Manifest where applicable, its Lock, and its skills directory.
+Discovery scope (local/remote search) is a separate concept. Relative references
+MUST resolve against the owning Manifest or Lock, including when called from a
+nested working directory or an HTTP server.
+
+The core MUST produce a validated operation plan before applying changes. The plan
+records selected revisions, dependency and ownership changes, conflicts, and
+affected files. Preview and apply MUST use the same rules; apply MUST revalidate
+state that could have changed since planning. A refetchable origin alone is not
+evidence that its installed contents are outdated.
+
+All writers MUST preserve supported Manifest sections, including bundle authoring,
+bundle dependencies, and personal overrides. A writer MUST NOT serialize a partial
+model over a complete document. Fetching and validation MUST finish before a
+working installation is replaced, and persistence failures MUST NOT be reported as
+successful installation. The recovery unit and acceptance scenarios are specified
+in the local [state and ownership PRD](../../specs/lifecycle-state-and-ownership-prd.md).
+
+The September 2026 lifecycle implementation applies this contract to the CLI and
+HTTP paths identified by the audit. Lock-first defaults and floating-version freshness are
+defined in
+[ADR-0009](0009-resolution-and-restoration-policy.md).
+
+## Intended consequences
 
 - The browser install/update flow works in-process with no subprocess and no fake `200`s; reindex is reachable from core (runs or skips-silently per provider state).
 - `install`/`update`/`reindex` have exactly one implementation each, shared by CLI and HTTP — the four-enum drift and the two-`SkillSource` name collision are deleted, not layered over.
-- **Migration:** on-disk manifests/locks written by older builds are not readable after the `Origin` format change. Acceptable at current maturity (greenfield); flagged here so it is a conscious break.
-- Identity is unchanged (a skill's `id` is derived from its own `SKILL.md`); install is fetch-then-`409`-on-existing-id, with the existing skill's `Origin` surfaced so a provenance change is a deliberate Update, never a silent overwrite.
+- **Original migration decision:** the Origin redesign permitted a format break
+  rather than retaining competing provenance models. This does not require later
+  readers to discard recoverable pins. Future lifecycle migrations MUST preserve
+  verified selections, as specified in the local resolution PRD.
+- Skill identity follows the canonical Skill ID rules in [CONTEXT.md](../../CONTEXT.md).
+  A requested dependency ID MUST match the resolved skill ID before committing.
+  A conflicting existing installation MUST expose its Origin and owners so a
+  provenance change is deliberate and subject to ownership checks.
 - `FastSkillService` now carries an optional embedding provider; the `serve` binary must construct and pass it (or `None`).

@@ -7,6 +7,13 @@ use axum::{extract::State, response::Html};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ServedScope {
+    Project,
+    Global,
+    Unavailable,
+}
+
 /// Shared state for HTTP handlers
 #[derive(Clone)]
 pub struct AppState {
@@ -15,6 +22,7 @@ pub struct AppState {
     pub project_file_path: std::path::PathBuf,
     pub project_root: std::path::PathBuf,
     pub skills_directory: std::path::PathBuf,
+    pub served_scope: ServedScope,
     /// When false, mutating (write) endpoints are gated and return 403.
     pub enable_write: bool,
 }
@@ -27,6 +35,7 @@ impl AppState {
             project_file_path: std::path::PathBuf::from("skill-project.toml"),
             project_root: std::path::PathBuf::from("."),
             skills_directory: std::path::PathBuf::from(".claude/skills"),
+            served_scope: ServedScope::Unavailable,
             enable_write: false,
         })
     }
@@ -51,7 +60,27 @@ impl AppState {
         self.project_root = Self::canonicalize_path(project_root);
         self.project_file_path = Self::canonicalize_path(project_file_path);
         self.skills_directory = Self::canonicalize_path(skills_directory);
+        self.served_scope = ServedScope::Project;
         self
+    }
+
+    pub fn with_global_scope(mut self, skills_directory: std::path::PathBuf) -> Self {
+        self.skills_directory = Self::canonicalize_path(skills_directory);
+        self.served_scope = ServedScope::Global;
+        self
+    }
+
+    pub fn require_project_scope(&self) -> HttpResult<()> {
+        match self.served_scope {
+            ServedScope::Project => Ok(()),
+            ServedScope::Global => Err(crate::http::errors::HttpError::BadRequest(
+                "This endpoint requires a served project and is unavailable in global scope"
+                    .to_string(),
+            )),
+            ServedScope::Unavailable => Err(crate::http::errors::HttpError::BadRequest(
+                "This endpoint requires a configured served project".to_string(),
+            )),
+        }
     }
 
     /// Canonicalize a path if it exists, otherwise return as-is

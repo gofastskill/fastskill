@@ -209,6 +209,10 @@ count=$(jq length skills.json)
 echo "Total matches: $count"
 ```
 
+Commands that accept `--json` or `--format json` write exactly one JSON value to stdout on both
+success and failure. On failure, inspect the nonzero exit code and the returned `error` or lifecycle
+`diagnostics` field.
+
 ### Exit Codes
 
 The CLI returns appropriate exit codes for scripting:

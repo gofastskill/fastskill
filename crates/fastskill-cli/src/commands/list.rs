@@ -4,7 +4,7 @@
 //! and reconciles them against skill-project.toml and skills.lock.
 //!
 //! Requires skill-project.toml in the hierarchy. Uses three sources: installed skills (target
-//! folder), skill-project.toml [dependencies], and skills.lock. Outputs one table with flags
+//! folder), the `skill-project.toml` `[dependencies]` table, and `skills.lock`. Outputs one table with flags
 //! for missing from folder, missing from lock, missing from manifest.
 
 use crate::commands::common::validate_format_args;
@@ -16,16 +16,24 @@ use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::origin::Origin;
+use fastskill_core::core::ownership::ProjectOwnership;
 use fastskill_core::core::project::resolve_project_file;
+use fastskill_core::core::project_removal::managed_tree_digest;
 use fastskill_core::core::service::FastSkillService;
-use fastskill_core::output::ListRow;
 use fastskill_core::OutputFormat;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
 
+#[path = "list/global.rs"]
+mod global;
+#[path = "list/output.rs"]
+mod output;
+use global::execute_global_list;
+use output::ListRow;
+
 /// List locally installed skills
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ListArgs {
     /// Output format: table, json, grid, xml (default: table)
     pub format: Option<OutputFormat>,
@@ -38,6 +46,15 @@ pub struct ListArgs {
 
     /// List installed bundles rather than individual skills
     pub bundles: bool,
+
+    /// Return nonzero when selected managed state needs reconciliation
+    pub check: bool,
+
+    /// Check only roots in these groups
+    pub only: Option<Vec<String>>,
+
+    /// Exclude roots in these groups from the check
+    pub without: Option<Vec<String>>,
 
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
@@ -102,6 +119,33 @@ impl IntoCommandSpec for ListArgs {
                     help: "List installed bundles",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "check",
+                    kind: ArgKind::Flag,
+                    long: Some("check"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Return nonzero when selected managed state needs reconciliation",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "only",
+                    kind: ArgKind::Option,
+                    long: Some("only"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Check only roots in these groups",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "without",
+                    kind: ArgKind::Option,
+                    long: Some("without"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Exclude roots in these groups from the check",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -124,10 +168,27 @@ impl FromArgValueMap for ListArgs {
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
             details: matches!(map.get("details"), Some(ArgValue::Bool(true))),
             bundles: matches!(map.get("bundles"), Some(ArgValue::Bool(true))),
+            check: matches!(map.get("check"), Some(ArgValue::Bool(true))),
+            only: map.get("only").and_then(repeated_strings),
+            without: map.get("without").and_then(repeated_strings),
             // skills_dir is omitted from the spec; rely on the global --skills-dir flag
             skills_dir: None,
         }
     }
+}
+
+fn repeated_strings(value: &ArgValue) -> Option<Vec<String>> {
+    let ArgValue::List(values) = value else {
+        return None;
+    };
+    let values = values
+        .iter()
+        .filter_map(|value| match value {
+            ArgValue::Str(value) => Some(value.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then_some(values)
 }
 
 /// Short origin-type label (git/local/zip-url/repository) for display.
@@ -164,10 +225,23 @@ fn format_source_info(origin: &Origin) -> (Option<String>, Option<String>) {
 pub async fn execute_list(
     service: &FastSkillService,
     args: ListArgs,
-    _global: bool,
+    global: bool,
 ) -> CliResult<()> {
     // Validate format arguments
     let format = validate_format_args(&args.format, args.json)?;
+    if args.only.is_some() && args.without.is_some() {
+        return Err(CliError::Validation(
+            "--only and --without cannot be used together".to_string(),
+        ));
+    }
+    if args.bundles && (args.check || args.only.is_some() || args.without.is_some()) {
+        return Err(CliError::Validation(
+            "--bundles cannot be combined with --check, --only, or --without".to_string(),
+        ));
+    }
+    if global {
+        return execute_global_list(service, args, format).await;
+    }
 
     // Require manifest: resolve from current directory
     let current_dir = env::current_dir()
@@ -227,6 +301,50 @@ pub async fn execute_list(
     } else {
         ProjectSkillsLock::new_empty()
     };
+    let manifest_directory = project_file_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let desired_entries = project
+        .to_skill_entries(manifest_directory)
+        .map_err(|error| CliError::Config(format!("Failed to parse dependencies: {error}")))?
+        .into_iter()
+        .map(|entry| (entry.id.to_string(), entry))
+        .collect::<HashMap<_, _>>();
+    let ownership = ProjectOwnership::new(&project, &lock);
+    let root_groups = desired_entries
+        .values()
+        .map(|entry| {
+            let groups = if entry.groups.is_empty() {
+                vec!["default".to_string()]
+            } else {
+                entry.groups.clone()
+            };
+            (entry.id.clone(), groups)
+        })
+        .collect::<HashMap<_, _>>();
+    let known_groups = root_groups
+        .values()
+        .flatten()
+        .cloned()
+        .collect::<HashSet<_>>();
+    for requested in args.only.iter().chain(args.without.iter()).flatten() {
+        if !known_groups.contains(requested) {
+            return Err(CliError::Validation(format!("Unknown group '{requested}'")));
+        }
+    }
+    let selected_roots = root_groups
+        .iter()
+        .filter(|(_, groups)| {
+            args.only
+                .as_ref()
+                .is_none_or(|only| groups.iter().any(|group| only.contains(group)))
+                && args
+                    .without
+                    .as_ref()
+                    .is_none_or(|without| !groups.iter().any(|group| without.contains(group)))
+        })
+        .map(|(id, _)| id.clone())
+        .collect::<HashSet<_>>();
 
     // Build lock map with additional metadata
     let lock_map: HashMap<String, (String, String, Origin)> = lock
@@ -261,14 +379,30 @@ pub async fn execute_list(
         .keys()
         .chain(lock_map.keys())
         .chain(installed_map.keys())
+        .chain(
+            lock.bundles
+                .iter()
+                .flat_map(|bundle| bundle.members.iter().map(|member| &member.id)),
+        )
+        .chain(lock.overrides.iter().map(|entry| &entry.id))
         .cloned()
         .collect();
 
+    let mut check_failures = Vec::new();
     let mut rows: Vec<ListRow> = all_ids
         .into_iter()
         .map(|id| {
             let in_manifest = manifest_ids.contains_key(&id);
-            let in_lock = lock_map.contains_key(&id);
+            let bundle_members = lock
+                .bundles
+                .iter()
+                .flat_map(|bundle| bundle.members.iter())
+                .filter(|member| member.id == id)
+                .collect::<Vec<_>>();
+            let override_entry = lock.overrides.iter().find(|entry| entry.id == id);
+            let in_lock = lock_map.contains_key(&id)
+                || !bundle_members.is_empty()
+                || override_entry.is_some();
             let installed = installed_map.contains_key(&id);
 
             // Get name: prefer installed, fallback to lock, fallback to id
@@ -309,7 +443,103 @@ pub async fn execute_list(
 
             let missing_from_folder = (in_manifest || in_lock) && !installed;
             let missing_from_lock = (in_manifest || installed) && !in_lock;
-            let missing_from_manifest = (in_lock || installed) && !in_manifest;
+            let mut owners = ownership.roots_requiring_skill(&id);
+            owners.extend(
+                lock.bundles
+                    .iter()
+                    .filter(|bundle| bundle.members.iter().any(|member| member.id == id))
+                    .map(|bundle| format!("bundle:{}", bundle.id)),
+            );
+            let override_active = lock.overrides.iter().any(|entry| entry.id == id);
+            if override_active {
+                owners.push("personal-override".to_string());
+            }
+            owners.sort();
+            owners.dedup();
+            let selected = owners.iter().any(|owner| {
+                owner.starts_with("bundle:")
+                    || owner == "personal-override"
+                    || selected_roots.contains(owner)
+            });
+            let extraneous = owners.is_empty() && installed;
+            let missing_from_manifest = !in_manifest && owners.is_empty() && (in_lock || installed);
+            let locked_entry = lock.skills.iter().find(|entry| entry.id == id);
+            let desired_entry = desired_entries.get(&id);
+            let mutable = locked_entry
+                .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));
+            let reconciliation = if !selected && !owners.is_empty() {
+                "excluded"
+            } else if selected && desired_entry.is_some() && locked_entry.is_none() {
+                "missing-lock"
+            } else if selected && !installed {
+                "missing-content"
+            } else if let (Some(desired), Some(locked)) = (desired_entry, locked_entry) {
+                if desired.origin != locked.origin.resolved_against(manifest_directory) {
+                    "intent-mismatch"
+                } else if installed_map
+                    .get(&id)
+                    .is_some_and(|actual| actual.version != locked.resolved.version)
+                {
+                    "revision-mismatch"
+                } else if mutable {
+                    "ok"
+                } else if let Some(expected) = &locked.resolved.checksum {
+                    match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
+                        Ok(actual) if &actual == expected => "ok",
+                        Ok(_) => "content-mismatch",
+                        Err(_) => "integrity-error",
+                    }
+                } else {
+                    "insufficient-integrity"
+                }
+            } else if selected && (!bundle_members.is_empty() || override_entry.is_some()) {
+                let expected = override_entry
+                    .map(|entry| entry.digest.as_str())
+                    .or_else(|| bundle_members.first().map(|member| member.digest.as_str()));
+                let owners_agree = override_entry.is_some()
+                    || bundle_members
+                        .iter()
+                        .all(|member| Some(member.digest.as_str()) == expected);
+                match (owners_agree, expected) {
+                    (false, _) => "ownership-conflict",
+                    (true, Some(expected)) => {
+                        match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
+                            Ok(actual) if actual == expected => "ok",
+                            Ok(_) => "content-mismatch",
+                            Err(_) => "integrity-error",
+                        }
+                    }
+                    _ => "insufficient-integrity",
+                }
+            } else if let (Some(locked), Some(actual)) = (locked_entry, installed_map.get(&id)) {
+                if actual.version != locked.resolved.version {
+                    "revision-mismatch"
+                } else if mutable {
+                    "ok"
+                } else if let Some(expected) = &locked.resolved.checksum {
+                    match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
+                        Ok(actual) if &actual == expected => "ok",
+                        Ok(_) => "content-mismatch",
+                        Err(_) => "integrity-error",
+                    }
+                } else {
+                    "insufficient-integrity"
+                }
+            } else if extraneous {
+                "extraneous"
+            } else {
+                "ok"
+            };
+            if args.check && selected && !matches!(reconciliation, "ok" | "excluded") {
+                check_failures.push(format!("{id}: {reconciliation}"));
+            }
+            let desired_constraint = desired_entry.map(|entry| match &entry.origin {
+                Origin::Repository { version, .. } => version
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "latest".to_string()),
+                origin => origin_type_label(origin).to_string(),
+            });
 
             ListRow {
                 id: id.clone(),
@@ -324,14 +554,33 @@ pub async fn execute_list(
                 missing_from_folder,
                 missing_from_lock,
                 missing_from_manifest,
+                desired_constraint,
+                locked_version: locked_entry.map(|entry| entry.resolved.version.clone()),
+                actual_version: installed_map.get(&id).map(|skill| skill.version.clone()),
+                reconciliation: reconciliation.to_string(),
+                owners,
+                groups: desired_entry
+                    .map(|entry| entry.groups.clone())
+                    .or_else(|| locked_entry.map(|entry| entry.groups.clone()))
+                    .unwrap_or_default(),
+                mutable,
+                override_active,
+                extraneous,
             }
         })
         .collect();
     rows.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let formatted_output = fastskill_core::output::format_list_results(&rows, format, args.details)
-        .map_err(CliError::Config)?;
+    let formatted_output =
+        output::format_list_results(&rows, format, args.details).map_err(CliError::Config)?;
     crate::outln!("{}", formatted_output);
+
+    if args.check && !check_failures.is_empty() {
+        return Err(CliError::Config(format!(
+            "Managed state needs reconciliation: {}",
+            check_failures.join("; ")
+        )));
+    }
 
     Ok(())
 }
@@ -343,317 +592,5 @@ pub async fn execute_list(
     clippy::await_holding_lock
 )]
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use fastskill_core::{FastSkillService, ServiceConfig};
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_execute_list_format_conflict() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = ServiceConfig {
-            skill_storage_path: temp_dir.path().to_path_buf(),
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        // Test conflicting --json and --format flags
-        let args = ListArgs {
-            format: Some(OutputFormat::Table),
-            json: true,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(msg.contains("--json and --format cannot be used together"));
-        } else {
-            panic!("Expected Config error for format conflict");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_list_no_manifest() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-        let work_dir: PathBuf = if resolve_project_file(temp_dir.path()).found {
-            let fallback = std::env::temp_dir()
-                .join("fastskill_no_manifest")
-                .join(std::process::id().to_string());
-            fs::create_dir_all(&fallback).unwrap();
-            fallback
-        } else {
-            temp_dir.path().to_path_buf()
-        };
-        std::env::set_current_dir(&work_dir).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: work_dir.clone(),
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = ListArgs {
-            format: None,
-            json: false,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                msg.contains("skill-project.toml"),
-                "Error should mention skill-project.toml"
-            );
-        } else {
-            panic!("Expected Config error for missing manifest");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_list_manifest_empty_lock() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir,
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = ListArgs {
-            format: None,
-            json: false,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_execute_list_with_installed_skill() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let skill_dir = skills_dir.join("test-skill");
-        fs::create_dir_all(&skill_dir).unwrap();
-        let skill_content = r#"# Test Skill
-
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
-        fs::write(skill_dir.join("SKILL.md"), skill_content).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[dependencies]
-test-skill = "1.0.0"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let lock_content = r#"version = "1.0.0"
-generated_at = "2024-01-01T00:00:00Z"
-fastskill_version = "0.1.0"
-
-[[skills]]
-id = "test-skill"
-name = "test-skill"
-version = "1.0.0"
-source_type = "local"
-source = { path = ".claude/skills/test-skill" }
-"#;
-        fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir,
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = ListArgs {
-            format: None,
-            json: false,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_execute_list_json() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir,
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = ListArgs {
-            format: None,
-            json: false,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_execute_list_details() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let config = ServiceConfig {
-            skill_storage_path: skills_dir,
-            ..Default::default()
-        };
-        let mut service = FastSkillService::new(config).await.unwrap();
-        service.initialize().await.unwrap();
-
-        let args = ListArgs {
-            format: None,
-            json: false,
-            details: false,
-            bundles: false,
-            skills_dir: None,
-        };
-
-        let result = execute_list(&service, args, false).await;
-        // May succeed or fail depending on various factors
-        assert!(result.is_ok() || result.is_err());
-    }
-}
+#[path = "list/tests.rs"]
+mod tests;

@@ -173,6 +173,18 @@ fn cache_identity_rejects_path_traversal_components() {
     assert!(identity.relative_path().is_err());
 }
 
+#[test]
+fn scoped_registry_skill_has_one_safe_cache_component() {
+    let component = registry_skill_component("team/reviewer").unwrap();
+    assert!(component.starts_with("scoped-"));
+    assert!(!component.contains('/'));
+    assert_eq!(
+        component,
+        registry_skill_component("team/reviewer").unwrap()
+    );
+    assert!(registry_skill_component("too/many/parts").is_err());
+}
+
 // ── `fastskill cache info`/`clean` (PRD 006, US-006) ──────────────────
 
 /// `put` a small sample skill under `identity`. The source lives in its
@@ -382,6 +394,35 @@ fn clean_never_follows_or_deletes_through_a_symlinked_entry() {
     assert!(
         git_dir.join("evilsha").exists(),
         "the symlink entry itself is left alone, not silently deleted"
+    );
+}
+
+#[cfg(unix)]
+fn cache_directory_symlink(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn cache_directory_symlink(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_dir(target, link).unwrap();
+}
+
+#[test]
+fn recursive_cache_removal_unlinks_directory_symlinks_without_following_them() {
+    let root = TempDir::new().unwrap();
+    let leaf = root.path().join("leaf");
+    let outside = root.path().join("outside");
+    std::fs::create_dir_all(&leaf).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("sentinel"), "keep").unwrap();
+    cache_directory_symlink(&outside, &leaf.join("link"));
+
+    remove_dir_no_symlinks(&leaf).unwrap();
+
+    assert!(!leaf.exists());
+    assert_eq!(
+        std::fs::read_to_string(outside.join("sentinel")).unwrap(),
+        "keep"
     );
 }
 

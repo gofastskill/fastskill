@@ -1,32 +1,11 @@
 //! Utility functions for CLI operations
 
-pub mod install_utils;
-pub mod manifest_utils;
 pub mod messages;
 pub mod reindex_utils;
 
-use crate::config::get_skill_search_locations_for_display;
-use crate::error::{CliError, CliResult, SkillNotFoundMessage};
+use crate::error::{CliError, CliResult};
 use std::path::{Path, PathBuf};
 use url::Url;
-
-/// Convert ServiceError to CliError, mapping SkillNotFound to the rich message with searched paths and Try suggestions.
-pub fn service_error_to_cli(
-    e: fastskill_core::ServiceError,
-    skill_storage_path: &Path,
-    _global: bool,
-) -> CliError {
-    if let fastskill_core::ServiceError::SkillNotFound(id) = e {
-        let searched_paths = get_skill_search_locations_for_display(_global).unwrap_or_else(|_| {
-            vec![(
-                skill_storage_path.to_path_buf(),
-                if _global { "global" } else { "project" }.to_string(),
-            )]
-        });
-        return CliError::SkillNotFound(SkillNotFoundMessage::new(id, searched_paths));
-    }
-    CliError::Service(e)
-}
 
 /// Git repository information parsed from URL.
 ///
@@ -361,21 +340,5 @@ description: A test skill
         // No SKILL.md at all: validator surfaces a Validation error.
         let result = validate_skill_structure(temp_dir.path());
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_service_error_to_cli_non_not_found_passthrough() {
-        let e = fastskill_core::ServiceError::Custom("boom".to_string());
-        // Path value is incidental here: it's only stored/echoed, never touched
-        // by filesystem I/O, so a platform-neutral relative path is fine.
-        let cli = service_error_to_cli(e, Path::new("test-storage"), false);
-        assert!(matches!(cli, CliError::Service(_)));
-    }
-
-    #[test]
-    fn test_service_error_to_cli_not_found_maps_to_rich_message() {
-        let e = fastskill_core::ServiceError::SkillNotFound("missing-skill".to_string());
-        let cli = service_error_to_cli(e, Path::new("test-storage"), false);
-        assert!(matches!(cli, CliError::SkillNotFound(_)));
     }
 }

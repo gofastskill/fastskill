@@ -8,10 +8,7 @@ use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality}
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
-    lock::{global_lock_path, GlobalSkillsLock},
-    manifest::SkillProjectToml,
-    project::resolve_project_file,
-    AddMode, UpdatePreflight,
+    lock::ProjectSkillsLock, manifest::SkillProjectToml, project::resolve_project_file,
 };
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
@@ -20,18 +17,19 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// Update skills to latest versions (behavior matrix affects manifest, lock, and installed state)
-///
-/// Behavior Matrix:
-/// - 'fastskill update' (no skill specified): Updates all skills, modifies skills.lock
-/// - 'fastskill update <skill-id>': Updates specific skill only, modifies skills.lock
-/// - 'fastskill update --check': Check-only mode, no modifications to any files
-/// - 'fastskill update --dry-run': Preview changes without applying them
-///
-/// Reads dependencies from skill-project.toml and updates installed skills.
-/// Always updates skills.lock with new versions (except in check/dry-run modes).
-/// Use 'fastskill install --lock' to apply lock file changes without version resolution.
-#[derive(Debug)]
+#[path = "update/global.rs"]
+pub(crate) mod global;
+#[path = "update/options.rs"]
+mod options;
+#[path = "update/output.rs"]
+mod output;
+use global::execute_update_global;
+use options::{controlled_origin, validate_update_args};
+use output::print_update_json;
+
+/// Update one declared skill or every declared skill from its recorded origin.
+/// Check and dry-run modes resolve the same candidates without changing state.
+#[derive(Debug, Clone)]
 pub struct UpdateArgs {
     /// Skill ID to update (if not specified, updates all)
     skill_id: Option<String>,
@@ -42,12 +40,17 @@ pub struct UpdateArgs {
     /// Show what would be updated without actually updating
     dry_run: bool,
 
+    /// Emit one machine-readable lifecycle result
+    json: bool,
+
     /// Update to specific version
     version: Option<String>,
 
     /// Update from specific source
-    #[allow(dead_code)]
     source: Option<String>,
+
+    /// Configured repository to use for a repository-backed target
+    repository: Option<String>,
 
     /// Installed bundle identity to update
     bundle: Option<String>,
@@ -58,11 +61,17 @@ pub struct UpdateArgs {
     /// Update strategy: latest, patch, minor, major
     strategy: String,
 
+    /// Whether --strategy was explicitly provided instead of defaulted.
+    strategy_explicit: bool,
+
     /// Trigger reindex after update (overrides config)
     reindex: bool,
 
     /// Skip reindex after update
     no_reindex: bool,
+
+    /// Use verified local sources and cached artifacts only
+    offline: bool,
 }
 
 impl IntoCommandSpec for UpdateArgs {
@@ -118,7 +127,16 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("source"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Update from specific source",
+                    help: "Deprecated alias of --repository",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "repository",
+                    kind: ArgKind::Option,
+                    long: Some("repository"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Use this configured repository for one repository-backed skill",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -145,7 +163,7 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("strategy"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    default: Some(ArgValue::Str("latest".to_string())),
+                    default: None,
                     help: "Update strategy: latest, patch, minor, major",
                     ..Default::default()
                 },
@@ -167,6 +185,24 @@ impl IntoCommandSpec for UpdateArgs {
                     help: "Skip reindex after update",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "offline",
+                    kind: ArgKind::Flag,
+                    long: Some("offline"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Use verified local sources and cached artifacts only",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Emit one machine-readable lifecycle result",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -181,6 +217,10 @@ fn opt_str(v: &ArgValue) -> Option<String> {
     }
 }
 
+fn is_remote_bundle_artifact(value: &str) -> bool {
+    value.starts_with("https://") || (cfg!(test) && value.starts_with("http://127.0.0.1"))
+}
+
 #[allow(clippy::panic)]
 impl FromArgValueMap for UpdateArgs {
     fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
@@ -190,14 +230,18 @@ impl FromArgValueMap for UpdateArgs {
             dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
             version: map.get("to-version").and_then(opt_str),
             source: map.get("source").and_then(opt_str),
+            repository: map.get("repository").and_then(opt_str),
             bundle: map.get("bundle").and_then(opt_str),
             from: map.get("from").and_then(opt_str),
             strategy: map
                 .get("strategy")
                 .and_then(opt_str)
                 .unwrap_or_else(|| "latest".to_string()),
+            strategy_explicit: map.contains_key("strategy"),
             reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
             no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
+            offline: matches!(map.get("offline"), Some(ArgValue::Bool(true))),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -207,6 +251,15 @@ pub async fn execute_update(
     global: bool,
     skills_dir_override: Option<PathBuf>,
 ) -> CliResult<()> {
+    validate_update_args(&args)?;
+    if global && skills_dir_override.is_some() {
+        return Err(CliError::Validation(
+            "--global and --skills-dir cannot be combined".to_string(),
+        ));
+    }
+    if args.source.is_some() {
+        eprintln!("warning: --source is deprecated; use --repository");
+    }
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
             "--reindex and --no-reindex cannot be used together".to_string(),
@@ -240,7 +293,7 @@ pub async fn execute_update(
             CliError::Config("skill-project.toml has no project directory".to_string())
         })?;
         let downloaded_artifact;
-        let artifact_path = if artifact.starts_with("https://") {
+        let artifact_path = if is_remote_bundle_artifact(artifact) {
             let response = reqwest::get(artifact)
                 .await
                 .map_err(|error| {
@@ -269,155 +322,109 @@ pub async fn execute_update(
             Some(path) => path,
             None => resolve_skills_storage_directory(false)?,
         };
-        let service = fastskill_core::core::bundle::BundleService::new(root, skills_directory);
+        let service =
+            fastskill_core::core::bundle::BundleService::new(root, skills_directory.clone());
         let preview = service
-            .preview_update(bundle, &artifact_path)
+            .plan_update(bundle, &artifact_path)
             .map_err(CliError::Service)?;
-        for change in preview {
-            crate::outln!("  {change}");
+        if !args.json {
+            for change in &preview.changes {
+                crate::outln!("  {change}");
+            }
         }
         if args.dry_run || args.check {
+            if args.json {
+                let indexing = crate::utils::reindex_utils::LifecycleIndexResult {
+                    outcome: "skipped",
+                    count: 0,
+                    diagnostic: Some("preview does not run derived indexing".to_string()),
+                };
+                output::emit_bundle_update_result(&preview, true, &indexing)?;
+            } else if preview.changes.is_empty() {
+                crate::outln!("Bundle {} is already unchanged", preview.id);
+            }
             return Ok(());
         }
         let result = service
             .update(bundle, &artifact_path)
             .map_err(CliError::Service)?;
-        crate::outln!("Updated bundle {}@{}", result.id, result.version);
-        crate::outln!(
-            "{}",
-            messages::ok("Updated skill-project.toml and skills.lock")
-        );
+        if !args.json {
+            if result.unchanged {
+                crate::outln!(
+                    "Bundle {}@{} is already unchanged",
+                    result.id,
+                    result.version
+                );
+            } else {
+                crate::outln!("Updated bundle {}@{}", result.id, result.version);
+                crate::outln!(
+                    "{}",
+                    messages::ok("Updated skill-project.toml and skills.lock")
+                );
+            }
+        }
+        let indexing = bundle_update_indexing(&args, skills_directory).await;
+        if args.json {
+            output::emit_bundle_update_result(&preview, false, &indexing)?;
+        } else {
+            crate::utils::reindex_utils::report_lifecycle_index_result(&indexing);
+        }
         return Ok(());
     }
-    let reindex = args.reindex;
-    let no_reindex = args.no_reindex;
-    let check = args.check;
-    let dry_run = args.dry_run;
-
     if global {
-        execute_update_global(args).await?;
+        execute_update_global(args, skills_dir_override).await?;
     } else {
-        execute_update_project(args).await?;
-    }
-
-    if !check && !dry_run {
-        let auto_reindex_config = crate::config_file::load_auto_reindex_config();
-        let config = create_service_config(global, None)?;
-        if let Ok(mut svc) = fastskill_core::FastSkillService::new(config).await {
-            if svc.initialize().await.is_ok() {
-                if let Ok(svc) = crate::config::inject_edge_services(svc) {
-                    let _ = crate::utils::reindex_utils::maybe_auto_reindex(
-                        &svc,
-                        "update",
-                        reindex,
-                        no_reindex,
-                        auto_reindex_config,
-                        false,
-                    )
-                    .await;
-                }
-            }
-        }
+        execute_update_project(args, skills_dir_override).await?;
     }
 
     Ok(())
 }
 
-async fn execute_update_global(args: UpdateArgs) -> CliResult<()> {
-    crate::outln!("Updating global skills...");
-    crate::outln!();
-
-    let lock_path = global_lock_path()
-        .map_err(|e| CliError::Config(format!("Failed to resolve global lock path: {}", e)))?;
-
-    if !lock_path.exists() {
-        crate::outln!(
-            "{}",
-            messages::info(
-                "No global-skills.lock found. Run 'fastskill add --global <skill>' first."
-            )
-        );
-        return Ok(());
-    }
-
-    let mut lock = GlobalSkillsLock::load_from_file(&lock_path)
-        .map_err(|e| CliError::Config(format!("Failed to load global lock file: {}", e)))?;
-
-    let skill_ids: Vec<String> = if let Some(id) = &args.skill_id {
-        vec![id.clone()]
-    } else {
-        lock.skills.iter().map(|s| s.id.clone()).collect()
+async fn bundle_update_indexing(
+    args: &UpdateArgs,
+    skills_directory: PathBuf,
+) -> crate::utils::reindex_utils::LifecycleIndexResult {
+    let failed = |diagnostic: String| crate::utils::reindex_utils::LifecycleIndexResult {
+        outcome: "failed",
+        count: 0,
+        diagnostic: Some(diagnostic),
     };
-
-    if skill_ids.is_empty() {
-        crate::outln!("{}", messages::info("No global skills to update"));
-        return Ok(());
+    let config = match create_service_config(false, Some(skills_directory)) {
+        Ok(config) => config,
+        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
+    };
+    let mut service = match FastSkillService::new(config).await {
+        Ok(service) => service,
+        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
+    };
+    if let Err(error) = service.initialize().await {
+        return failed(format!("Index setup failed after bundle update: {error}"));
     }
-
-    if args.check || args.dry_run {
-        crate::outln!("\nGlobal skills (check mode):\n");
-        for id in &skill_ids {
-            if let Some(entry) = lock.skills.iter().find(|s| s.id == *id) {
-                crate::outln!("  • {} @ {}", entry.id, entry.resolved.version);
-            }
-        }
-        if args.check {
-            let now = chrono::Utc::now();
-            for id in &skill_ids {
-                lock.mark_checked(id, now);
-            }
-            lock.save_to_file(&lock_path)
-                .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
-            crate::outln!(
-                "\n{}",
-                messages::info("Updated last_checked_at in global-skills.lock")
-            );
-        }
-        return Ok(());
-    }
-
-    // Actual update: mark updated_at for each skill
-    let now = chrono::Utc::now();
-    let mut updated_count = 0;
-    for id in &skill_ids {
-        if lock.skills.iter().any(|s| s.id == *id) {
-            lock.mark_updated(id, now);
-            updated_count += 1;
-            crate::outln!("  {}", messages::ok(&format!("Marked {} as updated", id)));
-        }
-    }
-
-    lock.save_to_file(&lock_path)
-        .map_err(|e| CliError::Config(format!("Failed to save global lock: {}", e)))?;
-
-    crate::outln!();
-    crate::outln!(
-        "{}",
-        messages::ok(&format!("Updated {} global skill(s)", updated_count))
-    );
-    crate::outln!("   Updated global-skills.lock");
-
-    Ok(())
+    let service = match crate::config::inject_edge_services(service) {
+        Ok(service) => service,
+        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
+    };
+    crate::utils::reindex_utils::lifecycle_reindex_result(
+        &service,
+        "bundle update",
+        args.reindex,
+        args.no_reindex,
+        crate::config_file::load_auto_reindex_config(),
+    )
+    .await
 }
 
-/// Updates skills recorded in the project's `skill-project.toml`/`skills.lock` by
-/// routing each dependency's recorded `Origin` through the core install seam
-/// (ADR-0005): `preflight(&origin)` decides whether there's anything to update
-/// (`Updatable`/`UpToDate`/`Immutable { reason }`), and only `Updatable` entries
-/// are re-fetched via `add_from_origin(origin, AddMode::Update)`.
-///
-/// NOTE (core-seam gap / simplification): `--strategy`/`--version` are parsed and
-/// validated for backward compatibility, but (as in the pre-seam CLI, where they
-/// were likewise parsed yet never consulted by the actual, non-`--check`/`--dry-run`
-/// update loop) they have no effect on which version is installed — the seam
-/// always resolves each origin to what it considers current (newest allowed for a
-/// registry/repository origin, a fresh re-fetch for git/local/zip-url). The
-/// previous marketplace-aware `UpdateService::check_updates` version-diffing for
-/// `--check`/`--dry-run` is likewise replaced by `preflight`'s coarser
-/// Updatable/UpToDate/Immutable classification.
-async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
-    crate::outln!("Updating skills...");
-    crate::outln!();
+/// Resolve and validate every selected project update before applying any of it.
+/// The same prepared candidates drive check, preview, and apply output so the
+/// reported target versions are the versions that will actually be installed.
+async fn execute_update_project(
+    args: UpdateArgs,
+    skills_dir_override: Option<PathBuf>,
+) -> CliResult<()> {
+    if !args.json {
+        crate::outln!("Updating skills...");
+        crate::outln!();
+    }
 
     // T034: Resolve skill-project.toml from project root
     let current_dir = env::current_dir()
@@ -440,11 +447,12 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
 
     // Convert dependencies to SkillEntry format. Local origins are recorded
     // relative to the Manifest, so they resolve against its directory.
-    let manifest_dir = project_file_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
     let mut entries = project
-        .to_skill_entries(manifest_dir)
+        .to_skill_entries(
+            project_file_path
+                .parent()
+                .unwrap_or(std::path::Path::new(".")),
+        )
         .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
 
     // Filter by skill_id if specified
@@ -456,21 +464,14 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 
     if entries.is_empty() {
-        crate::outln!("{}", messages::info("No skills to update"));
-        return Ok(());
-    }
-
-    // Parse/validate the update strategy (kept for CLI compatibility; see the
-    // NOTE above — it has no bearing on the seam-based resolution below).
-    match args.strategy.as_str() {
-        "latest" | "patch" | "minor" | "major" => {}
-        _ if args.version.is_some() => {}
-        _ => {
-            return Err(CliError::Config(format!(
-                "Invalid strategy: {}. Use: latest, patch, minor, major",
-                args.strategy
+        if let Some(skill_id) = &args.skill_id {
+            return Err(CliError::Validation(format!(
+                "Skill '{}' is not a declared dependency",
+                skill_id
             )));
         }
+        crate::outln!("{}", messages::info("No skills to update"));
+        return Ok(());
     }
 
     // T033: Resolve the lock file path from the project root
@@ -484,100 +485,111 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
             "skills.lock not found. Run 'fastskill install' first.".to_string(),
         ));
     }
+    let lock = ProjectSkillsLock::load_from_file(&lock_path)
+        .map_err(|error| CliError::Config(format!("Failed to load skills.lock: {error}")))?;
+
+    let mut change_roots = Vec::new();
+    for entry in &mut entries {
+        let locked = lock
+            .skills
+            .iter()
+            .find(|locked| locked.id == entry.id.as_str())
+            .ok_or_else(|| {
+                CliError::Validation(format!(
+                    "Skill '{}' has no locked version to update from",
+                    entry.id
+                ))
+            })?;
+        entry.origin =
+            controlled_origin(&entry.origin, &locked.resolved.version, &args).map_err(|error| {
+                CliError::Validation(format!("Cannot update '{}': {error}", entry.id))
+            })?;
+        change_roots.push(crate::commands::install::change::ChangeRoot {
+            origin: entry.origin.clone(),
+            expected_id: Some(entry.id.clone()),
+            groups: entry.groups.clone(),
+            locked: Some(locked.resolved.clone()),
+        });
+    }
 
     // Initialize the (edge-injected) service: embedding provider + repository
     // manager (ADR-0005). Needed even in --check/--dry-run mode, since
     // `preflight` on an `Origin::Repository` entry consults the repository
     // manager.
-    let config = create_service_config(false, None)?;
+    let config = create_service_config(false, skills_dir_override)?;
     let mut service = FastSkillService::new(config)
         .await
         .map_err(CliError::Service)?;
     service.initialize().await.map_err(CliError::Service)?;
     let service = crate::config::inject_edge_services(service)?;
 
+    let manifest_dir = project_file_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let max_levels = project
+        .tool
+        .as_ref()
+        .and_then(|tool| tool.fastskill.as_ref())
+        .map_or(5, |config| config.install_depth);
+    let (prepared, previews) = crate::commands::install::change::prepare_changes(
+        &service,
+        &lock_path,
+        manifest_dir,
+        change_roots,
+        max_levels,
+        args.offline,
+        args.dry_run || args.check,
+    )
+    .await?;
+    let planned_refreshes = prepared.refreshed_repositories().to_vec();
     if args.check || args.dry_run {
-        crate::outln!("\nSkills that would be updated:\n");
-        let mut any_reported = false;
-        for entry in &entries {
-            any_reported = true;
-            match service.preflight(&entry.origin).await {
-                Ok(UpdatePreflight::Updatable) => {
-                    // Report the origin *as the Manifest records it*. `entries`
-                    // hold origins already resolved against the Manifest
-                    // directory (that is what makes them fetchable from any
-                    // cwd); echoing that absolute, machine-local path back at
-                    // the user would make `--check` output differ per checkout
-                    // for no gain.
-                    let recorded = entry.origin.to_manifest_relative(manifest_dir).0;
-                    crate::outln!("  • {} (from {:?})", entry.id, recorded);
-                }
-                Ok(UpdatePreflight::UpToDate) => {
-                    crate::outln!("  • {} is already up to date", entry.id);
-                }
-                Ok(UpdatePreflight::Immutable { reason }) => {
-                    crate::outln!("  • {} is immutable: {}", entry.id, reason);
-                }
-                Err(e) => {
-                    crate::outln!("  • {}: {}", entry.id, e);
-                }
-            }
+        crate::commands::install::plan::validate_prepared(&service, manifest_dir, prepared)?;
+        if !args.json {
+            output::render_update_previews(&previews);
         }
-        if !any_reported {
-            crate::outln!("{}", messages::info("No updates available"));
+        if args.json {
+            let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
+                &service,
+                "update",
+                args.reindex,
+                true,
+                crate::config_file::load_auto_reindex_config(),
+            )
+            .await;
+            print_update_json(&previews, true, &planned_refreshes, &indexing)?;
+            return Ok(());
         }
-        if args.check {
-            crate::outln!(
-                "\n{}",
-                messages::info("Run without --check to actually update")
-            );
-        }
+        crate::outln!("{}", messages::info("No changes were applied"));
         return Ok(());
     }
 
-    // Update each skill: preflight first (an honest no-op with a reason for
-    // UpToDate/Immutable), then re-fetch only what's Updatable.
-    let mut updated_count = 0;
-    for entry in entries {
-        crate::outln!("  Updating {}...", entry.id);
-        match service.preflight(&entry.origin).await {
-            Ok(UpdatePreflight::Updatable) => {
-                // Pass the existing groups so update preserves group membership.
-                match service
-                    .add_from_origin(entry.origin.clone(), AddMode::Update, entry.groups.clone())
-                    .await
-                {
-                    Ok(_outcome) => {
-                        updated_count += 1;
-                        crate::outln!("  {}", messages::ok(&format!("Updated {}", entry.id)));
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "  {}",
-                            messages::error(&format!("Failed to update {}: {}", entry.id, e))
-                        );
-                    }
-                }
-            }
-            Ok(UpdatePreflight::UpToDate) => {
-                crate::outln!(
-                    "  {}",
-                    messages::info(&format!("{} is already up to date", entry.id))
-                );
-            }
-            Ok(UpdatePreflight::Immutable { reason }) => {
-                crate::outln!(
-                    "  {}",
-                    messages::info(&format!("{} is immutable: {}", entry.id, reason))
-                );
-            }
-            Err(e) => {
-                eprintln!(
-                    "  {}",
-                    messages::error(&format!("Failed to check {}: {}", entry.id, e))
-                );
-            }
-        }
+    if !args.json {
+        output::render_update_previews(&previews);
+    }
+
+    let report = crate::commands::install::plan::apply_prepared(
+        &service,
+        &lock_path,
+        manifest_dir,
+        prepared,
+    )
+    .await?;
+    let updated_count = previews
+        .iter()
+        .filter(|preview| !preview.changes.is_empty())
+        .count();
+
+    let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
+        &service,
+        "update",
+        args.reindex,
+        args.no_reindex || args.offline,
+        crate::config_file::load_auto_reindex_config(),
+    )
+    .await;
+    if args.json {
+        print_update_json(&previews, false, &report.refreshed_repositories, &indexing)?;
+        return Ok(());
     }
 
     crate::outln!();
@@ -585,7 +597,14 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
         "{}",
         messages::ok(&format!("Updated {} skill(s)", updated_count))
     );
-    crate::outln!("   Updated skills.lock");
+    if updated_count > 0 {
+        crate::outln!("   Updated skills.lock");
+    }
+
+    for repository in report.refreshed_repositories {
+        crate::outln!("   Refreshed repository metadata: {repository}");
+    }
+    crate::utils::reindex_utils::report_lifecycle_index_result(&indexing);
 
     Ok(())
 }
@@ -597,273 +616,5 @@ async fn execute_update_project(args: UpdateArgs) -> CliResult<()> {
     clippy::expect_used,
     clippy::await_holding_lock
 )]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_execute_update_no_manifest() {
-        // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: false,
-            dry_run: false,
-            version: None,
-            source: None,
-            bundle: None,
-            from: None,
-            strategy: "latest".to_string(),
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_update(args, false, None).await;
-        assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                msg.contains("skill-project.toml not found") && msg.contains("fastskill init"),
-                "Error message must mention skill-project.toml and fastskill init: '{}'",
-                msg
-            );
-        } else {
-            panic!("Expected Config error");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_update_invalid_strategy() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-
-        // Get original directory immediately and handle potential errors
-        let original_dir = match std::env::current_dir() {
-            Ok(dir) => dir,
-            Err(_) => {
-                // If we can't get current dir, assume we're in the project root
-                std::path::PathBuf::from(".")
-            }
-        };
-
-        // Create skill-project.toml and skills.lock at project root using absolute paths
-        // Do this BEFORE changing directory to avoid any path resolution issues
-        let skill_project_toml = temp_dir.path().join("skill-project.toml");
-        let skills_lock = temp_dir.path().join("skills.lock");
-
-        // Create files BEFORE changing directory to ensure they're created
-        fs::write(
-            &skill_project_toml,
-            r#"[dependencies]
-test-skill = { origin = { type = "git", url = "https://example.com/repo.git" } }
-"#,
-        )
-        .expect("Failed to write skill-project.toml");
-
-        // Create skills.lock file (required for update) with proper format including generated_at
-        use chrono::Utc;
-        let lock_content = format!(
-            r#"[metadata]
-version = "1.0.0"
-generated_at = "{}"
-
-[[skills]]
-id = "test-skill"
-version = "1.0.0"
-"#,
-            Utc::now().to_rfc3339()
-        );
-        fs::write(&skills_lock, lock_content).expect("Failed to write skills.lock");
-
-        // Verify files exist before test (using absolute paths)
-        assert!(
-            skill_project_toml.exists(),
-            "skill-project.toml should exist at {}",
-            skill_project_toml.display()
-        );
-        assert!(
-            skills_lock.exists(),
-            "skills.lock should exist at {}",
-            skills_lock.display()
-        );
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(std::path::PathBuf);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                let _ = std::env::set_current_dir(&self.0);
-            }
-        }
-        let _guard = DirGuard(original_dir.clone());
-
-        // Change to temp directory AFTER creating files, but handle potential errors
-        if let Err(e) = std::env::set_current_dir(temp_dir.path()) {
-            panic!("Failed to change to temp directory: {}", e);
-        }
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: false,
-            dry_run: false,
-            version: None,
-            source: None,
-            bundle: None,
-            from: None,
-            strategy: "invalid-strategy".to_string(),
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_update(args, false, None).await;
-        // Should fail for invalid strategy or missing skills_directory
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                msg.contains("Invalid strategy")
-                    || msg.contains("latest, patch, minor, major")
-                    || msg.contains("strategy")
-                    || msg.contains("Failed to load repositories")
-                    || msg.contains("skill-project.toml not found")
-                    || msg.contains("requires [tool.fastskill] with skills_directory"),
-                "Error message '{}' does not contain expected text",
-                msg
-            );
-        } else {
-            panic!(
-                "Expected Config error for invalid strategy, got: {:?}",
-                result
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_update_check_mode() {
-        // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        // Helper struct to ensure directory is restored even if test panics
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create skill-project.toml at project root using absolute paths
-        let skill_project_toml = temp_dir.path().join("skill-project.toml");
-        fs::write(&skill_project_toml, "[dependencies]").unwrap();
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: true,
-            dry_run: false,
-            version: None,
-            source: None,
-            bundle: None,
-            from: None,
-            strategy: "latest".to_string(),
-            reindex: false,
-            no_reindex: false,
-        };
-
-        // Should succeed in check mode even with no skills
-        let result = execute_update(args, false, None).await;
-        // May succeed or fail depending on lock file, but shouldn't panic
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_execute_update_success_with_check() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[dependencies]
-test-skill = "1.0.0"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let lock_content = r#"version = "1.0.0"
-generated_at = "2024-01-01T00:00:00Z"
-fastskill_version = "0.1.0"
-
-[[skills]]
-id = "test-skill"
-name = "test-skill"
-version = "1.0.0"
-source_type = "local"
-source = { path = ".claude/skills/test-skill" }
-"#;
-        fs::write(temp_dir.path().join("skills.lock"), lock_content).unwrap();
-
-        let args = UpdateArgs {
-            skill_id: None,
-            check: true,
-            dry_run: false,
-            version: None,
-            source: None,
-            bundle: None,
-            from: None,
-            strategy: "latest".to_string(),
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_update(args, false, None).await;
-        // Should succeed in check mode or fail with appropriate error
-        assert!(result.is_ok() || result.is_err());
-    }
-}
+#[path = "update/tests.rs"]
+mod tests;

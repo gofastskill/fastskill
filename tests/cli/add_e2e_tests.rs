@@ -144,23 +144,17 @@ fn test_add_recursive_multiple_skills() {
         result.stdout
     );
     assert!(
-        result
-            .stdout
-            .contains("Successfully added skill: skill-one"),
+        result.stdout.contains("Successfully added skill: skill1"),
         "Should add skill1: {}",
         result.stdout
     );
     assert!(
-        result
-            .stdout
-            .contains("Successfully added skill: skill-two"),
+        result.stdout.contains("Successfully added skill: skill2"),
         "Should add skill2: {}",
         result.stdout
     );
     assert!(
-        result
-            .stdout
-            .contains("Successfully added skill: skill-three"),
+        result.stdout.contains("Successfully added skill: skill3"),
         "Should add skill3: {}",
         result.stdout
     );
@@ -203,9 +197,7 @@ fn test_add_recursive_skips_hidden_dirs() {
         result.stdout
     );
     assert!(
-        result
-            .stdout
-            .contains("Successfully added skill: skill-one"),
+        result.stdout.contains("Successfully added skill: skill1"),
         "Should add skill1: {}",
         result.stdout
     );

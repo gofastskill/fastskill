@@ -7,7 +7,7 @@
 //! **CRITICAL — see [ADR-0004](../../../../docs/adr/0004-bare-version-is-exact.md):**
 //! a *bare* `MAJOR.MINOR.PATCH` (no operator, no comma) is an **exact pin**, not a
 //! caret range. `VersionReq::parse("1.2.3")` would apply Cargo caret semantics
-//! (`>=1.2.3,<2.0.0`), so [`normalize_constraint`] rewrites a bare full version to
+//! (`>=1.2.3,<2.0.0`), so `normalize_constraint` rewrites a bare full version to
 //! `=MAJOR.MINOR.PATCH` before parsing. Do **not** remove that normalization —
 //! deleting it silently widens every committed bare pin from "exactly X" to a range.
 
@@ -65,7 +65,7 @@ impl VersionConstraint {
     pub fn parse(constraint: &str) -> Result<Self, VersionError> {
         let constraint = constraint.trim();
 
-        if constraint.is_empty() || constraint == "*" {
+        if constraint.is_empty() || constraint == "*" || constraint.eq_ignore_ascii_case("latest") {
             return Ok(VersionConstraint {
                 req: VersionReq::STAR,
             });
@@ -182,6 +182,14 @@ mod tests {
         let constraint = VersionConstraint::parse("1.2.3").unwrap();
         assert!(constraint.satisfies("1.2.3").unwrap());
         assert!(!constraint.satisfies("1.2.4").unwrap());
+    }
+
+    #[test]
+    fn latest_is_the_documented_floating_selector() {
+        let constraint = VersionConstraint::parse("latest").unwrap();
+        assert!(constraint.satisfies("1.2.3").unwrap());
+        assert!(!constraint.satisfies("2.0.0-beta.1").unwrap());
+        assert!(constraint.as_exact().is_none());
     }
 
     #[test]

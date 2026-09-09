@@ -51,7 +51,7 @@ Pick the source that matches your workflow:
 ```bash
 # From a public registry ID (requires a configured repository — see 'fastskill repos add'
 # below, or /registry/overview)
-fastskill add pptx@1.0.0
+fastskill add pptx@1.0.0 --repository public
 
 # From a local folder (editable for dev)
 fastskill add ./skills/demo-skill -e --group dev
@@ -60,11 +60,9 @@ fastskill add ./skills/demo-skill -e --group dev
 fastskill add https://github.com/your-org/your-skill.git --branch main
 ```
 
-<Callout type="warn">
-Skills added with `-e`/`editable = true` (like `demo-skill` above) are symlinked in
-place rather than copied, and currently aren't discovered by `list`, `search`, or
-`reindex`. Install without `-e` if you want a skill to show up in those commands
-right away.
+<Callout type="info">
+Skills added with `-e`/`editable = true` are links to their source directory. FastSkill validates
+the link target and identity but labels the content mutable instead of claiming a verified digest.
 </Callout>
 
 ### 4. Install & index
@@ -72,6 +70,7 @@ right away.
 ```bash
 fastskill install
 fastskill reindex
+fastskill list --check
 ```
 
 ### 5. Search & verify
@@ -81,10 +80,9 @@ fastskill search "demo" --local --format json
 ```
 
 <Callout type="success">
-You should see a JSON result for `demo-skill`, as long as it was installed without
-`-e` (see the note in step 3 — editable/symlinked skills aren't indexed yet). If
-empty and your skill wasn't installed with `-e`, run `fastskill install`, then
-`fastskill reindex`, and search again.
+You should see a JSON result for `demo-skill`. If it is empty, run `fastskill install`, then
+`fastskill reindex`, and search again. `list --check` reports editable content as mutable while
+still checking its link, identity, constraint, and dependency structure.
 </Callout>
 
 ### 6. Optional: serve UI
@@ -116,7 +114,7 @@ locked restoration, removal, and personal overrides.
 ## Use-case quick recipes
 
 - **Install skills from different sources**
-  - Public registry ID: `fastskill add pptx@1.0.0` (requires a configured repository)
+  - Public repository ID: `fastskill add pptx@latest --repository public`
   - Local folder (editable): `fastskill add ./skills/my-skill -e --group dev`
   - Git repo with branch: `fastskill add https://github.com/your-org/your-skill.git --branch main`
   - Private Git marketplace:
@@ -157,6 +155,6 @@ locked restoration, removal, and personal overrides.
 
 - **No skills found**: ensure `skill-project.toml` exists at project root and rerun `fastskill install`.
 - **`Configuration error: ... requires [tool.fastskill] with skills_directory`**: your manifest is missing that field. Run `fastskill init --skills-dir <path>` at the project root, or add `[tool.fastskill]` / `skills_directory = "..."` by hand (see step 2).
-- **Search or `list` doesn't show a skill you added with `-e`**: editable/symlinked local skills aren't currently discovered by `list`, `search`, or `reindex` (see the note in step 3). Reinstall without `-e` if you need it to show up there.
-- **Search returns nothing** (and the skill wasn't installed with `-e`): run `fastskill reindex` after adding or installing skills.
+- **Search returns nothing**: run `fastskill reindex` after adding or installing skills and verify
+  that an embedding provider is configured.
 - **Binary not on PATH**: reinstall or move the binary to a directory in PATH (e.g., `~/.local/bin`).

@@ -7,6 +7,8 @@
 #![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use super::snapshot_helpers::get_binary_path;
+use fastskill_core::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
+use fastskill_core::core::origin::{Origin, Resolved};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
@@ -30,10 +32,17 @@ const MUTATING_TOOLS: &[&str] = &[
     "fastskill_repos_remove",
     "fastskill_repos_update",
     "fastskill_repos_refresh",
+    "fastskill_cache_clean",
     "fastskill_marketplace_create",
     "fastskill_bundle_build",
     "fastskill_bundle_override",
+    "fastskill_mcp_install",
+    "fastskill_eval_run",
+    "fastskill_eval_judge",
+    "fastskill_eval_scorecard",
     "fastskill_optimize_run",
+    "fastskill_optimize_resume",
+    "fastskill_optimize_export",
 ];
 
 /// A read-only tool that must stay exported with the gate closed. Without this
@@ -55,9 +64,93 @@ fn project_with_skill(skill: &str) -> TempDir {
     .unwrap();
     fs::write(
         temp.path().join("skill-project.toml"),
-        "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+        format!(
+            "[dependencies]\n{skill} = {{ origin = {{ type = \"local\", path = \".claude/skills/{skill}\" }} }}\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n"
+        ),
     )
     .unwrap();
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.covered_roots = vec![skill.to_string()];
+    lock.skills = vec![ProjectLockedSkillEntry {
+        id: skill.to_string(),
+        name: skill.to_string(),
+        origin: Origin::Local {
+            path: format!(".claude/skills/{skill}").into(),
+            editable: false,
+        },
+        resolved: Resolved {
+            version: "1.0.0".to_string(),
+            commit_hash: None,
+            checksum: Some(
+                fastskill_core::core::project_removal::managed_tree_digest(&skills_dir).unwrap(),
+            ),
+        },
+        dependencies: Vec::new(),
+        groups: Vec::new(),
+        depth: 0,
+        parent_skill: None,
+        required_by: Vec::new(),
+    }];
+    lock.save_to_file(&temp.path().join("skills.lock")).unwrap();
+    temp
+}
+
+/// Build a project where `child` is owned only as a dependency of `root`.
+fn project_with_transitive_skill() -> TempDir {
+    let temp = TempDir::new().unwrap();
+    let skills = temp.path().join(".claude/skills");
+    for skill in ["root", "child"] {
+        let directory = skills.join(skill);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("SKILL.md"),
+            format!(
+                "---\nname: {skill}\ndescription: MCP ownership fixture\nversion: 1.0.0\n---\n# {skill}\n"
+            ),
+        )
+        .unwrap();
+    }
+    fs::write(
+        temp.path().join("skill-project.toml"),
+        "[dependencies]\nroot = { origin = { type = \"local\", path = \".claude/skills/root\" } }\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+    let entry = |skill: &str, dependencies: Vec<String>, depth, parent_skill, required_by| {
+        ProjectLockedSkillEntry {
+            id: skill.to_string(),
+            name: skill.to_string(),
+            origin: Origin::Local {
+                path: format!(".claude/skills/{skill}").into(),
+                editable: false,
+            },
+            resolved: Resolved {
+                version: "1.0.0".to_string(),
+                commit_hash: None,
+                checksum: Some(
+                    fastskill_core::core::project_removal::managed_tree_digest(&skills.join(skill))
+                        .unwrap(),
+                ),
+            },
+            dependencies,
+            groups: Vec::new(),
+            depth,
+            parent_skill,
+            required_by,
+        }
+    };
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.covered_roots = vec!["root".to_string()];
+    lock.skills = vec![
+        entry("root", vec!["child".to_string()], 0, None, Vec::new()),
+        entry(
+            "child",
+            Vec::new(),
+            1,
+            Some("root".to_string()),
+            vec!["root".to_string()],
+        ),
+    ];
+    lock.save_to_file(&temp.path().join("skills.lock")).unwrap();
     temp
 }
 
@@ -160,6 +253,27 @@ fn remove_skill_request(id: i64, skill: &str) -> Value {
     })
 }
 
+fn unconfirmed_remove_skill_request(id: i64, skill: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {
+            "name": "fastskill_remove",
+            "arguments": {"skill-ids": [skill], "no-reindex": true}
+        }
+    })
+}
+
+fn execute_tool_request(id: i64, name: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": {}}
+    })
+}
+
 #[test]
 fn mcp_tools_list_hides_mutating_tools_without_enable_write() {
     let project = project_with_skill("hello-skill");
@@ -191,7 +305,10 @@ fn mcp_tools_call_refuses_mutating_tool_without_enable_write() {
     let messages = mcp_stdio_session(
         project.path(),
         &[],
-        &[remove_skill_request(1, "hello-skill")],
+        &[
+            remove_skill_request(1, "hello-skill"),
+            execute_tool_request(2, "fastskill_eval_run"),
+        ],
     );
     let response = response_for(&messages, 1);
 
@@ -213,6 +330,15 @@ fn mcp_tools_call_refuses_mutating_tool_without_enable_write() {
         installed.is_dir(),
         "fastskill_remove deleted {} despite the write gate being closed",
         installed.display()
+    );
+
+    let execution = response_for(&messages, 2);
+    assert!(
+        execution["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--enable-write"),
+        "execution tools must be refused by the write gate, got {execution}"
     );
 }
 
@@ -247,5 +373,71 @@ fn mcp_enable_write_lists_and_runs_mutating_tools() {
         !installed.exists(),
         "fastskill_remove did not delete {} with --enable-write",
         installed.display()
+    );
+}
+
+#[test]
+fn mcp_remove_without_force_fails_noninteractively_and_preserves_state() {
+    let project = project_with_skill("hello-skill");
+    let installed = skill_dir(project.path(), "hello-skill");
+    let manifest = fs::read(project.path().join("skill-project.toml")).unwrap();
+    let lock = fs::read(project.path().join("skills.lock")).unwrap();
+    let skill = fs::read(installed.join("SKILL.md")).unwrap();
+
+    let messages = mcp_stdio_session(
+        project.path(),
+        &["--enable-write"],
+        &[unconfirmed_remove_skill_request(1, "hello-skill")],
+    );
+    let response = response_for(&messages, 1);
+    assert!(
+        response.to_string().contains("requires --force"),
+        "MCP removal must return a noninteractive error, got {response}"
+    );
+    assert_eq!(
+        fs::read(project.path().join("skill-project.toml")).unwrap(),
+        manifest
+    );
+    assert_eq!(fs::read(project.path().join("skills.lock")).unwrap(), lock);
+    assert_eq!(fs::read(installed.join("SKILL.md")).unwrap(), skill);
+}
+
+#[test]
+fn mcp_enable_write_still_refuses_removal_owned_by_a_retained_root() {
+    let project = project_with_transitive_skill();
+    let manifest = fs::read(project.path().join("skill-project.toml")).unwrap();
+    let lock = fs::read(project.path().join("skills.lock")).unwrap();
+    let root = fs::read(skill_dir(project.path(), "root").join("SKILL.md")).unwrap();
+    let child = fs::read(skill_dir(project.path(), "child").join("SKILL.md")).unwrap();
+
+    let messages = mcp_stdio_session(
+        project.path(),
+        &["--enable-write"],
+        &[remove_skill_request(1, "child")],
+    );
+    let response = response_for(&messages, 1);
+    let rendered = response.to_string();
+
+    assert!(
+        response.pointer("/result/isError") == Some(&Value::Bool(true))
+            || response.get("error").is_some(),
+        "required dependency removal must fail, got {response}"
+    );
+    assert!(
+        rendered.contains("root") || rendered.contains("required"),
+        "refusal must explain the retaining owner, got {response}"
+    );
+    assert_eq!(
+        fs::read(project.path().join("skill-project.toml")).unwrap(),
+        manifest
+    );
+    assert_eq!(fs::read(project.path().join("skills.lock")).unwrap(), lock);
+    assert_eq!(
+        fs::read(skill_dir(project.path(), "root").join("SKILL.md")).unwrap(),
+        root
+    );
+    assert_eq!(
+        fs::read(skill_dir(project.path(), "child").join("SKILL.md")).unwrap(),
+        child
     );
 }

@@ -1,6 +1,7 @@
 //! Configuration and skills directory resolution for CLI
 
 use crate::error::{CliError, CliResult};
+use fastskill_core::core::global_lock_path;
 use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::project;
 use fastskill_core::core::repository::{RepositoryDefinition, RepositoryManager};
@@ -111,11 +112,7 @@ pub fn convert_repository_definition(
 /// skill-project.toml [tool.fastskill].skills_directory.
 pub fn get_skill_search_locations_for_display(global: bool) -> CliResult<Vec<(PathBuf, String)>> {
     if global {
-        let config_dir = dirs::config_dir().ok_or_else(|| {
-            CliError::Config("Failed to determine system config directory".to_string())
-        })?;
-        let global_dir = config_dir.join("fastskill").join("skills");
-        Ok(vec![(global_dir, "global".to_string())])
+        Ok(vec![(global_skills_directory()?, "global".to_string())])
     } else {
         let current_dir = env::current_dir()
             .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -134,11 +131,7 @@ pub fn get_skill_search_locations_for_display(global: bool) -> CliResult<Vec<(Pa
 /// Otherwise, requires a valid skill-project.toml with [tool.fastskill].skills_directory.
 pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
     if global {
-        // Use global XDG-compliant path
-        let config_dir = dirs::config_dir().ok_or_else(|| {
-            CliError::Config("Failed to determine system config directory".to_string())
-        })?;
-        let global_dir = config_dir.join("fastskill").join("skills");
+        let global_dir = global_skills_directory()?;
         debug!("Using global skills directory: {}", global_dir.display());
         Ok(global_dir)
     } else {
@@ -156,6 +149,18 @@ pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
 
         Ok(config.skills_directory)
     }
+}
+
+fn global_skills_directory() -> CliResult<PathBuf> {
+    let lock_path = global_lock_path().map_err(|error| {
+        CliError::Config(format!(
+            "Failed to determine global config directory: {error}"
+        ))
+    })?;
+    lock_path
+        .parent()
+        .map(|directory| directory.join("skills"))
+        .ok_or_else(|| CliError::Config("Global lock path has no parent directory".to_string()))
 }
 
 /// Create service configuration with resolved skills directory
@@ -323,3 +328,8 @@ pub fn is_valid_origin(origin: &str) -> bool {
 
     matches!(after_proto, Some(after) if !after.is_empty())
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests;

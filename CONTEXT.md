@@ -23,6 +23,22 @@ A skill physically present in the **skills directory** (`.claude/skills/` by def
 **Reconciliation**:
 The comparison of the three states — Manifest (desired), Lock (pinned), skills directory (actual) — producing a status per skill: `ok`, `missing`, `extraneous`, `mismatch`. Owned by `list`.
 
+**Installation scope**:
+The project or global environment whose requirements and installed contents an
+operation manages. Distinct from the local/remote discovery scope below.
+
+**Dependency root**:
+An explicitly selected individual skill, bundle, or personal replacement that
+requires a skill and its dependencies to remain in the environment.
+
+**Dependency edge**:
+A recorded requirement from one skill to another. A shared dependency can have
+multiple incoming edges and remain required after one root is removed.
+
+**Operation plan**:
+A proposed change to selected revisions, ownership, and installed contents,
+including unchanged selections and conflicts. A preview renders this plan.
+
 **Version constraint**:
 The *allowed range* a Manifest dependency accepts, used only to filter candidate versions during resolution — distinct from the Lock, which pins the one chosen version. A **bare version (`1.2.3`) means exactly that version**, not a compatible range; ranges are opt-in via explicit `^`/`~`/`>=`/`<=`/comma operators. See [ADR-0004](./docs/adr/0004-bare-version-is-exact.md).
 _Avoid_: version requirement, semver range (a bare version is *not* a range here).
@@ -40,7 +56,9 @@ A bundle recorded on a target with its identity, version, and skill membership, 
 An immutable set of packaged contents identified by a bundle identity and version. Its version is independent of the versions of its member skills.
 
 **Skill ownership**:
-The recorded bundle memberships and explicit individual installation that require an installed skill to remain present. Multiple bundles may share a skill when its contents are identical.
+The recorded bundle memberships, individual selections, and transitive requirements
+that require an installed skill to remain present. Multiple owners may share a
+skill when their selected contents agree, subject to the personal override rules.
 
 **Personal override**:
 An explicitly declared personal skill selection with its own origin that replaces bundled contents where every owning bundle permits it. An untracked edit is not an approved override.
@@ -80,7 +98,7 @@ _Avoid_: "the LLM" (too broad), AI backend.
 **Vector index**:
 The local SQLite store of embeddings produced by `reindex`, consumed by `search --local` and by `analyze` (matrix/cluster/duplicates). Only meaningful when an **Embedding provider** is configured. Rebuilding it is therefore a *conditional* step, never an unconditional one — and every consumer (`search --local`, `analyze`) inherits the same provider precondition and `doctor` visibility.
 
-**doctor** (to introduce):
+**doctor**:
 A diagnostic command that reports environment readiness — chiefly whether an **Embedding provider** is configured, so users know if semantic `reindex`/`search --local` will work before they run them.
 
 ### Distribution
@@ -144,4 +162,6 @@ _Avoid_: Dashboard, page, export, scorecard (the measurement it renders)
 
 ## Open / pending
 
-- _none currently — all flagged ambiguities resolved._
+- [ADR-0009](./docs/adr/0009-resolution-and-restoration-policy.md) proposes lock-first
+  restoration and explicit latest-stable resolution. The associated PRDs describe
+  target behavior; they do not establish that it is implemented.

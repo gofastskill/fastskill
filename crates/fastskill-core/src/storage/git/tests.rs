@@ -1,4 +1,5 @@
 use super::*;
+use crate::storage::git_commit::clone_repository_at_commit;
 
 #[test]
 fn test_build_clone_args_disables_line_ending_translation() {
@@ -140,6 +141,60 @@ fn test_parse_git_version_invalid() {
     assert!(parse_git_version("git 2.0.0").is_err());
     assert!(parse_git_version("version 2.0.0").is_err());
     assert!(parse_git_version("git version").is_err());
+    assert!(parse_git_version("git version 2").is_err());
+    assert!(parse_git_version("git version nope.1").is_err());
+    assert!(parse_git_version("git version 2.nope").is_err());
+    assert_eq!(GitVersion::new(2, 7, 0).to_string(), "2.7.0");
+}
+
+#[tokio::test]
+async fn public_git_operations_report_auth_clone_checkout_and_structure_errors() {
+    let auth = SourceAuth::Pat {
+        env_var: "UNUSED_TEST_TOKEN".to_string(),
+    };
+    assert!(
+        clone_repository("https://example.invalid/repo.git", None, None, Some(&auth))
+            .await
+            .unwrap_err()
+            .to_string()
+            .to_lowercase()
+            .contains("auth")
+    );
+
+    let error = clone_repository("file:///definitely/missing/repo.git", None, None, None)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("Failed to clone"));
+
+    let error = clone_repository_at_commit("file:///definitely/missing/repo.git", &"a".repeat(40))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("Failed to clone"));
+
+    let temp = tempfile::TempDir::new().unwrap();
+    let error = checkout_branch_or_tag(temp.path(), "missing", true)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("checkout"));
+
+    let root_skill = temp.path().join("root-skill");
+    std::fs::create_dir(&root_skill).unwrap();
+    std::fs::write(root_skill.join("SKILL.md"), "root").unwrap();
+    assert_eq!(validate_cloned_skill(&root_skill).unwrap(), root_skill);
+
+    let nested_repo = temp.path().join("nested-repo");
+    let nested_skill = nested_repo.join("nested");
+    std::fs::create_dir_all(&nested_skill).unwrap();
+    std::fs::write(nested_skill.join("SKILL.md"), "nested").unwrap();
+    assert_eq!(validate_cloned_skill(&nested_repo).unwrap(), nested_skill);
+
+    let empty = temp.path().join("empty");
+    std::fs::create_dir(&empty).unwrap();
+    assert!(validate_cloned_skill(&empty)
+        .unwrap_err()
+        .to_string()
+        .contains("SKILL.md"));
+    assert!(validate_cloned_skill(&temp.path().join("absent")).is_err());
 }
 
 #[test]
@@ -406,6 +461,7 @@ fn test_parse_ls_remote_output_multiple_lines() {
 #[test]
 fn test_parse_ls_remote_output_empty_is_empty_map() {
     assert!(parse_ls_remote_output("").is_empty());
+    assert!(parse_ls_remote_output("missing-tab\n\tmissing-sha\nsha\t\n").is_empty());
 }
 
 #[test]

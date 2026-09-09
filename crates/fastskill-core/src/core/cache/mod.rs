@@ -146,7 +146,7 @@ impl CacheIdentity {
                 version,
             } => Ok(PathBuf::from("registry")
                 .join(validate_component(source)?)
-                .join(validate_component(skill)?)
+                .join(registry_skill_component(skill)?)
                 .join(validate_component(version)?)),
             CacheIdentity::Local { tree_hash } => {
                 Ok(PathBuf::from("local").join(validate_component(tree_hash)?))
@@ -156,6 +156,26 @@ impl CacheIdentity {
             }
         }
     }
+}
+
+fn registry_skill_component(skill: &str) -> Result<String, ServiceError> {
+    if !skill.contains('/') {
+        return Ok(validate_component(skill)?.to_string());
+    }
+    let parts: Vec<&str> = skill.split('/').collect();
+    if parts.len() != 2 {
+        return Err(ServiceError::Validation(
+            "registry skill must be 'name' or 'scope/name'".to_string(),
+        ));
+    }
+    for part in parts {
+        validate_component(part)?;
+    }
+    use sha2::Digest;
+    Ok(format!(
+        "scoped-{}",
+        crate::utils::to_hex_lower(&sha2::Sha256::digest(skill.as_bytes()))
+    ))
 }
 
 /// Validate a single identity path component: non-empty, no separators, no
@@ -522,8 +542,8 @@ impl SkillCache {
     /// for the adversarial argument: `clean` only ever descends into `git/`,
     /// `registry/`, `local/` under the *resolved* cache root; it refuses
     /// outright if that root contains anything it does not recognize
-    /// ([`verify_looks_like_cache_root`]); it never follows a symlink while
-    /// walking or deleting ([`leaf_identity_dirs`], [`remove_dir_no_symlinks`]);
+    /// (`verify_looks_like_cache_root`); it never follows a symlink while
+    /// walking or deleting (`leaf_identity_dirs`, `remove_dir_no_symlinks`);
     /// and it re-canonicalizes every entry immediately before deleting it and
     /// refuses to delete anything that no longer resolves back inside the
     /// canonical root ([`SkillCache::clean`]'s loop below).
@@ -746,7 +766,8 @@ fn remove_dir_no_symlinks(dir: &Path) -> Result<(), ServiceError> {
         let file_type = entry.file_type()?;
         let path = entry.path();
         if file_type.is_symlink() {
-            fs::remove_file(&path)?;
+            let metadata = fs::symlink_metadata(&path)?;
+            crate::core::lifecycle_transaction::unlink_symlink(&path, &metadata)?;
         } else if file_type.is_dir() {
             remove_dir_no_symlinks(&path)?;
         } else {

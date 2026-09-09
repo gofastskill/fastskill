@@ -142,11 +142,11 @@ fn test_repos_complete_workflow_matrix() {
         Some(temp_dir.path()),
     );
     assert!(
-        !skills.success,
-        "repos skills should fail for local repo: {}{}",
+        skills.success,
+        "repos skills should use the local catalog adapter: {}{}",
         skills.stdout, skills.stderr
     );
-    assert!(skills.stderr.contains("is not an HTTP registry"));
+    assert!(skills.stdout.contains("matrix-skill"));
 
     let show = run_fastskill_command(
         &[

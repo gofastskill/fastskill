@@ -70,7 +70,11 @@ impl FromArgValueMap for DoctorArgs {
     }
 }
 
-pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> CliResult<()> {
+pub async fn execute_doctor(
+    service: &FastSkillService,
+    args: DoctorArgs,
+    global: bool,
+) -> CliResult<()> {
     let mut checks = Vec::new();
 
     // Check 1: Skills directory accessible
@@ -93,16 +97,46 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     };
     checks.push(skills_dir_check);
 
-    // Check 2: skill-project.toml exists
-    let project_file_check = {
-        let current_dir = std::env::current_dir()
-            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-        let project_file = fastskill_core::core::project::resolve_project_file(&current_dir);
-        if project_file.found {
+    // Check 2: report the scope selected by the service edge. In global mode a
+    // project Manifest is irrelevant even when the process happens to run in a
+    // project checkout.
+    let project_file_check = if global {
+        DoctorCheckResult {
+            check: "scope".to_string(),
+            status: DoctorStatus::Pass,
+            message: format!("Global scope selected: {}", skills_dir.display()),
+        }
+    } else {
+        match service.project_root() {
+            Some(project_root) => {
+                let project_file = project_root.join("skill-project.toml");
+                DoctorCheckResult {
+                    check: "scope".to_string(),
+                    status: DoctorStatus::Pass,
+                    message: format!("Project scope selected: {}", project_file.display()),
+                }
+            }
+            None => DoctorCheckResult {
+                check: "scope".to_string(),
+                status: DoctorStatus::Warn,
+                message: format!(
+                    "Custom skills scope selected without a project Manifest: {}",
+                    skills_dir.display()
+                ),
+            },
+        }
+    };
+    checks.push(project_file_check);
+
+    if !global {
+        let project_file_check = if let Some(project_root) = service.project_root() {
             DoctorCheckResult {
                 check: "project_toml".to_string(),
                 status: DoctorStatus::Pass,
-                message: format!("skill-project.toml found: {}", project_file.path.display()),
+                message: format!(
+                    "skill-project.toml found: {}",
+                    project_root.join("skill-project.toml").display()
+                ),
             }
         } else {
             DoctorCheckResult {
@@ -111,9 +145,9 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
                 message: "skill-project.toml not found. Run 'fastskill init' to create one."
                     .to_string(),
             }
-        }
-    };
-    checks.push(project_file_check);
+        };
+        checks.push(project_file_check);
+    }
 
     // Check 3: Embedding configuration present
     let embedding_check = if let Some(embedding) = service.config().embedding.as_ref() {
@@ -165,20 +199,52 @@ pub async fn execute_doctor(service: &FastSkillService, args: DoctorArgs) -> Cli
     };
     checks.push(api_key_check);
 
-    // Check 5: Auth token
-    let auth_check = if std::env::var("FASTSKILL_AUTH_TOKEN").is_ok()
-        || std::env::var("FASTSKILL_TOKEN").is_ok()
-    {
+    // Check 5: only require the credential names declared by configured
+    // repositories. Public/local repositories need no token.
+    let required_credentials = service
+        .repository_manager()
+        .map(|manager| {
+            manager
+                .list_repositories()
+                .into_iter()
+                .filter_map(|repository| {
+                    repository.auth.as_ref().map(|auth| match auth {
+                        fastskill_core::core::repository::RepositoryAuth::Pat { env_var } => {
+                            env_var.clone()
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let missing_credentials = required_credentials
+        .iter()
+        .filter(|name| std::env::var(name).is_err())
+        .cloned()
+        .collect::<Vec<_>>();
+    let auth_check = if required_credentials.is_empty() {
         DoctorCheckResult {
-            check: "auth_token".to_string(),
+            check: "repository_credentials".to_string(),
             status: DoctorStatus::Pass,
-            message: "Auth token found in environment.".to_string(),
+            message: "No configured repository requires credentials.".to_string(),
+        }
+    } else if missing_credentials.is_empty() {
+        DoctorCheckResult {
+            check: "repository_credentials".to_string(),
+            status: DoctorStatus::Pass,
+            message: format!(
+                "All configured repository credentials are set: {}.",
+                required_credentials.join(", ")
+            ),
         }
     } else {
         DoctorCheckResult {
-            check: "auth_token".to_string(),
+            check: "repository_credentials".to_string(),
             status: DoctorStatus::Warn,
-            message: "No auth token set. Remote registry operations may fail. Set FASTSKILL_AUTH_TOKEN (or FASTSKILL_TOKEN) with a registry token.".to_string(),
+            message: format!(
+                "Missing credentials required by configured repositories: {}.",
+                missing_credentials.join(", ")
+            ),
         }
     };
     checks.push(auth_check);
@@ -250,7 +316,11 @@ fn print_json(checks: &[DoctorCheckResult]) {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use fastskill_core::{FastSkillService, ServiceConfig};
+    use fastskill_core::core::repository::{
+        RepositoryAuth, RepositoryConfig, RepositoryDefinition, RepositoryManager, RepositoryType,
+    };
+    use fastskill_core::{EmbeddingConfig, FastSkillService, ServiceConfig};
+    use std::sync::Arc;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -266,7 +336,7 @@ mod tests {
 
         let args = DoctorArgs { json: false };
         // Should succeed (skills dir exists)
-        let result = execute_doctor(&service, args).await;
+        let result = execute_doctor(&service, args, false).await;
         assert!(result.is_ok());
     }
 
@@ -281,31 +351,166 @@ mod tests {
         service.initialize().await.unwrap();
 
         let args = DoctorArgs { json: true };
-        let result = execute_doctor(&service, args).await;
+        let result = execute_doctor(&service, args, false).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_execute_doctor_missing_skills_dir() {
-        // Verify that execute_doctor returns Err when the skills dir check has Error status.
-        // We confirm this via DoctorStatus logic rather than filesystem tricks,
-        // since FastSkillService::initialize() may create the directory.
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        let config = ServiceConfig {
+            skill_storage_path: skills_dir.clone(),
+            ..Default::default()
+        };
+        let mut service = FastSkillService::new(config).await.unwrap();
+        service.initialize().await.unwrap();
+        std::fs::remove_dir_all(skills_dir).unwrap();
+
+        let args = DoctorArgs { json: false };
+        let result = execute_doctor(&service, args, false).await;
+        assert!(
+            matches!(result, Err(CliError::Config(message)) if message.contains("inaccessible"))
+        );
+    }
+
+    #[tokio::test]
+    async fn global_scope_and_public_repositories_do_not_require_a_project_or_token() {
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
             skill_storage_path: temp_dir.path().to_path_buf(),
             ..Default::default()
         };
-        let mut service = FastSkillService::new(config).await.unwrap();
+        let mut service = FastSkillService::new(config)
+            .await
+            .unwrap()
+            .with_repository_manager(Arc::new(RepositoryManager::from_definitions(vec![])));
         service.initialize().await.unwrap();
 
-        // Doctor should succeed when the skills dir exists
-        let args = DoctorArgs { json: false };
-        let result = execute_doctor(&service, args).await;
-        // skills dir exists, so only warnings possible — should be Ok
-        assert!(
-            result.is_ok(),
-            "Expected Ok when skills dir exists: {:?}",
-            result
-        );
+        let (result, output) =
+            crate::output::capture(execute_doctor(&service, DoctorArgs { json: true }, true)).await;
+        result.unwrap();
+        let checks: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(checks.as_array().unwrap().iter().any(|check| {
+            check["check"] == "scope" && check["message"].as_str().unwrap().contains("Global")
+        }));
+        assert!(checks.as_array().unwrap().iter().any(|check| {
+            check["check"] == "repository_credentials" && check["status"] == "pass"
+        }));
+        assert!(!output.contains("FASTSKILL_AUTH_TOKEN"));
+    }
+
+    #[tokio::test]
+    async fn project_scope_and_only_declared_repository_credentials_are_reported() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        let skills = project_root.join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::write(project_root.join("skill-project.toml"), "[dependencies]\n").unwrap();
+        let repository = RepositoryDefinition {
+            name: "private".to_string(),
+            repo_type: RepositoryType::HttpRegistry,
+            priority: 0,
+            config: RepositoryConfig::HttpRegistry {
+                index_url: "https://example.invalid/index".to_string(),
+            },
+            auth: Some(RepositoryAuth::Pat {
+                env_var: "FASTSKILL_DOCTOR_TEST_MISSING_TOKEN".to_string(),
+            }),
+            storage: None,
+        };
+        let mut service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: skills,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .with_project_root(project_root.clone())
+        .with_repository_manager(Arc::new(RepositoryManager::from_definitions(vec![
+            repository,
+        ])));
+        service.initialize().await.unwrap();
+
+        let (result, output) =
+            crate::output::capture(execute_doctor(&service, DoctorArgs { json: true }, false))
+                .await;
+        result.unwrap();
+        let checks: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(checks.as_array().unwrap().iter().any(|check| {
+            check["check"] == "scope"
+                && check["message"].as_str().is_some_and(|message| {
+                    message.contains(project_root.join("skill-project.toml").to_str().unwrap())
+                })
+        }));
+        assert!(output.contains("FASTSKILL_DOCTOR_TEST_MISSING_TOKEN"));
+        assert!(!output.contains("FASTSKILL_AUTH_TOKEN"));
+    }
+
+    #[tokio::test]
+    async fn declared_repository_credentials_pass_when_the_named_variable_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let repository = RepositoryDefinition {
+            name: "private".to_string(),
+            repo_type: RepositoryType::HttpRegistry,
+            priority: 0,
+            config: RepositoryConfig::HttpRegistry {
+                index_url: "https://example.invalid/index".to_string(),
+            },
+            auth: Some(RepositoryAuth::Pat {
+                env_var: "PATH".to_string(),
+            }),
+            storage: None,
+        };
+        let mut service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .with_repository_manager(Arc::new(RepositoryManager::from_definitions(vec![
+            repository,
+        ])));
+        service.initialize().await.unwrap();
+
+        let (result, output) =
+            crate::output::capture(execute_doctor(&service, DoctorArgs { json: true }, true)).await;
+        result.unwrap();
+        assert!(output.contains("All configured repository credentials are set: PATH"));
+    }
+
+    #[test]
+    fn argument_map_and_status_display_cover_typed_boundaries() {
+        let mut map = HashMap::new();
+        map.insert("json".to_string(), ArgValue::Bool(true));
+        assert!(DoctorArgs::from_arg_value_map(&map).json);
+        assert_eq!(DoctorStatus::Pass.to_string(), "pass");
+        assert_eq!(DoctorStatus::Warn.to_string(), "warn");
+        assert_eq!(DoctorStatus::Fail.to_string(), "fail");
+        let spec = DoctorArgs::command_spec();
+        assert_eq!(spec.syntax, Some("doctor [OPTIONS]"));
+        assert_eq!(spec.args[0].long, Some("json"));
+    }
+
+    #[tokio::test]
+    async fn embedding_check_reports_the_effective_endpoint_and_model() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: temp_dir.path().to_path_buf(),
+            embedding: Some(EmbeddingConfig {
+                openai_base_url: "https://gateway.example.invalid".to_string(),
+                embedding_model: "company-model".to_string(),
+                index_path: Some(temp_dir.path().join("index.db")),
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        service.initialize().await.unwrap();
+
+        let (result, output) =
+            crate::output::capture(execute_doctor(&service, DoctorArgs { json: true }, true)).await;
+        result.unwrap();
+        assert!(output.contains("https://gateway.example.invalid"));
+        assert!(output.contains("company-model"));
     }
 }

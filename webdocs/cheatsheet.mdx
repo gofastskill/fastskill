@@ -11,12 +11,13 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
-| Install from manifest | `fastskill install` | Resolves `[dependencies]` in `skill-project.toml`, installs skills, updates `skills.lock` |
-| Reproducible install | `fastskill install --lock` | Installs exact versions from `skills.lock` (CI and locked environments) |
-| Update skills | `fastskill update` | Refreshes installed skills and lock from manifest (see [update command](/cli-reference/update-command)) |
+| Install from manifest | `fastskill install` | Restores compatible pins, resolves uncovered roots, and records complete dependency closures |
+| Reproducible install | `fastskill install --lock --offline` | Verifies and restores exact locked revisions and content without network access |
+| Update skills | `fastskill update` | Resolves deliberate changes within recorded constraints (see [update command](/cli-reference/update-command)) |
 | Check updates only | `fastskill update --check` | Reports newer versions without changing files |
 | List installed | `fastskill list` | Lists locally installed skills with reconciliation status (table) |
 | List installed (JSON) | `fastskill list --json` | Same as list, machine-readable |
+| Verify selected state | `fastskill list --check` | Returns nonzero for missing, mismatched, unverifiable, or conflicted required contents |
 | Read skill content | `fastskill read my-skill-id` | Full `SKILL.md` and base path in an agent-oriented format |
 | Read skill metadata | `fastskill read my-skill-id --meta` | ID, version, description, source (add `--json` for machine output) |
 | Dependency tree | `fastskill read my-skill-id --tree` | Dependency relationships for the skill |
@@ -34,6 +35,7 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 | Update bundle | `fastskill update --bundle team --from ./team-1.1.0.zip` | Verifies and applies an explicitly selected release |
 | Remove bundle | `fastskill remove --bundle team` | Removes bundle ownership and only deletes members with no other owner |
 | Personal override | `fastskill bundle override member --from ./custom-member` | Declares a permitted replacement for an overridable member |
+| Reset override | `fastskill bundle override member --reset` | Restores agreed packaged bytes and clears the personal replacement |
 
 See [bundle command](/cli-reference/bundle-command) for the manifest shape and ownership rules.
 
@@ -41,13 +43,14 @@ See [bundle command](/cli-reference/bundle-command) for the manifest shape and o
 
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
-| From registry | `fastskill add pptx` | Installs from the configured registry into the skills directory; updates manifest and lock |
-| Pinned version | `fastskill add pptx@1.2.3` | Installs that version and pins it in the lock file |
+| Latest stable | `fastskill add pptx@latest --repository team` | Selects the newest stable release from the named repository |
+| Pinned version | `fastskill add pptx@1.2.3 --repository team` | Selects that exact version and records the repository identity |
 | From Git | `fastskill add https://github.com/org/skill.git` | Clones, validates layout, registers and installs |
 | Editable local path | `fastskill add ./dev-skill -e` | Symlink or reference; edits apply without reinstall |
 | Private registry | `fastskill add team-skill` | Uses auth from `skill-project.toml` / environment |
 | Folder of skills | `fastskill add ./skills -r` | Adds each subdirectory that contains `SKILL.md` (local trees only) |
 | Network share (Windows) | `fastskill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory |
+| Offline add | `fastskill add pptx@1.2.3 --repository team --offline` | Uses a verified cached artifact without refresh, network, or automatic indexing |
 
 ## Search
 

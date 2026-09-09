@@ -1,8 +1,11 @@
 //! Skills CRUD endpoint handlers
 
-use crate::core::install::{AddMode, UpdatePreflight};
+use crate::core::lock::ProjectSkillsLock;
 use crate::core::manifest::SkillProjectToml;
 use crate::core::origin::Origin;
+use crate::core::project_apply::{ProjectApplyCandidate, ProjectApplyPlan};
+use crate::core::project_removal::ProjectRemovalService;
+use crate::core::resolution::{prepare_resolution, prepare_resolution_preview, ResolutionRoot};
 use crate::core::service::ServiceError;
 use crate::core::version::VersionConstraint;
 use crate::http::errors::{HttpError, HttpResult};
@@ -30,6 +33,23 @@ fn skill_metadata_json(skill: &crate::core::skill_manager::SkillDefinition) -> s
         "asset_files": skill.asset_files,
         "origin": origin
     })
+}
+
+fn lifecycle_http_error(error: ServiceError) -> HttpError {
+    match error {
+        ServiceError::InvalidOperation(message)
+            if message.contains("required by")
+                || message.contains("owned by")
+                || message.contains("managed by")
+                || message.contains("locally modified")
+                || message.contains("digest")
+                || message.contains("recovery")
+                || message.contains("state changed") =>
+        {
+            HttpError::Conflict(message)
+        }
+        other => other.into(),
+    }
 }
 
 /// GET /api/skills - List all skills
@@ -179,71 +199,48 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> HttpResult<axum::Json<ApiResponse<serde_json::Value>>> {
-    let skill_id_parsed = crate::core::service::SkillId::new(skill_id.clone())
+    let result = remove_project_skill(&state, skill_id).await?;
+    Ok(axum::Json(ApiResponse::success(result)))
+}
+
+pub(crate) async fn remove_project_skill(
+    state: &AppState,
+    skill_id: String,
+) -> HttpResult<serde_json::Value> {
+    state.require_project_scope()?;
+    crate::core::service::SkillId::new(skill_id.clone())
         .map_err(|_| HttpError::BadRequest("Invalid skill ID format".to_string()))?;
-
-    let skills = state.service.skill_manager().list_skills().await?;
-    let skill = skills
-        .into_iter()
-        .find(|s| s.id == skill_id_parsed)
-        .ok_or_else(|| HttpError::NotFound(format!("Skill not found: {}", skill_id)))?;
-
-    let project_path = &state.project_file_path;
-    let lock_path = if let Some(parent) = project_path.parent() {
-        let safe_parent = if parent.exists() {
-            parent.canonicalize().map_err(|e| {
-                HttpError::InternalServerError(format!("Failed to resolve parent path: {}", e))
-            })?
-        } else {
-            parent.to_path_buf()
-        };
-        safe_parent.join("skills.lock")
-    } else {
-        std::path::PathBuf::from("skills.lock")
-    };
-
-    if project_path.exists() {
-        let mut project = crate::core::manifest::SkillProjectToml::load_from_file(project_path)
-            .map_err(|e| {
-                HttpError::InternalServerError(format!("Failed to load project: {}", e))
-            })?;
-        if let Some(ref mut deps) = project.dependencies {
-            deps.dependencies.remove(&skill_id);
-        }
-        project.save_to_file(project_path).map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to save project: {}", e))
-        })?;
-        if lock_path.exists() {
-            let mut lock = crate::core::lock::ProjectSkillsLock::load_from_file(&lock_path)
-                .map_err(|e| {
-                    HttpError::InternalServerError(format!("Failed to load lock: {}", e))
-                })?;
-            lock.remove_skill(&skill_id);
-            lock.save_to_file(&lock_path).map_err(|e| {
-                HttpError::InternalServerError(format!("Failed to save lock: {}", e))
-            })?;
+    if !state.project_file_path.exists() {
+        return Err(HttpError::NotFound(
+            "skill-project.toml not found for the served project".to_string(),
+        ));
+    }
+    let plan = ProjectRemovalService::new(&state.project_root, &state.skills_directory)
+        .remove(std::slice::from_ref(&skill_id))
+        .map_err(lifecycle_http_error)?;
+    if plan.unchanged.iter().any(|id| id == &skill_id) {
+        return Err(HttpError::NotFound(format!("Skill not found: {skill_id}")));
+    }
+    let mut diagnostics = Vec::new();
+    for removed in &plan.delete_files {
+        let id = crate::core::service::SkillId::new(removed.clone()).map_err(HttpError::from)?;
+        match state.service.skill_manager().unregister_skill(&id).await {
+            Ok(()) | Err(ServiceError::SkillNotFound(_)) => {}
+            Err(error) => {
+                diagnostics.push(format!(
+                    "Managed state changed, but registry cleanup failed for '{removed}': {error}"
+                ));
+            }
         }
     }
 
-    let skill_dir = skill.skill_file.parent().ok_or_else(|| {
-        HttpError::InternalServerError("Skill file has no parent dir".to_string())
-    })?;
-    if skill_dir.exists() {
-        tokio::fs::remove_dir_all(skill_dir).await.map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to remove skill dir: {}", e))
-        })?;
-    }
-
-    state
-        .service
-        .skill_manager()
-        .unregister_skill(&skill_id_parsed)
-        .await
-        .map_err(|e| HttpError::InternalServerError(e.to_string()))?;
-
-    Ok(axum::Json(ApiResponse::success(serde_json::json!({
-        "message": "Skill removed"
-    }))))
+    Ok(serde_json::json!({
+        "outcome": "changed",
+        "removed": plan.remove_manifest_dependencies,
+        "deleted": plan.delete_files,
+        "retained": plan.retained_files,
+        "diagnostics": diagnostics
+    }))
 }
 
 /// POST /api/v1/skills/install - Fresh-install a skill from an **Origin ref**
@@ -256,37 +253,137 @@ pub async fn install_skill(
     State(state): State<AppState>,
     Json(request): Json<InstallSkillRequest>,
 ) -> HttpResult<(StatusCode, axum::Json<ApiResponse<InstallSkillResponse>>)> {
+    state.require_project_scope()?;
     // A bad ref / no-default-repo is a client error (400), not a 500 — surface
     // it distinctly from the blanket `ServiceError` → `HttpError` conversion
     // below (which maps `Config` to 500, appropriate for the *fetch* path but
     // not for classifying the ref itself).
-    let origin = state
+    let mut origin = state
         .service
         .infer_origin(&request.origin)
         .await
         .map_err(|e| HttpError::BadRequest(e.to_string()))?;
-
-    match state
-        .service
-        .add_from_origin(origin, AddMode::Fresh, request.groups)
-        .await
-    {
-        Ok(outcome) => {
-            let response = InstallSkillResponse {
-                id: outcome.id,
-                resolved_version: outcome.resolved.version,
-                reindexed: outcome.reindexed,
-            };
-            Ok((StatusCode::CREATED, Json(ApiResponse::success(response))))
+    if let Some(repository) = request.repository.as_deref() {
+        let manager = state
+            .service
+            .repository_manager()
+            .ok_or_else(|| HttpError::BadRequest("No repositories are configured".to_string()))?;
+        if manager.get_repository(repository).is_none() {
+            return Err(HttpError::NotFound(format!(
+                "Repository not found: {repository}"
+            )));
         }
-        // ADR-0005 §Q6 / spec 003 §2: a Fresh conflict on an already-installed
-        // id is a 409, not a generic 400 (which the blanket ServiceError→HttpError
-        // mapping would otherwise give it).
-        Err(ServiceError::AlreadyIndexed(id)) => Err(HttpError::Conflict(format!(
-            "Skill '{}' is already installed",
-            id
-        ))),
-        Err(e) => Err(e.into()),
+        match &mut origin {
+            Origin::Repository { repo, .. } => *repo = repository.to_string(),
+            _ => {
+                return Err(HttpError::BadRequest(
+                    "repository applies only to a repository skill ID reference".to_string(),
+                ));
+            }
+        }
+    }
+
+    let expected_id = match &origin {
+        Origin::Repository { skill, .. } => Some(skill.clone()),
+        _ => None,
+    };
+    let resolution = prepare_resolution(
+        &state.service,
+        vec![ResolutionRoot {
+            origin: origin.clone(),
+            expected_id,
+            groups: request.groups.clone(),
+            locked: None,
+        }],
+        &std::collections::HashMap::new(),
+        5,
+        false,
+    )
+    .await
+    .map_err(lifecycle_http_error)?;
+    let root_id = resolution
+        .root_ids
+        .first()
+        .cloned()
+        .ok_or_else(|| HttpError::BadRequest("install resolved no skill".to_string()))?;
+    let lock_path = state.project_root.join("skills.lock");
+    let existing = ProjectSkillsLock::load_from_file(&lock_path).ok();
+    let project = SkillProjectToml::load_from_file(&state.project_file_path)
+        .map_err(|error| HttpError::InternalServerError(error.to_string()))?;
+    let manifest_entries = project
+        .to_skill_entries(&state.project_root)
+        .map_err(HttpError::InternalServerError)?;
+    if existing
+        .as_ref()
+        .is_some_and(|lock| lock.covered_roots.contains(&root_id))
+        || project
+            .to_skill_entries(&state.project_root)
+            .map_err(HttpError::InternalServerError)?
+            .iter()
+            .any(|entry| entry.id == root_id)
+    {
+        return Err(HttpError::Conflict(format!(
+            "Skill '{root_id}' is already installed"
+        )));
+    }
+    let version = resolution
+        .candidates
+        .iter()
+        .find(|candidate| candidate.prepared.id() == root_id)
+        .map(|candidate| candidate.prepared.resolved().version.clone())
+        .ok_or_else(|| HttpError::BadRequest("install root was not prepared".to_string()))?;
+    let plan = ProjectApplyPlan {
+        candidates: resolution
+            .candidates
+            .into_iter()
+            .map(project_candidate)
+            .collect(),
+        expected_skills: existing
+            .as_ref()
+            .map(|lock| lock.skills.clone())
+            .unwrap_or_default(),
+        expected_manifest: vec![crate::core::project_apply::ExpectedManifestSkill {
+            id: root_id.clone(),
+            entry: manifest_entries
+                .iter()
+                .find(|entry| entry.id == root_id)
+                .cloned(),
+        }],
+        base_lock: existing,
+        covered_roots: vec![root_id.clone()],
+        manifest_updates: vec![crate::core::manifest::SkillEntry {
+            id: root_id.clone(),
+            origin,
+            groups: request.groups,
+        }],
+        removals: Vec::new(),
+        write_lock: true,
+    };
+    state
+        .service
+        .apply_project_plan(&state.project_root, plan)
+        .await
+        .map_err(lifecycle_http_error)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::success(InstallSkillResponse {
+            id: root_id,
+            resolved_version: version,
+            reindexed: false,
+        })),
+    ))
+}
+
+fn project_candidate(
+    candidate: crate::core::resolution::ResolutionCandidate,
+) -> ProjectApplyCandidate {
+    ProjectApplyCandidate {
+        prepared: candidate.prepared,
+        origin: candidate.origin,
+        groups: candidate.groups,
+        depth: candidate.depth,
+        required_by: candidate.required_by,
+        dependencies: candidate.dependencies,
     }
 }
 
@@ -296,13 +393,12 @@ pub async fn install_skill(
 /// (ADR-0005), mirroring `fastskill-cli`'s `update` command: `preflight(&origin)`
 /// decides Updatable/UpToDate/Immutable, and only `Updatable` entries are
 /// re-fetched via `add_from_origin(origin, AddMode::Update, groups)`.
-/// `check: true` reports the preflight verdict without applying anything.
-/// Always 200 with a per-skill result list — a per-skill failure does not fail
-/// the whole request.
+/// `check: true` validates and reports the selected target without applying it.
 pub async fn update_skills(
     State(state): State<AppState>,
     Json(payload): Json<Option<UpdateSkillsRequest>>,
-) -> HttpResult<axum::Json<ApiResponse<Vec<SkillUpdateResult>>>> {
+) -> HttpResult<(StatusCode, axum::Json<ApiResponse<UpdateSkillsResponse>>)> {
+    state.require_project_scope()?;
     let payload = payload.unwrap_or_default();
     let project_path = &state.project_file_path;
 
@@ -326,63 +422,35 @@ pub async fn update_skills(
         .as_deref()
         .filter(|s| !s.is_empty() && *s != "all");
 
-    // Version pin (spec 003 v2 / Phase 4 version picker): only meaningful
-    // together with a single named `skillId`, and only in apply mode — a
-    // `check: true` dry-run reports the ordinary preflight verdict regardless
-    // of `version` (unaffected, per spec).
     if let Some(version) = payload.version.as_deref() {
-        if !payload.check {
-            let Some(id) = filter_id else {
-                return Err(HttpError::BadRequest(
-                    "`version` requires `skillId` (version pin only applies to a single named \
-                     skill)"
-                        .to_string(),
-                ));
-            };
-            let entry = entries
-                .iter()
-                .find(|e| e.id == id)
-                .ok_or_else(|| HttpError::NotFound(format!("Unknown skill: {}", id)))?;
-
-            let Origin::Repository { repo, skill, .. } = &entry.origin else {
-                return Err(HttpError::BadRequest(format!(
-                    "version pin only applies to repository-origin skills; '{}' is not a \
-                     repository-origin skill",
-                    id
-                )));
-            };
-
-            let constraint = VersionConstraint::parse(version).map_err(|e| {
-                HttpError::BadRequest(format!("Invalid version '{}': {}", version, e))
-            })?;
-            let pinned_origin = Origin::Repository {
-                repo: repo.clone(),
-                skill: skill.clone(),
-                version: Some(constraint),
-            };
-            let groups = entry.groups.clone();
-            let entry_id = entry.id.clone();
-
-            let result = match state
-                .service
-                .add_from_origin(pinned_origin, AddMode::Update, groups)
-                .await
-            {
-                Ok(outcome) => SkillUpdateResult {
-                    id: entry_id,
-                    outcome: "updated".to_string(),
-                    reason: None,
-                    resolved_version: Some(outcome.resolved.version),
-                },
-                Err(e) => SkillUpdateResult {
-                    id: entry_id,
-                    outcome: "error".to_string(),
-                    reason: Some(e.to_string()),
-                    resolved_version: None,
-                },
-            };
-            return Ok(axum::Json(ApiResponse::success(vec![result])));
+        let Some(id) = filter_id else {
+            return Err(HttpError::BadRequest(
+                "`version` requires one named `skillId`".to_string(),
+            ));
+        };
+        let entry = entries
+            .iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| HttpError::NotFound(format!("Unknown skill: {id}")))?;
+        let Origin::Repository { repo, skill, .. } = &entry.origin else {
+            return Err(HttpError::BadRequest(format!(
+                "version pin only applies to repository-origin skills; '{id}' is not repository-backed"
+            )));
+        };
+        let constraint = VersionConstraint::parse(version)
+            .map_err(|e| HttpError::BadRequest(format!("Invalid version '{version}': {e}")))?;
+        if constraint.as_exact().is_none() {
+            return Err(HttpError::BadRequest(
+                "version must be an exact semantic version".to_string(),
+            ));
         }
+        let pinned_origin = Origin::Repository {
+            repo: repo.clone(),
+            skill: skill.clone(),
+            version: Some(constraint),
+        };
+        let result = update_project_root(&state, entry, pinned_origin, payload.check).await;
+        return Ok(update_batch_response(vec![result], payload.check));
     }
 
     if let Some(id) = filter_id {
@@ -394,55 +462,301 @@ pub async fn update_skills(
 
     let mut results = Vec::with_capacity(entries.len());
     for entry in entries {
-        match state.service.preflight(&entry.origin).await {
-            Ok(UpdatePreflight::Updatable) if payload.check => {
-                results.push(SkillUpdateResult {
-                    id: entry.id,
-                    outcome: "would_update".to_string(),
-                    reason: None,
-                    resolved_version: None,
-                });
-            }
-            Ok(UpdatePreflight::Updatable) => {
-                match state
-                    .service
-                    .add_from_origin(entry.origin.clone(), AddMode::Update, entry.groups.clone())
-                    .await
-                {
-                    Ok(outcome) => results.push(SkillUpdateResult {
-                        id: entry.id,
-                        outcome: "updated".to_string(),
-                        reason: None,
-                        resolved_version: Some(outcome.resolved.version),
-                    }),
-                    Err(e) => results.push(SkillUpdateResult {
-                        id: entry.id,
-                        outcome: "error".to_string(),
-                        reason: Some(e.to_string()),
-                        resolved_version: None,
-                    }),
-                }
-            }
-            Ok(UpdatePreflight::UpToDate) => results.push(SkillUpdateResult {
-                id: entry.id,
-                outcome: "up_to_date".to_string(),
-                reason: None,
-                resolved_version: None,
-            }),
-            Ok(UpdatePreflight::Immutable { reason }) => results.push(SkillUpdateResult {
-                id: entry.id,
-                outcome: "immutable".to_string(),
-                reason: Some(reason),
-                resolved_version: None,
-            }),
-            Err(e) => results.push(SkillUpdateResult {
-                id: entry.id,
+        results
+            .push(update_project_root(&state, &entry, entry.origin.clone(), payload.check).await);
+    }
+
+    Ok(update_batch_response(results, payload.check))
+}
+
+async fn update_project_root(
+    state: &AppState,
+    entry: &crate::core::manifest::SkillEntry,
+    origin: Origin,
+    check: bool,
+) -> SkillUpdateResult {
+    let lock_path = state.project_root.join("skills.lock");
+    let existing = ProjectSkillsLock::load_from_file(&lock_path).ok();
+    let locked = existing
+        .as_ref()
+        .map(|lock| {
+            lock.skills
+                .iter()
+                .map(|item| (item.id.clone(), item.resolved.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let root = ResolutionRoot {
+        origin: origin.clone(),
+        expected_id: Some(entry.id.clone()),
+        groups: entry.groups.clone(),
+        locked: None,
+    };
+    let resolution = if check {
+        prepare_resolution_preview(&state.service, vec![root], &locked, 5).await
+    } else {
+        prepare_resolution(&state.service, vec![root], &locked, 5, false).await
+    };
+    let resolution = match resolution {
+        Ok(resolution) => resolution,
+        Err(error) => {
+            return SkillUpdateResult {
+                id: entry.id.clone(),
                 outcome: "error".to_string(),
-                reason: Some(e.to_string()),
+                reason: Some(error.to_string()),
                 resolved_version: None,
+            };
+        }
+    };
+    let version = resolution
+        .candidates
+        .iter()
+        .find(|candidate| candidate.prepared.id() == entry.id)
+        .map(|candidate| candidate.prepared.resolved().version.clone());
+    let positions: std::collections::BTreeSet<_> = resolution
+        .candidates
+        .iter()
+        .map(|candidate| candidate.prepared.id().to_string())
+        .collect();
+    let expected_skills = existing
+        .as_ref()
+        .map(|lock| lock.skills.clone())
+        .unwrap_or_default();
+    let (base_lock, mut removals) = existing
+        .map(|lock| {
+            let (lock, removals) = crate::core::project_apply::retain_unaffected_roots(
+                lock,
+                std::slice::from_ref(&entry.id),
+            );
+            (Some(lock), removals)
+        })
+        .unwrap_or((None, Vec::new()));
+    removals.retain(|id| !positions.contains(id));
+    let plan = ProjectApplyPlan {
+        candidates: resolution
+            .candidates
+            .into_iter()
+            .map(project_candidate)
+            .collect(),
+        base_lock,
+        covered_roots: vec![entry.id.clone()],
+        manifest_updates: vec![crate::core::manifest::SkillEntry {
+            id: entry.id.clone(),
+            origin,
+            groups: entry.groups.clone(),
+        }],
+        removals,
+        write_lock: true,
+        expected_skills,
+        expected_manifest: vec![crate::core::project_apply::ExpectedManifestSkill {
+            id: entry.id.clone(),
+            entry: Some(entry.clone()),
+        }],
+    };
+    if let Err(error) = state
+        .service
+        .validate_project_plan(&state.project_root, &plan)
+    {
+        return SkillUpdateResult {
+            id: entry.id.clone(),
+            outcome: "error".to_string(),
+            reason: Some(error.to_string()),
+            resolved_version: version,
+        };
+    }
+    if !check {
+        if let Err(error) = state
+            .service
+            .apply_project_plan(&state.project_root, plan)
+            .await
+        {
+            return SkillUpdateResult {
+                id: entry.id.clone(),
+                outcome: "error".to_string(),
+                reason: Some(error.to_string()),
+                resolved_version: version,
+            };
+        }
+    }
+    SkillUpdateResult {
+        id: entry.id.clone(),
+        outcome: if check { "would_update" } else { "updated" }.to_string(),
+        reason: None,
+        resolved_version: version,
+    }
+}
+
+fn update_batch_response(
+    results: Vec<SkillUpdateResult>,
+    check: bool,
+) -> (StatusCode, axum::Json<ApiResponse<UpdateSkillsResponse>>) {
+    let failed = results
+        .iter()
+        .filter(|result| result.outcome == "error")
+        .count();
+    let changed = results
+        .iter()
+        .filter(|result| matches!(result.outcome.as_str(), "updated" | "would_update"))
+        .count();
+    let outcome = if failed == results.len() && failed > 0 {
+        "failed"
+    } else if failed > 0 {
+        "partial"
+    } else if changed == 0 {
+        "unchanged"
+    } else if check {
+        "would_change"
+    } else {
+        "changed"
+    };
+    let status = if outcome == "failed" {
+        StatusCode::INTERNAL_SERVER_ERROR
+    } else {
+        StatusCode::OK
+    };
+    (
+        status,
+        axum::Json(ApiResponse {
+            success: failed == 0,
+            data: Some(UpdateSkillsResponse {
+                outcome: outcome.to_string(),
+                results,
             }),
+            error: None,
+            meta: None,
+        }),
+    )
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::core::service::{FastSkillService, SkillId};
+    use crate::core::skill_manager::SkillDefinition;
+    use crate::http::handlers::ServedScope;
+    use std::sync::Arc;
+
+    fn result(id: &str, outcome: &str) -> SkillUpdateResult {
+        SkillUpdateResult {
+            id: id.to_string(),
+            outcome: outcome.to_string(),
+            reason: None,
+            resolved_version: None,
         }
     }
 
-    Ok(axum::Json(ApiResponse::success(results)))
+    #[test]
+    fn batch_status_distinguishes_failed_partial_and_unchanged_results() {
+        let (status, Json(response)) = update_batch_response(vec![result("one", "error")], false);
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.data.expect("data").outcome, "failed");
+
+        let (status, Json(response)) = update_batch_response(
+            vec![result("one", "updated"), result("two", "error")],
+            false,
+        );
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response.data.expect("data").outcome, "partial");
+
+        let (status, Json(response)) = update_batch_response(Vec::new(), false);
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(response.data.expect("data").outcome, "unchanged");
+
+        let (_, Json(response)) = update_batch_response(vec![result("one", "would_update")], true);
+        assert_eq!(response.data.expect("data").outcome, "would_change");
+
+        let (_, Json(response)) = update_batch_response(vec![result("one", "updated")], false);
+        assert_eq!(response.data.expect("data").outcome, "changed");
+    }
+
+    #[tokio::test]
+    async fn content_and_remove_handlers_report_relative_escape_missing_and_absent_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let skills = root.path().join("skills");
+        std::fs::create_dir_all(skills.join("demo")).unwrap();
+        std::fs::write(skills.join("demo/SKILL.md"), "# demo").unwrap();
+        let service = Arc::new(
+            FastSkillService::new(crate::ServiceConfig {
+                skill_storage_path: skills.clone(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+        );
+        let id = SkillId::new("demo".to_string()).unwrap();
+        let mut definition = SkillDefinition::new(
+            id.clone(),
+            "demo".to_string(),
+            "demo".to_string(),
+            "1.0.0".to_string(),
+            Origin::Local {
+                path: root.path().join("source"),
+                editable: false,
+            },
+        );
+        definition.skill_file = std::path::PathBuf::from("demo/SKILL.md");
+        service
+            .skill_manager()
+            .force_register_skill(definition.clone())
+            .await
+            .unwrap();
+        let project_file = root.path().join("skill-project.toml");
+        std::fs::write(&project_file, "[dependencies]\n").unwrap();
+        let state = AppState {
+            service: service.clone(),
+            start_time: std::time::SystemTime::now(),
+            project_file_path: project_file,
+            project_root: root.path().to_path_buf(),
+            skills_directory: skills,
+            served_scope: ServedScope::Project,
+            enable_write: true,
+        };
+
+        assert!(get_skill_content(
+            State(state.clone()),
+            Path("demo".to_string()),
+            Query(ContentQuery::default()),
+        )
+        .await
+        .is_ok());
+
+        let outside = root.path().join("outside.md");
+        std::fs::write(&outside, "outside").unwrap();
+        definition.skill_file = outside;
+        service
+            .skill_manager()
+            .force_register_skill(definition.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await,
+            Err(HttpError::BadRequest(_))
+        ));
+
+        definition.skill_file = std::path::PathBuf::from("missing/SKILL.md");
+        service
+            .skill_manager()
+            .force_register_skill(definition)
+            .await
+            .unwrap();
+        assert!(matches!(
+            get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await,
+            Err(HttpError::NotFound(_))
+        ));
+        assert!(matches!(
+            remove_project_skill(&state, "demo".to_string()).await,
+            Err(HttpError::NotFound(_))
+        ));
+    }
 }

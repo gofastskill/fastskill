@@ -18,6 +18,8 @@ Options:
   -v, --verbose                  Enable verbose output
       --reindex                  Trigger reindex after removal (overrides config)
       --no-reindex               Skip reindex after removal
+      --dry-run                  Validate and preview without changing managed state
+      --json                     Emit one machine-readable lifecycle result
   -h, --help                     Print help
   -V, --version                  Print version
 

@@ -1,5 +1,7 @@
 //! Repository client abstraction for unified skill access
 
+mod marketplace_acquisition;
+
 use crate::core::metadata::SkillMetadata;
 use crate::core::registry::{RegistryClient, RegistryConfig as OldRegistryConfig};
 use crate::core::registry_index::{ListSkillsOptions, SkillSummary};
@@ -59,6 +61,7 @@ pub async fn create_client(
 pub struct MarketplaceRepositoryClient {
     sources_manager: SourcesManager,
     source_name: String,
+    config: RepositoryConfig,
     /// Unique per-client temp dir backing `sources_manager`. Held so it is not
     /// cleaned up while the client is alive; dropped (and removed) with the client.
     _temp_dir: tempfile::TempDir,
@@ -135,6 +138,7 @@ impl MarketplaceRepositoryClient {
         Ok(Self {
             sources_manager,
             source_name: repo.name.clone(),
+            config: repo.config.clone(),
             _temp_dir: temp_dir,
         })
     }
@@ -200,10 +204,15 @@ impl RepositoryClient for MarketplaceRepositoryClient {
             .collect())
     }
 
-    async fn download(&self, _id: &str, _version: &str) -> Result<Vec<u8>, RepositoryClientError> {
-        // For marketplace repositories, we need to get the download URL from marketplace.json
-        // This is a simplified implementation - full implementation would fetch marketplace.json
-        Err(RepositoryClientError::NotImplemented)
+    async fn download(&self, id: &str, version: &str) -> Result<Vec<u8>, RepositoryClientError> {
+        marketplace_acquisition::download(
+            &self.config,
+            &self.sources_manager,
+            &self.source_name,
+            id,
+            version,
+        )
+        .await
     }
 
     async fn get_versions(&self, id: &str) -> Result<Vec<String>, RepositoryClientError> {
@@ -639,8 +648,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_marketplace_download_not_implemented() {
+    async fn test_marketplace_local_download_is_an_installable_zip() {
         let tmp = tempfile::tempdir().unwrap();
+        let skill = tmp.path().join("a");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: a\nversion: 1.0.0\ndescription: A\n---\nBody\n",
+        )
+        .unwrap();
         let client = MarketplaceRepositoryClient::new(&marketplace(
             RepositoryConfig::Local {
                 path: tmp.path().to_path_buf(),
@@ -648,10 +664,10 @@ mod tests {
             None,
         ))
         .unwrap();
-        assert!(matches!(
-            client.download("a", "1.0.0").await,
-            Err(RepositoryClientError::NotImplemented)
-        ));
+        let bytes = client.download("a", "1.0.0").await.unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        assert!(archive.by_name("SKILL.md").is_ok());
+        assert!(client.download("a", "2.0.0").await.is_err());
     }
 
     #[tokio::test]

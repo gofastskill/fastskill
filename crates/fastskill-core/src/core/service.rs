@@ -176,18 +176,21 @@ impl SkillId {
                 "Skill ID too long (max 255 characters)".to_string(),
             ));
         }
-        // Reject forward slashes (scope should be handled separately)
-        if id.contains('/') {
-            return Err(ServiceError::Validation(
-                "Skill ID cannot contain forward slashes. Scope should be handled separately during publishing.".to_string(),
-            ));
-        }
-        // Basic validation for allowed characters (alphanumeric, dash, underscore)
-        if !id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        // A repository scope is one safe path component followed by one safe
+        // package component. This matches `ScopedSkillName::normalize` while
+        // still rejecting traversal, absolute paths and ambiguous nesting.
+        let components: Vec<&str> = id.split('/').collect();
+        if components.len() > 2
+            || components.iter().any(|component| {
+                component.is_empty()
+                    || !component
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            })
         {
-            return Err(ServiceError::Validation("Skill ID contains invalid characters (only alphanumeric, dash, underscore allowed)".to_string()));
+            return Err(ServiceError::Validation(
+                "Skill ID must be 'name' or 'scope/name' using only alphanumeric, dash, or underscore characters".to_string(),
+            ));
         }
         Ok(Self(id))
     }
@@ -284,7 +287,7 @@ pub enum ServiceError {
 
 /// Main FastSkill service
 ///
-/// Note: This struct does not derive Debug because it contains Arc<dyn Trait> fields
+/// Note: This struct does not derive Debug because it contains `Arc<dyn Trait>` fields
 /// which cannot implement Debug. This is acceptable for enterprise software.
 pub struct FastSkillService {
     /// Service configuration
@@ -798,8 +801,10 @@ mod tests {
     fn test_skill_id_new_validates_input() {
         assert!(SkillId::new("valid-id".to_string()).is_ok());
         assert!(SkillId::new("valid_id_123".to_string()).is_ok());
+        assert!(SkillId::new("team/reviewer".to_string()).is_ok());
         assert!(SkillId::new("".to_string()).is_err());
-        assert!(SkillId::new("bad/id".to_string()).is_err());
+        assert!(SkillId::new("too/many/parts".to_string()).is_err());
+        assert!(SkillId::new("../escape".to_string()).is_err());
         assert!(SkillId::new("id with spaces".to_string()).is_err());
     }
 
@@ -808,7 +813,7 @@ mod tests {
         // TryFrom should validate input
         assert!(SkillId::try_from("valid-id".to_string()).is_ok());
         assert!(SkillId::try_from("".to_string()).is_err());
-        assert!(SkillId::try_from("bad/id".to_string()).is_err());
+        assert!(SkillId::try_from("bad/id/nested".to_string()).is_err());
     }
 
     #[test]
@@ -848,10 +853,10 @@ mod tests {
 
     #[test]
     fn test_skill_id_deserialize_rejects_invalid_value() {
-        // An id embedding a forward slash fails SkillId::new's validation,
+        // More than one scope separator fails SkillId::new's validation,
         // and Deserialize must surface that as a deserialize error rather
         // than panicking or silently accepting it.
-        let result: Result<SkillId, _> = serde_json::from_str("\"bad/id\"");
+        let result: Result<SkillId, _> = serde_json::from_str("\"bad/id/nested\"");
         assert!(result.is_err());
     }
 

@@ -13,7 +13,7 @@
 //! {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"OK"}]}}
 //! ```
 //!
-//! Every command therefore emits through [`emit`] (usually via the [`outln!`]
+//! Every command therefore emits through [`emit`] (usually via the `outln!`
 //! macro), which routes according to the process-wide [`Mode`] chosen once at
 //! startup:
 //!
@@ -87,9 +87,15 @@ pub fn mode() -> Mode {
         .unwrap_or_else(|_| process_mode())
 }
 
+/// Whether the current task already owns a capture sink. Registration uses
+/// this to avoid draining a nested capture past a process-level JSON boundary.
+pub fn has_active_sink() -> bool {
+    SINK.try_with(|_| ()).is_ok()
+}
+
 /// Emit one line of user-visible output.
 ///
-/// Prefer the [`outln!`] macro, which mirrors `println!`'s formatting.
+/// Prefer the `outln!` macro, which mirrors `println!`'s formatting.
 pub fn emit(line: &str) {
     match mode() {
         Mode::Direct => println!("{}", line),
@@ -164,7 +170,9 @@ mod tests {
 
     #[tokio::test]
     async fn capture_collects_emitted_lines() {
+        assert!(!has_active_sink());
         let (_, text) = capture(async {
+            assert!(has_active_sink());
             emit("first");
             emit("second");
         })

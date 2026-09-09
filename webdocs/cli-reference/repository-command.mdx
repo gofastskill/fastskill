@@ -215,8 +215,8 @@ fastskill repos refresh
 
 **When to use**:
 - After a repository has been updated with new skills or versions
-- Before installing with an unpinned version constraint (`newest`), so it resolves against
-  current data instead of failing with a "run `fastskill repos refresh`" error
+- To refresh catalogs independently before inspecting or scripting against them. Online add,
+  install, and update refresh floating/ranged selections once per repository per operation
 - If a repository's advertised skills seem stale
 
 **What it does**:
@@ -245,6 +245,11 @@ or reclaim previously downloaded skill content, use
 ### skills
 
 List skills in repository catalog.
+
+Catalog browsing uses the configured adapter for `http-registry`, `git-marketplace`, `zip-url`,
+and `local` repositories. A catalog result carries its canonical ID and can be installed through
+the same named repository. Options that require HTTP index metadata are rejected specifically on
+adapters that do not provide it.
 
 ```bash
 # List all skills from default repository (table format, default)
@@ -321,7 +326,7 @@ Repository: my-registry
 Published: 2025-01-15T10:30:00Z
 Updated: 2025-01-20T14:00:00Z
 
-Installation: fastskill add acme/web-scraper
+Installation: fastskill add acme/web-scraper@latest --repository my-registry
 Homepage: https://github.com/acme/web-scraper
 Documentation: https://docs.acme.com/web-scraper
 

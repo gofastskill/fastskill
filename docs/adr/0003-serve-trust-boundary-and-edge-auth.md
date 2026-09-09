@@ -6,11 +6,12 @@ accepted
 
 ## Context & decision
 
-`fastskill serve` exposes an HTTP API that includes destructive, state-mutating endpoints
-(`DELETE /skills/{id}` runs `remove_dir_all`, `POST /skills/upgrade` shells out to
-`fastskill update`, the manifest/reindex/refresh routes rewrite project state or spawn work). The
-audit in [spec 002](../../specs/002-codebase-issues-audit.md) found these routes carry **no in-app
-authentication** (SEC-1, SEC-2).
+At the time of this decision, `fastskill serve` exposed destructive, state-mutating
+endpoints: skill deletion removed directories, the older upgrade handler shelled out to
+`fastskill update`, and manifest/reindex/refresh routes rewrote state or spawned work. The
+audit in [spec 002](../../specs/002-codebase-issues-audit.md) found these routes carried **no in-app
+authentication** (SEC-1, SEC-2). ADR-0005 subsequently moved installation/update orchestration
+into core; the exposure boundary here remains applicable.
 
 `fastskill serve` is **local-first and single-user by default**: an operator runs it on their own
 machine for a web UI / REST view over their own skills. A **deployed mode** (container behind an
@@ -29,8 +30,9 @@ We decide two things:
    that is a different product and this ADR does not cover it.
 
 2. **`serve` is read-only by default; mutation is opt-in via `--enable-write`.** With no flag, only
-   read endpoints are mounted (list/get skills, `search`, `resolve`, `status`, dashboard, registry
-   browse, manifest reads). `--enable-write` enables **all** state-changing operations in one
+   read endpoints are usable (list/get skills, `search`, `resolve`, `status`, dashboard, registry
+   browse, manifest reads). Write routes remain registered but return 403 before dispatch.
+   `--enable-write` enables **all** state-changing operations in one
    switch: create/update/delete skill, `/skills/upgrade`, manifest writes, `/reindex`, and
    `/registry/refresh`. The rule is "anything that is not a pure read is gated" — reindex and
    refresh are folded in because they are side-effecting (disk, network, embedding-API cost), even
@@ -68,21 +70,39 @@ stays on the record.
 
 Both gates read **one** definition — `fastskill_core::write_ops::WRITE_OPERATIONS` — which names
 each mutating operation once and carries its HTTP routes and its command path. `serve` mounts its
-write routes from that table and `mcp serve` derives the blocked tool names from the same table, so
-a newly added mutating command cannot end up gated on one surface and open on the other. Two
-hand-maintained lists is how the two surfaces diverged in the first place.
+write routes from that table and `mcp serve` derives blocked tool names from it. A shared table
+avoids divergent gate lists. Registration coverage requires every exported command to have an
+explicit classification and prevents an unknown command from becoming a read-only tool.
+
+### Effect classification clarification (2026-09-08)
+
+Every exposed command MUST have an explicit effect classification. When exposed through
+HTTP or MCP, commands that write artifacts, edit client configuration, execute agents/scripts,
+or invoke evaluation/judging providers MUST require `--enable-write`, just as lifecycle,
+indexing, and refresh operations do. This does not add a gate to direct CLI invocation.
+An output path outside the skills directory does not make an artifact writer a pure read.
+If a command has both read-only and mutating argument variants, its entire MCP tool MUST be
+gated until argument-aware enforcement is implemented and tested before dispatch.
+
+Pure reads may return protocol/stdout results and perform their documented read requests;
+they MUST NOT use a read-only tool call to dispatch an artifact writer or lifecycle mutation.
+Internal diagnostic logging is not a user-requested mutation. The local
+[API and MCP consistency PRD](../../specs/api-mcp-lifecycle-parity-prd.md) defines coverage
+for artifact producers, evaluations, unknown classifications, and direct denied calls.
+
+Enabling writes authorizes invocation; it MUST NOT bypass dependency, ownership, local-edit,
+or integrity checks. HTTP handlers and MCP tools MUST call the same domain operations as the CLI.
 
 ## Consequences
 
-- **SEC-1 and SEC-2 are downgraded.** Destructive endpoints are not mounted unless the operator
-  passes `--enable-write`. Reaching them unauthenticated now requires the operator to have *both*
-  enabled writes *and* exposed the port with no fronting sidecar — a deliberate double opt-out, not
-  a silent default. This is an in-app, verifiable control and needs no token machinery.
+- The gate reduces the original SEC-1/SEC-2 exposure when the effect inventory is complete.
+  Mutating handlers are inaccessible unless the operator enables writes. External request
+  authentication remains the deployment boundary; the gate requires no token machinery.
 - **A read-only exposed instance still discloses skill data** (and is subject to SEC-7 dashboard
   XSS). That residual is the operator's call when they expose the port; it is not a mutation risk.
-- The `--enable-write` default-read-only behavior is a **breaking change** to the current `serve`
-  surface (today all routes are always mounted) and must be documented in the serve reference,
-  which currently only says "use a reverse proxy."
+- Introducing default-read-only serving changed the original invocation contract. Server
+  references MUST document the flag and the effects it enables; registration coverage MUST keep
+  newly added tools classified.
 - No `FASTSKILL_API_TOKEN`, no `--insecure`, no bind-address policing — the app stays thin.
 
 ## Considered alternatives

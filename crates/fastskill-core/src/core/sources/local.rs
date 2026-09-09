@@ -71,10 +71,12 @@ pub(super) fn extract_skill_info_from_path(
     let content = fs::read_to_string(&skill_file).map_err(SourcesError::Io)?;
 
     // Extract frontmatter (simple YAML frontmatter parser)
-    let (id, name, description, version) = parse_skill_frontmatter(&content, skill_path)?;
+    let (_, name, description, _) = parse_skill_frontmatter(&content, skill_path)?;
+    let (id, version) = crate::core::install::read_skill_identity(skill_path)
+        .map_err(|error| SourcesError::Parse(error.to_string()))?;
 
     Ok(SkillInfo {
-        id,
+        id: id.into_string(),
         name,
         description,
         version: Some(version),
@@ -115,5 +117,50 @@ pub(super) fn parse_skill_frontmatter(
                 "1.0.0".to_string(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn scan_rejects_missing_and_non_directory_sources() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            scan_local_source(&root.path().join("missing"), "local").await,
+            Err(SourcesError::NotFound(_))
+        ));
+        let file = root.path().join("file");
+        std::fs::write(&file, "content").unwrap();
+        let error = scan_local_source(&file, "local").await.unwrap_err();
+        assert!(error.to_string().contains("not a directory"));
+    }
+
+    #[test]
+    fn extraction_uses_canonical_metadata_identity_and_reports_missing_file() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            extract_skill_info_from_path(root.path(), "local"),
+            Err(SourcesError::NotFound(_))
+        ));
+        std::fs::write(
+            root.path().join("SKILL.md"),
+            "---\nname: Display Name\ndescription: fixture\nversion: 1.2.3\nmetadata:\n  id: team/demo\n---\n",
+        )
+        .unwrap();
+        let skill = extract_skill_info_from_path(root.path(), "local").unwrap();
+        assert_eq!(skill.id, "team/demo");
+        assert_eq!(skill.name, "Display Name");
+        assert_eq!(skill.version.as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn frontmatter_falls_back_to_directory_identity() {
+        let parsed = parse_skill_frontmatter("plain markdown", Path::new("fallback")).unwrap();
+        assert_eq!(parsed.0, "fallback");
+        assert_eq!(parsed.2, "No description");
+        assert_eq!(parsed.3, "1.0.0");
     }
 }

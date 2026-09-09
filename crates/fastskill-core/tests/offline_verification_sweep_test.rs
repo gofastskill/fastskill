@@ -462,7 +462,7 @@ async fn newest_resolution_offline_with_no_index_fails_naming_repos_refresh() {
         version: None,
     };
     let err = service
-        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .prepare_add_offline(origin, Some(SKILL_ID))
         .await
         .expect_err("`newest` offline with no cached index must fail, not panic or go stale");
 

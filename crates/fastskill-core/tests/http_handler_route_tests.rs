@@ -19,6 +19,7 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
+use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::http::handlers::{
     manifest, registry, reindex, resolve, search, skills, status, AppState,
 };
@@ -85,10 +86,11 @@ async fn fixture_with_skills(enable_write: bool) -> Fixture {
     let project_file_path = project.path().join("skill-project.toml");
 
     let service = make_service(store, None).await;
-    let mut state = AppState::new(service).unwrap();
-    state.project_file_path = project_file_path.clone();
-    state.project_root = project.path().to_path_buf();
-    state.skills_directory = project.path().join(".claude/skills");
+    let mut state = AppState::new(service).unwrap().with_project_config(
+        project.path().to_path_buf(),
+        project_file_path.clone(),
+        project.path().join(".claude/skills"),
+    );
     state.enable_write = enable_write;
 
     Fixture {
@@ -113,10 +115,11 @@ async fn fixture_for_content() -> Fixture {
     let project_file_path = project.path().join("skill-project.toml");
 
     let service = make_service(store.clone(), None).await;
-    let mut state = AppState::new(service).unwrap();
-    state.project_file_path = project_file_path.clone();
-    state.project_root = project.path().to_path_buf();
-    state.skills_directory = store;
+    let mut state = AppState::new(service).unwrap().with_project_config(
+        project.path().to_path_buf(),
+        project_file_path.clone(),
+        store,
+    );
     state.enable_write = false;
 
     Fixture {
@@ -159,10 +162,11 @@ async fn fixture_for_install(enable_write: bool) -> Fixture {
     let svc = svc.with_project_root(project.path().to_path_buf());
     let service = Arc::new(svc);
 
-    let mut state = AppState::new(service).unwrap();
-    state.project_file_path = project_file_path.clone();
-    state.project_root = project.path().to_path_buf();
-    state.skills_directory = store;
+    let mut state = AppState::new(service).unwrap().with_project_config(
+        project.path().to_path_buf(),
+        project_file_path.clone(),
+        store,
+    );
     state.enable_write = enable_write;
 
     Fixture {
@@ -423,13 +427,11 @@ async fn delete_skill_unknown_is_404() {
 }
 
 #[tokio::test]
-async fn delete_skill_success_no_project_file() {
-    // project_file_path does not exist -> the manifest/lock removal block is skipped,
-    // the skill directory is removed from storage, and the skill is unregistered.
+async fn delete_skill_without_served_project_is_not_found() {
     let f = fixture_with_skills(true).await;
     let (status, body) = send(f.state, "DELETE", "/skills/alpha-skill", None).await;
-    assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains("Skill removed"));
+    assert_eq!(status, StatusCode::NOT_FOUND, "body: {body}");
+    assert!(body.contains("served project"));
 }
 
 #[tokio::test]
@@ -454,6 +456,35 @@ async fn delete_skill_success_with_project_and_lock() {
 }
 
 #[tokio::test]
+async fn delete_bundle_owned_member_returns_conflict_without_mutation() {
+    let f = fixture_for_install(true).await;
+    let mut lock = fastskill_core::core::lock::ProjectSkillsLock::new_empty();
+    lock.bundles
+        .push(fastskill_core::core::lock::ProjectLockedBundleEntry {
+            id: "team".to_string(),
+            version: "1.0.0".to_string(),
+            artifact: ".fastskill/bundles/team-1.0.0.zip".to_string(),
+            digest: "bundle-digest".to_string(),
+            members: vec![fastskill_core::core::lock::ProjectLockedBundleMember {
+                id: "shared".to_string(),
+                digest: "member-digest".to_string(),
+                overridable: false,
+            }],
+        });
+    let lock_path = f.project_file_path.parent().unwrap().join("skills.lock");
+    lock.save_to_file(&lock_path).unwrap();
+    let manifest_before = fs::read(&f.project_file_path).unwrap();
+    let lock_before = fs::read(&lock_path).unwrap();
+
+    let (status, body) = send(f.state, "DELETE", "/skills/shared", None).await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(body.contains("team"), "body: {body}");
+    assert_eq!(fs::read(&f.project_file_path).unwrap(), manifest_before);
+    assert_eq!(fs::read(lock_path).unwrap(), lock_before);
+}
+
+#[tokio::test]
 async fn install_fresh_returns_201() {
     let f = fixture_for_install(true).await;
     let src = write_source_skill(f._project.path(), "new-skill");
@@ -466,6 +497,53 @@ async fn install_fresh_returns_201() {
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
     assert!(body.contains("new-skill"), "body: {body}");
     assert!(body.contains("resolvedVersion"), "body: {body}");
+}
+
+#[tokio::test]
+async fn install_fresh_applies_and_locks_the_complete_dependency_closure() {
+    let f = fixture_for_install(true).await;
+    let root = write_source_skill(f._project.path(), "root-skill");
+    let child = root.join("child-skill");
+    fs::create_dir_all(&child).unwrap();
+    fs::write(
+        child.join("SKILL.md"),
+        "---\nname: child-skill\nversion: \"1.0.0\"\ndescription: child\n---\nchild\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("skill-project.toml"),
+        "[dependencies]\nchild-skill = { origin = { type = \"local\", path = \"child-skill\" } }\n",
+    )
+    .unwrap();
+
+    let (status, body) = post_json(
+        f.state.clone(),
+        "/skills/install",
+        serde_json::json!({"origin": root.to_string_lossy()}),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert!(f
+        .state
+        .skills_directory
+        .join("root-skill/SKILL.md")
+        .exists());
+    assert!(f
+        .state
+        .skills_directory
+        .join("child-skill/SKILL.md")
+        .exists());
+    let lock = ProjectSkillsLock::load_from_file(&f._project.path().join("skills.lock")).unwrap();
+    assert_eq!(lock.covered_roots, vec!["root-skill"]);
+    assert_eq!(
+        lock.skills
+            .iter()
+            .find(|entry| entry.id == "child-skill")
+            .unwrap()
+            .required_by,
+        vec!["root-skill"]
+    );
 }
 
 #[tokio::test]
@@ -505,6 +583,35 @@ async fn update_missing_manifest_is_404() {
 }
 
 #[tokio::test]
+async fn project_mutations_reject_global_scope_before_touching_ambient_state() {
+    let storage = TempDir::new().unwrap();
+    let store = skills_root(&storage);
+    let service = make_service(store.clone(), None).await;
+    let state = AppState::new(service)
+        .unwrap()
+        .with_global_scope(store)
+        .with_enable_write(true);
+
+    let (manifest_status, manifest_body) = post_json(
+        state.clone(),
+        "/manifest/skills",
+        serde_json::json!({"skillId": "widget", "sourceName": "main"}),
+    )
+    .await;
+    assert_eq!(manifest_status, StatusCode::BAD_REQUEST, "{manifest_body}");
+    assert!(manifest_body.contains("global scope"), "{manifest_body}");
+
+    let (install_status, install_body) = post_json(
+        state,
+        "/skills/install",
+        serde_json::json!({"origin": "widget"}),
+    )
+    .await;
+    assert_eq!(install_status, StatusCode::BAD_REQUEST, "{install_body}");
+    assert!(install_body.contains("global scope"), "{install_body}");
+}
+
+#[tokio::test]
 async fn update_unknown_skill_id_is_404() {
     let f = fixture_for_install(true).await;
     let (status, _b) = post_json(
@@ -521,7 +628,8 @@ async fn update_empty_deps_returns_empty_list() {
     let f = fixture_for_install(true).await;
     let (status, body) = post_json(f.state, "/skills/update", serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains("\"data\":[]"), "body: {body}");
+    assert!(body.contains("\"outcome\":\"unchanged\""), "body: {body}");
+    assert!(body.contains("\"results\":[]"), "body: {body}");
 }
 
 #[tokio::test]
@@ -564,12 +672,40 @@ async fn update_applies_updatable_origin() {
 }
 
 #[tokio::test]
+async fn update_batch_reports_partial_failure_and_committed_root() {
+    let f = fixture_for_install(true).await;
+    let good = write_source_skill(f._project.path(), "a-good");
+    let missing = f._project.path().join("z-missing");
+    fs::write(
+        &f.project_file_path,
+        format!(
+            "[tool.fastskill]\nskills_directory = '{}'\n\n[dependencies]\n\
+             a-good = {{ origin = {{ type = \"local\", path = '{}' }} }}\n\
+             z-bad = {{ origin = {{ type = \"local\", path = '{}' }} }}\n",
+            f.state.skills_directory.display(),
+            good.display(),
+            missing.display()
+        ),
+    )
+    .unwrap();
+
+    let (status, body) = post_json(f.state.clone(), "/skills/update", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"success\":false"), "body: {body}");
+    assert!(body.contains("\"outcome\":\"partial\""), "body: {body}");
+    assert!(body.contains("\"id\":\"a-good\""), "body: {body}");
+    assert!(body.contains("\"id\":\"z-bad\""), "body: {body}");
+    assert!(f.state.skills_directory.join("a-good/SKILL.md").exists());
+}
+
+#[tokio::test]
 async fn update_upgrade_alias_route_behaves_identically() {
     // Back-compat: /skills/upgrade is the same handler as /skills/update.
     let f = fixture_for_install(true).await;
     let (status, body) = post_json(f.state, "/skills/upgrade", serde_json::json!({})).await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains("\"data\":[]"), "body: {body}");
+    assert!(body.contains("\"outcome\":\"unchanged\""), "body: {body}");
+    assert!(body.contains("\"results\":[]"), "body: {body}");
 }
 
 // ---- version-pinned update (spec 003 v2 / Phase 4 version picker) ----
@@ -617,9 +753,7 @@ async fn update_version_non_repository_origin_is_400() {
 }
 
 #[tokio::test]
-async fn update_version_check_mode_ignores_version() {
-    // `check: true` reports the ordinary preflight verdict regardless of
-    // `version` -- an unaffected dry-run must not 400 even without `skillId`.
+async fn update_version_check_mode_requires_one_named_skill() {
     let f = fixture_for_install(true).await;
     let (status, body) = post_json(
         f.state,
@@ -627,7 +761,24 @@ async fn update_version_check_mode_ignores_version() {
         serde_json::json!({"check": true, "version": "2.0.0"}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+}
+
+#[tokio::test]
+async fn update_version_requires_exact_semver() {
+    let f = fixture_for_install(true).await;
+    fs::write(
+        &f.project_file_path,
+        "[dependencies]\nwidget = { origin = { type = \"repository\", repo = \"main\", skill = \"widget\" } }\n",
+    )
+    .unwrap();
+    let (status, body) = post_json(
+        f.state,
+        "/skills/update",
+        serde_json::json!({"skillId": "widget", "version": "^2.0"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
 }
 
 fn build_zip_with_skill_md(skill_dir_name: &str, skill_md: &str) -> Vec<u8> {
@@ -749,10 +900,11 @@ async fn update_version_pin_happy_path_repository_origin() {
         .with_repository_manager(Arc::new(repo_manager));
     let service = Arc::new(svc);
 
-    let mut state = AppState::new(service).unwrap();
-    state.project_file_path = project_file_path.clone();
-    state.project_root = project.path().to_path_buf();
-    state.skills_directory = store;
+    let mut state = AppState::new(service).unwrap().with_project_config(
+        project.path().to_path_buf(),
+        project_file_path.clone(),
+        store,
+    );
     state.enable_write = true;
 
     let (status, body) = post_json(
@@ -1029,6 +1181,48 @@ gitdep = { origin = { type = "git", url = "https://example.com/x.git" } }
 }
 
 #[tokio::test]
+async fn manifest_list_marks_matching_covered_lock_as_reconciled() {
+    use fastskill_core::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
+    use fastskill_core::core::origin::{Origin, Resolved};
+
+    let f = fixture_with_skills(false).await;
+    fs::write(
+        &f.project_file_path,
+        "[dependencies]\nalpha-skill = { origin = { type = \"local\", path = \"./source\" }, groups = [\"dev\"] }\n",
+    )
+    .unwrap();
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.covered_roots.push("alpha-skill".to_string());
+    lock.skills.push(ProjectLockedSkillEntry {
+        id: "alpha-skill".to_string(),
+        name: "Alpha Skill".to_string(),
+        origin: Origin::Local {
+            path: PathBuf::from("./source"),
+            editable: false,
+        },
+        resolved: Resolved {
+            version: "1.0.0".to_string(),
+            commit_hash: None,
+            checksum: Some("sha256:fixture".to_string()),
+        },
+        dependencies: Vec::new(),
+        groups: vec!["dev".to_string()],
+        depth: 0,
+        parent_skill: None,
+        required_by: Vec::new(),
+    });
+    lock.save_to_file(&f._project.path().join("skills.lock"))
+        .unwrap();
+
+    let (status, body) = do_get(f.state, "/manifest/skills").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(
+        body.contains("\"reconciliationRequired\":false"),
+        "body: {body}"
+    );
+}
+
+#[tokio::test]
 async fn manifest_add_without_sources_is_404() {
     // No repositories configured -> no marketplace sources -> 404.
     let f = fixture_with_skills(true).await;
@@ -1042,11 +1236,11 @@ async fn manifest_add_without_sources_is_404() {
 }
 
 #[tokio::test]
-async fn manifest_add_with_local_source_skill_not_found_is_404() {
+async fn manifest_add_with_unavailable_local_source_reports_acquisition_failure() {
     // A local repository IS a marketplace-eligible source, so `SourcesManager`
     // is built (the `Some(sources_mgr)` branch) and `find_skill_in_sources` runs;
-    // loading a local marketplace.json is unsupported offline, so the skill is
-    // "not found in source" -> 404. Covers the get_repositories + find path.
+    // loading a local marketplace.json is unsupported. This is an acquisition
+    // failure, not evidence that a successfully-read catalog has zero matches.
     let f = fixture_with_skills(true).await;
     let toml = r#"
 [dependencies]
@@ -1064,7 +1258,109 @@ priority = 0
         serde_json::json!({"skillId": "widget", "sourceName": "localrepo"}),
     )
     .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+    assert!(body.contains("Failed to acquire repository source"));
+}
+
+#[tokio::test]
+async fn manifest_add_reports_not_found_after_a_successful_catalog_read() {
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/.claude-plugin/marketplace.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/marketplace.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "fixture-marketplace",
+            "plugins": [{
+                "name": "another-skill",
+                "description": "fixture",
+                "source": "./plugins/another-skill",
+                "skills": ["./skills/another-skill"]
+            }]
+        })))
+        .mount(&server)
+        .await;
+    let f = fixture_with_skills(true).await;
+    fs::write(
+        &f.project_file_path,
+        format!(
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"git-marketplace\"\nurl = {:?}\nbranch = \"main\"\npriority = 0\n",
+            server.uri()
+        ),
+    )
+    .unwrap();
+
+    let (status, body) = post_json(
+        f.state,
+        "/manifest/skills",
+        serde_json::json!({"skillId": "missing", "sourceName": "market-success"}),
+    )
+    .await;
+
     assert_eq!(status, StatusCode::NOT_FOUND, "body: {body}");
+    assert!(body.contains("not found in source"));
+}
+
+#[tokio::test]
+async fn manifest_add_records_repository_intent_after_catalog_match() {
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/.claude-plugin/marketplace.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/marketplace.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "fixture-marketplace",
+            "plugins": [{
+                "name": "widget",
+                "description": "fixture",
+                "source": "./plugins/widget",
+                "skills": ["./skills/widget"]
+            }]
+        })))
+        .mount(&server)
+        .await;
+    let f = fixture_with_skills(true).await;
+    fs::write(
+        &f.project_file_path,
+        format!(
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"git-marketplace\"\nurl = {:?}\nbranch = \"main\"\npriority = 0\n",
+            server.uri()
+        ),
+    )
+    .unwrap();
+
+    let (status, body) = post_json(
+        f.state,
+        "/manifest/skills",
+        serde_json::json!({
+            "skillId": "widget",
+            "sourceName": "market-success",
+            "groups": ["dev"]
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"id\":\"widget\""), "body: {body}");
+    assert!(body.contains("\"reconciliationRequired\":true"));
+    let saved = fs::read_to_string(&f.project_file_path).unwrap();
+    assert!(saved.contains("repo = \"market-success\""), "{saved}");
+    assert!(saved.contains("skill = \"widget\""), "{saved}");
+    assert!(saved.contains("groups = [\"dev\"]"), "{saved}");
 }
 
 #[tokio::test]
@@ -1098,6 +1394,84 @@ async fn manifest_put_edits_version() {
 }
 
 #[tokio::test]
+async fn manifest_put_preserves_origin_and_extensions_and_clears_fields() {
+    let f = fixture_with_skills(true).await;
+    fs::write(
+        &f.project_file_path,
+        r#"
+[dependencies]
+localdep = { origin = { type = "local", path = "./localdep", editable = true }, groups = ["dev"] }
+
+[bundles.team]
+version = "1.0.0"
+artifact = "team.zip"
+
+[extension]
+keep = true
+"#,
+    )
+    .unwrap();
+
+    let (status, body) = send_json(
+        f.state.clone(),
+        "PUT",
+        "/manifest/skills/localdep",
+        serde_json::json!({"groups": [], "editable": false}),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(body.contains("\"groups\":[]"), "body: {body}");
+    assert!(body.contains("\"editable\":false"), "body: {body}");
+    assert!(body.contains("\"reconciliationRequired\":true"));
+    let saved = fs::read_to_string(&f.project_file_path).unwrap();
+    assert!(saved.contains("path = \"./localdep\""), "{saved}");
+    assert!(saved.contains("[bundles.team]"), "{saved}");
+    assert!(saved.contains("[extension]"), "{saved}");
+    assert!(saved.contains("keep = true"), "{saved}");
+
+    let (get_status, get_body) = do_get(f.state, "/manifest/skills").await;
+    assert_eq!(get_status, StatusCode::OK, "body: {get_body}");
+    assert!(get_body.contains("\"groups\":[]"), "body: {get_body}");
+    assert!(get_body.contains("\"editable\":false"), "body: {get_body}");
+    assert!(
+        get_body.contains("\"reconciliationRequired\":true"),
+        "body: {get_body}"
+    );
+}
+
+#[tokio::test]
+async fn manifest_put_rejects_null_and_inapplicable_version_without_writing() {
+    let f = fixture_with_skills(true).await;
+    fs::write(
+        &f.project_file_path,
+        "[dependencies]\nlocaldep = { origin = { type = \"local\", path = \"./localdep\" } }\n",
+    )
+    .unwrap();
+    let before = fs::read(&f.project_file_path).unwrap();
+
+    let (null_status, _) = send_json(
+        f.state.clone(),
+        "PUT",
+        "/manifest/skills/localdep",
+        serde_json::json!({"groups": null}),
+    )
+    .await;
+    assert!(!null_status.is_success());
+    assert_eq!(fs::read(&f.project_file_path).unwrap(), before);
+
+    let (version_status, body) = send_json(
+        f.state,
+        "PUT",
+        "/manifest/skills/localdep",
+        serde_json::json!({"version": "2.0.0"}),
+    )
+    .await;
+    assert_eq!(version_status, StatusCode::BAD_REQUEST, "body: {body}");
+    assert_eq!(fs::read(&f.project_file_path).unwrap(), before);
+}
+
+#[tokio::test]
 async fn manifest_put_unknown_skill_is_404() {
     let f = fixture_with_skills(true).await;
     fs::write(&f.project_file_path, "[dependencies]\nverdep = \"1.0.0\"\n").unwrap();
@@ -1126,8 +1500,8 @@ async fn manifest_delete_removes_dep_and_lock() {
     fastskill_core::core::lock::ProjectSkillsLock::new_empty()
         .save_to_file(&lock_path)
         .unwrap();
-    let (status, _b) = send(f.state, "DELETE", "/manifest/skills/verdep", None).await;
-    assert_eq!(status, StatusCode::OK);
+    let (status, body) = send(f.state, "DELETE", "/manifest/skills/verdep", None).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
     let saved = fs::read_to_string(&f.project_file_path).unwrap();
     assert!(!saved.contains("verdep"));
 }

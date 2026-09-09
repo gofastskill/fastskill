@@ -140,7 +140,7 @@ pub async fn execute_update(
 pub async fn execute_test(name: String) -> CliResult<()> {
     let repo_manager = super::helpers::load_repo_manager().await?;
 
-    let _repo = repo_manager
+    let repo = repo_manager
         .get_repository(&name)
         .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?;
 
@@ -154,10 +154,17 @@ pub async fn execute_test(name: String) -> CliResult<()> {
             Ok(skills) => {
                 crate::outln!(
                     "{}",
-                    messages::ok(&format!(
-                        "Repository '{}' is accessible ({} skills found)",
-                        name,
-                        skills.len()
+                    messages::ok(&format!("Connectivity: repository '{}' is reachable", name))
+                );
+                crate::outln!(
+                    "{}",
+                    messages::ok(&format!("Catalog: valid ({} skills found)", skills.len()))
+                );
+                crate::outln!(
+                    "{}",
+                    messages::info(&format!(
+                        "Acquisition: {}",
+                        acquisition_capability(&repo.repo_type)
                     ))
                 );
             }
@@ -177,6 +184,18 @@ pub async fn execute_test(name: String) -> CliResult<()> {
     }
 
     Ok(())
+}
+
+fn acquisition_capability(
+    repository_type: &fastskill_core::core::repository::RepositoryType,
+) -> &'static str {
+    use fastskill_core::core::repository::RepositoryType;
+    match repository_type {
+        RepositoryType::Local => "supported from catalog paths",
+        RepositoryType::GitMarketplace => "supported from catalog or repository content",
+        RepositoryType::ZipUrl => "supported when catalog entries publish download URLs",
+        RepositoryType::HttpRegistry => "supported through registry download metadata",
+    }
 }
 
 /// `repos refresh [name]` (PRD 006 "Local Skill Cache", US-005): refresh the
@@ -352,6 +371,9 @@ skills_directory = ".claude/skills"
 
         let result_json = execute_list_with_json(true).await;
         assert!(result_json.is_ok());
+        assert!(execute_list().await.is_ok());
+        assert!(execute_list_with_format(OutputFormat::Grid).await.is_ok());
+        assert!(execute_list_with_format(OutputFormat::Xml).await.is_ok());
     }
 
     #[tokio::test]
@@ -448,6 +470,22 @@ skills_directory = ".claude/skills"
 
         let show_result = execute_show("test-repo".to_string()).await;
         assert!(show_result.is_ok());
+        assert!(execute_show_with_json("test-repo".to_string(), true)
+            .await
+            .is_ok());
+        assert!(execute_show_with_json("test-repo".to_string(), false)
+            .await
+            .is_ok());
+        assert!(
+            execute_show_with_format("test-repo".to_string(), OutputFormat::Grid)
+                .await
+                .is_ok()
+        );
+        assert!(
+            execute_show_with_format("test-repo".to_string(), OutputFormat::Xml)
+                .await
+                .is_ok()
+        );
 
         let remove_result = execute_remove("test-repo".to_string()).await;
         assert!(remove_result.is_ok());

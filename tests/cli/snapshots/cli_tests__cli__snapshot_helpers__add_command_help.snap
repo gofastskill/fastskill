@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Add a skill (from local path, zip, git URL, or registry ID)
@@ -11,17 +12,22 @@ Arguments:
 
 Options:
       --skills-dir <skills-dir>    Override the skills directory path
-      --source-type <source-type>  Override source type (registry, github/git, local)
-      --branch <branch>            Git branch to checkout (only for git URLs)
+      --source-type <source-type>  Override source type (registry, github/git, local) [possible:
+                                   registry|github|git|local]
       --global                     Use global skills directory (~/.config/fastskill/skills)
-      --tag <tag>                  Git tag to checkout (only for git URLs)
+      --repository <repository>    Use this configured repository for a skill ID reference
+      --branch <branch>            Git branch to checkout (only for git URLs)
   -v, --verbose                    Enable verbose output
+      --tag <tag>                  Git tag to checkout (only for git URLs)
   -f, --force                      Force registration even if skill already exists
   -e, --editable                   Install skill in editable mode (for local development)
       --group <group>              Add skill to a specific group
   -r, --recursive                  Add all skills found under the directory (only for local folders)
       --reindex                    Trigger reindex after adding (overrides config)
       --no-reindex                 Skip reindex after adding
+      --offline                    Use verified local sources and cached artifacts only
+      --dry-run                    Validate and preview without changing project state
+      --json                       Emit one machine-readable lifecycle result
   -h, --help                       Print help
   -V, --version                    Print version
 

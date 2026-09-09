@@ -136,7 +136,8 @@ fn long_running_serve_is_not_exported_as_a_tool() {
         ],
     );
 
-    let tools = response(&stdout, 2)["result"]["tools"]
+    let listed = response(&stdout, 2);
+    let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools array")
         .iter()
@@ -219,5 +220,91 @@ fn tool_schemas_document_their_parameters() {
     assert!(
         undocumented.is_empty(),
         "these parameters have no description: {undocumented:?}"
+    );
+}
+
+#[test]
+fn read_only_server_hides_and_denies_optimize_export_before_writing() {
+    let project = fixture();
+    let run_dir = project.path().join("run");
+    std::fs::create_dir_all(&run_dir).expect("create run dir");
+    std::fs::write(run_dir.join("best_skill.md"), "replacement").expect("write candidate");
+    let destination = project.path().join("sentinel.md");
+    std::fs::write(&destination, "original").expect("write sentinel");
+
+    let call = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "fastskill_optimize_export",
+            "arguments": {
+                "run-dir": run_dir,
+                "out": destination,
+            }
+        }
+    })
+    .to_string();
+    let stdout = mcp_session(
+        project.path(),
+        &[
+            INIT,
+            INITIALIZED,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+            &call,
+        ],
+    );
+
+    let listed = response(&stdout, 2);
+    let tools = listed["result"]["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !tools.contains(&"fastskill_optimize_export"),
+        "artifact writer must be hidden from a read-only server"
+    );
+
+    let denied = response(&stdout, 3);
+    assert_eq!(denied["error"]["code"], -32005);
+    assert!(denied["error"]["message"]
+        .as_str()
+        .expect("denial message")
+        .contains("--enable-write"));
+    assert_eq!(
+        std::fs::read_to_string(project.path().join("sentinel.md")).expect("read sentinel"),
+        "original",
+        "denied call must not dispatch the artifact writer"
+    );
+}
+
+#[test]
+fn every_mcp_capable_command_has_an_explicit_effect() {
+    let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
+        .args(["spec", "--format", "json"])
+        .output()
+        .expect("run command spec");
+    assert!(output.status.success());
+    let document: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse command spec");
+
+    let mut unclassified = Vec::new();
+    for command in document["commands"].as_array().expect("commands array") {
+        let path = command["path"].as_str().expect("command path");
+        // Long-running servers are intentionally registered with no MCP export.
+        if matches!(path, "serve" | "mcp/serve") {
+            continue;
+        }
+        let segments = path.split('/').collect::<Vec<_>>();
+        if fastskill_core::write_ops::command_effect(&segments).is_none() {
+            unclassified.push(path.to_string());
+        }
+    }
+
+    assert!(
+        unclassified.is_empty(),
+        "commands must be classified before MCP exposure: {unclassified:?}"
     );
 }

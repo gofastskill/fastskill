@@ -76,6 +76,7 @@ where
             Box::pin(async move {
                 match output::mode() {
                     Mode::Direct => fut.await,
+                    Mode::Capture if output::has_active_sink() => fut.await,
                     Mode::Capture => {
                         let (result, text) = output::capture(fut).await;
                         // Drain even on failure: partial output is often the

@@ -1,13 +1,14 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Search skills by query with explicit scope flags
 
-Usage: fastskill search [OPTIONS] [query]
+Usage: fastskill search [OPTIONS] <query>
 
 Arguments:
-  [query]  Search query string
+  <query>  Search query string
 
 Options:
       --local                    Search local/installed skills only

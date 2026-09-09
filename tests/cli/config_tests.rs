@@ -95,7 +95,7 @@ fn test_cli_directory_walking() {
 }
 
 #[test]
-fn test_skills_dir_with_global_warning() {
+fn test_skills_dir_with_global_is_rejected() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     std::fs::create_dir_all(&skills_dir).unwrap();
@@ -118,11 +118,10 @@ skills_directory = ".claude/skills"
         Some(temp_dir.path()),
     );
 
-    assert!(
-        result.stderr.contains("warning")
-            && result.stderr.contains("--skills-dir")
-            && result.stderr.contains("--global")
-    );
+    assert!(!result.success);
+    assert!(result
+        .stderr
+        .contains("--global and --skills-dir cannot be combined"));
 }
 
 #[test]

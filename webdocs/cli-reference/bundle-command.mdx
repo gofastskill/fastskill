@@ -66,11 +66,12 @@ git add skill-project.toml skills.lock .fastskill/bundles/
 Then restore the exact locked release:
 
 ```bash
-fastskill install --lock
+fastskill install --lock --offline
 ```
 
 `--lock` uses the bundle artifact, version, digest, and membership recorded in `skills.lock`.
-It does not switch to a different release if the manifest has drifted.
+It does not switch to a different release if the manifest has drifted. `--offline` additionally
+guarantees that restore does not contact a repository or embedding provider.
 
 ## Update a bundle
 
@@ -82,7 +83,8 @@ fastskill update --bundle payments-team --from ./payments-team-1.3.0.zip
 ```
 
 FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
-before it changes installed members.
+before it changes installed members. The preview runs the same validation as apply and reports
+policy-only changes, such as a member becoming non-overridable, even when its bytes are unchanged.
 
 ## Remove a bundle
 
@@ -93,10 +95,10 @@ fastskill remove --bundle payments-team
 fastskill remove --bundle payments-team --force
 ```
 
-An ordinary `fastskill remove code-review` is refused while an installed bundle owns
-`code-review`. This prevents a required member from disappearing while the bundle remains
-declared. Remove the owning bundle instead. A member stays installed when another bundle, a direct
-project dependency, or a personal override still owns it.
+Removing a direct declaration detaches that owner. FastSkill retains the installed member while a
+bundle or another dependency root still requires it. An ID that is only a transitive requirement
+cannot be removed directly; the error names the roots that require it. A member is deleted only
+after its final direct, transitive, bundle, and override owner is gone.
 
 ## Personal overrides
 
@@ -110,6 +112,16 @@ fastskill bundle override payments-debugging --from ./my-payments-debugging
 
 `fastskill install` and `fastskill install --lock` restore valid personal overrides after
 bundle members. Updates stop when a new bundle policy no longer permits an existing override.
+
+Return to the packaged member and clear the override records in one operation:
+
+```bash
+fastskill bundle override payments-debugging --reset
+```
+
+Reset is blocked if retained bundles disagree on the packaged bytes or if the installed member has
+untracked edits. Removing the last bundle owner of a personal replacement keeps that replacement
+as an individual requirement instead of deleting it.
 
 <Callout type="info">
 `bundle build` and `bundle override` change files. The MCP server hides and refuses both tools

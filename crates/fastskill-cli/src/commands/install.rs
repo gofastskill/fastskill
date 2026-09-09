@@ -1,35 +1,43 @@
 //! Install command - installs skills from skill-project.toml dependencies
 
-use crate::config::create_service_config;
+use crate::config::{create_service_config, inject_edge_services};
 use crate::error::{manifest_required_message, CliError, CliResult};
-use crate::utils::{install_utils, manifest_utils, messages};
+use crate::utils::messages;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::{
-    bundle::BundleService,
-    dependency_resolver::{DependencyResolver, SkillInstallItem},
-    lock::{project_lock_path, ProjectSkillsLock},
-    manifest::{SkillEntry, SkillProjectToml},
-    project::resolve_project_file,
-    repository::RepositoryManager,
+    bundle::BundleService, lifecycle_transaction::LifecycleTransaction, lock::project_lock_path,
+    manifest::SkillProjectToml, project::resolve_project_file,
 };
 use fastskill_core::FastSkillService;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::fs;
+use tempfile::TempDir;
 
-/// Apply manifest: install skills from skill-project.toml [dependencies]
+#[cfg(test)]
+static FAIL_AFTER_BUNDLE_APPLY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(test)]
+static FAIL_DURING_BUNDLE_APPLY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) mod change;
+mod global;
+pub(crate) mod plan;
+
+/// Apply manifest: install skills from the `skill-project.toml` `[dependencies]` table.
 ///
 /// This is the canonical command for manifest-driven workflow.
 ///
-/// Reads dependencies from skill-project.toml [dependencies] at the project root.
+/// Reads dependencies from the `skill-project.toml` `[dependencies]` table at the project root.
 /// Installs to the skills directory configured in [tool.fastskill].skills_directory.
 /// Creates or updates skills.lock for reproducible installations.
 ///
 /// Use --lock to install exact versions from skills.lock instead of resolving from manifest.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InstallArgs {
     /// Exclude skills from these groups (like poetry --without dev)
     without: Option<Vec<String>>,
@@ -41,7 +49,16 @@ pub struct InstallArgs {
     lock: bool,
 
     /// Maximum transitive dependency depth (overrides config file setting)
-    depth: Option<u32>,
+    depth: Option<i64>,
+
+    /// Prohibit network access and use verified cached/local inputs only
+    offline: bool,
+
+    /// Validate and report the complete plan without changing persistent state
+    dry_run: bool,
+
+    /// Emit one structured JSON result
+    json: bool,
 
     /// Trigger reindex after install (overrides config)
     reindex: bool,
@@ -99,6 +116,33 @@ impl IntoCommandSpec for InstallArgs {
                     ..Default::default()
                 },
                 ArgSpec {
+                    name: "offline",
+                    kind: ArgKind::Flag,
+                    long: Some("offline"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Use verified cached and local inputs without network access",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "dry-run",
+                    kind: ArgKind::Flag,
+                    long: Some("dry-run"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Validate and show the install plan without changing state",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "json",
+                    kind: ArgKind::Flag,
+                    long: Some("json"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Output one machine-readable JSON result",
+                    ..Default::default()
+                },
+                ArgSpec {
                     name: "reindex",
                     kind: ArgKind::Flag,
                     long: Some("reindex"),
@@ -153,82 +197,109 @@ impl FromArgValueMap for InstallArgs {
             lock: matches!(map.get("lock"), Some(ArgValue::Bool(true))),
             depth: map.get("depth").and_then(|v| {
                 if let ArgValue::Int(n) = v {
-                    Some(*n as u32)
+                    Some(*n)
                 } else {
                     None
                 }
             }),
+            offline: matches!(map.get("offline"), Some(ArgValue::Bool(true))),
+            dry_run: matches!(map.get("dry-run"), Some(ArgValue::Bool(true))),
+            json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
             reindex: matches!(map.get("reindex"), Some(ArgValue::Bool(true))),
             no_reindex: matches!(map.get("no-reindex"), Some(ArgValue::Bool(true))),
         }
     }
 }
 
-/// Configuration for recursive install
-#[derive(Debug, Clone)]
-pub struct RecursiveInstallConfig {
-    pub max_depth: u32,
-    pub exclude_groups: Option<Vec<String>>,
-    pub only_groups: Option<Vec<String>>,
-    pub skip_transitive: bool,
+#[derive(Serialize)]
+struct InstallJsonTarget {
+    id: String,
+    outcome: String,
+    current_revision: Option<String>,
+    target_revision: Option<String>,
+    changes: Vec<String>,
+    retained: Vec<String>,
 }
 
-impl RecursiveInstallConfig {
-    pub fn from_args_and_config(
-        args: &InstallArgs,
-        config_depth: u32,
-        config_skip_transitive: bool,
-    ) -> Self {
-        Self {
-            max_depth: args.depth.unwrap_or(config_depth),
-            exclude_groups: args.without.clone(),
-            only_groups: args.only.clone(),
-            skip_transitive: config_skip_transitive,
+#[derive(Serialize)]
+struct InstallJsonResult {
+    scope: &'static str,
+    outcome: String,
+    dry_run: bool,
+    targets: Vec<InstallJsonTarget>,
+    diagnostics: Vec<String>,
+}
+
+#[cfg(test)]
+async fn execute_install(args: InstallArgs) -> CliResult<()> {
+    execute_install_scoped(args, false, None).await
+}
+
+pub async fn execute_install_scoped(
+    args: InstallArgs,
+    global: bool,
+    skills_dir: Option<std::path::PathBuf>,
+) -> CliResult<()> {
+    let json = args.json;
+    let dry_run = args.dry_run;
+    let result = if global {
+        if skills_dir.is_some() {
+            Err(CliError::Validation(
+                "--global and --skills-dir cannot be used together".to_string(),
+            ))
+        } else {
+            global::execute_global_install(args).await
+        }
+    } else {
+        execute_install_inner(args, skills_dir).await
+    };
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if json {
+                print_install_json(InstallJsonResult {
+                    scope: if global { "global" } else { "project" },
+                    outcome: "blocked".to_string(),
+                    dry_run,
+                    targets: Vec::new(),
+                    diagnostics: vec![error.to_string()],
+                })?;
+            }
+            Err(error)
         }
     }
 }
 
-fn group_passes_filter(
-    groups: &[String],
-    exclude: Option<&[String]>,
-    only: Option<&[String]>,
-) -> bool {
-    if let Some(exclude) = exclude {
-        if groups
-            .iter()
-            .any(|g| exclude.iter().any(|ex| ex == g.as_str()))
-        {
-            return false;
-        }
-    }
-    if let Some(only) = only {
-        if !groups.is_empty()
-            && !groups
-                .iter()
-                .any(|g| only.iter().any(|on| on == g.as_str()))
-        {
-            return false;
-        }
-    }
-    true
-}
-
-pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
+async fn execute_install_inner(
+    args: InstallArgs,
+    skills_dir_override: Option<std::path::PathBuf>,
+) -> CliResult<()> {
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
             "--reindex and --no-reindex cannot be used together".to_string(),
         ));
     }
+    if args.offline && args.reindex {
+        return Err(CliError::Validation(
+            "--offline and --reindex cannot be used together".to_string(),
+        ));
+    }
+    if args.only.is_some() && args.without.is_some() {
+        return Err(CliError::Validation(
+            "--only and --without cannot be used together".to_string(),
+        ));
+    }
 
-    crate::outln!("Installing skills...");
-    crate::outln!();
+    if !args.json {
+        crate::outln!("Installing skills...");
+        crate::outln!();
+    }
 
     // Validate depth argument (must be > 0 if provided)
     if let Some(depth) = args.depth {
-        if depth == 0 {
+        if depth < 1 || u32::try_from(depth).is_err() {
             return Err(CliError::InvalidDepth(
-                "Depth must be greater than 0. Use --depth 1 for direct dependencies only."
-                    .to_string(),
+                "Depth must be between 1 and 4294967295. Use --depth 1 for roots only.".to_string(),
             ));
         }
     }
@@ -255,259 +326,361 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     }
 
     // Resolve skills directory from config
-    let skills_dir = crate::config::resolve_skills_storage_directory(false)?;
+    let skills_dir = match &skills_dir_override {
+        Some(path) => path.clone(),
+        None => crate::config::resolve_skills_storage_directory(false)?,
+    };
 
-    let restored_bundles = if project_file_result.found {
+    let declared_bundle_members = if project_file_result.found {
         let project_root = project_file_path.parent().ok_or_else(|| {
             CliError::Config("skill-project.toml has no project directory".to_string())
         })?;
         let bundle_service = BundleService::new(project_root, skills_dir.clone());
-        if args.lock {
-            bundle_service
-                .install_declared_locked()
-                .map_err(CliError::Service)?
+        bundle_service
+            .validated_declared_members(args.lock)
+            .map_err(CliError::Service)?
+    } else {
+        Vec::new()
+    };
+
+    // Initialize service
+    // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
+    let config = create_service_config(false, skills_dir_override)?;
+    let mut service = inject_edge_services(
+        FastSkillService::new(config)
+            .await
+            .map_err(CliError::Service)?,
+    )?;
+    service.initialize().await.map_err(CliError::Service)?;
+
+    // Online dry runs resolve through disposable cache/index roots. This keeps
+    // freshness validation real without persisting catalog or content indexes.
+    let preview_storage;
+    let preview_cache;
+    let preview_service;
+    let planning_service = if args.dry_run && !args.offline {
+        preview_storage = TempDir::new().map_err(CliError::Io)?;
+        preview_cache = TempDir::new().map_err(CliError::Io)?;
+        let mut config = service.config().clone();
+        config.skill_storage_path = preview_storage.path().to_path_buf();
+        config.skill_cache_root = Some(preview_cache.path().to_path_buf());
+        let mut isolated = FastSkillService::new(config)
+            .await
+            .map_err(CliError::Service)?;
+        if let Some(manager) = service.repository_manager() {
+            isolated = isolated.with_repository_manager(manager.clone());
+        }
+        isolated.initialize().await.map_err(CliError::Service)?;
+        preview_service = isolated;
+        &preview_service
+    } else {
+        &service
+    };
+
+    let project = SkillProjectToml::load_from_file(&project_file_path)
+        .map_err(|error| CliError::Config(format!("Failed to load skill-project.toml: {error}")))?;
+    project
+        .validate_for_context(project_file_result.context)
+        .map_err(|error| {
+            CliError::Config(format!("skill-project.toml validation failed: {error}"))
+        })?;
+    let manifest_dir = project_file_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let roots = project
+        .to_skill_entries(manifest_dir)
+        .map_err(|error| CliError::Config(format!("Failed to parse dependencies: {error}")))?;
+    let (config_depth, config_skip_transitive) = project
+        .tool
+        .as_ref()
+        .and_then(|tool| tool.fastskill.as_ref())
+        .map(|config| (config.install_depth, config.skip_transitive))
+        .unwrap_or((5, false));
+    let max_levels = args
+        .depth
+        .map(|depth| u32::try_from(depth).expect("depth validated above"))
+        .unwrap_or(config_depth);
+
+    let prepared = match plan::prepare(
+        planning_service,
+        &lock_path,
+        manifest_dir,
+        plan::InstallSelection {
+            roots,
+            only: args.only.as_deref(),
+            without: args.without.as_deref(),
+            max_levels,
+            skip_transitive: config_skip_transitive,
+            strict: args.lock,
+            offline: args.offline,
+        },
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            if !args.json {
+                crate::outln!("skills.lock was not modified");
+            }
+            return Err(error);
+        }
+    };
+    plan::validate_declared_bundle_members(&prepared, &declared_bundle_members)?;
+    let targets = build_install_targets(&service, &prepared).await?;
+
+    if args.dry_run {
+        plan::validate_prepared(&service, manifest_dir, prepared)?;
+        if args.json {
+            let outcome = if targets.iter().all(|target| target.outcome == "unchanged") {
+                "unchanged"
+            } else {
+                "changed"
+            };
+            print_install_json(InstallJsonResult {
+                scope: "project",
+                outcome: outcome.to_string(),
+                dry_run: true,
+                targets,
+                diagnostics: Vec::new(),
+            })?;
+        } else if targets.is_empty() {
+            crate::outln!("No skills selected; no changes would be applied");
         } else {
-            bundle_service
-                .install_declared()
-                .map_err(CliError::Service)?
+            for target in &targets {
+                crate::outln!(
+                    "  {}: {} -> {} ({})",
+                    target.id,
+                    target
+                        .current_revision
+                        .as_deref()
+                        .unwrap_or("not installed"),
+                    target.target_revision.as_deref().unwrap_or("unknown"),
+                    target.outcome
+                );
+            }
+            crate::outln!("Dry run complete; no changes were applied");
+        }
+        return Ok(());
+    }
+
+    let mut affected = prepared.affected_ids();
+    affected.extend(
+        declared_bundle_members
+            .iter()
+            .map(|member| member.id.clone()),
+    );
+    affected.sort();
+    affected.dedup();
+    let state_guard = fastskill_core::core::state_guard::StateMutationGuard::acquire_for(
+        manifest_dir,
+        Some(&skills_dir),
+        "install bundles and skills",
+    )
+    .map_err(CliError::Service)?;
+    let lifecycle = match LifecycleTransaction::capture(manifest_dir, &skills_dir, &affected) {
+        Ok(lifecycle) => lifecycle,
+        Err(error) => {
+            state_guard.recovered().map_err(CliError::Service)?;
+            return Err(CliError::Service(error));
+        }
+    };
+    let restored_bundles = if project_file_result.found {
+        let bundle_service = BundleService::new(manifest_dir, skills_dir);
+        #[cfg(test)]
+        let injected_failure =
+            FAIL_DURING_BUNDLE_APPLY.swap(false, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(test))]
+        let injected_failure = false;
+        let restored = if injected_failure {
+            Err(fastskill_core::core::service::ServiceError::Config(
+                "injected failure during bundle apply".to_string(),
+            ))
+        } else if args.lock {
+            bundle_service.install_declared_locked_with_guard(&state_guard)
+        } else {
+            bundle_service.install_declared_with_guard(&state_guard)
+        };
+        match restored {
+            Ok(restored) => restored,
+            Err(error) => {
+                if let Err(recovery) = lifecycle.rollback() {
+                    drop(state_guard);
+                    return Err(CliError::Config(format!(
+                        "{error}; combined lifecycle recovery failed: {recovery}"
+                    )));
+                }
+                state_guard.recovered().map_err(CliError::Service)?;
+                return Err(CliError::Service(error));
+            }
         }
     } else {
         Vec::new()
     };
-    for bundle in restored_bundles.iter().filter(|bundle| !bundle.unchanged) {
+    #[cfg(test)]
+    if FAIL_AFTER_BUNDLE_APPLY.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        let error = CliError::Config("injected failure after bundle apply".to_string());
+        if let Err(recovery) = lifecycle.rollback() {
+            drop(state_guard);
+            return Err(CliError::Config(format!(
+                "{error}; combined lifecycle recovery failed: {recovery}"
+            )));
+        }
+        state_guard.recovered().map_err(CliError::Service)?;
+        return Err(error);
+    }
+    let report = match plan::apply_prepared_with_guard(
+        &service,
+        &lock_path,
+        manifest_dir,
+        prepared,
+        &state_guard,
+    )
+    .await
+    {
+        Ok(report) => report,
+        Err(error) => {
+            if let Err(recovery) = lifecycle.rollback() {
+                drop(state_guard);
+                return Err(CliError::Config(format!(
+                    "{error}; combined lifecycle recovery failed: {recovery}"
+                )));
+            }
+            state_guard.recovered().map_err(CliError::Service)?;
+            return Err(error);
+        }
+    };
+    lifecycle.commit();
+    state_guard.commit().map_err(CliError::Service)?;
+
+    for bundle in restored_bundles
+        .iter()
+        .filter(|bundle| !bundle.unchanged && !args.json)
+    {
         crate::outln!(
             "  {}",
             messages::ok(&format!("Restored bundle {}@{}", bundle.id, bundle.version))
         );
     }
 
-    // Initialize service
-    // Note: install command doesn't have access to CLI sources_path, so uses env var or walk-up
-    let config = create_service_config(false, None)?;
-    let mut service = FastSkillService::new(config)
-        .await
-        .map_err(CliError::Service)?;
-    service.initialize().await.map_err(CliError::Service)?;
-
-    let repositories = crate::config::load_repositories_from_project()?;
-    let repo_manager = RepositoryManager::from_definitions(repositories);
-
-    // Create SourcesManager from marketplace-based repositories for PackageResolver
-    let sources_manager = install_utils::create_sources_manager_from_repositories(
-        &repo_manager,
-        service.skill_cache(),
-    )
-    .map_err(|e| CliError::Config(format!("Failed to create sources manager: {}", e)))?;
-
-    // Determine effective depth limit and skip_transitive flag from config then CLI override
-    let (config_depth, config_skip_transitive) = if project_file_result.found {
-        SkillProjectToml::load_from_file(&project_file_path)
-            .ok()
-            .and_then(|p| p.tool)
-            .and_then(|t| t.fastskill)
-            .map(|cfg| (cfg.install_depth, cfg.skip_transitive))
-            .unwrap_or((5, false))
-    } else {
-        (5, false)
-    };
-
-    // Build recursive install config
-    let recursive_config =
-        RecursiveInstallConfig::from_args_and_config(&args, config_depth, config_skip_transitive);
-
-    // T027: Load from skill-project.toml or lock file
-    let skills_to_install: Vec<SkillInstallItem> = if args.lock {
-        // Lock file already checked above, so it exists
-        let lock = ProjectSkillsLock::load_from_file(&lock_path)
-            .map_err(|e| CliError::Config(format!("Failed to load lock file: {}", e)))?;
-
-        crate::outln!("Using lock file ({} skills)", lock.skills.len());
-
-        // Convert lock entries to installable items. The Lock sits next to the
-        // Manifest and records local origins relative to that directory, so
-        // they resolve against this checkout — not against the machine the lock
-        // was written on.
-        let lock_dir = lock_path
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .to_path_buf();
-        lock.skills
-            .into_iter()
-            .map(|locked| SkillInstallItem {
-                entry: SkillEntry {
-                    id: locked.id,
-                    origin: locked.origin.resolved_against(&lock_dir),
-                    groups: locked.groups,
-                },
-                depth: locked.depth,
-                parent_skill: locked.parent_skill,
-            })
-            .collect()
-    } else {
-        // Load from skill-project.toml (manifest already required above when !args.lock)
-        let project = SkillProjectToml::load_from_file(&project_file_path)
-            .map_err(|e| CliError::Config(format!("Failed to load skill-project.toml: {}", e)))?;
-
-        // Validate context
-        let context = project_file_result.context;
-        project.validate_for_context(context).map_err(|e| {
-            CliError::Config(format!("skill-project.toml validation failed: {}", e))
-        })?;
-
-        // Convert dependencies to SkillEntry format. A local origin is recorded
-        // relative to the Manifest, so it resolves against the Manifest's own
-        // directory — which is what lets a committed project install anywhere.
-        let manifest_dir = project_file_path
-            .parent()
-            .unwrap_or(std::path::Path::new("."));
-        let mut entries = project
-            .to_skill_entries(manifest_dir)
-            .map_err(|e| CliError::Config(format!("Failed to parse dependencies: {}", e)))?;
-
-        // Filter skills by groups
-        let exclude_groups = args.without.as_deref();
-        let only_groups = args.only.as_deref();
-        entries.retain(|e| group_passes_filter(&e.groups, exclude_groups, only_groups));
-
-        // Sort entries by ID for deterministic output
-        entries.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
-
-        // Recursively resolve transitive dependencies unless disabled
-        let resolved_items = if recursive_config.skip_transitive {
-            entries
-                .into_iter()
-                .map(|entry| SkillInstallItem {
-                    entry,
-                    depth: 0,
-                    parent_skill: None,
-                })
-                .collect()
-        } else {
-            let mut resolver = DependencyResolver::new(recursive_config.max_depth);
-            resolver
-                .resolve_dependencies(entries, &skills_dir)
-                .await
-                .map_err(|e| CliError::Config(format!("Dependency resolution failed: {}", e)))?
-        };
-
-        // Apply group filters to resolved dependencies
-        let filtered_items: Vec<SkillInstallItem> = if recursive_config.skip_transitive {
-            resolved_items
-        } else {
-            let ex = recursive_config.exclude_groups.as_deref();
-            let on = recursive_config.only_groups.as_deref();
-            resolved_items
-                .into_iter()
-                .filter(|item| group_passes_filter(&item.entry.groups, ex, on))
-                .collect()
-        };
-
-        filtered_items
-    };
-
-    crate::outln!("Found {} skills to install", skills_to_install.len());
-
-    if skills_to_install.is_empty() {
-        crate::outln!(
-            "{}",
-            messages::info("No skills to install (filtered by groups)")
-        );
-        return Ok(());
+    for repository in report.refreshed_repositories.iter().filter(|_| !args.json) {
+        crate::outln!("   Refreshed repository metadata: {repository}");
     }
-
-    // Ensure skills directory exists
-    fs::create_dir_all(&skills_dir)
-        .map_err(|e| CliError::Config(format!("Failed to create skills directory: {}", e)))?;
-
-    // Install each skill
-    let mut installed_skills = Vec::new();
-    let mut failed_skills = Vec::new();
-    for item in &skills_to_install {
-        crate::outln!("  Installing {} (depth {})...", item.entry.id, item.depth);
-        match install_utils::install_skill_from_entry(
-            &service,
-            item.entry.clone(),
-            sources_manager.as_ref(),
-        )
-        .await
-        {
-            Ok(skill_def) => {
-                installed_skills.push((
-                    skill_def,
-                    item.entry.groups.clone(),
-                    item.depth,
-                    item.parent_skill.clone(),
-                ));
-                crate::outln!(
-                    "  {}",
-                    messages::ok(&format!("Installed {}", item.entry.id))
-                );
-            }
-            Err(e) => {
-                let context = match &item.parent_skill {
-                    Some(parent) => format!(" (required by {})", parent),
-                    None => String::new(),
-                };
-                eprintln!(
-                    "  {}",
-                    messages::error(&format!(
-                        "Failed to install {}{}: {}",
-                        item.entry.id, context, e
-                    ))
-                );
-                failed_skills.push(item.entry.id.to_string());
-            }
+    if !args.json {
+        for id in &report.mutable_sources {
+            crate::outln!(
+                "   Editable skill {id} remains mutable; identity and target were verified, but content integrity is not pinned"
+            );
         }
     }
 
-    // Capture the count before the loop below drains `installed_skills`: it's
-    // the only honest signal of whether skills.lock was actually touched.
-    let installed_count = installed_skills.len();
-
-    // Update lock file with all installed skills including depth and parent info
-    for (skill_def, groups, depth, parent_skill) in installed_skills {
-        manifest_utils::update_lock_file_with_depth(
-            &lock_path,
-            &skill_def,
-            groups,
-            depth,
-            parent_skill,
-        )
-        .map_err(|e| CliError::Config(format!("Failed to update lock file: {}", e)))?;
-    }
-
-    crate::outln!();
-    if installed_count > 0 {
-        crate::outln!("{}", messages::ok("Installation complete"));
-        crate::outln!("   Updated skills.lock");
-    } else {
-        // Every skill failed to install (see the errors above): skills.lock
-        // was never opened, let alone written. Saying otherwise here is
-        // exactly the "claims a write that did not occur" bug (spec 013
-        // minor #1) -- don't repeat it for the empty-success case.
-        crate::outln!("{}", messages::error("No skills were installed"));
-        crate::outln!("   skills.lock was not modified");
-    }
-
-    // Return error if any skills failed to install
-    if !failed_skills.is_empty() {
-        return Err(CliError::Config(format!(
-            "Failed to install {} skill(s): {}",
-            failed_skills.len(),
-            failed_skills.join(", ")
-        )));
-    }
-
     let auto_reindex = crate::config_file::load_auto_reindex_config();
-    crate::utils::reindex_utils::maybe_auto_reindex(
+    let index_result = crate::utils::reindex_utils::lifecycle_reindex_result(
         &service,
         "install",
         args.reindex,
-        args.no_reindex,
+        args.no_reindex || args.offline,
         auto_reindex,
-        false,
     )
-    .await
+    .await;
+
+    if args.json {
+        let outcome = if targets.iter().all(|target| target.outcome == "unchanged")
+            && restored_bundles.iter().all(|bundle| bundle.unchanged)
+        {
+            "unchanged"
+        } else {
+            "changed"
+        };
+        print_install_json(InstallJsonResult {
+            scope: "project",
+            outcome: outcome.to_string(),
+            dry_run: false,
+            targets,
+            diagnostics: report
+                .refreshed_repositories
+                .iter()
+                .map(|repository| format!("refreshed repository metadata: {repository}"))
+                .chain(report.mutable_sources.iter().map(|id| {
+                    format!("editable skill {id} remains mutable; content integrity is not pinned")
+                }))
+                .chain(
+                    index_result.diagnostic.iter().map(|diagnostic| {
+                        format!("indexing {}: {diagnostic}", index_result.outcome)
+                    }),
+                )
+                .collect(),
+        })?;
+    } else if report.installed.is_empty() {
+        crate::outln!("{}", messages::info("No skills selected for installation"));
+    } else {
+        for id in &report.installed {
+            crate::outln!("  {}", messages::ok(&format!("Installed {id}")));
+        }
+        crate::outln!();
+        crate::outln!("{}", messages::ok("Installation complete"));
+        if report.used_lock {
+            crate::outln!("   Restored verified selections from skills.lock");
+        } else {
+            crate::outln!("   Updated skills.lock");
+        }
+        if let Some(diagnostic) = index_result.diagnostic {
+            crate::outln!("   Indexing {}: {diagnostic}", index_result.outcome);
+        } else if index_result.outcome == "succeeded" {
+            crate::outln!("   Indexed {} skill(s)", index_result.count);
+        }
+    }
+    Ok(())
+}
+
+async fn build_install_targets(
+    service: &FastSkillService,
+    prepared: &plan::PreparedInstallPlan,
+) -> CliResult<Vec<InstallJsonTarget>> {
+    let mut targets = Vec::new();
+    for target in prepared.targets() {
+        let id = fastskill_core::SkillId::new(target.id.clone()).map_err(CliError::Service)?;
+        let current = service
+            .skill_manager()
+            .get_skill(&id)
+            .await
+            .map_err(CliError::Service)?;
+        let unchanged = current.as_ref().is_some_and(|installed| {
+            installed.version == target.resolved_version
+                && target.checksum.as_ref().is_some_and(|checksum| {
+                    fastskill_core::core::install::content_digest(
+                        &service.config().skill_storage_path.join(&target.id),
+                    )
+                    .is_ok_and(|actual| &actual == checksum)
+                })
+        });
+        let current_revision = current.map(|installed| installed.version);
+        let outcome = if unchanged { "unchanged" } else { "changed" };
+        targets.push(InstallJsonTarget {
+            id: target.id,
+            outcome: outcome.to_string(),
+            current_revision,
+            target_revision: Some(target.resolved_version),
+            changes: if unchanged {
+                Vec::new()
+            } else {
+                vec!["install verified content".to_string()]
+            },
+            retained: if unchanged {
+                vec!["verified content already installed".to_string()]
+            } else {
+                Vec::new()
+            },
+        });
+    }
+    Ok(targets)
+}
+
+fn print_install_json(result: InstallJsonResult) -> CliResult<()> {
+    let json = serde_json::to_string(&result).map_err(|error| {
+        CliError::Config(format!("Failed to serialize install result: {error}"))
+    })?;
+    crate::outln!("{json}");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -518,234 +691,5 @@ pub async fn execute_install(args: InstallArgs) -> CliResult<()> {
     clippy::await_holding_lock,
     clippy::collapsible_if
 )]
-mod tests {
-    use super::*;
-    use fastskill_core::test_utils::DirGuard;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_execute_install_no_manifest() {
-        // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-            depth: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_install(args).await;
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            assert!(
-                (msg.contains("skill-project.toml not found") && msg.contains("fastskill init"))
-                    || msg.contains("skill-project.toml")
-                        && (msg.contains("not found") || msg.contains("Manifest file not found")),
-                "Error message must mention skill-project.toml and creation/init: '{}'",
-                msg
-            );
-        } else {
-            panic!("Expected Config error, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_install_with_lock_file_not_found() {
-        // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create skill-project.toml but no lock file
-        fs::write(
-            temp_dir.path().join("skill-project.toml"),
-            "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n",
-        )
-        .unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: true,
-            depth: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_install(args).await;
-        assert!(result.is_err(), "Expected error, got: {:?}", result);
-        if let Err(CliError::Config(msg)) = result {
-            // Should fail because skills.lock not found
-            assert!(
-                msg.contains("skills.lock not found"),
-                "Error message '{}' does not contain expected text",
-                msg
-            );
-        } else {
-            panic!("Expected Config error, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_install_with_empty_manifest() {
-        // Use a shared mutex to serialize directory changes across parallel tests
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Create skill-project.toml at project root with empty [dependencies]
-        let project_toml = temp_dir.path().join("skill-project.toml");
-        fs::write(&project_toml, "[dependencies]\n").unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-            depth: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        // Should succeed with empty manifest (no skills to install) or fail on service/repos; shouldn't panic
-        let result = execute_install(args).await;
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_execute_install_success() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let skills_dir = temp_dir.path().join(".claude/skills");
-        fs::create_dir_all(&skills_dir).unwrap();
-
-        let source_dir = temp_dir.path().join("source-skill");
-        fs::create_dir_all(&source_dir).unwrap();
-        let skill_content = r#"# Test Skill
-
-Name: test-skill
-Version: 1.0.0
-Description: A test skill for coverage
-"#;
-        fs::write(source_dir.join("SKILL.md"), skill_content).unwrap();
-
-        let manifest_content = r#"[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[dependencies]
-test-skill = { origin = { type = "local", path = "source-skill" } }
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-            depth: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        let result = execute_install(args).await;
-        // May succeed or fail depending on lock file, but shouldn't panic
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    /// Regression test for spec 013 minor #1: when every dependency fails to
-    /// install (here, an editable local dependency whose source directory was
-    /// never created), `execute_install` must not claim `skills.lock` was
-    /// updated -- it never touched the file. Verified against the real binary:
-    /// this exact manifest reproduces `[OK] Installation complete` /
-    /// `Updated skills.lock` printed immediately before the command exits
-    /// with an error and no `skills.lock` anywhere on disk.
-    #[tokio::test]
-    async fn test_execute_install_all_failed_does_not_claim_lock_updated() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        // Deliberately never created: "./skills/demo-skill" does not exist,
-        // matching the reported repro's manifest.
-        let manifest_content = r#"[dependencies]
-demo-skill = { source = "local", path = "./skills/demo-skill", editable = true }
-
-[tool.fastskill]
-skills_directory = ".claude/skills"
-"#;
-        fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
-
-        let args = InstallArgs {
-            without: None,
-            only: None,
-            lock: false,
-            depth: None,
-            reindex: false,
-            no_reindex: false,
-        };
-
-        // `capture` scopes `Mode::Capture` to its own future, so this collects
-        // the command's output without touching the process-wide mode.
-        let (result, output) = crate::output::capture(execute_install(args)).await;
-
-        assert!(
-            result.is_err(),
-            "install should fail: the dependency's local path never exists"
-        );
-        assert!(
-            !temp_dir.path().join("skills.lock").exists(),
-            "skills.lock must not exist: nothing was successfully installed"
-        );
-        // Positive assertion first: without it the negative one below would
-        // pass vacuously if `capture` ever stopped capturing.
-        assert!(
-            output.contains("skills.lock was not modified"),
-            "the failure path must say the lock was left alone: {output:?}"
-        );
-        assert!(
-            !output.contains("Updated skills.lock"),
-            "output must not claim the lock was updated when it was not written: {output:?}"
-        );
-    }
-}
+#[path = "install/tests.rs"]
+mod tests;

@@ -146,14 +146,15 @@ fastskill install --without dev
 # Install only production group skills
 fastskill install --only prod
 
-# Install from lock file (reproducible)
-fastskill install --lock
+# Install and verify the exact lock without network access
+fastskill install --lock --offline
 ```
 
 **Options**:
 - `--without <GROUPS...>`: Exclude skills from these groups
 - `--only <GROUPS...>`: Only install skills from these groups
 - `--lock`: Install from skills.lock (exact versions) instead of resolving from skill-project.toml
+- `--offline`: Use verified local and cached inputs without network, refresh, or automatic indexing
 
 ### fastskill update
 
@@ -175,17 +176,20 @@ fastskill update --check
 
 # Show what would be updated
 fastskill update --dry-run
+
+# Move one repository skill to an exact version
+fastskill update my-skill-id --to-version 2.1.0
 ```
 
 **Options**:
 - `<SKILL_ID>`: Skill ID to update (if not specified, updates all)
 - `--check`: Check for updates without installing
 - `--dry-run`: Show what would be updated without actually updating
+- `--to-version <VERSION>`: Change one named repository skill to an exact version
+- `--strategy <patch|minor|latest|major>`: Choose a compatible update strategy
+- `--repository <NAME>`: Select a configured repository for one named repository skill
+- `--offline`: Use verified cached/local inputs only
 - `--reindex` / `--no-reindex`: Control whether the vector index is rebuilt after updating
-
-<Callout type="warning">
-`--version`, `--source`, and `--strategy` are parsed for compatibility but currently have **no effect** — update always re-resolves each skill to what its origin considers current. See the [update Command](/cli-reference/update-command) page for details.
-</Callout>
 
 ### fastskill read (metadata and tree)
 
@@ -244,6 +248,12 @@ fastskill add ./skills -r
 
 # Add all skills recursively with editable mode and group
 fastskill add ./skills -r -e --group dev
+
+# Add the newest stable release from a selected repository
+fastskill add scope/reviewer@latest --repository team
+
+# Add an exact cached release without network access
+fastskill add scope/reviewer@1.2.0 --repository team --offline
 ```
 
 **Git URL formats:**
@@ -254,6 +264,8 @@ fastskill add ./skills -r -e --group dev
 - `-e, --editable`: Install skill in editable mode (symlink/reference for local development)
 - `-r, --recursive`: Add all skills found under the directory (discovers directories containing SKILL.md). Only valid when source is a local directory
 - `--group <GROUP>`: Add skill to a specific group (e.g., "dev", "prod")
+- `--repository <NAME>`: Select the configured repository for a skill ID reference
+- `--offline`: Use verified local and cached inputs without network or automatic indexing
 - `--branch <BRANCH>`: Git branch to checkout (for git URLs)
 - `--tag <TAG>`: Git tag to checkout (for git URLs)
 - `--force`: Force registration even if skill already exists
@@ -276,6 +288,10 @@ fastskill remove skill1 skill2 skill3
 **Options**:
 - `--force`, `-f`: Skip confirmation
 - `--skills-dir <PATH>`: Override skills directory
+
+Removing a direct root detaches that declaration and retains content still required by another
+root or bundle. Removing an ID that is only transitive fails and names its owners. `--force`
+skips confirmation; it does not bypass ownership, integrity, or local-edit protection.
 
 ### fastskill repos
 

@@ -11,8 +11,8 @@
 //! - Example: "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
 //!
 //! ### Context-Specific Errors
-//! - Skill-level context: Require [metadata] with id and version
-//! - Project-level context: Require [dependencies] section
+//! - Skill-level context: Require a `[metadata]` table with id and version
+//! - Project-level context: Require a `[dependencies]` table
 //! - Ambiguous context: Use content-based detection (metadata.id vs dependencies)
 //!
 //! ## Error Types
@@ -78,12 +78,6 @@ pub enum CliError {
 
     #[error("Invalid skill source: {0}")]
     InvalidSource(String),
-
-    #[error("Git clone failed: {0}")]
-    GitCloneFailed(String),
-
-    #[error("Skill validation failed: {0}")]
-    SkillValidationFailed(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -151,36 +145,6 @@ const MANIFEST_MISSING_PREFIX: &str = "skill-project.toml not found";
 /// shorthand that died here into a message naming the word and `fastskill init`.
 pub fn is_manifest_missing(error: &CliError) -> bool {
     matches!(error, CliError::Config(message) if message.starts_with(MANIFEST_MISSING_PREFIX))
-}
-
-#[derive(Debug, Clone)]
-pub enum CliWarning {
-    MissingSkillProjectToml { path: PathBuf, fallback_id: String },
-}
-
-impl CliWarning {
-    pub fn display(&self, source_type: &str, editable: bool) {
-        match self {
-            CliWarning::MissingSkillProjectToml { path, fallback_id } => {
-                eprintln!(
-                    "⚠  Warning: skill-project.toml not found at {}",
-                    path.display()
-                );
-                eprintln!(
-                    "   Using skill ID '{}' from SKILL.md frontmatter",
-                    fallback_id
-                );
-
-                if source_type == "local" && editable {
-                    eprintln!("   Consider running 'fastskill init' in the skill directory to add skill-project.toml");
-                } else {
-                    eprintln!(
-                        "   This is normal for standard-compliant skills from external sources"
-                    );
-                }
-            }
-        }
-    }
 }
 
 impl CliError {
