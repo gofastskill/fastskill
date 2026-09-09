@@ -7,7 +7,7 @@
 //! **CRITICAL — see [ADR-0004](../../../../docs/adr/0004-bare-version-is-exact.md):**
 //! a *bare* `MAJOR.MINOR.PATCH` (no operator, no comma) is an **exact pin**, not a
 //! caret range. `VersionReq::parse("1.2.3")` would apply Cargo caret semantics
-//! (`>=1.2.3,<2.0.0`), so [`normalize_constraint`] rewrites a bare full version to
+//! (`>=1.2.3,<2.0.0`), so `normalize_constraint` rewrites a bare full version to
 //! `=MAJOR.MINOR.PATCH` before parsing. Do **not** remove that normalization —
 //! deleting it silently widens every committed bare pin from "exactly X" to a range.
 

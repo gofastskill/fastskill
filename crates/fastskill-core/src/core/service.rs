@@ -287,7 +287,7 @@ pub enum ServiceError {
 
 /// Main FastSkill service
 ///
-/// Note: This struct does not derive Debug because it contains Arc<dyn Trait> fields
+/// Note: This struct does not derive Debug because it contains `Arc<dyn Trait>` fields
 /// which cannot implement Debug. This is acceptable for enterprise software.
 pub struct FastSkillService {
     /// Service configuration

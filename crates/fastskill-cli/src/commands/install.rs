@@ -25,11 +25,11 @@ pub(crate) mod change;
 mod global;
 pub(crate) mod plan;
 
-/// Apply manifest: install skills from skill-project.toml [dependencies]
+/// Apply manifest: install skills from the `skill-project.toml` `[dependencies]` table.
 ///
 /// This is the canonical command for manifest-driven workflow.
 ///
-/// Reads dependencies from skill-project.toml [dependencies] at the project root.
+/// Reads dependencies from the `skill-project.toml` `[dependencies]` table at the project root.
 /// Installs to the skills directory configured in [tool.fastskill].skills_directory.
 /// Creates or updates skills.lock for reproducible installations.
 ///

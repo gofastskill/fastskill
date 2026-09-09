@@ -24,7 +24,7 @@ use confirmation::confirm_removal;
 /// This is the only command to completely stop using skills after the removal of 'disable'.
 ///
 /// Behavior:
-/// - For manifest-managed projects: Removes from skill-project.toml [dependencies] and local installation
+/// - For manifest-managed projects: Removes from the `skill-project.toml` `[dependencies]` table and local installation
 /// - For local-only skills: Removes from local installation only
 /// - Always updates skills.lock to reflect removals (when manifest exists)
 ///

@@ -112,7 +112,7 @@ impl ProjectSkillsLock {
         }
     }
 
-    /// Load the project lock, migrating a [`LEGACY_PROJECT_LOCK_VERSION`] file in memory.
+    /// Load the project lock, migrating a `LEGACY_PROJECT_LOCK_VERSION` file in memory.
     ///
     /// Migrating rather than rejecting matters here specifically because a lock records
     /// *pinned* versions. Telling someone with a working installation to delete it and

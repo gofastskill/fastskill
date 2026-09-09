@@ -13,7 +13,7 @@
 //! {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"OK"}]}}
 //! ```
 //!
-//! Every command therefore emits through [`emit`] (usually via the [`outln!`]
+//! Every command therefore emits through [`emit`] (usually via the `outln!`
 //! macro), which routes according to the process-wide [`Mode`] chosen once at
 //! startup:
 //!
@@ -95,7 +95,7 @@ pub fn has_active_sink() -> bool {
 
 /// Emit one line of user-visible output.
 ///
-/// Prefer the [`outln!`] macro, which mirrors `println!`'s formatting.
+/// Prefer the `outln!` macro, which mirrors `println!`'s formatting.
 pub fn emit(line: &str) {
     match mode() {
         Mode::Direct => println!("{}", line),

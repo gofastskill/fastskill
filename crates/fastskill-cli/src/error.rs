@@ -11,8 +11,8 @@
 //! - Example: "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
 //!
 //! ### Context-Specific Errors
-//! - Skill-level context: Require [metadata] with id and version
-//! - Project-level context: Require [dependencies] section
+//! - Skill-level context: Require a `[metadata]` table with id and version
+//! - Project-level context: Require a `[dependencies]` table
 //! - Ambiguous context: Use content-based detection (metadata.id vs dependencies)
 //!
 //! ## Error Types

@@ -542,8 +542,8 @@ impl SkillCache {
     /// for the adversarial argument: `clean` only ever descends into `git/`,
     /// `registry/`, `local/` under the *resolved* cache root; it refuses
     /// outright if that root contains anything it does not recognize
-    /// ([`verify_looks_like_cache_root`]); it never follows a symlink while
-    /// walking or deleting ([`leaf_identity_dirs`], [`remove_dir_no_symlinks`]);
+    /// (`verify_looks_like_cache_root`); it never follows a symlink while
+    /// walking or deleting (`leaf_identity_dirs`, `remove_dir_no_symlinks`);
     /// and it re-canonicalizes every entry immediately before deleting it and
     /// refuses to delete anything that no longer resolves back inside the
     /// canonical root ([`SkillCache::clean`]'s loop below).

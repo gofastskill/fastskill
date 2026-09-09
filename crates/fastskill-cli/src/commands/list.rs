@@ -4,7 +4,7 @@
 //! and reconciles them against skill-project.toml and skills.lock.
 //!
 //! Requires skill-project.toml in the hierarchy. Uses three sources: installed skills (target
-//! folder), skill-project.toml [dependencies], and skills.lock. Outputs one table with flags
+//! folder), the `skill-project.toml` `[dependencies]` table, and `skills.lock`. Outputs one table with flags
 //! for missing from folder, missing from lock, missing from manifest.
 
 use crate::commands::common::validate_format_args;
