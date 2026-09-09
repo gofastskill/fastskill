@@ -201,7 +201,7 @@ fn persistence_recovers_when_apply_fails_and_clears_pre_mutation_errors() {
             None,
         )
         .unwrap_err();
-    assert!(error.to_string().contains("No such file") || error.to_string().contains("I/O"));
+    assert!(matches!(error, ServiceError::Io(_)));
     assert!(!root.path().join(".fastskill/recovery-required").exists());
 
     fs::write(root.path().join("skill-project.toml"), "invalid = [").unwrap();

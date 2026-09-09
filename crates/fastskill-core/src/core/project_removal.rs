@@ -483,18 +483,21 @@ mod tests {
         assert!(service.remove(&["item".to_string()]).is_err());
         assert!(!root.path().join(".fastskill/recovery-required").exists());
 
-        let service = project(root.path(), None);
-        let digest = managed_tree_digest(&installed).unwrap();
-        let mut lock = ProjectSkillsLock::load_from_file(&root.path().join("skills.lock")).unwrap();
-        lock.skills[0].resolved.checksum = Some(digest);
-        lock.save_to_file(&root.path().join("skills.lock")).unwrap();
-        let bundles = root.path().join(".fastskill/bundles");
-        fs::create_dir_all(&bundles).unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&installed, bundles.join("linked")).unwrap();
-        assert!(service.remove(&["item".to_string()]).is_err());
-        assert!(installed.join("SKILL.md").is_file());
-        assert!(!root.path().join(".fastskill/recovery-required").exists());
+        {
+            let service = project(root.path(), None);
+            let digest = managed_tree_digest(&installed).unwrap();
+            let mut lock =
+                ProjectSkillsLock::load_from_file(&root.path().join("skills.lock")).unwrap();
+            lock.skills[0].resolved.checksum = Some(digest);
+            lock.save_to_file(&root.path().join("skills.lock")).unwrap();
+            let bundles = root.path().join(".fastskill/bundles");
+            fs::create_dir_all(&bundles).unwrap();
+            std::os::unix::fs::symlink(&installed, bundles.join("linked")).unwrap();
+            assert!(service.remove(&["item".to_string()]).is_err());
+            assert!(installed.join("SKILL.md").is_file());
+            assert!(!root.path().join(".fastskill/recovery-required").exists());
+        }
     }
 
     #[test]

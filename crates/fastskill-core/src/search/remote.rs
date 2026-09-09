@@ -314,7 +314,7 @@ type = "http-registry"
 priority = 1
 index_url = "not-a-valid-url"
 "#,
-                catalog.display()
+                catalog.display().to_string().replace('\\', "\\\\")
             ),
         )
         .unwrap();

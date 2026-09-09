@@ -13,6 +13,19 @@ fn valid_commit_id(commit: &str) -> bool {
     matches!(commit.len(), 40 | 64) && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+fn build_checkout_args(commit: &str) -> Vec<&str> {
+    vec![
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "core.eol=lf",
+        "checkout",
+        "--quiet",
+        "--detach",
+        commit,
+    ]
+}
+
 /// Clone and check out one immutable commit. A full object negotiation is used
 /// because a shallow clone of the current branch cannot restore an older lock.
 pub async fn clone_repository_at_commit(url: &str, commit: &str) -> Result<TempDir, ServiceError> {
@@ -48,7 +61,7 @@ pub async fn clone_repository_at_commit(url: &str, commit: &str) -> Result<TempD
             url: redact_url_credentials(url),
             stderr: error.to_string(),
         })?;
-    let checkout = ["checkout", "--quiet", "--detach", commit];
+    let checkout = build_checkout_args(commit);
     execute_git_command_with_retry(&checkout, Duration::from_secs(60), Some(temp_dir.path()), 1)
         .await
         .map_err(|error| GitError::CheckoutFailed {
@@ -69,6 +82,25 @@ mod tests {
         assert!(valid_commit_id(&"B".repeat(64)));
         assert!(!valid_commit_id("abc"));
         assert!(!valid_commit_id(&format!("{}g", "a".repeat(39))));
+    }
+
+    #[test]
+    fn immutable_checkout_disables_line_ending_translation() {
+        let commit = "a".repeat(40);
+        let args = build_checkout_args(&commit);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["-c", "core.autocrlf=false"]));
+        assert!(args.windows(2).any(|pair| pair == ["-c", "core.eol=lf"]));
+        let autocrlf = args
+            .iter()
+            .position(|arg| *arg == "core.autocrlf=false")
+            .expect("line-ending config");
+        let checkout = args
+            .iter()
+            .position(|arg| *arg == "checkout")
+            .expect("checkout command");
+        assert!(autocrlf < checkout);
     }
 
     #[tokio::test]
