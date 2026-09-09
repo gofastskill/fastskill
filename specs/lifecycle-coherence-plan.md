@@ -115,7 +115,7 @@ fleet orchestration or automatic bundle catalog is included.
   run completed its 1,754-test instrumented selection with no failures; 15 environment-specific tests
   are excluded from coverage collection and remain covered by the normal release suite.
 - All 73 instrumented production Rust files changed by this implementation have full-file line coverage
-  above 90%. The lowest result is 90.28%. Three changed module declaration files contain no
+  above 90%. Three changed module declaration files contain no
   instrumentable lines and are reported as not applicable by the CI gate.
 - Focused CLI, core, HTTP, and real stdio MCP scenarios cover the 55 PRD acceptance cases, including
   lock integrity, first-install closure, shared ownership, rollback, JSON output, scope routing, bundle
