@@ -232,6 +232,12 @@ async fn two_installs_of_the_same_ref_clone_exactly_once() {
 #[allow(clippy::await_holding_lock)]
 async fn exact_locked_commit_is_restored_after_branch_moves_and_cache_is_cleared() {
     let _lock = DIR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let project = TempDir::new().unwrap();
+    setup_project(project.path());
+    let original_dir = std::env::current_dir().ok();
+    std::env::set_current_dir(project.path()).unwrap();
+    let _dir_guard = DirGuard(original_dir);
+
     let daemon_base = TempDir::new().unwrap();
     let locked_sha = seed_bare_repo(daemon_base.path(), "moving", "main");
     let daemon_path = daemon_base.path().to_path_buf();
