@@ -217,6 +217,30 @@ async fn directory_snapshots_restore_existing_and_remove_new_directories() {
 }
 
 #[tokio::test]
+async fn restore_and_remove_unlink_current_directory_symlinks_without_following_them() {
+    let root = TempDir::new().unwrap();
+    let target = root.path().join("target");
+    let link = root.path().join("editable");
+    fs::create_dir_all(&target).unwrap();
+    fs::write(target.join("sentinel"), "keep").unwrap();
+    create_directory_symlink(&target, &link).unwrap();
+
+    restore_directories(&[DirectorySnapshot {
+        installed: link.clone(),
+        original: OriginalPath::Missing,
+    }])
+    .await
+    .unwrap();
+    assert!(fs::symlink_metadata(&link).is_err());
+    assert!(target.join("sentinel").is_file());
+
+    create_directory_symlink(&target, &link).unwrap();
+    remove_global_path(&link).unwrap();
+    assert!(fs::symlink_metadata(&link).is_err());
+    assert!(target.join("sentinel").is_file());
+}
+
+#[tokio::test]
 async fn path_removal_and_rollback_restore_every_authoritative_value() {
     let root = TempDir::new().unwrap();
     let storage = root.path().join("skills");
