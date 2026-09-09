@@ -6,7 +6,8 @@ use crate::core::manifest::{SkillEntry, SkillProjectToml};
 use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::project_apply::ProjectApplyPlan;
 use crate::core::resolution::{
-    prepare_resolution, prepare_resolution_preview, ResolutionPlan, ResolutionRoot,
+    origins_accept_same_resolution, prepare_resolution, prepare_resolution_preview, ResolutionPlan,
+    ResolutionRoot,
 };
 use crate::core::service::ServiceError;
 use crate::core::version::VersionConstraint;
@@ -408,8 +409,11 @@ fn candidate_is_current(
         values.sort();
         values.dedup();
     }
-    if entry.origin.resolved_against(&state.project_root) != candidate.origin
-        || entry.resolved != *candidate.prepared.resolved()
+    if !origins_accept_same_resolution(
+        &entry.origin.resolved_against(&state.project_root),
+        &candidate.origin,
+        &candidate.prepared.resolved().version,
+    ) || entry.resolved != *candidate.prepared.resolved()
         || locked_groups != candidate_groups
         || locked_dependencies != candidate_dependencies
     {
