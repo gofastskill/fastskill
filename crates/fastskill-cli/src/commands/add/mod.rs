@@ -578,6 +578,27 @@ mod tests {
     use fastskill_core::{FastSkillService, ServiceConfig};
     use tempfile::TempDir;
 
+    #[test]
+    fn mismatched_argument_types_are_not_coerced() {
+        let map = HashMap::from([
+            ("source".to_string(), ArgValue::Bool(true)),
+            ("source-type".to_string(), ArgValue::Bool(true)),
+            ("repository".to_string(), ArgValue::Bool(true)),
+            ("branch".to_string(), ArgValue::Bool(true)),
+            ("tag".to_string(), ArgValue::Bool(true)),
+            ("group".to_string(), ArgValue::Bool(true)),
+        ]);
+
+        let args = AddArgs::from_arg_value_map(&map);
+
+        assert!(args.source.is_empty());
+        assert!(args.source_type.is_none());
+        assert!(args.repository.is_none());
+        assert!(args.branch.is_none());
+        assert!(args.tag.is_none());
+        assert!(args.group.is_none());
+    }
+
     async fn run_add_expect_err(source: &str, source_type: Option<&str>, force: bool) {
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
