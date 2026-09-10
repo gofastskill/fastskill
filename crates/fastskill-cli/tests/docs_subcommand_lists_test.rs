@@ -263,6 +263,12 @@ fn docs_corpus() -> Vec<(String, String)> {
     let webdocs = root.join("webdocs");
     let mut nested: Vec<PathBuf> = walkdir::WalkDir::new(&webdocs)
         .into_iter()
+        .filter_entry(|entry| {
+            !matches!(
+                entry.file_name().to_str(),
+                Some("node_modules" | ".next" | ".source" | "out")
+            )
+        })
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
         .map(walkdir::DirEntry::into_path)

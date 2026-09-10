@@ -464,21 +464,93 @@ python3 -m http.server 3000 --directory website
 Keep its styles and assets inline so the website remains a single file that can be copied to any
 static host.
 
-The documentation site is a Fumadocs application whose content and app shell live in `webdocs/`.
-Its palette, typography, brand mark, and terminal treatment track the marketing site. Preview and
-validate it separately:
+## Documentation site
+
+The Fumadocs application in `webdocs/` documents only the latest published release.
+Do not add version selectors, old command mappings, or migration guides. Keep
+`README.md` quickstart links consistent with the site; contributor instructions
+belong here rather than in the user guides.
+
+### Build and validate
+
+Use Node.js 22+, pnpm 10.21.0, Python 3.11+, and a checkout with release tags:
 
 ```shell
+git fetch origin --tags
 cd webdocs
 pnpm install --frozen-lockfile
-pnpm dev
-pnpm build
+pnpm check:content
 pnpm lint
 pnpm typecheck
+pnpm build
+pnpm check:export
+pnpm start
 ```
 
-`pnpm build` writes a static export to `webdocs/out/`. Keep existing documentation URLs stable and
-update `webdocs/lib/source.ts` when adding a new content folder.
+`pnpm start` serves the complete static output, including per-page Markdown files.
+`pnpm dev` supports content editing; `.md` downloads are materialized by the static
+build. Keep useful topic URLs stable and update `lib/source.ts` when adding a folder.
+
+The build reads the Cargo version and Git revisions. Product changes beyond the
+matching release tag are labeled **unreleased preview** and cannot pass
+`node scripts/prepare.mjs --publish`. Documentation corrections may be built on top
+of the release when product code is unchanged. Generated metadata is ignored by Git.
+
+The existing `spec_docs_parity_test` checks command paths and, on Linux, also runs
+configuration/flag checks and disposable user journeys using the compiled CLI:
+
+```shell
+cargo test -p fastskill-cli --test spec_docs_parity_test
+```
+
+For a published binary, run these from the repository root (replace the binary path):
+
+```shell
+python3 webdocs/scripts/check-content.py --binary /path/to/fastskill
+python3 webdocs/scripts/check-journeys.py /path/to/fastskill
+# Optional online check against the public FastSkill skill repository
+python3 webdocs/scripts/check-journeys.py /path/to/fastskill --git
+```
+
+Configuration checks parse every TOML example and validate repository field names,
+required fields, priorities, and authentication against the documented contract.
+The CLI checks validate flags against actual command help. The journey check executes
+the quickstart verbatim without embedding credentials and checks JSON failures,
+bundles, offline locked restoration, and project MCP registration previews.
+The export check validates every page, internal link/anchor, asset reference,
+canonical URL, release label, Markdown export, and discovery file.
+
+### Publish the current release
+
+`.github/workflows/webdocs-release.yml` builds the selected release on publication.
+A manual run builds `main` for documentation-only corrections; it refuses publication
+if the product differs from the latest released tag. Both paths compare against
+GitHub's latest published release and recheck it before deployment. The entire
+`webdocs/out/` directory is uploaded as one Pages artifact.
+
+Initial host setup is an operator action after review: enable GitHub Pages with
+GitHub Actions as its source, configure the `github-pages` environment, set the
+custom domain to `docs.gofastskill.com`, point DNS to this repository's Pages host,
+and enable HTTPS. The tracked `public/CNAME` and workflow describe the intended
+host. The former Mintlify site must not remain the domain's content source after
+cutover. This PR does not change DNS or enable Pages settings automatically.
+
+The publishing job verifies the production domain after deployment. To repeat it:
+
+```shell
+python3 webdocs/scripts/check-live.py v0.9.225 <documentation-commit-sha>
+```
+
+Replace the tag and revision with the release and documentation commit being published. The check verifies all HTML and
+Markdown pages, their source revision, the agent index, search, sitemap, and robots.
+A passing build is not proof of publication: a domain or revision mismatch is a
+failed delivery. Resolve host/DNS/cache issues and rerun verification; do not report
+that the new docs are live until it passes.
+
+Feature changes must update their affected guides and reference pages in the same
+PR, validate the corresponding examples, and ship those docs with the release.
+Semantic search, live agent execution, and remote Git verification require their
+respective infrastructure; record unexercised checks explicitly.
 
 ## Linting
 

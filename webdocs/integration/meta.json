@@ -1,6 +1,8 @@
 {
   "pages": [
+    "agents",
     "cursor-integration",
     "claude-code-integration"
-  ]
+  ],
+  "title": "Agent setup"
 }

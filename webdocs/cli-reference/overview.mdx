@@ -20,7 +20,7 @@ Use the same install method as the [Installation](/installation) guide (release 
 fastskill -V
 ```
 
-For Git-based skill sources, use a build that includes Git support if your distribution splits binaries that way. See [Installation](/installation) for details.
+Git-based sources require system Git on your PATH.
 
 ## Basic Usage
 
@@ -82,7 +82,7 @@ command; use `fastskill skill read <skill-id>`.
   </Card>
   <Card title="Sources and distribution">
     See [repository commands](/cli-reference/repository-command) and
-    [tooling commands](/cli-reference/tooling-commands#fastskill-marketplace-create).
+    [tooling commands](/cli-reference/tooling-commands#marketplace-create).
   </Card>
   <Card title="Quality">
     See [analysis tools](/cli-reference/tooling-commands#fastskill-analysis),
@@ -92,7 +92,7 @@ command; use `fastskill skill read <skill-id>`.
   <Card title="Operations">
     See [index rebuild](/cli-reference/reindex-command), [cache commands](/cli-reference/cache-command),
     [server serve](/cli-reference/serve-command), [MCP tools](/tool-calling/development), and
-    [CLI tooling](/cli-reference/tooling-commands#fastskill-cli).
+    [CLI tooling](/cli-reference/tooling-commands#fastskill-cli-doctor).
   </Card>
 </Cards>
 
@@ -120,9 +120,28 @@ index_url = "https://api.fastskill.io/index"
 priority = 0
 ```
 
-For opt-in registry publishing builds, see the platform-managed deploy workflow. Skill distribution is handled by the platform operator rather than a self-hosted CLI publish path.
+Host catalog metadata and skill artifacts using your team’s distribution infrastructure;
+FastSkill does not provide a CLI publishing service. Example IDs and URLs here must
+be replaced with sources you can access.
 
-### Environment Variables
+### Environment variables
+
+Run `fastskill --help` for the registered environment settings. The following are
+optional and apply only to the corresponding capability:
+
+| Variable | Purpose |
+| --- | --- |
+| `FASTSKILL_CACHE_DIR` | Shared skill cache directory |
+| `FASTSKILL_EMBEDDING_MODEL` | Embedding model override |
+| `FASTSKILL_NO_PROGRESS` | Disable progress indicators when set |
+| `OPENAI_API_KEY` | Semantic search and embedding credentials |
+| `OPENAI_BASE_URL` | Embedding provider base URL |
+| `PAT_TOKEN` | Default authenticated HTTP registry token |
+| `REGISTRY_INDEX_PATH` | Local registry index path |
+| `RUST_LOG` | Logging filter |
+| `XDG_CONFIG_HOME` | Global configuration directory on Unix |
+| `NO_COLOR` / `FORCE_COLOR` | ANSI color control where supported |
+
 
 ## Scripting and automation
 
@@ -162,14 +181,13 @@ success and failure. On failure, inspect the nonzero exit code and the returned 
 
 The CLI returns appropriate exit codes for scripting:
 
-| Code | Meaning | Example |
-|------|---------|---------|
-| `0` | Success | Command completed successfully |
-| `1` | General error | Invalid arguments or configuration |
-| `2` | Validation error | Invalid skill definition |
-| `3` | Network error | Cannot connect to service |
-| `4` | Timeout error | Command timed out |
-| `5` | Permission error | Insufficient permissions |
+| Code | Meaning |
+| --- | --- |
+| `0` | Command completed successfully |
+| `1` | Command returned an error, including validation, configuration, or service failures |
+
+In JSON mode, a nonzero exit can accompany a structured error or a partial result.
+Inspect diagnostics as well as the process status.
 
 ```bash
 #!/bin/bash

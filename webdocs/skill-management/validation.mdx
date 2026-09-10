@@ -1,180 +1,47 @@
 ---
-title: "Skill Validation"
-description: "Comprehensive guide to validating FastSkill skill definitions including structure, security, and quality checks."
+title: Validate a skill
+description: Check skill structure and installed state before an agent uses it.
 ---
 
-## Overview
+## Start with SKILL.md
 
-Skill validation means checking that each skill installs cleanly, exposes the metadata agents expect, and matches what your `skill-project.toml` declares.
+A skill root contains `SKILL.md` with YAML frontmatter and instructions:
 
-<Callout type="info">
-Validation happens at multiple stages: definition validation, registration validation, and runtime validation.
-</Callout>
+```markdown
+---
+name: review-notes
+description: Review meeting notes and extract decisions and action items.
+metadata:
+  version: "1.0.0"
+---
 
-## What FastSkill checks
-
-- **Layout**: a `SKILL.md` file with readable YAML frontmatter at the skill root
-- **Identifiers**: skill ids that work on disk and in manifests (an id is required and must not contain slashes, which are reserved as the scope separator)
-- **Versions**: semantic versions where a version is required (for example `1.2.0`)
-- **Paths**: references that resolve under the skill directory
-- **Consistency**: `fastskill skill list` compares installed files with `skill-project.toml` and `skills.lock`
-
-Run `fastskill project install` or `fastskill skill add …` to surface validation errors before agents load a skill.
-
-## Validation Rules
-
-### Required Fields
-
-#### `id` (string, required)
-
-- Required for every skill
-- Must not contain slashes (`/` is reserved as the scope separator)
-
-
-#### `name` (string, required)
-
-- Human-readable name
-- 1-100 characters in length
-- No special formatting requirements
-
-
-#### `description` (string, required)
-
-- Detailed description of functionality
-- 10-500 characters in length
-- Should explain what the skill does
-
-
-#### `version` (string, required)
-
-- Semantic version format (e.g., "1.0.0")
-- Follows MAJOR.MINOR.PATCH convention
-- Should be updated for breaking changes
-
-
-### Optional Fields Validation
-
-#### `tags` (string, optional)
-
-- Comma-separated list of tags
-- Each tag 2-30 characters
-- Alphanumeric, dashes, and underscores only
-- Maximum 20 tags
-
-
-#### `capabilities` (string, optional)
-
-- Comma-separated list of capabilities
-- Each capability 3-50 characters
-- Descriptive of actual functionality
-- Maximum 20 capabilities
-
-
-#### `skill_file` (string, optional)
-
-- Path relative to skill storage directory
-- Must exist and be readable
-- Should be a Python file or markdown document
-
-
-## Automatic Validation
-
-FastSkill automatically validates skills during installation. Validation ensures skills are properly formatted and functional.
-
-```bash
-# Add skill with automatic validation
-fastskill skill add https://github.com/org/my-skill.git
-
-# Install with validation (validates all skills)
-fastskill project install
+List decisions, owners, and next actions. Mark missing details as unspecified.
 ```
 
-### Validation Process
+The standard validator expects a lowercase name of 1–64 characters using letters,
+digits, and single separating hyphens. The description must be nonempty and at most
+1024 characters. Name and description help an agent decide when to load the skill.
 
-When installing skills, FastSkill automatically checks:
+FastSkill derives identity from the skill metadata/name and uses a semantic version
+when resolving or packaging skills. Version metadata is optional for a minimal skill;
+FastSkill defaults an unspecified version to `1.0.0`. Set `metadata.version`
+explicitly for a skill you distribute.
 
-- **Skill structure** (valid SKILL.md format)
-- **Required metadata** (name, description, version)
-- **Dependencies** (all referenced skills available)
-- **Version compatibility** (works with current FastSkill)
+## Validate installation and state
 
-### Validation Feedback
-
-If validation fails, you'll see specific error messages:
-
-```bash
-$ fastskill project install
-Installing skills...
-❌ Validation failed for 'my-skill':
-   - Missing required field: 'description'
-   - Invalid version format: '1.0' (use semantic versioning: 1.0.0)
-
-Fix issues and try again.
-```
-
-## Check everything installed
+After creating the source above, add it from a configured project:
 
 ```bash
-fastskill skill list
-fastskill skill read <skill-id> --meta
+fastskill skill add ./source/review-notes --no-reindex
+fastskill skill list --check
+fastskill skill read review-notes
 ```
 
-If you use automation, run the same commands after `fastskill project install` or `fastskill project install --lock` so broken skills fail the job early.
+Installation validates metadata and source contents. Reconciliation checks desired
+constraints, locked facts, dependency ownership, and installed content. Editable
+local sources are reported as mutable rather than digest-verified.
 
-## Best Practices
-
-### 1. Validate after every manifest change
-
-Run `fastskill project install` and `fastskill skill list` whenever `skill-project.toml` or skills change.
-
-### 2. Use multiple validation levels
-
-Combine structure, security, and quality validation for comprehensive coverage.
-
-### 3. Set up automated validation
-
-Integrate validation into your CI/CD pipeline to catch issues before they reach production.
-
-### 4. Monitor validation metrics
-
-Track validation success rates and common issues to improve skill quality over time.
-
-### 5. Write expectations in your team handbook
-
-Capture which registries, groups, and approval steps apply to your org so skill owners know what "valid" means for you.
-
-## Troubleshooting
-
-<Accordions>
-<Accordion id="validation-errors" title="Validation Errors">
-  <Callout type="warn">
-  **Missing required fields**: Ensure all required fields are present and have valid values.
-
-  Required fields:
-  - `id`: Required; must not contain slashes (`/` is the scope separator)
-  - `name`: Human-readable name
-  - `description`: Detailed description
-  - `version`: Semantic version (e.g., "1.0.0")
-  </Callout>
-
-  <Callout type="warn">
-  **Invalid field types**: Check that field values match expected types.
-
-  - `id`, `name`, `description`, `version`: strings
-  - `tags`, `capabilities`: lists of strings
-  </Callout>
-</Accordion>
-
-<Accordion id="security-validation-issues" title="Security Validation Issues">
-  <Callout type="info">
-  **Common validation issues**:
-  - Missing skill ID (id is required)
-  - Invalid skill ID format (must not contain slashes; `/` is the scope separator)
-  - Invalid file paths
-  </Callout>
-</Accordion>
-</Accordions>
-
-<Callout>
-Effective validation catches issues early and ensures skills meet quality standards. Invest time in setting up comprehensive validation for your skill ecosystem.
-</Callout>
+A successful structural check does not prove that instructions are safe or useful.
+Review scripts and resources, then use [evals](/evals-quality/overview) to measure
+behavior on representative tasks. See [reconciliation](/skill-management/reconciliation)
+for missing, changed, conflicting, and unverifiable installations.

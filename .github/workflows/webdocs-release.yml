@@ -1,0 +1,110 @@
+name: Publish release documentation
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-documentation
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      revision: ${{ steps.artifact.outputs.revision }}
+    steps:
+      - name: Select the latest published release
+        id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getLatestRelease(context.repo);
+            if (!/^v\d+\.\d+\.\d+$/.test(data.tag_name)) throw new Error('Unexpected release tag');
+            if (context.eventName === 'release' && context.payload.release.tag_name !== data.tag_name) {
+              throw new Error('Only the latest published release can update documentation');
+            }
+            core.setOutput('tag', data.tag_name);
+      - uses: actions/checkout@v4
+        with:
+          # Manual runs support docs corrections on main; publication verifies product parity.
+          ref: ${{ github.event_name == 'release' && steps.release.outputs.tag || 'main' }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.21.0 --activate
+      - run: pnpm install --frozen-lockfile
+        working-directory: webdocs
+      - name: Dependency security scan
+        run: pnpm audit --prod --audit-level high
+        continue-on-error: true
+        working-directory: webdocs
+      - name: Verify published product baseline
+        working-directory: webdocs
+        run: node scripts/prepare.mjs --publish
+      - name: Verify selected release matches the documentation
+        id: artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const release = JSON.parse(fs.readFileSync('webdocs/lib/generated/release.json', 'utf8'));
+            const { data } = await github.rest.repos.getLatestRelease(context.repo);
+            if (release.tag !== data.tag_name || release.status !== 'release') throw new Error('Release mismatch');
+            core.setOutput('revision', release.documentationRevision);
+      - name: Download the release CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download '${{ steps.release.outputs.tag }}' --pattern 'fastskill-x86_64-unknown-linux-musl.tar.gz' --dir /tmp/fastskill-docs-cli
+          tar -xzf /tmp/fastskill-docs-cli/fastskill-x86_64-unknown-linux-musl.tar.gz -C /tmp/fastskill-docs-cli
+      - name: Validate release examples and user journeys
+        run: |
+          python3 webdocs/scripts/check-content.py --binary /tmp/fastskill-docs-cli/fastskill
+          python3 webdocs/scripts/check-journeys.py /tmp/fastskill-docs-cli/fastskill
+      - run: pnpm lint
+        working-directory: webdocs
+      - run: pnpm typecheck
+        working-directory: webdocs
+      - run: pnpm build
+        working-directory: webdocs
+      - run: pnpm check:export
+        working-directory: webdocs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webdocs/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Reject a superseded release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getLatestRelease(context.repo);
+            if (data.tag_name !== '${{ needs.build.outputs.tag }}') throw new Error('A newer release was published');
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.revision }}
+      - name: Verify the public domain
+        run: python3 webdocs/scripts/check-live.py '${{ needs.build.outputs.tag }}' '${{ needs.build.outputs.revision }}'

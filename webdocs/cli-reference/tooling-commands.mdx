@@ -4,7 +4,7 @@ description: "CLI reference for fastskill marketplace, fastskill analysis, and f
 ---
 
 <Callout>
-`fastskill sync` has been removed. Agents read the skills directory directly; no metadata-file sync is needed.
+Agents read installed skill directories directly.
 </Callout>
 
 ## fastskill marketplace
@@ -14,17 +14,17 @@ description: "CLI reference for fastskill marketplace, fastskill analysis, and f
 Scans a directory for skills (folders with `SKILL.md`) and writes `marketplace.json`.
 
 ```bash
-fastskill marketplace create --path ./skills --name my-marketplace
-fastskill marketplace create -p . -o .claude-plugin/marketplace.json --name "My Marketplace"
+fastskill marketplace create ./skills --name my-marketplace
+fastskill marketplace create . -o .claude-plugin/marketplace.json --name "My Marketplace"
 ```
 
 | Option | Description |
 |--------|-------------|
-| `-p, --path <DIR>` | Root to scan (default: `.`) |
+| `<DIR>` | Root to scan (default: `.`) |
 | `-o, --output <FILE>` | Output path (default under `.claude-plugin/` in the scan directory) |
 | `--base-url <URL>` | Base URL for download links |
 | `--name <NAME>` | **Required.** Marketplace name |
-| `--owner-name`, `--owner-email`, `--description`, `--version` | Optional metadata |
+| `--owner-name`, `--owner-email`, `--description`, `--repo-version` | Optional metadata |
 
 ## fastskill analysis
 

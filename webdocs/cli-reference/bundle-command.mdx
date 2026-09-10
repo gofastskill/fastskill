@@ -11,23 +11,17 @@ install it without access to the original repositories.
 
 ## Build a bundle
 
-Add a bundle declaration to the project that already contains the skills you want to ship:
+Complete the [quickstart](/quickstart), then add this declaration to that project's
+existing `skill-project.toml`. Keep its `[dependencies]` and `[tool.fastskill]` sections.
 
 ```toml
 [bundle]
 format = "fastskill-bundle-v1"
-id = "payments-team"
-version = "1.2.0"
+id = "notes-team"
+version = "1.0.0"
 
-[bundle.members.code-review]
-overridable = false
-
-[bundle.members.payments-debugging]
+[bundle.members.review-notes]
 overridable = true
-
-[dependencies]
-code-review = "2.1.0"
-payments-debugging = "1.4.0"
 ```
 
 Every bundle member must also appear in `[dependencies]`. The installed member version must
@@ -41,16 +35,18 @@ fastskill project install
 fastskill bundle build --output dist
 ```
 
-The result is `dist/payments-team-1.2.0.zip`. Its embedded identity, version, membership, and
+The result is `dist/notes-team-1.0.0.zip`. Its embedded identity, version, membership, and
 digests are authoritative, so renaming the download does not change the release.
 
 ## Install and inspect
 
-Install a local artifact or an HTTPS download with `bundle add`:
+In a second project initialized with `project init --yes --skills-dir .claude/skills`,
+install the artifact with `bundle add`. Replace the local path with the artifact you
+built. The HTTPS URL below is an example for an artifact hosted by your team:
 
 ```bash
-fastskill bundle add ./payments-team-1.2.0.zip
-fastskill bundle add https://releases.example.com/payments-team-1.2.0.zip
+fastskill bundle add ./notes-team-1.0.0.zip
+fastskill bundle add https://releases.example.com/notes-team-1.0.0.zip
 fastskill bundle list
 ```
 
@@ -75,11 +71,12 @@ guarantees that restore does not contact a repository or embedding provider.
 
 ## Update a bundle
 
-Bundle updates are explicit. Preview and apply a selected replacement:
+Bundle updates are explicit. After building version `1.1.0` of your bundle, preview
+and apply that replacement:
 
 ```bash
-fastskill bundle update payments-team --from ./payments-team-1.3.0.zip --dry-run
-fastskill bundle update payments-team --from ./payments-team-1.3.0.zip
+fastskill bundle update notes-team --from ./notes-team-1.1.0.zip --dry-run
+fastskill bundle update notes-team --from ./notes-team-1.1.0.zip
 ```
 
 FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
@@ -91,8 +88,8 @@ policy-only changes, such as a member becoming non-overridable, even when its by
 Remove the bundle identity and the members that have no other owner:
 
 ```bash
-fastskill bundle remove payments-team
-fastskill bundle remove payments-team --force
+fastskill bundle remove notes-team
+fastskill bundle remove notes-team --force
 ```
 
 Removing a direct declaration detaches that owner. FastSkill retains the installed member while a
@@ -107,7 +104,7 @@ directory and declare it explicitly. Every installed bundle that owns the skill 
 member as `overridable = true`.
 
 ```bash
-fastskill bundle override payments-debugging --from ./my-payments-debugging
+fastskill bundle override review-notes --from ./my-review-notes
 ```
 
 `fastskill project install` and `fastskill project install --lock` restore valid personal overrides after
@@ -116,7 +113,7 @@ bundle members. Updates stop when a new bundle policy no longer permits an exist
 Return to the packaged member and clear the override records in one operation:
 
 ```bash
-fastskill bundle override payments-debugging --reset
+fastskill bundle override review-notes --reset
 ```
 
 Reset is blocked if retained bundles disagree on the packaged bytes or if the installed member has

@@ -29,6 +29,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -36,11 +38,19 @@ jobs:
       - run: corepack prepare pnpm@10.21.0 --activate
       - run: pnpm install --frozen-lockfile
         working-directory: webdocs
+      - run: pnpm audit --prod --audit-level high
+        continue-on-error: true
+        working-directory: webdocs
+      - run: pnpm check:content
+        working-directory: webdocs
       - run: pnpm lint
         working-directory: webdocs
       - run: pnpm typecheck
         working-directory: webdocs
       - run: pnpm build
+        working-directory: webdocs
+
+      - run: pnpm check:export
         working-directory: webdocs
 
   clippy:

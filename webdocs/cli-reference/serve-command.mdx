@@ -43,7 +43,7 @@ fastskill server serve --enable-write
 
 ## Read-only by default
 
-**Breaking change:** `fastskill server serve` is **read-only by default**. Read endpoints (list/get skills,
+`fastskill server serve` is **read-only by default**. Read endpoints (list/get skills,
 project, search, resolve, status, registry browse, the dashboard) are always available; every
 state-changing endpoint (see the *write* rows in [Core Endpoints](#core-endpoints)) is **disabled
 unless you start the server with `--enable-write`**.
@@ -71,16 +71,14 @@ authentication. Combined with the read-only default, this means an exposed insta
 
 ## API Base Path
 
-All application routes are served under the versioned `/api/v1/…` namespace. Requests to the
-unversioned `/api/…` prefix are automatically redirected with HTTP 308 to the corresponding
-`/api/v1/…` path, providing a non-breaking migration path for older clients.
+All application routes use the `/api/v1/…` namespace.
 
 ## Health Probes
 
 The server exposes two standard health endpoints immediately after startup:
 
 - `GET /healthz` — Liveness probe. Returns HTTP 200 with a JSON body containing the fastskill
-  crate version, e.g. `{"status":"ok","version":"0.9.118"}`.
+  crate version, e.g. `{"status":"ok","version":"<current-release>"}`.
 - `GET /readyz` — Readiness probe. Returns HTTP 200 when the server is ready to accept traffic.
   Returns HTTP 503 while graceful shutdown is in progress.
 
@@ -112,7 +110,7 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 | `/api/v1/skills/{id}` | GET | read | Get a skill |
 | `/api/v1/skills/{id}` | DELETE | **write** | Remove a skill |
 | `/api/v1/skills/install` | POST | **write** | Install a skill from an origin (`{ "origin": {...}, "groups"?: [...] }`); `201` on success, `409` if the id is already installed |
-| `/api/v1/skills/update` | POST | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin as one compatible dependency plan; `{ "check": true }` reports `would_update`, `up_to_date`, or `immutable` without applying it. `/api/v1/skills/upgrade` is kept mounted as a back-compat alias for this same endpoint. |
+| `/api/v1/skills/update` | POST | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin as one compatible dependency plan; `{ "check": true }` reports `would_update`, `up_to_date`, or `immutable` without applying it. |
 | `/api/v1/search` | POST | read | Search skills |
 | `/api/v1/resolve` | POST | read | Resolve context for a prompt |
 | `/api/v1/reindex` | POST | **write** | Reindex all skills. Returns `200` with `{ reindexed, count, reason }`; when no embedding provider is configured, reindex skips silently (`reindexed: false` + a `reason`), which is still `200`, not an error. |
@@ -124,14 +122,6 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 | `/index/{*skill_id}` | GET | read | Raw skill index (unchanged) |
 | `/healthz` | GET | read | Liveness probe |
 | `/readyz` | GET | read | Readiness probe |
-
-> **Removed:** `POST /api/v1/skills` (create) and `PUT /api/v1/skills/{id}` (edit) — a skill is a
-> multi-file directory, so it is installed from a source rather than authored via the API. Use the
-> install/update/remove flow (and the CLI `fastskill skill add`/`skill update`/`skill remove`).
-
-## Redirect Behavior
-
-`GET /api/skills` → HTTP 308 → `GET /api/v1/skills` (and similarly for all `/api/…` paths).
 
 ## See Also
 

@@ -101,6 +101,12 @@ fn documentation_paths() -> Vec<PathBuf> {
     paths.extend(
         walkdir::WalkDir::new(root.join("webdocs"))
             .into_iter()
+            .filter_entry(|entry| {
+                !matches!(
+                    entry.file_name().to_str(),
+                    Some("node_modules" | ".next" | ".source" | "out")
+                )
+            })
             .filter_map(Result::ok)
             .filter(|entry| entry.file_type().is_file())
             .map(walkdir::DirEntry::into_path)
@@ -483,4 +489,31 @@ fn bash_fences_is_line_ending_agnostic() {
 
     // And an unterminated fence must not panic or loop forever.
     assert!(bash_fences("```bash\nfastskill skill list\n").is_empty());
+}
+
+// Python's standard TOML parser and the actual command help complement path parity.
+#[cfg(target_os = "linux")]
+#[test]
+fn documentation_configuration_and_flags() {
+    let status = Command::new("python3")
+        .arg(repo_root().join("webdocs/scripts/check-content.py"))
+        .arg("--binary")
+        .arg(env!("CARGO_BIN_EXE_fastskill"))
+        .status()
+        .expect("run documentation checks with Python 3.11+");
+    assert!(
+        status.success(),
+        "documentation configuration or flag drift"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn documentation_user_journeys() {
+    let status = Command::new("python3")
+        .arg(repo_root().join("webdocs/scripts/check-journeys.py"))
+        .arg(env!("CARGO_BIN_EXE_fastskill"))
+        .status()
+        .expect("run documentation journeys with Python 3.11+");
+    assert!(status.success(), "documentation journey failed");
 }

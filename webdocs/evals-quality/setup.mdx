@@ -105,7 +105,7 @@ greet-2,What is 2+2?,false,smoke,
 | `prompt` | yes | Text sent to the agent. Use CSV quoting (`"..."`, doubled `""` for an embedded quote) for commas or newlines. |
 | `should_trigger` | yes | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. **See the callout below — this column does not affect pass/fail.** |
 | `tags` | no | Comma-separated tags inside the cell (e.g. `"smoke,basic"`). Used by `eval run --tag <name>`. |
-| `workspace_subdir` | no | Relative path that becomes the agent's working directory for the case. Under the default isolation it is created **inside the case's scratch workspace**, with fixture files copied in from the same path under the project root; under `--no-isolation` it resolves directly under the project root (the legacy behaviour). Empty or omitted → workspace root. |
+| `workspace_subdir` | no | Relative path that becomes the agent's working directory for the case. Under the default isolation it is created **inside the case's scratch workspace**, with fixture files copied in from the same path under the project root; under `--no-isolation` it resolves directly under the project root. Empty or omitted → workspace root. |
 
 Empty lines are skipped.
 
@@ -210,11 +210,8 @@ latter covers backends that still emit tool calls as raw JSON instead of decoded
 Assistant text output, token-usage events, and unmodelled SDK event variants are **not** counted.
 
 <Callout type="info">
-`max_tool_calls` is the canonical name; `max_command_count` is a legacy alias that still parses
-and behaves identically. Note that results are always reported under the canonical name — a
-check written as `max_command_count` appears in `result.json` with
-`"check_name": "max_tool_calls"`, so grep for the canonical name when reading artifacts. The
-per-case artifact field counting these events keeps its original name, `command_count`.
+Results use `"check_name": "max_tool_calls"`. The per-case artifact field counting
+these events is `command_count`.
 </Callout>
 
 ### Making a check advisory with `required`

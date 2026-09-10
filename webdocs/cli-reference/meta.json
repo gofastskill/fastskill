@@ -1,7 +1,6 @@
 {
   "pages": [
     "overview",
-    "command-migration",
     "---Skills and projects---",
     "skill-commands",
     "init-command",
@@ -20,5 +19,6 @@
     "reindex-command",
     "cache-command",
     "serve-command"
-  ]
+  ],
+  "title": "CLI commands"
 }

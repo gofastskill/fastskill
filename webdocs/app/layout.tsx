@@ -1,9 +1,11 @@
+import { release } from '@/lib/release';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Provider } from '@/components/provider';
 import './global.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(release.baseUrl),
   title: {
     default: 'FastSkill documentation',
     template: '%s | FastSkill',

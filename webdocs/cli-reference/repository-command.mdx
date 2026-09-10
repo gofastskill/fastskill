@@ -375,7 +375,6 @@ Versions for skill: acme/web-scraper
 Repositories are stored in `skill-project.toml` at project root:
 
 ```toml skill-project.toml
-[tool.fastskill.repositories]
 
 [[tool.fastskill.repositories]]
 name = "public-registry"
@@ -397,52 +396,19 @@ priority = 1
 ## Authentication Types
 
 ### PAT (Personal Access Token)
-- Use for Git repositories and private registries
-  - Token stored in environment variable
-  - Example:
-    ```bash
-    fastskill repo add private-repo --repo-type git-marketplace https://github.com/team/repo.git \
-      --auth-type pat --auth-env GITHUB_TOKEN
-    ```
-  ```bash
-  export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-  ```
 
-### SSH Key
-- Use for Git repositories with SSH access
-  - Key path points to private key file
-  - Example:
-    ```bash
-    fastskill repo add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
-      --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
-    ```
+For a private HTTP registry, reference an existing token variable:
 
-### SSH
-- Use for Git repositories with SSH protocol
-  - Similar to SSH Key but may use system SSH agent
-  - Example:
-    ```bash
-    fastskill repo add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
-      --auth-type ssh --auth-key-path ~/.ssh/id_rsa
-    ```
+```bash
+fastskill repo add private-registry --repo-type http-registry https://example.com/index.json --auth-type pat --auth-env PAT_TOKEN
+```
 
-### Basic Auth
-- Use for HTTP registries with username/password
-  - Password stored in environment variable
-  - Example:
-    ```bash
-    fastskill repo add registry --repo-type http-registry https://api.example.com \
-      --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
-    ```
+Set `PAT_TOKEN` through your shell or CI secret manager before accessing the registry.
+The URL is a placeholder for your registry.
 
-### API Key
-- Use for HTTP registries with API key authentication
-  - API key stored in environment variable
-  - Example:
-    ```bash
-    fastskill repo add registry --repo-type http-registry https://api.example.com \
-      --auth-type api_key --auth-env API_KEY
-    ```
+Git sources use system Git credentials. The project manifest supports `pat`
+authentication for HTTP catalogs; other authentication type labels are not
+supported by this release's manifest. See [sources](/registry/sources).
 
 ## Multi-Source Skill Resolution
 
@@ -529,7 +495,7 @@ git push -u origin main
   # Test SSH key
   ssh -T git@github.com
 
-  # Test basic auth credentials
+  # Test configured HTTP registry credentials
   curl -u username:password https://api.example.com/health
   ```
   </Callout>
@@ -553,7 +519,7 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 ## See Also
 
 - [Search Command](/cli-reference/search-command) - Semantic search for installed skills
-- [Install Command](/cli-reference/skill-commands#fastskill-install) - Installing skills from repositories
-- [Init Command](/cli-reference/skill-commands#fastskill-init) - Creating skill-project.toml
+- [Install Command](/cli-reference/skill-commands#fastskill-project-install) - Installing skills from repositories
+- [Init Command](/cli-reference/skill-commands#fastskill-project-init) - Creating skill-project.toml
 - [cache Command](/cli-reference/cache-command) - Inspect or reclaim previously downloaded
   skill content

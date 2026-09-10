@@ -19,7 +19,7 @@ fastskill project init [OPTIONS]
 |--------|-------------|---------|
 | `--yes` | Skip interactive prompts and use defaults | `false` |
 | `--force` | Force reinitialization even if skill-project.toml exists | `false` |
-| `--version <VERSION>` | Set version directly | None |
+| `--set-version <VERSION>` | Set version directly | None |
 | `--description <DESC>` | Set skill description | None |
 | `--author <AUTHOR>` | Set skill author | None |
 | `--download-url <URL>` | Set download URL | None |
@@ -54,7 +54,7 @@ Set all fields via command-line options:
 
 ```bash
 fastskill project init \
-  --version "1.0.0" \
+  --yes --set-version "1.0.0" \
   --description "My awesome skill" \
   --author "Your Name" \
   --download-url "https://github.com/user/my-skill"
@@ -274,7 +274,7 @@ cd my-project
 
 # 2. Initialize project manifest
 fastskill project init --yes \
-  --version "1.0.0" \
+  --yes --set-version "1.0.0" \
   --description "My multi-skill project" \
   --author "Your Name"
 
@@ -293,7 +293,7 @@ cd my-existing-skill
 
 # Update metadata in skill-project.toml
 fastskill project init \
-  --version "2.0.0" \
+  --set-version "2.0.0" \
   --description "Updated description" \
   --force
 ```

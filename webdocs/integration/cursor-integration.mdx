@@ -46,8 +46,6 @@ Mutating tools (`fastskill_project_install`, `fastskill_skill_add`,
 `fastskill_skill_remove`, …) require
 `mcp serve --enable-write`; see [Write access](/tool-calling/development#write-access).
 
-> **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is
-> deprecated. Use `fastskill mcp install` instead.
 
 ## How Cursor uses the skills
 
@@ -148,3 +146,5 @@ FastSkill's Cursor integration provides:
 - **MCP access** — register the FastSkill MCP server for tool-based access inside Cursor
 - **Reproducible installs** — `skill-project.toml` + `skills.lock` keep the skill set consistent across the team
 - **Optional semantic search** — `fastskill index rebuild` + `fastskill skill search --local` when an embedding provider is configured
+
+See the [agent’s skill documentation](https://cursor.com/docs/skills) for native discovery behavior.
