@@ -340,3 +340,4 @@ coverage-before
 skill-project.toml
 # Local opencode runtime state
 .opencode/opencode.json
+/webdocs/lib/generated/

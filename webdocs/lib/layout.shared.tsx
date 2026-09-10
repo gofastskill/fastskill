@@ -14,8 +14,8 @@ export function baseOptions(): BaseLayoutProps {
         active: 'nested-url',
       },
       {
-        text: 'Team bundles',
-        url: '/cli-reference/bundle-command',
+        text: 'For agents',
+        url: '/integration/agents',
         active: 'url',
       },
     ],

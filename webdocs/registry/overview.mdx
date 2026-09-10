@@ -1,64 +1,37 @@
 ---
-title: Registry Overview
-api: "registry"
+title: Sources and catalogs
+description: Discover skills from configured sources and choose how to distribute a team setup.
 ---
 
-# Registry Overview
+A repository configuration gives FastSkill a named source for discovering and
+installing skills. It is separate from the installed skill directory and from the
+[local browser console](/registry/web-ui).
 
-The FastSkill Registry provides a web-based interface for browsing, searching, and managing skills from multiple configured sources.
+## Choose a source
 
-## Features
+- **Git marketplace**: a Git repository with a marketplace document.
+- **HTTP registry**: an HTTP index and downloadable skill artifacts.
+- **ZIP catalog**: a base URL exposing marketplace metadata and ZIP downloads.
+- **Local catalog**: skill content and catalog metadata on disk.
 
-- **Multi-source browsing**: View skills from all configured sources in one place
-- **Search and filter**: Find skills by name, description, tags, or capabilities
-- **Installation status**: See which skills are installed and which are available
-- **Virtual scrolling**: Efficiently handle repositories with hundreds of skills
-- **Real-time updates**: Skills list updates when you install or uninstall
+See [source configuration](/registry/sources) for the manifest fields, authentication,
+and direct Git origins. For an exact portable team setup, use
+[bundles](/cli-reference/bundle-command).
 
-## Enabling the Registry
+## Discover and install
 
-Start the server (UI and registry HTTP routes are available whenever `server serve` is running):
+The following commands assume a configured repository named `team`; replace the
+example skill ID with a result from that repository:
 
 ```bash
-fastskill server serve
+fastskill repo list
+fastskill repo skills team
+fastskill skill search "review" --repository team
+fastskill skill add review-notes --repository team
+fastskill skill list --check
 ```
 
-Then open `http://localhost:8080/` or `http://localhost:8080/dashboard` in your browser.
-
-<Callout type="warn">
-`server serve` is **read-only by default** (ADR-0003). Browsing and search work out of the box, but the Web UI "Install"/"Uninstall" buttons and other write actions require starting the server with `fastskill server serve --enable-write`; otherwise those requests return HTTP 403.
-</Callout>
-
-## Architecture
-
-The registry consists of:
-
-1. **REST API**: Backend endpoints under `/api/v1/registry/…` for fetching skills and sources
-2. **Web UI**: Frontend interface for browsing and managing skills
-3. **Marketplace.json**: Standard format for skill discovery from sources
-
-## Sources
-
-Skills can come from multiple sources:
-
-- **Git repositories**: Skills hosted in Git repos with `marketplace.json`
-- **Zip URL sources**: Skills distributed via ZIP files with `marketplace.json`
-- **Local sources**: Skills in local directories (not supported in registry)
-
-Only sources that provide `marketplace.json` files are displayed in the registry.
-
-## Workflow
-
-1. **Configure repositories**: Add repositories to `[tool.fastskill.repositories]` section in `skill-project.toml`
-2. **Generate marketplace.json**: Use `fastskill marketplace create` to generate marketplace files
-3. **Start server**: Run `fastskill server serve`
-4. **Browse skills**: Open `/` or `/dashboard` in your browser or use `fastskill repo skills` to list skills from configured repositories
-5. **List installed skills**: Use `fastskill skill list` to see locally installed skills with reconciliation status
-6. **Install skills**: Click "Install" in the web UI or use `fastskill skill add` to add skills to your local installation
-
-## See Also
-
-- [Sources Configuration](/registry/sources)
-- [Marketplace.json Format](/registry/marketplace-json)
-- [Web UI Guide](/registry/web-ui)
-- [Repository Command](/cli-reference/repository-command)
+Search discovers candidates; installation records a selected origin and content.
+Commit the manifest and lock together so teammates can restore the intended state.
+See [repository commands](/cli-reference/repository-command) for management actions
+and [marketplace.json](/registry/marketplace-json) for catalog authoring.

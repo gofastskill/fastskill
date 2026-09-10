@@ -1,3 +1,4 @@
+import { markdownOptions } from './markdown-options';
 import { loader } from 'fumadocs-core/source';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
 import { remarkSteps } from 'fumadocs-core/mdx-plugins';
@@ -26,7 +27,7 @@ const docs = defineDocs({
       remarkPlugins: (plugins) => [...plugins, remarkSteps],
     }),
     postprocess: {
-      includeProcessedMarkdown: true,
+      includeProcessedMarkdown: markdownOptions,
     },
     schema: pageSchema,
   },

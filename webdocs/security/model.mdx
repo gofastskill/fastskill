@@ -61,12 +61,13 @@ operator's call when they open the port; it is a disclosure consideration, not a
 
 ## Repository credentials: env-var indirection
 
-Private registries and Git sources authenticate with a **PAT referenced by environment variable** —
-tokens are never written into configuration:
+HTTP registries can authenticate with a **PAT referenced by environment variable**.
+Git sources use system Git credentials. Tokens are not written into the manifest:
 
 ```toml
 [[tool.fastskill.repositories]]
 name = "team-registry"
+priority = 0
 type = "http-registry"
 index_url = "https://registry.example.com/index.json"
 auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }

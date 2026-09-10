@@ -23,7 +23,7 @@ For sources to be discoverable in the registry, `marketplace.json` must be acces
 - **Zip URL sources**: `{base_url}/marketplace.json`
   - Example: `https://skills.example.com/marketplace.json`
 
-**Note**: FastSkill will automatically try the Claude Code standard location (`.claude-plugin/marketplace.json`) first, then fall back to the root location if not found. This ensures compatibility with both Claude Code standard repositories and legacy setups.
+**Note**: FastSkill will automatically try the Claude Code standard location (`.claude-plugin/marketplace.json`) first, then fall back to the root location if not found. Both locations are supported.
 
 ## Format
 
@@ -115,13 +115,13 @@ fastskill marketplace create ./skills --name my-repo
 ```
 
 **Options:**
-- `--path <path>`: Directory to scan for skills (default: current directory)
+- `<path>`: Directory to scan for skills (default: current directory)
 - `--output <path>`: Output file path (default: `.claude-plugin/marketplace.json`)
 - `--name <name>`: Repository name (required, or inferred from directory name)
 - `--owner-name <name>`: Owner name (optional)
 - `--owner-email <email>`: Owner email (optional)
 - `--description <text>`: Repository description (optional)
-- `--version <version>`: Repository version (optional)
+- `--repo-version <version>`: Repository version (optional)
 - `--base-url <url>`: Base URL for skill download links (optional)
 
 **Note**: The output file is automatically placed at `.claude-plugin/marketplace.json` (unless `--output` is specified).

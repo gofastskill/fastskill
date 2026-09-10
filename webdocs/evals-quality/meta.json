@@ -4,5 +4,6 @@
     "setup",
     "run-evals",
     "cluster-analysis"
-  ]
+  ],
+  "title": "Evaluations"
 }

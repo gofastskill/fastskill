@@ -37,15 +37,13 @@ export function FastSkillHero() {
             <i />
             <i />
           </span>
-          team-skills / terminal
+          first skill / terminal
         </div>
         <div className="docs-terminal-body">
-          <p><b>$</b> fastskill project init</p>
-          <span>✓ Created skill-project.toml</span>
-          <p><b>$</b> fastskill project install</p>
-          <span>✓ Locked 8 skills for the team</span>
-          <p><b>$</b> fastskill bundle build --output dist</p>
-          <span className="docs-terminal-bright">✓ Built team-stack-1.0.0.zip</span>
+          <p>Follow the quickstart to create a local skill, then:</p>
+          <p><b>$</b> fastskill skill list --check</p>
+          <p><b>$</b> fastskill skill read review-notes</p>
+          <p className="docs-terminal-bright">No registry or API key required.</p>
         </div>
       </div>
     </section>

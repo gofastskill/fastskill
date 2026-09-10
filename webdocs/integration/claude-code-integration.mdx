@@ -91,10 +91,11 @@ Mutating tools (`fastskill_project_install`, `fastskill_skill_add`,
 `fastskill_skill_remove`, …) require `mcp serve --enable-write`; see
 [Write access](/tool-calling/development#write-access).
 
-> **Deprecated:** Manually editing `~/.claude.json` or `.mcp.json` to add a `fastskill` MCP entry is deprecated. Use `fastskill mcp install` instead.
 
 ## HTTP API
 
 `fastskill server serve` exposes FastSkill's versioned application API under `/api/v1/…`, for example `GET /api/v1/status` and `GET /api/v1/skills`.
 
 The old Claude-compatible `/v1/skills…` HTTP surface is no longer part of the public server. Use the MCP integration above for Claude Code and use `/api/v1/…` for HTTP clients.
+
+See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) for native discovery behavior.

@@ -1,43 +1,26 @@
 ---
-title: "Installation Guide"
-description: "Install the FastSkill CLI: package manager and operational toolkit for Agent AI Skills (releases, installers, optional source build)."
+title: Install FastSkill
+description: Install the current release on Linux, macOS, or Windows.
 ---
 
-## System Requirements
+Choose one method, then run `fastskill -V`. The version must match the release
+shown on this page. If a package manager is behind, use the release download.
+Git sources require system Git. Installing and reading local skills needs no API key.
 
-Before installing FastSkill, ensure your system meets these requirements:
+## Homebrew
 
-| Component | Minimum Version | Recommended |
-|-----------|----------------|-------------|
-| **OS** | macOS, Linux, or Windows | Latest stable release |
-| **Memory** | 512MB | 2GB+ |
-| **Storage** | 100MB | 500MB+ |
-| **OpenAI API Key** | Optional | Required for embedding search and `index rebuild` |
-
-## CLI Installation
-
-Pick one method. **Homebrew** (macOS and Linux) and **Scoop** (Windows) stay updated with releases; use **GitHub Releases** or the **install script** if you prefer a standalone binary.
-
-<Tabs items={['Homebrew (macOS & Linux)', 'Scoop (Windows)', 'Install script (Linux & macOS)', 'GitHub Releases']}>
-<Tab value="Homebrew (macOS & Linux)">
-
-[Homebrew](https://brew.sh/) installs a pre-built `fastskill` on both **Apple Silicon** and **Intel** Macs, and on Linux where the tap ships bottles.
+On macOS or Linux with [Homebrew](https://brew.sh/):
 
 ```bash
 brew install gofastskill/cli/fastskill
 fastskill -V
 ```
 
-Details and formula updates live in the [gofastskill/homebrew-cli](https://github.com/gofastskill/homebrew-cli) tap repository.
+Update an existing installation with `brew upgrade fastskill`.
 
-<Callout>
-If `brew install` fails with a tap error, run `brew update` and try again, or use the **GitHub Releases** or **install script** tab.
-</Callout>
-</Tab>
+## Scoop
 
-<Tab value="Scoop (Windows)">
-
-[Scoop](https://scoop.sh/) installs `fastskill.exe` and keeps it on your PATH.
+On Windows with [Scoop](https://scoop.sh/):
 
 ```powershell
 scoop bucket add gofastskill https://github.com/gofastskill/scoop-bucket
@@ -45,190 +28,33 @@ scoop install fastskill
 fastskill -V
 ```
 
-See [gofastskill/scoop-bucket](https://github.com/gofastskill/scoop-bucket) for manifest details.
+Update with `scoop update fastskill`.
 
-</Tab>
+## Release downloads
 
-<Tab value="Install script (Linux & macOS)">
+Download an archive from the [latest release](https://github.com/gofastskill/fastskill/releases/latest),
+extract it, and put the binary in a directory on your PATH.
 
-One-liner from the repository (detects OS, downloads a release binary, installs to `/usr/local/bin` or `~/.local/bin` if `sudo` is not available):
+| Platform | Archive |
+| --- | --- |
+| Linux x86-64, static musl | `fastskill-x86_64-unknown-linux-musl.tar.gz` |
+| Linux x86-64, glibc | `fastskill-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `fastskill-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `fastskill-x86_64-apple-darwin.tar.gz` |
+| Windows x86-64 | `fastskill-x86_64-pc-windows-msvc.zip` |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
-```
-
-Options (run `./install.sh --help` after downloading the script): `--user`, `--prefix DIR`, `--force`, and a version argument such as `./install.sh v0.9.208`.
-
-</Tab>
-
-<Tab value="GitHub Releases">
-
-Download a pre-built binary from [GitHub Releases](https://github.com/gofastskill/fastskill/releases). Replace `VERSION` with the tag you want (for example `0.9.205`; assets use `v${VERSION}` in the URL).
-
-### 1. macOS (Apple Silicon)
+For example, on Linux x86-64:
 
 ```bash
-VERSION="0.9.205"
-curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-aarch64-apple-darwin.tar.gz" -o fastskill.tgz
-tar -xzf fastskill.tgz
-sudo mv fastskill /usr/local/bin/
+curl -fL https://github.com/gofastskill/fastskill/releases/latest/download/fastskill-x86_64-unknown-linux-musl.tar.gz -o fastskill.tar.gz
+tar -xzf fastskill.tar.gz
+mkdir -p ~/.local/bin
+install -m 755 fastskill ~/.local/bin/fastskill
 fastskill -V
 ```
-Asset name: `fastskill-aarch64-apple-darwin.tar.gz`.
 
-### 2. macOS (Intel)
+Your shell must include `~/.local/bin` on PATH. On Windows, extract `fastskill.exe`
+and add its directory to PATH. Installation does not configure an embedding provider;
+that is optional for [semantic search](/cli-reference/reindex-command).
 
-```bash
-VERSION="0.9.205"
-curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-apple-darwin.tar.gz" -o fastskill.tgz
-tar -xzf fastskill.tgz
-sudo mv fastskill /usr/local/bin/
-fastskill -V
-```
-Asset name: `fastskill-x86_64-apple-darwin.tar.gz`.
-
-### 3. Linux (x86_64, glibc, with git support)
-
-```bash
-VERSION="0.9.205"
-curl -fL "https://github.com/gofastskill/fastskill/releases/download/v${VERSION}/fastskill-x86_64-unknown-linux-gnu.tar.gz" -o fastskill.tgz
-tar -xzf fastskill.tgz
-sudo mv fastskill /usr/local/bin/
-fastskill -V
-```
-Requires a recent glibc (see release notes). For maximum portability (static binary, no bundled `git2`), use **`fastskill-x86_64-unknown-linux-musl.tar.gz`** instead and rely on system `git` for Git URLs.
-
-### 4. Windows (zip)
-
-Download `fastskill-x86_64-pc-windows-msvc.zip` from the release page, extract it, add the folder to **PATH**, then run:
-
-```powershell
-fastskill.exe -V
-```
-
-<Callout>
-Prefer a user-local path on macOS or Linux? Move `fastskill` to `~/.local/bin/` and ensure that directory is on your `PATH` instead of using `sudo`.
-</Callout>
-</Tab>
-
-</Tabs>
-
-**Skills Directory Resolution:**
-
-The CLI resolves the skills directory in this priority order:
-
-1. `--skills-dir <path>` flag
-2. `--global` (uses `~/.config/fastskill/skills`)
-3. `skills_directory` under `[tool.fastskill]` in `skill-project.toml`
-4. Walk up the directory tree to find an existing `.claude/skills/`
-5. Default to `.claude/skills/` in the current directory
-
-**Manifests and lockfiles:**
-
-- Declare skills in `skill-project.toml` at project root (with `[dependencies]` section)
-- Install with `fastskill project install` (use `--without`/`--only` for groups)
-- Lockfile is written to `skills.lock` at project root after installs
-- Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`
-
-## Configuration
-
-All configuration lives in `skill-project.toml` at your project root. Embedding settings and the skills directory go under the `[tool.fastskill]` tables:
-
-```toml
-[tool.fastskill]
-skills_directory = ".claude/skills"
-
-[tool.fastskill.embedding]
-openai_base_url = "https://api.openai.com/v1"
-embedding_model = "text-embedding-3-small"
-```
-
-**Note**: Skill dependencies and repositories live in the same `skill-project.toml` — under `[dependencies]` and `[[tool.fastskill.repositories]]` respectively.
-
-Set your OpenAI API key (used for semantic search embeddings; if unset, semantic search is silently skipped):
-
-```bash
-export OPENAI_API_KEY="your-key-here"
-```
-
-## Docker (optional)
-
-If you run tools in containers, install the same release archive inside your image (see the Linux steps above) or copy the `fastskill` binary into a minimal base image. Mount your project directory and set `OPENAI_API_KEY` when you use embedding search.
-
-## Platform notes
-
-### macOS
-
-- **Recommended:** Homebrew tab above (`brew install gofastskill/cli/fastskill`) for both Apple Silicon and Intel.
-- **Without Homebrew:** use the **GitHub Releases** tab for `aarch64` vs `x86_64` darwin archives, or the **install script** tab.
-
-### Linux
-
-- **Recommended:** Homebrew on Linux if you already use it, otherwise the **GitHub Releases** tab (`gnu` vs `musl` per release notes) or the **install script**.
-
-### Windows
-
-- **Recommended:** **Scoop** tab above.
-- **Without Scoop:** download the **zip** from **GitHub Releases**, extract, add to PATH.
-- **WSL:** install inside Ubuntu using the Linux or install-script options above.
-
-## Verify the CLI
-
-```bash
-fastskill -V
-fastskill --help
-```
-
-If you already have a project with `skill-project.toml`, try `fastskill skill list` or `fastskill project install` from that directory.
-
-## Troubleshooting
-
-<Accordions>
-<Accordion id="installation-issues" title="Installation Issues">
-  <Callout type="warn">
-  **Homebrew**: If the tap is missing, install with `brew install gofastskill/cli/fastskill`. See [homebrew-cli](https://github.com/gofastskill/homebrew-cli) for issues.
-  </Callout>
-
-  <Callout type="warn">
-  **Scoop**: Ensure the bucket was added (`scoop bucket list` should show `gofastskill`). See [scoop-bucket](https://github.com/gofastskill/scoop-bucket) if `scoop install fastskill` fails.
-  </Callout>
-
-  <Callout type="warn">
-  **Binary not found in PATH**: After extracting a release archive, move `fastskill` (or add the folder containing `fastskill.exe`) to a directory on your PATH (`/usr/local/bin`, `~/.local/bin`, or Windows user PATH).
-  </Callout>
-
-  <Callout type="warn">
-  **Permission denied (Linux)**: If you get permission errors, use `sudo` when moving to `/usr/local/bin/`, or install to `~/.local/bin/` instead and ensure it's in your PATH.
-  </Callout>
-
-  <Callout type="warn">
-  **Windows security warning**: Windows may show a security warning for unsigned binaries. Click "More info" and then "Run anyway" if you trust the source.
-  </Callout>
-
-</Accordion>
-
-<Accordion id="configuration-issues" title="Configuration Issues">
-  <Callout type="info">
-  **Embedding configuration required**: Add a `[tool.fastskill.embedding]` table to `skill-project.toml` with your OpenAI-compatible base URL and model.
-  </Callout>
-
-  <Callout type="info">
-  **OpenAI API key not found**: Set the `OPENAI_API_KEY` environment variable. Without it, semantic search is silently skipped.
-  </Callout>
-</Accordion>
-
-<Accordion id="platform-specific-problems" title="Platform-Specific Problems">
-  <Callout>
-  **macOS security**: If you get security warnings, go to System Settings > Privacy & Security and allow the binary.
-  </Callout>
-
-  <Callout>
-  **Windows antivirus**: If Windows blocks the downloaded binary, add an exception for the folder where you keep `fastskill.exe`.
-  </Callout>
-
-</Accordion>
-</Accordions>
-
-<Callout>
-Still having issues? Check the [troubleshooting section](/troubleshooting).
-</Callout>
+Continue with [your first skill](/quickstart).

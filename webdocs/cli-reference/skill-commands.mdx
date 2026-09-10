@@ -45,7 +45,7 @@ fastskill project init --force
 **Options**:
 - `--yes`: Skip interactive prompts and use defaults
 - `--force`: Force reinitialization even if skill-project.toml exists
-- `--version <VERSION>`: Set version directly
+- `--set-version <VERSION>`: Set version directly
 - `--description <DESC>`: Set skill description
 - `--author <AUTHOR>`: Set skill author
 - `--download-url <URL>`: Set download URL
@@ -119,7 +119,7 @@ Adds a new slide to an existing presentation.
 **Error Handling**:
 - Exit code 0: Success
 - Exit code 1: Skill not found or invalid identifier
-- Exit code 2: System error (file access, size limit exceeded)
+- Exit code 1: System error (file access, size limit exceeded)
 
 **Limitations**:
 - Maximum file size: 500KB for SKILL.md files
@@ -200,10 +200,10 @@ Display skill metadata or dependency tree. Use `--meta` for structured metadata 
 # Read full SKILL.md content (default)
 fastskill skill read my-skill-id
 
-# Show structured metadata (replaces `fastskill show <id>`)
+# Show structured metadata
 fastskill skill read my-skill-id --meta
 
-# Show dependency tree (replaces `fastskill show <id> --tree`)
+# Show dependency tree
 fastskill skill read my-skill-id --tree
 
 # Metadata and tree together
@@ -217,7 +217,6 @@ fastskill skill list
 ```
 
 <Callout>
-`fastskill show` has been removed. Use `fastskill skill read <id> --meta` to view skill metadata or `fastskill skill list` to enumerate all installed skills.
 </Callout>
 
 ### fastskill skill add
@@ -226,14 +225,11 @@ Add a skill from a source (git URL, local folder, or zip file) and install it to
 
 **Storage Location**: Skills are installed to the directory configured in `skill-project.toml` via the `skills_directory` setting under `[tool.fastskill]` (default: `.claude/skills/`). Repository configuration is stored in the `[[tool.fastskill.repositories]]` section of `skill-project.toml`.
 
-**Installing from a subdirectory**: Use a GitHub tree URL to add a skill that lives in a subfolder of a repo. Format: `https://github.com/user/repo/tree/<branch>/<path/to/skill>`. The CLI clones the repo and uses the specified path as the skill root.
+**Installing from a subdirectory**: Declare a Git origin with a clean clone URL and `subdir` in your manifest; see [Git sources](/registry/sources).
 
 ```bash
 # Add skill from git URL
 fastskill skill add https://github.com/org/skill.git
-
-# Add skill from a subdirectory (GitHub tree URL)
-fastskill skill add "https://github.com/org/repo/tree/main/path/to/skill"
 
 # Add skill in editable mode (for local development)
 fastskill skill add ./local-skill -e
@@ -259,7 +255,7 @@ fastskill skill add scope/reviewer@1.2.0 --repository team --offline
 
 **Git URL formats:**
 - Standard: `https://github.com/user/repo.git`
-- Tree URL (subdirectory): `https://github.com/user/repo/tree/branch/path/to/skill`
+- Subdirectory: use the manifest origin’s `subdir` field with a clean clone URL.
 
 **Options:**
 - `-e, --editable`: Install skill in editable mode (symlink/reference for local development)

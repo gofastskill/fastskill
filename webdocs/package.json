@@ -4,11 +4,15 @@
   "private": true,
   "packageManager": "pnpm@10.21.0",
   "scripts": {
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/export-markdown.mjs",
     "dev": "next dev",
     "lint": "eslint",
     "start": "serve out",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "node scripts/prepare.mjs && next typegen && tsc --noEmit",
+    "predev": "node scripts/prepare.mjs",
+    "prebuild": "node scripts/prepare.mjs",
+    "check:content": "python3 scripts/check-content.py",
+    "check:export": "node scripts/check-export.mjs"
   },
   "dependencies": {
     "cn": "^0.2.4",

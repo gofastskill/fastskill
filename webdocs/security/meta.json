@@ -2,5 +2,6 @@
   "pages": [
     "model",
     "best-practices"
-  ]
+  ],
+  "title": "Security"
 }
