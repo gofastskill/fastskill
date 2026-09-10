@@ -464,13 +464,13 @@ impl SourcesManager {
     /// spec 008: on an in-memory miss, the on-disk index (keyed by
     /// `source_name`) is consulted *before* the network (FR-1) — a genuine
     /// bypass, not just a fallback, so a cold process with a previously
-    /// `repos refresh`-ed (or previously live-fetched) source resolves a
+    /// `repo refresh`-ed (or previously live-fetched) source resolves a
     /// listing with zero HTTP calls. A successful live fetch still populates
     /// the in-memory map as before, and additionally refreshes the on-disk
     /// index for `source_name` so the two layers do not drift (FR-2). If
     /// *neither* layer has anything yet, the network is attempted as a last
     /// resort; if that fails too but the on-disk index gained a usable entry
-    /// in the meantime (e.g. a concurrent `repos refresh`), it is used with a
+    /// in the meantime (e.g. a concurrent `repo refresh`), it is used with a
     /// warning naming when it was recorded (FR-3) — mirroring
     /// `install::resolve_git_sha` / `install::fetch_zip_url_cached`'s
     /// offline-fallback shape. `self.skill_cache` is `None` for managers that
@@ -502,7 +502,7 @@ impl SourcesManager {
         if let Some((marketplace, fetched_at)) = self.disk_index_marketplace(source_name).await {
             tracing::warn!(
                 "using the on-disk index for source '{source_name}' (recorded {fetched_at}) \
-                 instead of a live marketplace fetch; run `fastskill repos refresh {source_name}` \
+                 instead of a live marketplace fetch; run `fastskill repo refresh {source_name}` \
                  for the latest listing"
             );
             self.cache_marketplace_in_memory(claude_plugin_url, &marketplace)
@@ -546,7 +546,7 @@ impl SourcesManager {
             Err(err) => {
                 // FR-3: both live locations failed. A last-resort re-check of
                 // the on-disk index (it found nothing above, but this guards
-                // a concurrent `repos refresh`/live-fetch landing in
+                // a concurrent `repo refresh`/live-fetch landing in
                 // between) proceeds with a warning naming when it was
                 // recorded, rather than surfacing the network error.
                 if let Some((marketplace, fetched_at)) =

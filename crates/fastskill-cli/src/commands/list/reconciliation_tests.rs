@@ -67,7 +67,6 @@ fn json_args() -> ListArgs {
         format: Some(OutputFormat::Json),
         json: false,
         details: true,
-        bundles: false,
         check: true,
         only: None,
         without: None,
@@ -165,11 +164,14 @@ async fn bundle_members_report_shared_ownership_overrides_and_integrity_failures
         serde_json::json!(["bundle:first", "bundle:second", "personal-override"])
     );
 
-    let mut args = json_args();
-    args.bundles = true;
-    args.check = false;
-    args.format = Some(OutputFormat::Table);
-    let (result, output) = crate::output::capture(execute_list(&service, args, false)).await;
+    let args = crate::commands::bundle::list::ListArgs {
+        format: Some(OutputFormat::Table),
+        json: false,
+    };
+    let (result, output) = crate::output::capture(crate::commands::bundle::list::execute_list(
+        &service, args, false,
+    ))
+    .await;
     result.unwrap();
     assert!(output.contains("first 1.0.0 [shared, custom, edited, conflict, unreadable, missing]"));
     assert!(output.contains("second 1.0.0 [shared, custom, conflict]"));

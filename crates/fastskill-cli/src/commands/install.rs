@@ -71,12 +71,13 @@ impl IntoCommandSpec for InstallArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Apply manifest: install skills from skill-project.toml [dependencies]",
-            syntax: Some("install [OPTIONS]"),
+            syntax: Some("project install [OPTIONS]"),
             category: Some("packages"),
+            help_order: Some(20),
             examples: vec![
-                "fastskill install",
-                "fastskill install --lock",
-                "fastskill install --without dev",
+                "fastskill project install",
+                "fastskill project install --lock",
+                "fastskill project install --without dev",
             ],
             args: vec![
                 ArgSpec {
@@ -323,7 +324,8 @@ async fn execute_install_inner(
     // Check for lock file early if lock mode is requested (before service initialization)
     if args.lock && !lock_path.exists() {
         return Err(CliError::Config(
-            "skills.lock not found. Run 'fastskill install' first to create it.".to_string(),
+            "skills.lock not found. Run 'fastskill project install' first to create it."
+                .to_string(),
         ));
     }
 

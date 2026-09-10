@@ -36,7 +36,7 @@ fn test_help_short_flag() {
 
 #[test]
 fn test_add_command_help() {
-    let result = run_fastskill_command(&["add", "--help"], None);
+    let result = run_fastskill_command(&["skill", "add", "--help"], None);
 
     assert!(result.success);
     assert_snapshot_with_settings("add_command_help", &result.stdout, &cli_snapshot_settings());
@@ -44,7 +44,7 @@ fn test_add_command_help() {
 
 #[test]
 fn test_search_command_help() {
-    let result = run_fastskill_command(&["search", "--help"], None);
+    let result = run_fastskill_command(&["skill", "search", "--help"], None);
 
     assert!(result.success);
     assert_snapshot_with_settings(
@@ -56,7 +56,7 @@ fn test_search_command_help() {
 
 #[test]
 fn test_remove_command_help() {
-    let result = run_fastskill_command(&["remove", "--help"], None);
+    let result = run_fastskill_command(&["skill", "remove", "--help"], None);
 
     assert!(result.success);
     assert_snapshot_with_settings(
@@ -100,7 +100,7 @@ fn test_help_does_not_show_removed_commands() {
 
 #[test]
 fn test_doctor_command_help() {
-    let result = run_fastskill_command(&["doctor", "--help"], None);
+    let result = run_fastskill_command(&["cli", "doctor", "--help"], None);
 
     assert!(result.success);
     let output = format!("{}{}", result.stdout, result.stderr);
@@ -116,7 +116,7 @@ fn test_doctor_command_help() {
 
 #[test]
 fn test_read_command_help_has_new_flags() {
-    let result = run_fastskill_command(&["read", "--help"], None);
+    let result = run_fastskill_command(&["skill", "read", "--help"], None);
 
     assert!(result.success);
     let output = format!("{}{}", result.stdout, result.stderr);
@@ -132,7 +132,7 @@ fn test_read_command_help_has_new_flags() {
 
 #[test]
 fn test_search_command_help_has_new_flags() {
-    let result = run_fastskill_command(&["search", "--help"], None);
+    let result = run_fastskill_command(&["skill", "search", "--help"], None);
 
     assert!(result.success);
     let output = format!("{}{}", result.stdout, result.stderr);

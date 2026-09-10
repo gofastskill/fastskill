@@ -7,7 +7,7 @@ use fastskill_core::core::project::resolve_project_file;
 use std::fs;
 use tempfile::TempDir;
 
-/// T024: Integration test for fastskill install reading dependencies from skill-project.toml
+/// T024: Integration test for `fastskill project install` reading dependencies.
 #[test]
 fn test_install_reads_dependencies_from_skill_project_toml() {
     let temp_dir = TempDir::new().unwrap();

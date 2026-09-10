@@ -78,7 +78,7 @@ fn stdout_carries_only_json_rpc_frames() {
         &[
             INIT,
             INITIALIZED,
-            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fastskill_list","arguments":{}}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fastskill_skill_list","arguments":{}}}"#,
         ],
     );
 
@@ -102,7 +102,7 @@ fn tool_result_carries_the_command_output_not_ok() {
         &[
             INIT,
             INITIALIZED,
-            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fastskill_list","arguments":{}}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fastskill_skill_list","arguments":{}}}"#,
         ],
     );
 
@@ -145,11 +145,85 @@ fn long_running_serve_is_not_exported_as_a_tool() {
         .collect::<Vec<_>>();
 
     assert!(
-        !tools.contains(&"fastskill_serve".to_string()),
+        !tools.contains(&"fastskill_server_serve".to_string()),
         "serve must not be an MCP tool; exported: {tools:#?}"
     );
     // Sanity: the export policy did not filter everything away.
-    assert!(tools.contains(&"fastskill_list".to_string()));
+    assert!(tools.contains(&"fastskill_skill_list".to_string()));
+    assert!(!tools.contains(&"fastskill_list".to_string()));
+}
+
+#[test]
+fn retired_tool_names_are_not_callable_and_cannot_mutate_project_state() {
+    const RETIRED_TOOL_NAMES: &[&str] = &[
+        "fastskill_init",
+        "fastskill_install",
+        "fastskill_add",
+        "fastskill_update",
+        "fastskill_remove",
+        "fastskill_reindex",
+        "fastskill_list",
+        "fastskill_read",
+        "fastskill_search",
+        "fastskill_completion",
+        "fastskill_doctor",
+        "fastskill_spec",
+        "fastskill_repos_add",
+        "fastskill_repos_info",
+        "fastskill_repos_list",
+        "fastskill_repos_refresh",
+        "fastskill_repos_remove",
+        "fastskill_repos_show",
+        "fastskill_repos_skills",
+        "fastskill_repos_test",
+        "fastskill_repos_update",
+        "fastskill_repos_versions",
+        "fastskill_analyze_cluster",
+        "fastskill_analyze_duplicates",
+        "fastskill_analyze_matrix",
+        "fastskill_optimize_export",
+        "fastskill_optimize_inspect",
+        "fastskill_optimize_resume",
+        "fastskill_optimize_run",
+        "fastskill_optimize_status",
+    ];
+
+    let project = fixture();
+    let sentinel = project.path().join("sentinel");
+    std::fs::write(&sentinel, "unchanged").expect("write sentinel");
+
+    let mut requests = vec![INIT.to_string(), INITIALIZED.to_string()];
+    for (offset, name) in RETIRED_TOOL_NAMES.iter().enumerate() {
+        requests.push(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 10 + offset,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": {}},
+            })
+            .to_string(),
+        );
+    }
+    let request_refs = requests.iter().map(String::as_str).collect::<Vec<_>>();
+    let stdout = mcp_session(project.path(), &request_refs);
+
+    for (offset, name) in RETIRED_TOOL_NAMES.iter().enumerate() {
+        let rejected = response(&stdout, 10 + offset as i64);
+        assert!(
+            rejected.get("error").is_some(),
+            "retired MCP tool unexpectedly dispatched: {name}\n{rejected}"
+        );
+        assert_eq!(rejected["error"]["code"], -32001, "{name}: {rejected}");
+        let message = rejected["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("MCP_CMD_NOT_FOUND") && message.contains(name),
+            "retired MCP tool did not fail as unknown: {name}\n{rejected}"
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(&sentinel).expect("read sentinel"),
+        "unchanged"
+    );
 }
 
 #[test]
@@ -204,13 +278,16 @@ fn tool_schemas_document_their_parameters() {
         .as_array()
         .expect("tools array")
         .iter()
-        .find(|t| t["name"] == "fastskill_list")
-        .expect("fastskill_list tool");
+        .find(|t| t["name"] == "fastskill_skill_list")
+        .expect("fastskill_skill_list tool");
 
     let props = list["inputSchema"]["properties"]
         .as_object()
         .expect("schema properties");
-    assert!(!props.is_empty(), "fastskill_list should expose parameters");
+    assert!(
+        !props.is_empty(),
+        "fastskill_skill_list should expose parameters"
+    );
 
     let undocumented: Vec<&String> = props
         .iter()
@@ -237,7 +314,7 @@ fn read_only_server_hides_and_denies_optimize_export_before_writing() {
         "id": 3,
         "method": "tools/call",
         "params": {
-            "name": "fastskill_optimize_export",
+            "name": "fastskill_optimization_export",
             "arguments": {
                 "run-dir": run_dir,
                 "out": destination,
@@ -263,7 +340,7 @@ fn read_only_server_hides_and_denies_optimize_export_before_writing() {
         .filter_map(|tool| tool["name"].as_str())
         .collect::<Vec<_>>();
     assert!(
-        !tools.contains(&"fastskill_optimize_export"),
+        !tools.contains(&"fastskill_optimization_export"),
         "artifact writer must be hidden from a read-only server"
     );
 
@@ -283,7 +360,7 @@ fn read_only_server_hides_and_denies_optimize_export_before_writing() {
 #[test]
 fn every_mcp_capable_command_has_an_explicit_effect() {
     let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(["spec", "--format", "json"])
+        .args(["cli", "spec", "--format", "json"])
         .output()
         .expect("run command spec");
     assert!(output.status.success());
@@ -294,7 +371,7 @@ fn every_mcp_capable_command_has_an_explicit_effect() {
     for command in document["commands"].as_array().expect("commands array") {
         let path = command["path"].as_str().expect("command path");
         // Long-running servers are intentionally registered with no MCP export.
-        if matches!(path, "serve" | "mcp/serve") {
+        if matches!(path, "server/serve" | "mcp/serve") {
             continue;
         }
         let segments = path.split('/').collect::<Vec<_>>();

@@ -7,14 +7,14 @@ Related: [ADR-0004](0004-bare-version-is-exact.md),
 [ADR-0007](0007-self-contained-tracked-skill-bundles.md).
 
 Users usually want a current skill when adding it, and the same environment when
-restoring a project. We separate those moments: `add` and `update` may
-resolve new selections; `install` prefers compatible locked selections. This
+restoring a project. We separate those moments: `skill add` and `skill update` may
+resolve new selections; `project install` prefers compatible locked selections. This
 changes the previous defaults and is implemented by the shared lifecycle planner.
 
 ## Decision
 
 - A repository reference `skill@1.2.0` MUST remain an exact pin under ADR-0004.
-  Explicit operators retain their range meaning. Neither install nor an update
+  Explicit operators retain their range meaning. Neither `project install` nor a `skill update`
   strategy may silently widen a recorded constraint.
 - An omitted repository version and `@latest` MUST mean newest stable. Both MUST
   normalize to the same floating intent; the Lock records the exact selection.
@@ -24,11 +24,11 @@ changes the previous defaults and is implemented by the shared lifecycle planner
   metadata once per repository per operation. Exact pins and locked restoration
   MUST NOT require a version listing. An explicit offline mode MUST use only
   available verified inputs and identify missing metadata or artifacts.
-- `install` MUST reuse a Lock compatible with the selected Manifest requirements.
+- `project install` MUST reuse a Lock compatible with the selected Manifest requirements.
   With no Lock, it resolves the selected closure. It may fill previously unresolved
   selected roots while preserving existing compatible pins. Changed recorded intent
-  requires an explicit update, rather than silent re-resolution during restoration.
-- `install --lock` MUST require complete compatible coverage of the selected roots,
+  requires an explicit `skill update`, rather than silent re-resolution during restoration.
+- `project install --lock` MUST require complete compatible coverage of the selected roots,
   restore their recorded revisions, and leave the Lock unchanged. Missing revisions,
   insufficient integrity evidence, and changed immutable contents MUST fail clearly.
 - A local folder means exactly that folder. Snapshot installation verifies its
@@ -39,8 +39,8 @@ changes the previous defaults and is implemented by the shared lifecycle planner
 
 ## Tradeoffs
 
-We prefer reproducible restoration over resolving newest on every install. Users
-must use update after changing already-locked intent. We prefer current online
+We prefer reproducible restoration over resolving newest on every project install. Users
+must use `skill update` after changing already-locked intent. We prefer current online
 floating resolution over the current manual-refresh-only policy; this adds a
 metadata request and makes offline behavior explicit. Exact pins and verified
 cached artifacts remain usable without catalog freshness checks.
@@ -53,3 +53,6 @@ pin or an unverified integrity claim.
 
 The local [installation and resolution PRD](../../specs/reproducible-install-and-resolution-prd.md)
 defines selection, groups, partial coverage, migration, and acceptance scenarios.
+
+[ADR-0010](0010-command-taxonomy.md) assigns these lifecycle operations to their current command
+paths without changing this resolution policy.

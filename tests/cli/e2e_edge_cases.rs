@@ -48,7 +48,7 @@ fn test_e2e_invalid_skill_handling() {
     create_invalid_skill(&skills_dir, "invalid-skill");
 
     // Try to add invalid skill
-    let result = run_fastskill_command(&["add", &skills_dir.join("invalid-skill").to_string_lossy().to_string()], Some(&skills_dir));
+    let result = run_fastskill_command(&["skill", "add", &skills_dir.join("invalid-skill").to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail gracefully
     assert_snapshot_with_settings("e2e_invalid_skill", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
@@ -56,7 +56,7 @@ fn test_e2e_invalid_skill_handling() {
     // Create skill without SKILL.md
     create_skill_without_md(&skills_dir, "no-md-skill");
 
-    let result = run_fastskill_command(&["add", &skills_dir.join("no-md-skill").to_string_lossy().to_string()], Some(&skills_dir));
+    let result = run_fastskill_command(&["skill", "add", &skills_dir.join("no-md-skill").to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail gracefully
     assert_snapshot_with_settings("e2e_skill_without_md", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
@@ -72,16 +72,16 @@ fn test_e2e_duplicate_skill_handling() {
     create_test_skill(&skills_dir, skill_name);
 
     // Add first time
-    let _result1 = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
+    let _result1 = run_fastskill_command(&["skill", "add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Try to add again without force
-    let result2 = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
+    let result2 = run_fastskill_command(&["skill", "add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should fail (skill already exists)
     assert_snapshot_with_settings("e2e_duplicate_skill_no_force", &format!("{}{}", result2.stdout, result2.stderr), &cli_snapshot_settings());
 
     // Try to add again with force
-    let result3 = run_fastskill_command(&["add", "--force", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
+    let result3 = run_fastskill_command(&["skill", "add", "--force", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     // Should succeed with force
     assert_snapshot_with_settings("e2e_duplicate_skill_with_force", &format!("{}{}", result3.stdout, result3.stderr), &cli_snapshot_settings());
@@ -119,7 +119,7 @@ fn test_e2e_permission_issues() {
     // Try to use a directory we can't write to
     let readonly_dir = "/etc"; // Should be read-only for regular users
 
-    let result = run_fastskill_command(&["search", "test"], Some(std::path::Path::new(readonly_dir)));
+    let result = run_fastskill_command(&["skill", "search", "test"], Some(std::path::Path::new(readonly_dir)));
 
     // Should handle gracefully (might succeed if /etc has no skills)
     assert_snapshot_with_settings("e2e_permission_issues", &result.stdout, &cli_snapshot_settings());
@@ -131,13 +131,13 @@ fn test_e2e_empty_and_whitespace_handling() {
     let skills_dir = temp_dir.path().join("skills");
 
     // Test search with empty query
-    let result1 = run_fastskill_command(&["search", ""], Some(&skills_dir));
+    let result1 = run_fastskill_command(&["skill", "search", ""], Some(&skills_dir));
 
     // Should succeed (empty search might return all results)
     assert_snapshot_with_settings("e2e_empty_query", &result1.stdout, &cli_snapshot_settings());
 
     // Test search with whitespace query
-    let result2 = run_fastskill_command(&["search", "   "], Some(&skills_dir));
+    let result2 = run_fastskill_command(&["skill", "search", "   "], Some(&skills_dir));
 
     // Should succeed
     assert_snapshot_with_settings("e2e_whitespace_query", &result2.stdout, &cli_snapshot_settings());

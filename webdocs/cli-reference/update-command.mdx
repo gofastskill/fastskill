@@ -1,9 +1,9 @@
 ---
-title: update
-api: "update"
+title: skill update
+api: "skill update"
 ---
 
-# update Command
+# `skill update`
 
 Resolve deliberate changes from each skill's recorded origin, validate the affected dependency
 closure, apply it atomically, and update `skills.lock`. Exact pins remain exact unless you name one
@@ -12,7 +12,7 @@ repository skill and explicitly change its version.
 ## Usage
 
 ```bash
-fastskill update [SKILL_ID] [OPTIONS]
+fastskill skill update [SKILL_ID] [OPTIONS]
 ```
 
 ## Options
@@ -42,7 +42,7 @@ controls on a local, Git, or ZIP origin fail before mutation.
 Update all installed skills to their current versions:
 
 ```bash
-fastskill update
+fastskill skill update
 ```
 
 This:
@@ -56,7 +56,7 @@ This:
 Update only one skill by ID:
 
 ```bash
-fastskill update web-scraper
+fastskill skill update web-scraper
 ```
 
 ### Check for Updates
@@ -64,7 +64,7 @@ fastskill update web-scraper
 Show which skills have updates available without installing anything:
 
 ```bash
-fastskill update --check
+fastskill skill update --check
 ```
 
 <Callout type="info">
@@ -75,9 +75,9 @@ and makes no managed-state, timestamp, or index changes.
 ### Change an exact version or repository
 
 ```bash
-fastskill update web-scraper --to-version 1.4.2 --dry-run
-fastskill update web-scraper --to-version 1.4.2
-fastskill update web-scraper --repository team --strategy minor
+fastskill skill update web-scraper --to-version 1.4.2 --dry-run
+fastskill skill update web-scraper --to-version 1.4.2
+fastskill skill update web-scraper --repository team --strategy minor
 ```
 
 An exact target may be a deliberate downgrade. Without `--to-version`, FastSkill preserves the
@@ -90,7 +90,7 @@ widen an exact pin.
 Preview what would be updated without making changes:
 
 ```bash
-fastskill update --dry-run
+fastskill skill update --dry-run
 ```
 
 ### Control Reindexing
@@ -100,10 +100,10 @@ By default, whether the search index is rebuilt after an update follows your con
 
 ```bash
 # Force a reindex after updating
-fastskill update --reindex
+fastskill skill update --reindex
 
 # Skip the reindex after updating
-fastskill update --no-reindex
+fastskill skill update --no-reindex
 ```
 
 ### Update the Global Skill Set
@@ -112,12 +112,12 @@ Operate on the global skills directory (`~/.config/fastskill/skills`) and `globa
 instead of the current project:
 
 ```bash
-fastskill update --global
+fastskill skill update --global
 ```
 
 ## Behavior
 
-The `update` command:
+The `skill update` command:
 
 1. **Locates Project File**: Finds `skill-project.toml` (or, with `--global`, the global skill set)
 2. **Loads Dependencies**: Reads the declared skills
@@ -136,7 +136,7 @@ The `update` command:
 Updates skills and modifies the lockfile:
 
 ```bash
-fastskill update
+fastskill skill update
 ```
 
 **Output:**
@@ -154,7 +154,7 @@ Updating data-processor...
 Updated skills.lock with 2 skill(s)
 
 ✓ Update complete
-Run 'fastskill reindex' to update search index
+Run 'fastskill index rebuild' to update search index
 ```
 
 ### Check Mode
@@ -162,7 +162,7 @@ Run 'fastskill reindex' to update search index
 Shows available updates without installing:
 
 ```bash
-fastskill update --check
+fastskill skill update --check
 ```
 
 **Output:**
@@ -175,7 +175,7 @@ web-scraper: 1.2.3 → 2.0.0 (update available)
 data-processor: 2.1.0 → 2.2.0 (update available)
 demo-skill: Already up to date (0.1.0)
 
-Run 'fastskill update' to apply updates
+Run 'fastskill skill update' to apply updates
 ```
 
 ### Dry Run Mode
@@ -183,7 +183,7 @@ Run 'fastskill update' to apply updates
 Shows what would be updated without making changes:
 
 ```bash
-fastskill update --dry-run
+fastskill skill update --dry-run
 ```
 
 **Output:**
@@ -207,16 +207,16 @@ Dry run complete. No changes were made.
 
 ```bash
 # 1. Check for updates
-fastskill update --check
+fastskill skill update --check
 
 # 2. Preview with a dry run
-fastskill update --dry-run
+fastskill skill update --dry-run
 
 # 3. Apply updates
-fastskill update
+fastskill skill update
 
 # 4. Reindex for search (or rely on auto-reindex)
-fastskill reindex
+fastskill index rebuild
 
 # 5. Commit lockfile
 git add skills.lock
@@ -229,8 +229,8 @@ Change one repository root's desired exact version with `--to-version`, then com
 Manifest and lock. Restore that exact set in CI:
 
 ```bash
-fastskill update web-scraper --to-version 1.4.2
-fastskill install --lock --offline
+fastskill skill update web-scraper --to-version 1.4.2
+fastskill project install --lock --offline
 ```
 
 ## Dependency Management
@@ -240,7 +240,7 @@ fastskill install --lock --offline
 Skills are updated alphabetically for deterministic output:
 
 ```bash
-$ fastskill update
+$ fastskill skill update
 Updating skills...
 
 Updating data-processor...
@@ -261,7 +261,7 @@ If a later independent update fails, earlier completed units are reported and th
 nonzero. A failed affected closure restores its previous files and state:
 
 ```bash
-$ fastskill update
+$ fastskill skill update
 Updating skills...
 
 Updating web-scraper...
@@ -282,25 +282,25 @@ Update partially completed: 1 changed, 1 failed
 ### Skill Not Found
 
 ```bash
-$ fastskill update unknown-skill
+$ fastskill skill update unknown-skill
 error: Skill 'unknown-skill' not found in skill-project.toml dependencies
 ```
 
-**Solution**: Check the skill ID in `skill-project.toml`, or add it first with `fastskill add`.
+**Solution**: Check the skill ID in `skill-project.toml`, or add it first with `fastskill skill add`.
 
 ### Missing Lockfile
 
 ```bash
-$ fastskill update
-error: skills.lock not found. Run 'fastskill install' first.
+$ fastskill skill update
+error: skills.lock not found. Run 'fastskill project install' first.
 ```
 
-**Solution**: Run `fastskill install` to create `skills.lock`, then update.
+**Solution**: Run `fastskill project install` to create `skills.lock`, then update.
 
 ### No Updates Available
 
 ```bash
-$ fastskill update
+$ fastskill skill update
 Updating skills...
 
 web-scraper: Already up to date (1.2.3)
@@ -313,7 +313,7 @@ demo-skill: Already up to date (0.1.0)
 ### Network Errors
 
 ```bash
-$ fastskill update
+$ fastskill skill update
 Updating skills...
 
 Updating web-scraper...
@@ -331,12 +331,12 @@ Updating data-processor...
 
 ### 1. Check before updating
 
-Use `fastskill update --check` and `fastskill update --dry-run` to see what would change before
+Use `fastskill skill update --check` and `fastskill skill update --dry-run` to see what would change before
 applying updates.
 
 ### 2. Reindex after updates
 
-Run `fastskill reindex` after updating (or rely on auto-reindex) to keep the search index current.
+Run `fastskill index rebuild` after updating (or rely on auto-reindex) to keep the search index current.
 
 ### 3. Commit the lockfile after updates
 
@@ -344,8 +344,8 @@ Commit `skills.lock` after successful updates to track version changes in versio
 
 ### 4. Pin with the lockfile, not with flags
 
-Because `update` always resolves to the current version, use a committed `skills.lock` plus
-`fastskill install --lock` to reproduce an exact version set.
+Because `skill update` always resolves to the current version, use a committed `skills.lock` plus
+`fastskill project install --lock` to reproduce an exact version set.
 
 ### 5. Test updates in development first
 

@@ -12,7 +12,7 @@ Before installing FastSkill, ensure your system meets these requirements:
 | **OS** | macOS, Linux, or Windows | Latest stable release |
 | **Memory** | 512MB | 2GB+ |
 | **Storage** | 100MB | 500MB+ |
-| **OpenAI API Key** | Optional | Required for embedding search / `reindex` with embeddings |
+| **OpenAI API Key** | Optional | Required for embedding search and `index rebuild` |
 
 ## CLI Installation
 
@@ -126,7 +126,7 @@ The CLI resolves the skills directory in this priority order:
 **Manifests and lockfiles:**
 
 - Declare skills in `skill-project.toml` at project root (with `[dependencies]` section)
-- Install with `fastskill install` (use `--without`/`--only` for groups)
+- Install with `fastskill project install` (use `--without`/`--only` for groups)
 - Lockfile is written to `skills.lock` at project root after installs
 - Repository configuration is stored in `[tool.fastskill.repositories]` section of `skill-project.toml`
 
@@ -179,7 +179,7 @@ fastskill -V
 fastskill --help
 ```
 
-If you already have a project with `skill-project.toml`, try `fastskill list` or `fastskill install` from that directory.
+If you already have a project with `skill-project.toml`, try `fastskill skill list` or `fastskill project install` from that directory.
 
 ## Troubleshooting
 

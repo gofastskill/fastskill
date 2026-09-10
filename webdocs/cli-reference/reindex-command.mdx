@@ -1,11 +1,12 @@
 ---
-title: "Reindex Command"
-description: "Index skills with embeddings for semantic search capabilities."
+title: "index rebuild"
+description: "Rebuild the local skill index for semantic search and analysis."
 ---
 
 ## Overview
 
-The `reindex` command scans skill directories, extracts metadata from SKILL.md files, generates embeddings using OpenAI's API, and builds a local vector index for semantic search.
+`fastskill index rebuild` scans skill directories, extracts metadata from `SKILL.md`, generates
+embeddings when configured, and builds the local semantic-search index.
 
 <Callout type="info">
 This command requires OpenAI API configuration and will create a local SQLite database to store embeddings.
@@ -14,7 +15,7 @@ This command requires OpenAI API configuration and will create a local SQLite da
 ## Basic Usage
 
 ```bash
-fastskill reindex --skills-dir /path/to/skills/
+fastskill index rebuild --skills-dir /path/to/skills/
 ```
 
 ## Command Options
@@ -25,10 +26,10 @@ Optional override for the skills root (otherwise the CLI uses the same discovery
 
 ```bash
 # Index skills from a explicit directory
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 
 # Index from custom location
-fastskill reindex --skills-dir ./my-skills/
+fastskill index rebuild --skills-dir ./my-skills/
 ```
 
 ### --force
@@ -37,7 +38,7 @@ Force re-indexing of all skills, even if they haven't changed.
 
 ```bash
 # Rebuild entire index
-fastskill reindex --skills-dir .claude/skills/ --force
+fastskill index rebuild --skills-dir .claude/skills/ --force
 ```
 
 **Use Cases:**
@@ -49,7 +50,7 @@ fastskill reindex --skills-dir .claude/skills/ --force
 
 <Callout type="warning">
 This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
-`reindex` embeds skills **sequentially**, one at a time. Passing a value does not change
+`index rebuild` embeds skills **sequentially**, one at a time. Passing a value does not change
 indexing speed or the number of concurrent API requests.
 </Callout>
 
@@ -125,7 +126,7 @@ For each SKILL.md file:
 
 ### Output Levels
 
-The reindex command has these output controls:
+`index rebuild` has these output controls:
 
 - **Default**: Shows a live progress bar with completion percentage (when stdout is a TTY)
 - **Verbose (`-v, --verbose`)**: Shows per-skill processing details
@@ -133,7 +134,7 @@ The reindex command has these output controls:
 
 ### Progress Bar
 
-By default, reindex displays a live progress bar:
+By default, `index rebuild` displays a live progress bar:
 
 ```
 Progress: [12/50] (24%) | Pending: 38 | Skipped: 0 | Failed: 0 | Elapsed: 15s
@@ -152,7 +153,7 @@ The progress bar shows:
 Use `-v` or `--verbose` to see detailed output:
 
 ```bash
-fastskill reindex --verbose
+fastskill index rebuild --verbose
 
 Processing: pptx
 Processing: skill-creator
@@ -174,7 +175,7 @@ Reindex completed
 Use `--no-progress` to suppress the progress bar and show only the final summary:
 
 ```bash
-fastskill reindex --no-progress
+fastskill index rebuild --no-progress
 
 Reindex completed
   Total skills: 50
@@ -186,14 +187,14 @@ Reindex completed
 
 ### Environment Variables
 
-The reindex command respects the following environment variables:
+`index rebuild` respects the following environment variables:
 
 #### `FASTSKILL_NO_PROGRESS`
 
 Disable progress bars and spinners:
 
 ```bash
-FASTSKILL_NO_PROGRESS=1 fastskill reindex
+FASTSKILL_NO_PROGRESS=1 fastskill index rebuild
 ```
 
 This is useful in scripts or scheduled jobs that refresh embeddings without a TTY.
@@ -203,7 +204,7 @@ This is useful in scripts or scheduled jobs that refresh embeddings without a TT
 Disable colored output:
 
 ```bash
-NO_COLOR=1 fastskill reindex
+NO_COLOR=1 fastskill index rebuild
 ```
 
 Useful for environments that don't support ANSI color codes.
@@ -218,16 +219,16 @@ The progress bar automatically detects if stdout is a TTY:
 Examples:
 ```bash
 # Shows progress bar (TTY)
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 
 # No progress bar (piped to grep)
-fastskill reindex --skills-dir .claude/skills/ | grep "error"
+fastskill index rebuild --skills-dir .claude/skills/ | grep "error"
 
 # No progress bar (redirected to file)
-fastskill reindex --skills-dir .claude/skills/ > output.log
+fastskill index rebuild --skills-dir .claude/skills/ > output.log
 
 # Suppress the progress bar explicitly
-fastskill reindex --no-progress
+fastskill index rebuild --no-progress
 ```
 
 ## Output and Progress
@@ -313,15 +314,15 @@ Reindex maintains two files inside the skills directory's `.fastskill/` folder:
 
 ```bash
 # Index only changed skills (default behavior)
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 
 # Force full rebuild only when necessary
-fastskill reindex --force
+fastskill index rebuild --force
 ```
 
 ## Incremental Updates
 
-The reindex command is intelligent about updates:
+`index rebuild` skips unchanged content:
 
 ### Change Detection
 - Calculates SHA256 hash of each SKILL.md file
@@ -331,12 +332,12 @@ The reindex command is intelligent about updates:
 ### Example Workflow
 ```bash
 # Initial indexing
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 # Indexes all 15 skills
 
 # Add one new skill
 # Only the new skill gets indexed
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 # Indexes 1 skill (the new one)
 ```
 
@@ -344,7 +345,7 @@ fastskill reindex --skills-dir .claude/skills/
 
 ### Agent discovery
 
-Reindexing only populates the local vector index used by `fastskill search --local`. Agents
+Reindexing only populates the local vector index used by `fastskill skill search --local`. Agents
 (Claude Code, Cursor, …) discover installed skills directly from the skills directory — there is
 no separate metadata file to generate or sync.
 
@@ -353,8 +354,8 @@ no separate metadata file to generate or sync.
 ### Common Issues
 
 #### Reindex skipped: no embedding provider configured
-`reindex` requires an embedding provider. When none is configured it is skipped (not an error) —
-run `fastskill doctor` to confirm, then configure one in `skill-project.toml`:
+`index rebuild` requires an embedding provider. When none is configured it is skipped (not an error) —
+run `fastskill cli doctor` to confirm, then configure one in `skill-project.toml`:
 
 ```toml
 [tool.fastskill.embedding]
@@ -377,7 +378,7 @@ chmod 755 .claude/skills/
 #### Rate limit exceeded
 ```bash
 # Solution: reindex already runs sequentially; wait and retry
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 ```
 
 ### Debug Mode
@@ -385,7 +386,7 @@ fastskill reindex --skills-dir .claude/skills/
 Enable detailed logging:
 
 ```bash
-RUST_LOG=fastskill=debug fastskill reindex --skills-dir .claude/skills/
+RUST_LOG=fastskill=debug fastskill index rebuild --skills-dir .claude/skills/
 ```
 
 ### Verification
@@ -397,7 +398,7 @@ Check if indexing succeeded:
 ls -la .claude/skills/.fastskill/index.db
 
 # Test search
-fastskill search "test" --local --embedding false --skills-dir .claude/skills
+fastskill skill search "test" --local --embedding false --skills-dir .claude/skills
 ```
 
 ## Advanced Usage
@@ -418,15 +419,15 @@ Index skills from multiple locations:
 
 ```bash
 # Index primary skills
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 
 # Index additional skills
-fastskill reindex --skills-dir ./custom-skills/
+fastskill index rebuild --skills-dir ./custom-skills/
 ```
 
-### Automated reindex
+### Automatic index rebuilding
 
-After installs in automation, run `fastskill reindex` with the same environment variables you use locally (`OPENAI_API_KEY`, optional `--skills-dir`).
+After installs in automation, run `fastskill index rebuild` with the same environment variables you use locally (`OPENAI_API_KEY`, optional `--skills-dir`).
 
 ## Related Commands
 
@@ -434,13 +435,13 @@ After installs in automation, run `fastskill reindex` with the same environment 
 Use indexed skills for semantic search:
 
 ```bash
-fastskill search "process documents" --local --skills-dir .claude/skills/
+fastskill skill search "process documents" --local --skills-dir .claude/skills/
 ```
 
 ### List skills
 
 ```bash
-fastskill list --skills-dir .claude/skills/
+fastskill skill list --skills-dir .claude/skills/
 ```
 
-The reindex command is the foundation of FastSkill's semantic search capabilities, transforming static skill definitions into searchable, semantically-aware knowledge base.
+`index rebuild` transforms installed skill definitions into the local semantic-search index.

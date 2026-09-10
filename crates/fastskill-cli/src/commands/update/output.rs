@@ -1,6 +1,6 @@
 use crate::error::{CliError, CliResult};
 
-pub(super) fn emit_bundle_update_result(
+pub(crate) fn emit_bundle_update_result(
     preview: &fastskill_core::core::bundle::BundleUpdatePreview,
     dry_run: bool,
     indexing: &crate::utils::reindex_utils::LifecycleIndexResult,

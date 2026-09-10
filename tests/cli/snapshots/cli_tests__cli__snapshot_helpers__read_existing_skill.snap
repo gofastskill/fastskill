@@ -1,6 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
 Reading: web-scraper
@@ -30,7 +30,7 @@ Advanced web scraping capabilities for extracting structured data from websites.
 Basic usage example for web scraping.
 
 ```bash
-fastskill read web-scraper
+fastskill skill read web-scraper
 ```
 
 This skill provides comprehensive web scraping functionality.

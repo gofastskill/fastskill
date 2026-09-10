@@ -16,12 +16,12 @@ pub async fn execute_remote_search(
 
     let repo_manager = service.repository_manager().ok_or_else(|| {
         SearchError::Config(
-            "No repositories configured. Add one with 'fastskill repos add'.".to_string(),
+            "No repositories configured. Add one with 'fastskill repo add'.".to_string(),
         )
     })?;
     if repo_manager.list_repositories().is_empty() {
         return Err(SearchError::Config(
-            "No repositories configured. Add one with 'fastskill repos add'.".to_string(),
+            "No repositories configured. Add one with 'fastskill repo add'.".to_string(),
         ));
     }
 
@@ -60,7 +60,7 @@ pub async fn execute_remote_search(
                                 repository: Some(repo.name.clone()),
                                 version: Some(version.clone()),
                                 install_command: Some(format!(
-                                    "fastskill add {}@{} --repository {}",
+                                    "fastskill skill add {}@{} --repository {}",
                                     id, version, repo.name
                                 )),
                             };
@@ -331,7 +331,7 @@ index_url = "not-a-valid-url"
         assert_eq!(execution.results[0].version.as_deref(), Some("1.2.3"));
         assert_eq!(
             execution.results[0].install_command.as_deref(),
-            Some("fastskill add demo@1.2.3 --repository team")
+            Some("fastskill skill add demo@1.2.3 --repository team")
         );
         assert_eq!(execution.failures.len(), 1);
         assert_eq!(execution.failures[0].repository, "broken");

@@ -18,41 +18,28 @@ fn test_mcp_help_lists_install_list_serve_and_no_longer_register() {
     );
     assert!(combined.contains("list"), "mcp --help should list 'list'");
     assert!(combined.contains("serve"), "mcp --help should list 'serve'");
-    // `register` was a second *advertised* verb bound to the same handler as
-    // `install`, carrying a byte-identical summary — two names for one action,
-    // with nothing to tell a reader which to reach for. cli-framework d1b1c61
-    // withdraws it from the advertised surface (both `--help` and `spec`) while
-    // keeping it accepted, so existing scripts do not break.
-    //
-    // Asserting its absence *here* is what keeps this test honest: it formerly
-    // required the duplicate to be listed, so it would have defended the defect
-    // against the very fix that removed it. The companion test below pins the
-    // other half — that the alias still runs.
     assert!(
         !combined.contains("register"),
-        "mcp --help must not advertise 'register' -- it is a withdrawn alias of \
-         'install':\n{combined}"
+        "mcp --help must not advertise the retired 'register' command:\n{combined}"
     );
 }
 
-/// The alias was withdrawn from the surface, not deleted. Removing it outright
-/// would break anyone already scripting `mcp register`, so the two halves are
-/// asserted separately: unadvertised (above) but still functional (here).
 #[test]
-fn test_mcp_register_alias_still_runs_though_unadvertised() {
+fn test_mcp_register_is_rejected_without_writing_configuration() {
     let temp = TempDir::new().unwrap();
     let result = run_fastskill_command(
         &["mcp", "register", "--agent", "claude", "--scope", "project"],
         Some(temp.path()),
     );
     assert!(
-        result.success,
-        "the withdrawn `mcp register` alias must still run\nstdout: {}\nstderr: {}",
+        !result.success,
+        "the retired `mcp register` command must fail\nstdout: {}\nstderr: {}",
         result.stdout, result.stderr
     );
+    assert!(result.stderr.contains("not found"), "{}", result.stderr);
     assert!(
-        temp.path().join(".mcp.json").exists(),
-        "`mcp register` should write .mcp.json like `mcp install` does"
+        !temp.path().join(".mcp.json").exists(),
+        "retired command must not write .mcp.json"
     );
 }
 

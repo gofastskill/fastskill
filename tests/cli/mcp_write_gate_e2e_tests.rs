@@ -22,32 +22,35 @@ use tempfile::TempDir;
 /// `fastskill_core::write_ops`, and a test that derived it the same way could
 /// not catch the set being emptied.
 const MUTATING_TOOLS: &[&str] = &[
-    "fastskill_init",
-    "fastskill_install",
-    "fastskill_add",
-    "fastskill_update",
-    "fastskill_remove",
-    "fastskill_reindex",
-    "fastskill_repos_add",
-    "fastskill_repos_remove",
-    "fastskill_repos_update",
-    "fastskill_repos_refresh",
+    "fastskill_project_init",
+    "fastskill_project_install",
+    "fastskill_skill_add",
+    "fastskill_skill_update",
+    "fastskill_skill_remove",
+    "fastskill_index_rebuild",
+    "fastskill_repo_add",
+    "fastskill_repo_remove",
+    "fastskill_repo_update",
+    "fastskill_repo_refresh",
     "fastskill_cache_clean",
     "fastskill_marketplace_create",
     "fastskill_bundle_build",
+    "fastskill_bundle_add",
+    "fastskill_bundle_update",
+    "fastskill_bundle_remove",
     "fastskill_bundle_override",
     "fastskill_mcp_install",
     "fastskill_eval_run",
     "fastskill_eval_judge",
     "fastskill_eval_scorecard",
-    "fastskill_optimize_run",
-    "fastskill_optimize_resume",
-    "fastskill_optimize_export",
+    "fastskill_optimization_run",
+    "fastskill_optimization_resume",
+    "fastskill_optimization_export",
 ];
 
 /// A read-only tool that must stay exported with the gate closed. Without this
 /// assertion, "no mutating tool is listed" would also pass for an empty list.
-const READ_ONLY_TOOL: &str = "fastskill_list";
+const READ_ONLY_TOOL: &str = "fastskill_skill_list";
 
 /// Build a minimal initialised project containing one installed skill.
 fn project_with_skill(skill: &str) -> TempDir {
@@ -247,7 +250,7 @@ fn remove_skill_request(id: i64, skill: &str) -> Value {
         "id": id,
         "method": "tools/call",
         "params": {
-            "name": "fastskill_remove",
+            "name": "fastskill_skill_remove",
             "arguments": {"skill-ids": [skill], "force": true, "no-reindex": true}
         }
     })
@@ -259,7 +262,7 @@ fn unconfirmed_remove_skill_request(id: i64, skill: &str) -> Value {
         "id": id,
         "method": "tools/call",
         "params": {
-            "name": "fastskill_remove",
+            "name": "fastskill_skill_remove",
             "arguments": {"skill-ids": [skill], "no-reindex": true}
         }
     })
@@ -328,7 +331,7 @@ fn mcp_tools_call_refuses_mutating_tool_without_enable_write() {
     // Do not trust the message alone: the skill must still be on disk.
     assert!(
         installed.is_dir(),
-        "fastskill_remove deleted {} despite the write gate being closed",
+        "fastskill_skill_remove deleted {} despite the write gate being closed",
         installed.display()
     );
 
@@ -358,20 +361,20 @@ fn mcp_enable_write_lists_and_runs_mutating_tools() {
 
     let names = tool_names(&messages, 1);
     assert!(
-        names.iter().any(|n| n == "fastskill_remove"),
-        "fastskill_remove must be listed with --enable-write; tools: {:?}",
+        names.iter().any(|n| n == "fastskill_skill_remove"),
+        "fastskill_skill_remove must be listed with --enable-write; tools: {:?}",
         names
     );
 
     let response = response_for(&messages, 2);
     assert!(
         response.get("error").is_none(),
-        "fastskill_remove must succeed with --enable-write, got {}",
+        "fastskill_skill_remove must succeed with --enable-write, got {}",
         response
     );
     assert!(
         !installed.exists(),
-        "fastskill_remove did not delete {} with --enable-write",
+        "fastskill_skill_remove did not delete {} with --enable-write",
         installed.display()
     );
 }

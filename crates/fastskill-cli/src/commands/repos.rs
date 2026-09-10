@@ -12,7 +12,7 @@ use std::path::PathBuf;
 #[derive(Debug, Args)]
 #[command(
     about = "Manage repository list and browse remote skill catalog.",
-    after_help = "Repository Management:\n  fastskill repos add my-repo --repo-type local /path/to/skills\n  fastskill repos remove my-repo\n  fastskill repos info my-repo\n  fastskill repos test my-repo\n  fastskill repos refresh\n\nCatalog Browsing:\n  fastskill repos skills\n  fastskill repos show pptx\n  fastskill repos versions pptx"
+    after_help = "Repository Management:\n  fastskill repo add my-repo --repo-type local /path/to/skills\n  fastskill repo remove my-repo\n  fastskill repo info my-repo\n  fastskill repo test my-repo\n  fastskill repo refresh\n\nCatalog Browsing:\n  fastskill repo skills\n  fastskill repo show pptx\n  fastskill repo versions pptx"
 )]
 pub struct ReposArgs {
     #[command(subcommand)]
@@ -24,7 +24,7 @@ pub enum ReposCommand {
     // Repository Management Commands
     /// List all configured repositories
     #[command(
-        after_help = "Examples:\n  fastskill repos list\n  fastskill repos list --format xml\n  fastskill repos list --json"
+        after_help = "Examples:\n  fastskill repo list\n  fastskill repo list --format xml\n  fastskill repo list --json"
     )]
     List {
         /// Output format: table, json, grid, xml (default: table)
@@ -37,7 +37,7 @@ pub enum ReposCommand {
 
     /// Add a new repository
     #[command(
-        after_help = "Examples:\n  fastskill repos add my-repo --repo-type local /path/to/skills"
+        after_help = "Examples:\n  fastskill repo add my-repo --repo-type local /path/to/skills"
     )]
     Add {
         /// Repository name
@@ -71,7 +71,7 @@ pub enum ReposCommand {
     },
 
     /// Remove a repository
-    #[command(after_help = "Examples:\n  fastskill repos remove my-repo")]
+    #[command(after_help = "Examples:\n  fastskill repo remove my-repo")]
     Remove {
         /// Repository name to remove
         name: String,
@@ -79,7 +79,7 @@ pub enum ReposCommand {
 
     /// Show repository details
     #[command(
-        after_help = "Examples:\n  fastskill repos info my-repo\n  fastskill repos info my-repo --format xml"
+        after_help = "Examples:\n  fastskill repo info my-repo\n  fastskill repo info my-repo --format xml"
     )]
     Info {
         /// Repository name
@@ -93,7 +93,7 @@ pub enum ReposCommand {
     },
 
     /// Update repository metadata
-    #[command(after_help = "Examples:\n  fastskill repos update my-repo --priority 1")]
+    #[command(after_help = "Examples:\n  fastskill repo update my-repo --priority 1")]
     Update {
         /// Repository name to update
         name: String,
@@ -106,7 +106,7 @@ pub enum ReposCommand {
     },
 
     /// Test repository connectivity
-    #[command(after_help = "Examples:\n  fastskill repos test my-repo")]
+    #[command(after_help = "Examples:\n  fastskill repo test my-repo")]
     Test {
         /// Repository name to test
         name: String,
@@ -114,7 +114,7 @@ pub enum ReposCommand {
 
     /// Refresh repository cache
     #[command(
-        after_help = "Examples:\n  fastskill repos refresh\n  fastskill repos refresh my-repo"
+        after_help = "Examples:\n  fastskill repo refresh\n  fastskill repo refresh my-repo"
     )]
     Refresh {
         /// Repository name to refresh (if not specified, refreshes all)
@@ -123,7 +123,7 @@ pub enum ReposCommand {
 
     // Catalog Browsing Commands
     /// List skills in repository catalog
-    #[command(after_help = "Examples:\n  fastskill repos skills\n  fastskill repos skills --json")]
+    #[command(after_help = "Examples:\n  fastskill repo skills\n  fastskill repo skills --json")]
     Skills {
         /// Repository name to list skills from (defaults to default repository if not specified)
         #[arg(long)]
@@ -146,7 +146,7 @@ pub enum ReposCommand {
     },
 
     /// Show skill details from catalog
-    #[command(after_help = "Examples:\n  fastskill repos show pptx")]
+    #[command(after_help = "Examples:\n  fastskill repo show pptx")]
     Show {
         /// Skill ID
         skill_id: String,
@@ -156,7 +156,7 @@ pub enum ReposCommand {
     },
 
     /// List available versions for a skill
-    #[command(after_help = "Examples:\n  fastskill repos versions pptx")]
+    #[command(after_help = "Examples:\n  fastskill repo versions pptx")]
     Versions {
         /// Skill ID
         skill_id: String,

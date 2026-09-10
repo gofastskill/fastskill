@@ -54,11 +54,12 @@ impl IntoCommandSpec for DuplicatesArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Find semantically duplicate or very similar skills",
-            syntax: Some("analyze duplicates [OPTIONS]"),
+            syntax: Some("analysis duplicates [OPTIONS]"),
             category: Some("analysis"),
+            help_order: Some(30),
             examples: vec![
-                "fastskill analyze duplicates",
-                "fastskill analyze duplicates --threshold 0.95 --severity critical",
+                "fastskill analysis duplicates",
+                "fastskill analysis duplicates --threshold 0.95 --severity critical",
             ],
             args: vec![
                 ArgSpec {
@@ -318,7 +319,7 @@ pub async fn execute_duplicates(ctx: AnalysisContext, args: DuplicatesArgs) -> C
         .collect::<Vec<_>>()
         .join(", ");
         crate::outln!("Summary: {}", summary);
-        crate::outln!("Run 'fastskill remove <skill-id>' to remove a skill after review.");
+        crate::outln!("Run 'fastskill skill remove <skill-id>' to remove a skill after review.");
     }
 
     Ok(())

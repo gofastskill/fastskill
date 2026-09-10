@@ -1,10 +1,11 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Export the best skill document from a completed run
 
-Usage: fastskill optimize export [OPTIONS] --out <out> <run-dir>
+Usage: fastskill optimization export [OPTIONS] --out <out> <run-dir>
 
 Arguments:
   <run-dir>  Path to the run directory
@@ -17,7 +18,7 @@ Options:
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: optimize export <run-dir> --out <path>
+Syntax: optimization export <run-dir> --out <path>
 
 Examples:
-  fastskill optimize export ./optimize-runs/run-1 --out ./SKILL.md
+  fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md

@@ -81,9 +81,10 @@ impl IntoCommandSpec for ReindexArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Reindex the vector index for semantic search",
-            syntax: Some("reindex [OPTIONS]"),
+            syntax: Some("index rebuild [OPTIONS]"),
             category: Some("packages"),
-            examples: vec!["fastskill reindex", "fastskill reindex --force"],
+            help_order: Some(10),
+            examples: vec!["fastskill index rebuild", "fastskill index rebuild --force"],
             args: vec![
                 ArgSpec {
                     name: "skills-dir",
@@ -259,7 +260,7 @@ pub async fn execute_reindex(service: &FastSkillService, args: ReindexArgs) -> C
             .reason
             .as_deref()
             .unwrap_or("no embedding provider configured");
-        crate::outln!("Reindex skipped: {reason}. Run 'fastskill doctor' for setup guidance.");
+        crate::outln!("Reindex skipped: {reason}. Run 'fastskill cli doctor' for setup guidance.");
         return Ok(());
     }
 

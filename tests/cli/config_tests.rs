@@ -111,6 +111,7 @@ skills_directory = ".claude/skills"
     let result = run_fastskill_command(
         &[
             "--global",
+            "skill",
             "list",
             "--skills-dir",
             custom_dir.to_str().unwrap(),
@@ -135,7 +136,7 @@ skills_directory = ".claude/skills"
 "#;
     std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
-    let result = run_fastskill_command(&["-v", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["-v", "skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success || result.stderr.contains("skill-project.toml"));
 }
@@ -151,7 +152,7 @@ skills_directory = ".claude/skills"
 "#;
     std::fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
-    let result = run_fastskill_command(&["--verbose", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["--verbose", "skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success || result.stderr.contains("skill-project.toml"));
 }

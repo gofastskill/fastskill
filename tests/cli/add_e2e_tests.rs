@@ -29,7 +29,7 @@ fn test_add_from_folder_no_verbose_shows_compatibility_warning() {
     let fixture_skill =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cli/fixtures/minimal-skill");
     let result = run_fastskill_command(
-        &["add", fixture_skill.to_str().unwrap(), "--force"],
+        &["skill", "add", fixture_skill.to_str().unwrap(), "--force"],
         Some(temp_dir.path()),
     );
 
@@ -58,6 +58,7 @@ fn test_add_from_folder_verbose_shows_compatibility_warning() {
     let result = run_fastskill_command(
         &[
             "--verbose",
+            "skill",
             "add",
             fixture_skill.to_str().unwrap(),
             "--force",
@@ -129,7 +130,13 @@ fn test_add_recursive_multiple_skills() {
 
     // Run add with --recursive
     let result = run_fastskill_command(
-        &["add", skills_source.to_str().unwrap(), "-r", "--force"],
+        &[
+            "skill",
+            "add",
+            skills_source.to_str().unwrap(),
+            "-r",
+            "--force",
+        ],
         Some(temp_dir.path()),
     );
 
@@ -182,7 +189,13 @@ fn test_add_recursive_skips_hidden_dirs() {
 
     // Run add with --recursive
     let result = run_fastskill_command(
-        &["add", skills_source.to_str().unwrap(), "-r", "--force"],
+        &[
+            "skill",
+            "add",
+            skills_source.to_str().unwrap(),
+            "-r",
+            "--force",
+        ],
         Some(temp_dir.path()),
     );
 
@@ -225,7 +238,7 @@ fn test_add_recursive_empty_directory() {
 
     // Run add with --recursive on empty directory
     let result = run_fastskill_command(
-        &["add", skills_source.to_str().unwrap(), "-r"],
+        &["skill", "add", skills_source.to_str().unwrap(), "-r"],
         Some(temp_dir.path()),
     );
 
@@ -249,7 +262,10 @@ fn test_add_recursive_with_skill_id_fails() {
     .unwrap();
 
     // Try to use --recursive with a skill ID (registry source)
-    let result = run_fastskill_command(&["add", "scope/skill@1.0.0", "-r"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "add", "scope/skill@1.0.0", "-r"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success, "recursive add with skill ID should fail");
     assert!(
@@ -274,7 +290,7 @@ fn test_add_recursive_with_git_url_fails() {
 
     // Try to use --recursive with a git URL
     let result = run_fastskill_command(
-        &["add", "https://github.com/user/repo.git", "-r"],
+        &["skill", "add", "https://github.com/user/repo.git", "-r"],
         Some(temp_dir.path()),
     );
 

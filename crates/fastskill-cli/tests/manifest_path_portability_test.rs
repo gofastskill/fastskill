@@ -110,7 +110,7 @@ fn copy_tree(src: &Path, dst: &Path) {
 fn add_writes_manifest_relative_local_path() {
     let (_tmp, root) = new_project("src/alpha-skill");
 
-    let out = run(&root, &["add", "./src/alpha-skill"]);
+    let out = run(&root, &["skill", "add", "./src/alpha-skill"]);
     assert_ok(&out, "add");
 
     let manifest = manifest_of(&root);
@@ -142,7 +142,7 @@ fn add_writes_manifest_relative_local_path() {
 #[test]
 fn relocated_project_installs() {
     let (_tmp_a, root_a) = new_project("src/alpha-skill");
-    assert_ok(&run(&root_a, &["add", "./src/alpha-skill"]), "add");
+    assert_ok(&run(&root_a, &["skill", "add", "./src/alpha-skill"]), "add");
 
     // A teammate clones the committed project to a different path; the path the
     // author added from does not exist for them at all.
@@ -157,7 +157,7 @@ fn relocated_project_installs() {
     std::fs::create_dir_all(root_b.join(".claude/skills")).expect("recreate skills dir");
     std::fs::remove_dir_all(&root_a).expect("remove the original checkout");
 
-    let out = run(&root_b, &["install"]);
+    let out = run(&root_b, &["project", "install"]);
     assert_ok(&out, "install in the relocated project");
     assert!(
         root_b.join(".claude/skills/alpha-skill/SKILL.md").is_file(),
@@ -169,7 +169,7 @@ fn relocated_project_installs() {
 #[test]
 fn relocated_project_installs_from_lock() {
     let (_tmp_a, root_a) = new_project("src/alpha-skill");
-    assert_ok(&run(&root_a, &["add", "./src/alpha-skill"]), "add");
+    assert_ok(&run(&root_a, &["skill", "add", "./src/alpha-skill"]), "add");
 
     let tmp_b = TempDir::new().expect("temp dir b");
     let root_b = tmp_b
@@ -182,7 +182,7 @@ fn relocated_project_installs_from_lock() {
     std::fs::create_dir_all(root_b.join(".claude/skills")).expect("recreate skills dir");
     std::fs::remove_dir_all(&root_a).expect("remove the original checkout");
 
-    let out = run(&root_b, &["install", "--lock"]);
+    let out = run(&root_b, &["project", "install", "--lock"]);
     assert_ok(&out, "install --lock in the relocated project");
     assert!(
         root_b.join(".claude/skills/alpha-skill/SKILL.md").is_file(),
@@ -210,7 +210,7 @@ fn preexisting_absolute_path_manifest_still_installs() {
     )
     .expect("write legacy manifest");
 
-    let out = run(&root, &["install"]);
+    let out = run(&root, &["project", "install"]);
     assert_ok(&out, "install from a legacy absolute-path manifest");
     assert!(
         root.join(".claude/skills/alpha-skill/SKILL.md").is_file(),
@@ -237,7 +237,10 @@ fn out_of_tree_local_path_stays_absolute_and_warns() {
     )
     .expect("write SKILL.md");
 
-    let out = run(&root, &["add", outside_skill.to_str().expect("utf-8 path")]);
+    let out = run(
+        &root,
+        &["skill", "add", outside_skill.to_str().expect("utf-8 path")],
+    );
     assert_ok(&out, "add from outside the project tree");
 
     let manifest = manifest_of(&root);

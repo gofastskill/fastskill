@@ -17,13 +17,13 @@ fn test_list_no_manifest_fails_with_instructions() {
     fs::create_dir_all(&skills_dir).unwrap();
     // No skill-project.toml
 
-    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(!result.success);
     assert!(
         result.stderr.contains("skill-project.toml not found")
-            && result.stderr.contains("fastskill init"),
-        "stderr should mention skill-project.toml and fastskill init: {}",
+            && result.stderr.contains("fastskill project init"),
+        "stderr should mention skill-project.toml and fastskill project init: {}",
         result.stderr
     );
 }
@@ -39,7 +39,7 @@ fn test_list_default_grid_format() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     // Should show no skills (empty manifest)
@@ -62,7 +62,7 @@ fn test_list_json_format() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["list", "--json"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list", "--json"], Some(temp_dir.path()));
 
     assert!(result.success);
     // Should output valid JSON (array of list rows, may be empty)
@@ -82,7 +82,7 @@ fn test_list_empty_skills_directory() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(
@@ -113,7 +113,7 @@ skills_directory = ".claude/skills"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
-    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(
@@ -158,7 +158,7 @@ skills_directory = ".claude/skills"
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
     // Test default view (should show name and description, but not version)
-    let result = run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("test-skill"));
@@ -170,7 +170,8 @@ skills_directory = ".claude/skills"
     );
 
     // Test details view (should show version)
-    let result_details = run_fastskill_command(&["list", "--details"], Some(temp_dir.path()));
+    let result_details =
+        run_fastskill_command(&["skill", "list", "--details"], Some(temp_dir.path()));
 
     assert!(result_details.success);
     assert!(
@@ -196,7 +197,7 @@ fn test_list_conflicting_flags_error() {
     .unwrap();
 
     let result = run_fastskill_command(
-        &["list", "--json", "--format", "json"],
+        &["skill", "list", "--json", "--format", "json"],
         Some(temp_dir.path()),
     );
 
@@ -227,6 +228,7 @@ fn test_list_skills_dir_with_global_is_rejected() {
     let result = run_fastskill_command(
         &[
             "--global",
+            "skill",
             "list",
             "--skills-dir",
             custom_dir.to_str().unwrap(),

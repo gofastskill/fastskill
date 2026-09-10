@@ -35,11 +35,12 @@ impl IntoCommandSpec for ClusterArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Group skills by semantic similarity",
-            syntax: Some("analyze cluster [OPTIONS]"),
+            syntax: Some("analysis cluster [OPTIONS]"),
             category: Some("analysis"),
+            help_order: Some(20),
             examples: vec![
-                "fastskill analyze cluster",
-                "fastskill analyze cluster --num-clusters 8 --format json",
+                "fastskill analysis cluster",
+                "fastskill analysis cluster --num-clusters 8 --format json",
             ],
             args: vec![
                 ArgSpec {
@@ -155,7 +156,7 @@ pub async fn execute_cluster(ctx: AnalysisContext, args: ClusterArgs) -> CliResu
 
     if all_skills[0].embedding.is_empty() {
         return Err(CliError::Validation(
-            "Skills have empty embeddings. Run 'fastskill reindex' to rebuild the index."
+            "Skills have empty embeddings. Run 'fastskill index rebuild' to rebuild the index."
                 .to_string(),
         ));
     }
@@ -290,6 +291,74 @@ pub(super) fn print_cluster_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fastskill_core::core::vector_index::{IndexedSkill, VectorIndexServiceImpl};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn indexed_skill(id: &str, embedding: Vec<f32>) -> IndexedSkill {
+        IndexedSkill {
+            id: id.to_string(),
+            skill_path: PathBuf::from(id),
+            frontmatter_json: serde_json::json!({"name": id}),
+            embedding,
+            file_hash: "hash".to_string(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn analysis_cluster_argument_defaults_and_namespace_contract() {
+        for (value, expected) in [
+            ("table", Some(OutputFormat::Table)),
+            ("json", Some(OutputFormat::Json)),
+            ("grid", Some(OutputFormat::Grid)),
+            ("xml", Some(OutputFormat::Xml)),
+            ("invalid", None),
+        ] {
+            assert_eq!(parse_output_format(value), expected);
+        }
+
+        let defaults = ClusterArgs::from_arg_value_map(&HashMap::from([
+            ("num-clusters".to_string(), ArgValue::Bool(true)),
+            ("min-size".to_string(), ArgValue::Str("wrong".to_string())),
+            ("format".to_string(), ArgValue::Bool(true)),
+        ]));
+        assert_eq!(defaults.num_clusters, 5);
+        assert_eq!(defaults.min_size, 1);
+        assert!(defaults.format.is_none());
+        assert!(!defaults.json);
+
+        let spec = ClusterArgs::command_spec();
+        assert_eq!(spec.syntax, Some("analysis cluster [OPTIONS]"));
+        assert_eq!(spec.category, Some("analysis"));
+        assert_eq!(spec.help_order, Some(20));
+    }
+
+    #[tokio::test]
+    async fn cluster_reduces_k_then_rejects_an_empty_embedding() {
+        let root = tempfile::tempdir().unwrap();
+        let vector_svc = Arc::new(VectorIndexServiceImpl::with_default_path(root.path()));
+        let context = AnalysisContext {
+            skills: vec![indexed_skill("empty", Vec::new())],
+            vector_svc,
+        };
+
+        let result = execute_cluster(
+            context,
+            ClusterArgs {
+                num_clusters: 2,
+                min_size: 1,
+                format: Some(OutputFormat::Table),
+                json: false,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(CliError::Validation(message)) if message.contains("empty embeddings")
+        ));
+    }
 
     #[test]
     fn test_print_cluster_output_empty() {

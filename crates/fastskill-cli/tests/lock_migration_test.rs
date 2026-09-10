@@ -10,7 +10,7 @@
 //! The Origin/Resolved reshape (ADR-0005) removed the migrator entirely: any lock whose
 //! `metadata.version` wasn't the current `LOCK_FORMAT_VERSION` ("3.0") was rejected with
 //! an actionable `LockError::UnsupportedVersion` telling the caller to delete the lock and
-//! re-run `fastskill install`.
+//! re-run `fastskill project install`.
 //!
 //! That rejection has now been REVERSED for the v1.0.0 project lock, and these tests
 //! assert migration again. The reason is specific to what a lock is: it records *pinned*

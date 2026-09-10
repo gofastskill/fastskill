@@ -1,6 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
 Scanning 6 skills for duplicates (threshold: 0.80)...
@@ -13,4 +13,4 @@ Found 2 potential duplicate pairs
   Suggestion: Review both — similar modification time
 
 Summary: 1 critical, 1 high
-Run 'fastskill remove <skill-id>' to remove a skill after review.
+Run 'fastskill skill remove <skill-id>' to remove a skill after review.

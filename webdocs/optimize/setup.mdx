@@ -5,7 +5,7 @@ description: "Prepare the suite CSV and checks TOML that drive skill optimizatio
 
 # Setup: Eval Data and Grading
 
-Before you run `fastskill optimize`, you need two data files:
+Before you run `fastskill optimization`, you need two data files:
 
 1. **Suite CSV** — the eval cases the optimizer learns from.
 2. **Checks TOML** — the grading rules that score each response. _(Optional, but without it there is no real grading signal — see below.)_
@@ -36,7 +36,7 @@ A row's split comes from the `split` column if present, or a `split:<value>` tag
 
 **Rule: a suite needs at least one `train` row AND at least one `selection` row.**
 
-- Zero `selection` rows → `fastskill optimize run` exits with:
+- Zero `selection` rows → `fastskill optimization run` exits with:
   ```
   OPTIMIZE_NO_SELECTION_CASES: suite has zero cases tagged 'selection'
   ```

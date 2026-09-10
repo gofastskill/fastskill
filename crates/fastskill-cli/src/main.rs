@@ -21,7 +21,6 @@ mod json_boundary;
 mod output;
 mod registration;
 pub mod runtime_selector;
-mod shorthand;
 mod utils;
 
 use cli_framework::prelude::AppBuilder;
@@ -40,23 +39,6 @@ fn or_exit<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
             std::process::exit(1);
         }
     }
-}
-
-/// Whether a skill directory with this name exists in either the project or the
-/// global skills directory.
-///
-/// Used only to arbitrate the read shorthand against a command typo, so it is a
-/// deliberately cheap filesystem probe: config resolution plus an `is_dir`
-/// check, no service initialisation. Any resolution failure (no manifest, no
-/// config dir) is treated as "not installed" -- in that situation there is no
-/// skill to read anyway, so surfacing the command suggestion is the better
-/// outcome.
-fn skill_is_installed(name: &str) -> bool {
-    [false, true].iter().any(|&global| {
-        config::resolve_skills_storage_directory(global)
-            .map(|dir| dir.join(name).is_dir())
-            .unwrap_or(false)
-    })
 }
 
 /// Whether this invocation is `fastskill mcp serve`, ignoring any flags that
@@ -118,75 +100,6 @@ async fn main() {
     // registry it is itself registered in. Publish it once the app is built.
     commands::mcp::set_command_registry(Arc::new(app.command_registry().clone()));
 
-    // `fastskill <skill-id>` (no subcommand) is a shorthand that routes to
-    // `read`. We rewrite the args here, before dispatch, when the first
-    // positional token is not a recognized top-level command or command group.
-    // Global flags (and their values) that precede the subcommand are skipped.
-    // The second element is the word we rewrote, kept so a later failure can
-    // say *why* `read` was running at all.
-    let (raw, shorthand_skill_id) = {
-        // The set of recognized first path segments: every registered command
-        // (including built-ins like `spec`/`completion`/`mcp`) and every group
-        // node (`analyze`, `repos`, ...). `help` is clap-provided.
-        let registry = app.command_registry();
-        let mut known: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        known.insert("help");
-        // Retired commands (issue #183): keep them out of the read shorthand so
-        // `fastskill resolve|sync|disable|show` still surfaces an explicit
-        // "unrecognized subcommand" error instead of being read as a skill id.
-        for retired in ["resolve", "sync", "disable", "show"] {
-            known.insert(retired);
-        }
-        for (path, _) in registry.all_tree_commands() {
-            known.insert(path.split('/').next().unwrap_or(path));
-        }
-        for (path, _) in registry.groups() {
-            known.insert(path.split('/').next().unwrap_or(path));
-        }
-
-        let mut i = 1;
-        while i < raw.len() {
-            let a = &raw[i];
-            if a == "--skills-dir" {
-                // value-taking global flag in `--flag value` form
-                i += 2;
-                continue;
-            }
-            if a.starts_with('-') {
-                // boolean/global flag or `--flag=value` form
-                i += 1;
-                continue;
-            }
-            break;
-        }
-        // Unknown token: route it to `read` unless it looks like a typo of a
-        // command that no installed skill claims. Reporting the typo here rather
-        // than letting it fall through to the framework is deliberate -- clap's
-        // built-in suggester answers "init" for "insatll", and acting on that
-        // would scaffold a project the user never asked for.
-        if i < raw.len() && !known.contains(raw[i].as_str()) {
-            match shorthand::route(&raw[i], &known, skill_is_installed) {
-                shorthand::Routing::DidYouMean(cmd) => {
-                    eprintln!("error: unrecognized subcommand '{}'", raw[i]);
-                    eprintln!("  hint: Did you mean '{}'?", cmd);
-                    eprintln!(
-                        "  hint: to read a skill by this name, run: fastskill read {}",
-                        raw[i]
-                    );
-                    std::process::exit(1);
-                }
-                shorthand::Routing::Read => {
-                    let skill_id = raw[i].clone();
-                    let mut rewritten = raw;
-                    rewritten.insert(i, "read".to_string());
-                    (rewritten, Some(skill_id))
-                }
-            }
-        } else {
-            (raw, None)
-        }
-    };
-
     let json_output = requests_json_output(&raw);
     let lifecycle_json = is_json_lifecycle(&raw);
     let global_scope = raw.iter().any(|arg| arg == "--global");
@@ -220,35 +133,6 @@ async fn main() {
                 }
                 std::process::exit(1);
             }
-            // A bare word only reaches `read` because it matched no command.
-            // When it then dies for want of a project, the generic manifest
-            // error is the very message `fastskill list` prints -- it never
-            // mentions the word, so a user who mistyped a command is told their
-            // workspace is misconfigured instead. Say all three things: the word
-            // is not a command, it was therefore read as a skill ID, and reading
-            // a skill needs a project.
-            if let (Some(skill_id), Some(cli_error)) = (
-                shorthand_skill_id.as_deref(),
-                e.downcast_ref::<error::CliError>(),
-            ) {
-                if error::is_manifest_missing(cli_error) {
-                    eprintln!(
-                        "error: '{}' is not a fastskill command, so it was read as a skill ID \
-                         (`fastskill read {}`).",
-                        skill_id, skill_id
-                    );
-                    eprintln!(
-                        "  note: reading a skill needs a project, and skill-project.toml was not \
-                         found in this directory or any parent."
-                    );
-                    eprintln!(
-                        "  hint: run 'fastskill init' here first, or read a globally installed \
-                         skill with: fastskill read {} --global",
-                        skill_id
-                    );
-                    std::process::exit(1);
-                }
-            }
             // `run_with_args` already writes a structured diagnostic to stderr
             // (via `DiagnosticReporter`) for usage errors — parse failures,
             // validation failures, unknown nested commands — before returning
@@ -266,90 +150,29 @@ async fn main() {
 fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuilder> {
     use crate::registration::AppBuilderExt;
     use cli_framework::path;
-    use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
-    use cli_framework::spec::EnvVarEntry;
-
-    // ── Global flags ─────────────────────────────────────────────────────────
-    let builder = builder
-        .global_flag(ArgSpec {
-            name: "skills-dir",
-            kind: ArgKind::Option,
-            long: Some("skills-dir"),
-            value_type: ArgValueType::String,
-            cardinality: Cardinality::Optional,
-            help: "Override the skills directory path",
-            ..Default::default()
-        })
-        .global_flag(ArgSpec {
-            name: "global",
-            kind: ArgKind::Flag,
-            long: Some("global"),
-            value_type: ArgValueType::Bool,
-            cardinality: Cardinality::Optional,
-            help: "Use global skills directory (~/.config/fastskill/skills)",
-            ..Default::default()
-        })
-        .global_flag(ArgSpec {
-            name: "verbose",
-            kind: ArgKind::Flag,
-            long: Some("verbose"),
-            short: Some('v'),
-            value_type: ArgValueType::Bool,
-            cardinality: Cardinality::Optional,
-            help: "Enable verbose output",
-            ..Default::default()
-        });
-
-    // ── Environment variables ────────────────────────────────────────────────
-    let builder = builder
-        .register_env_var(EnvVarEntry {
-            name: "FASTSKILL_CACHE_DIR",
-            description: "Override the shared skill cache directory",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "FASTSKILL_EMBEDDING_MODEL",
-            description: "Override the configured embedding model",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "FASTSKILL_NO_PROGRESS",
-            description: "Disable progress indicators when set",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "FORCE_COLOR",
-            description: "Force ANSI color output when supported",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "NO_COLOR",
-            description: "Disable ANSI color output",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "OPENAI_API_KEY",
-            description: "API key for semantic search and embeddings",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "OPENAI_BASE_URL",
-            description: "Override the embedding provider base URL",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "PAT_TOKEN",
-            description: "Default token for authenticated HTTP registries",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "REGISTRY_INDEX_PATH",
-            description: "Override the local registry index path",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "RUST_LOG",
-            description: "Override the FastSkill logging filter",
-        })?
-        .register_env_var(EnvVarEntry {
-            name: "XDG_CONFIG_HOME",
-            description: "Override the global configuration directory on Unix",
-        })?;
+    let builder = crate::registration::surface::configure(builder)?;
 
     // ── Typed commands (no service) ──────────────────────────────────────────
     let builder = builder
-        .register_out(path!["init"], |ctx, args: init::InitArgs| {
+        .register_group(
+            &path!["skill"],
+            cli_framework::spec::command_tree::GroupMetadata {
+                summary: "Discover, read, and manage individual skills",
+                hidden: false,
+                category: Some("Skills and projects"),
+                help_order: Some(10),
+            },
+        )?
+        .register_group(
+            &path!["project"],
+            cli_framework::spec::command_tree::GroupMetadata {
+                summary: "Initialize projects and install declared dependencies",
+                hidden: false,
+                category: Some("Skills and projects"),
+                help_order: Some(30),
+            },
+        )?
+        .register_out(path!["project", "init"], |ctx, args: init::InitArgs| {
             let skills_dir = ctx_skills_dir(ctx).map(|p| p.display().to_string());
             async move {
                 init::execute_init(args.with_skills_dir(skills_dir))
@@ -357,16 +180,19 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     .map_err(anyhow::Error::from)
             }
         })?
-        .register_out(path!["install"], |ctx, args: install::InstallArgs| {
-            let global = ctx_global(ctx);
-            let skills_dir = ctx_skills_dir(ctx);
-            async move {
-                install::execute_install_scoped(args, global, skills_dir)
-                    .await
-                    .map_err(anyhow::Error::from)
-            }
-        })?
-        .register_out(path!["update"], |ctx, args: update::UpdateArgs| {
+        .register_out(
+            path!["project", "install"],
+            |ctx, args: install::InstallArgs| {
+                let global = ctx_global(ctx);
+                let skills_dir = ctx_skills_dir(ctx);
+                async move {
+                    install::execute_install_scoped(args, global, skills_dir)
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            },
+        )?
+        .register_out(path!["skill", "update"], |ctx, args: update::UpdateArgs| {
             let global = ctx_global(ctx);
             let skills_dir = ctx_skills_dir(ctx);
             async move {
@@ -385,6 +211,8 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 GroupMetadata {
                     summary: "Build and manage publishable skill bundles",
                     hidden: false,
+                    category: Some("Skills and projects"),
+                    help_order: Some(20),
                 },
             )?
             .register_out(path!["bundle", "build"], |ctx, args: bundle::BuildArgs| {
@@ -394,6 +222,83 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     bundle::execute_build(args, skills_dir, global)
                         .await
                         .map_err(anyhow::Error::from)
+                }
+            })?
+            .register_out(path!["bundle", "add"], {
+                let state = Arc::clone(&state_bundle);
+                move |ctx, args: bundle::add::AddArgs| {
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let global = ctx_global(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        let artifact = bundle::add::preflight_add(&args, global)
+                            .await
+                            .map_err(anyhow::Error::from)?;
+                        let service = state.service_with(false, skills_dir).await?;
+                        bundle::add::execute_add_preflighted(service.as_ref(), args, artifact)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+            .register_out(path!["bundle", "list"], {
+                let state = Arc::clone(&state_bundle);
+                move |ctx, args: bundle::list::ListArgs| {
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let global = ctx_global(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        if global {
+                            return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                                "Bundle operations require a project Manifest and do not support --global"
+                                    .to_string(),
+                            )));
+                        }
+                        let service = state.service_with(false, skills_dir).await?;
+                        bundle::list::execute_list(service.as_ref(), args, global)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+            .register_out(path!["bundle", "update"], {
+                let state = Arc::clone(&state_bundle);
+                move |ctx, args: bundle::update::UpdateArgs| {
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let global = ctx_global(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        if global {
+                            return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                                "Bundle operations require a project Manifest and do not support --global"
+                                    .to_string(),
+                            )));
+                        }
+                        let service = state.service_with(false, skills_dir).await?;
+                        bundle::update::execute_update(service.as_ref(), args, global)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                }
+            })?
+            .register_out(path!["bundle", "remove"], {
+                let state = Arc::clone(&state_bundle);
+                move |ctx, args: bundle::remove::RemoveArgs| {
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let global = ctx_global(ctx);
+                    let state = Arc::clone(&state);
+                    async move {
+                        if global {
+                            return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                                "Bundle operations require a project Manifest and do not support --global"
+                                    .to_string(),
+                            )));
+                        }
+                        let service = state.service_with(false, skills_dir).await?;
+                        bundle::remove::execute_remove(service.as_ref(), args, global)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
                 }
             })?
             .register_out(
@@ -423,7 +328,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_list = Arc::clone(&state);
         let state_read = Arc::clone(&state);
         builder
-            .register_out(path!["list"], move |ctx, args: list::ListArgs| {
+            .register_out(path!["skill", "list"], move |ctx, args: list::ListArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_list);
@@ -439,7 +344,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         .map_err(anyhow::Error::from)
                 }
             })?
-            .register_out(path!["read"], move |ctx, args: read::ReadArgs| {
+            .register_out(path!["skill", "read"], move |ctx, args: read::ReadArgs| {
                 let global = ctx_global(ctx);
                 let skills_dir = ctx_skills_dir(ctx);
                 let state = Arc::clone(&state_read);
@@ -462,14 +367,16 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         use cli_framework::spec::command_tree::GroupMetadata;
         builder
             .register_group(
-                &path!["repos"],
+                &path!["repo"],
                 GroupMetadata {
                     summary: "Manage repository list and browse remote skill catalog",
                     hidden: false,
+                    category: Some("Sources and distribution"),
+                    help_order: Some(10),
                 },
             )?
             .register_out(
-                path!["repos", "list"],
+                path!["repo", "list"],
                 |_ctx, args: repos::ReposListArgs| async move {
                     repos::execute_repos_list(args)
                         .await
@@ -477,7 +384,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "add"],
+                path!["repo", "add"],
                 |_ctx, args: repos::ReposAddArgs| async move {
                     repos::execute_repos_add(args)
                         .await
@@ -485,7 +392,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "remove"],
+                path!["repo", "remove"],
                 |_ctx, args: repos::ReposRemoveArgs| async move {
                     repos::execute_repos_remove(args)
                         .await
@@ -493,7 +400,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "info"],
+                path!["repo", "info"],
                 |_ctx, args: repos::ReposInfoArgs| async move {
                     repos::execute_repos_info(args)
                         .await
@@ -501,7 +408,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "update"],
+                path!["repo", "update"],
                 |_ctx, args: repos::ReposUpdateArgs| async move {
                     repos::execute_repos_update(args)
                         .await
@@ -509,7 +416,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "test"],
+                path!["repo", "test"],
                 |_ctx, args: repos::ReposTestArgs| async move {
                     repos::execute_repos_test(args)
                         .await
@@ -517,7 +424,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "refresh"],
+                path!["repo", "refresh"],
                 |_ctx, args: repos::ReposRefreshArgs| async move {
                     repos::execute_repos_refresh(args)
                         .await
@@ -525,7 +432,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "skills"],
+                path!["repo", "skills"],
                 |_ctx, args: repos::ReposSkillsArgs| async move {
                     repos::execute_repos_skills(args)
                         .await
@@ -533,7 +440,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "show"],
+                path!["repo", "show"],
                 |_ctx, args: repos::ReposShowArgs| async move {
                     repos::execute_repos_show(args)
                         .await
@@ -541,7 +448,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["repos", "versions"],
+                path!["repo", "versions"],
                 |_ctx, args: repos::ReposVersionsArgs| async move {
                     repos::execute_repos_versions(args)
                         .await
@@ -559,6 +466,8 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 GroupMetadata {
                     summary: "Inspect and reclaim the on-disk skill content cache",
                     hidden: false,
+                    category: Some("Operations"),
+                    help_order: Some(20),
                 },
             )?
             .register_out(
@@ -588,6 +497,8 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 GroupMetadata {
                     summary: "Create and manage skill marketplace artifacts",
                     hidden: false,
+                    category: Some("Sources and distribution"),
+                    help_order: Some(20),
                 },
             )?
             .register_out(
@@ -609,6 +520,8 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 GroupMetadata {
                     summary: "Evaluation commands for skill quality assurance",
                     hidden: false,
+                    category: Some("Quality"),
+                    help_order: Some(20),
                 },
             )?
             .register_out(
@@ -666,14 +579,16 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         use cli_framework::spec::command_tree::GroupMetadata;
         builder
             .register_group(
-                &path!["optimize"],
+                &path!["optimization"],
                 GroupMetadata {
                     summary: "Iterative skill-document optimization via text-gradient",
                     hidden: false,
+                    category: Some("Quality"),
+                    help_order: Some(30),
                 },
             )?
             .register_out(
-                path!["optimize", "run"],
+                path!["optimization", "run"],
                 |_ctx, args: skillopt::run::RunArgs| async move {
                     skillopt::run::execute_run(args)
                         .await
@@ -681,7 +596,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["optimize", "resume"],
+                path!["optimization", "resume"],
                 |_ctx, args: skillopt::resume::ResumeArgs| async move {
                     skillopt::resume::execute_resume(args)
                         .await
@@ -689,7 +604,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["optimize", "status"],
+                path!["optimization", "status"],
                 |_ctx, args: skillopt::status::StatusArgs| async move {
                     skillopt::status::execute_status(args)
                         .await
@@ -697,7 +612,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["optimize", "inspect"],
+                path!["optimization", "inspect"],
                 |_ctx, args: skillopt::inspect::InspectArgs| async move {
                     skillopt::inspect::execute_inspect(args)
                         .await
@@ -705,7 +620,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
             .register_out(
-                path!["optimize", "export"],
+                path!["optimization", "export"],
                 |_ctx, args: skillopt::export::ExportArgs| async move {
                     skillopt::export::execute_export(args)
                         .await
@@ -717,7 +632,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
     // ── add: fully migrated to typed API ─────────────────────────────────────
     let builder = {
         let state_add = Arc::clone(&state);
-        builder.register_out(path!["add"], move |ctx, args: add::AddArgs| {
+        builder.register_out(path!["skill", "add"], move |ctx, args: add::AddArgs| {
             let global = ctx_global(ctx);
             let skills_dir = ctx_skills_dir(ctx);
             let state = Arc::clone(&state_add);
@@ -727,9 +642,11 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                         "--global and --skills-dir cannot be used together".to_string(),
                     )));
                 }
-                add::validate_add_args(&args, global).map_err(anyhow::Error::from)?;
+                let source = add::preflight_add(&args, global)
+                    .await
+                    .map_err(anyhow::Error::from)?;
                 let svc = state.service_with(global, skills_dir).await?;
-                add::execute_add(&svc, args, global)
+                add::execute_add_preflighted(&svc, args, global, source)
                     .await
                     .map_err(anyhow::Error::from)
             }
@@ -742,13 +659,15 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_analyze = Arc::clone(&state);
         builder
             .register_group(
-                &path!["analyze"],
+                &path!["analysis"],
                 GroupMetadata {
                     summary: "Diagnostic and analysis commands",
                     hidden: false,
+                    category: Some("Quality"),
+                    help_order: Some(10),
                 },
             )?
-            .register_out(path!["analyze", "matrix"], {
+            .register_out(path!["analysis", "matrix"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::matrix::MatrixArgs| {
                     let global = ctx_global(ctx);
@@ -765,7 +684,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     }
                 }
             })?
-            .register_out(path!["analyze", "cluster"], {
+            .register_out(path!["analysis", "cluster"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::cluster::ClusterArgs| {
                     let global = ctx_global(ctx);
@@ -782,7 +701,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                     }
                 }
             })?
-            .register_out(path!["analyze", "duplicates"], {
+            .register_out(path!["analysis", "duplicates"], {
                 let state = Arc::clone(&state_analyze);
                 move |ctx, args: analyze::duplicates::DuplicatesArgs| {
                     let global = ctx_global(ctx);
@@ -808,68 +727,110 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
         let state_search = Arc::clone(&state);
         let state_doctor = Arc::clone(&state);
         builder
-            .register_out(path!["reindex"], move |ctx, args: reindex::ReindexArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_reindex);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    reindex::execute_reindex(&svc, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
-            .register_out(path!["remove"], move |ctx, args: remove::RemoveArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_remove);
-                async move {
-                    if global && skills_dir.is_some() {
-                        return Err(anyhow::Error::from(crate::error::CliError::Validation(
-                            "--global and --skills-dir cannot be combined".to_string(),
-                        )));
+            .register_group(
+                &path!["index"],
+                cli_framework::spec::command_tree::GroupMetadata {
+                    summary: "Maintain the local search index",
+                    hidden: false,
+                    category: Some("Operations"),
+                    help_order: Some(10),
+                },
+            )?
+            .register_group(
+                &path!["server"],
+                cli_framework::spec::command_tree::GroupMetadata {
+                    summary: "Run the HTTP API server",
+                    hidden: false,
+                    category: Some("Operations"),
+                    help_order: Some(30),
+                },
+            )?
+            .register_group(
+                &path!["cli"],
+                cli_framework::spec::command_tree::GroupMetadata {
+                    summary: "Diagnose and integrate the command-line interface",
+                    hidden: false,
+                    category: Some("Operations"),
+                    help_order: Some(50),
+                },
+            )?
+            .register_out(
+                path!["index", "rebuild"],
+                move |ctx, args: reindex::ReindexArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state_reindex);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        reindex::execute_reindex(&svc, args)
+                            .await
+                            .map_err(anyhow::Error::from)
                     }
-                    let svc = state.service_with(global, skills_dir).await?;
-                    remove::execute_remove(&svc, args, global)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
-            .register_out(path!["search"], move |ctx, args: search::SearchArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_search);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    search::execute_search(&svc, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
-            .register_out_no_mcp(path!["serve"], move |ctx, args: serve::ServeArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                async move {
-                    // `serve` builds its own service (rather than going through
-                    // `FsState::service_with`) so it can inject the served
-                    // project's root alongside the usual edge services; see
-                    // `serve::execute_serve`.
-                    serve::execute_serve(global, skills_dir, args)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
-            .register_out(path!["doctor"], move |ctx, args: doctor::DoctorArgs| {
-                let global = ctx_global(ctx);
-                let skills_dir = ctx_skills_dir(ctx);
-                let state = Arc::clone(&state_doctor);
-                async move {
-                    let svc = state.service_with(global, skills_dir).await?;
-                    doctor::execute_doctor(&svc, args, global)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
-            })?
+                },
+            )?
+            .register_out(
+                path!["skill", "remove"],
+                move |ctx, args: remove::RemoveArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state_remove);
+                    async move {
+                        if global && skills_dir.is_some() {
+                            return Err(anyhow::Error::from(crate::error::CliError::Validation(
+                                "--global and --skills-dir cannot be combined".to_string(),
+                            )));
+                        }
+                        let svc = state.service_with(global, skills_dir).await?;
+                        remove::execute_remove(&svc, args, global)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                },
+            )?
+            .register_out(
+                path!["skill", "search"],
+                move |ctx, args: search::SearchArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state_search);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        search::execute_search(&svc, args)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                },
+            )?
+            .register_out_no_mcp(
+                path!["server", "serve"],
+                move |ctx, args: serve::ServeArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    async move {
+                        // `serve` builds its own service (rather than going through
+                        // `FsState::service_with`) so it can inject the served
+                        // project's root alongside the usual edge services; see
+                        // `serve::execute_serve`.
+                        serve::execute_serve(global, skills_dir, args)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                },
+            )?
+            .register_out(
+                path!["cli", "doctor"],
+                move |ctx, args: doctor::DoctorArgs| {
+                    let global = ctx_global(ctx);
+                    let skills_dir = ctx_skills_dir(ctx);
+                    let state = Arc::clone(&state_doctor);
+                    async move {
+                        let svc = state.service_with(global, skills_dir).await?;
+                        doctor::execute_doctor(&svc, args, global)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                },
+            )?
             // `mcp serve` is registered here rather than left to cli-framework's
             // auto-registration, which has no write gate: it exported every
             // mutating command as a callable tool. Registering `mcp/serve`

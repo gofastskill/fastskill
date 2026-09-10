@@ -1,6 +1,5 @@
 //! Add command implementation
 
-pub mod bundle;
 pub mod install;
 mod origin;
 mod project;
@@ -90,12 +89,13 @@ impl IntoCommandSpec for AddArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Add a skill (from local path, zip, git URL, or registry ID)",
-            syntax: Some("add <SOURCE> [OPTIONS]"),
-            category: Some("packages"),
+            syntax: Some("skill add <SOURCE> [OPTIONS]"),
+            category: Some("skills-projects"),
+            help_order: Some(10),
             examples: vec![
-                "fastskill add pptx",
-                "fastskill add ./my-skill --editable",
-                "fastskill add https://github.com/org/skill-repo.git --branch main",
+                "fastskill skill add pptx",
+                "fastskill skill add ./my-skill --editable",
+                "fastskill skill add https://github.com/org/skill-repo.git --branch main",
             ],
             args: vec![
                 ArgSpec {
@@ -385,7 +385,7 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
     if let Ok(dirs) = install::get_skill_dirs_recursive(path) {
         if !dirs.is_empty() {
             return Err(CliError::Validation(format!(
-                "This directory has no SKILL.md at the root but contains {} skill(s) in subdirectories. Add them all with: fastskill add {} --recursive",
+                "This directory has no SKILL.md at the root but contains {} skill(s) in subdirectories. Add them all with: fastskill skill add {} --recursive",
                 dirs.len(),
                 path.display()
             )));
@@ -397,25 +397,32 @@ fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
     )))
 }
 
+pub(crate) async fn preflight_add(args: &AddArgs, global: bool) -> CliResult<SkillSource> {
+    validate_add_args(args, global)?;
+    let source = resolve_source(args);
+    if !args.recursive {
+        crate::commands::bundle::add::reject_skill_source(&source, args.offline).await?;
+    }
+    Ok(source)
+}
+
+#[cfg(test)]
 pub async fn execute_add(service: &FastSkillService, args: AddArgs, global: bool) -> CliResult<()> {
-    validate_add_args(&args, global)?;
+    let source = preflight_add(&args, global).await?;
+    execute_add_preflighted(service, args, global, source).await
+}
+
+pub(crate) async fn execute_add_preflighted(
+    service: &FastSkillService,
+    args: AddArgs,
+    global: bool,
+    source: SkillSource,
+) -> CliResult<()> {
     let reindex = args.reindex;
     let no_reindex = args.no_reindex || args.offline;
 
-    let source = resolve_source(&args);
     if !global {
         ensure_manifest()?;
-    }
-
-    let may_probe_bundle =
-        !args.offline || matches!(source, SkillSource::ZipFile(_) | SkillSource::Folder(_));
-    if !global
-        && !args.recursive
-        && may_probe_bundle
-        && bundle::install_if_bundle(service, &source, &args, reindex, no_reindex || args.offline)
-            .await?
-    {
-        return Ok(());
     }
 
     if global && !args.recursive {
@@ -571,6 +578,27 @@ mod tests {
     use fastskill_core::{FastSkillService, ServiceConfig};
     use tempfile::TempDir;
 
+    #[test]
+    fn mismatched_argument_types_are_not_coerced() {
+        let map = HashMap::from([
+            ("source".to_string(), ArgValue::Bool(true)),
+            ("source-type".to_string(), ArgValue::Bool(true)),
+            ("repository".to_string(), ArgValue::Bool(true)),
+            ("branch".to_string(), ArgValue::Bool(true)),
+            ("tag".to_string(), ArgValue::Bool(true)),
+            ("group".to_string(), ArgValue::Bool(true)),
+        ]);
+
+        let args = AddArgs::from_arg_value_map(&map);
+
+        assert!(args.source.is_empty());
+        assert!(args.source_type.is_none());
+        assert!(args.repository.is_none());
+        assert!(args.branch.is_none());
+        assert!(args.tag.is_none());
+        assert!(args.group.is_none());
+    }
+
     async fn run_add_expect_err(source: &str, source_type: Option<&str>, force: bool) {
         let temp_dir = TempDir::new().unwrap();
         let config = ServiceConfig {
@@ -665,8 +693,9 @@ mod tests {
         );
         if let Err(CliError::Config(msg)) = result {
             assert!(
-                msg.contains("skill-project.toml not found") && msg.contains("fastskill init"),
-                "Error must mention skill-project.toml and fastskill init: '{}'",
+                msg.contains("skill-project.toml not found")
+                    && msg.contains("fastskill project init"),
+                "Error must mention skill-project.toml and fastskill project init: '{}'",
                 msg
             );
         } else {

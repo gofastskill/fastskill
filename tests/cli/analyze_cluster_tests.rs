@@ -1,4 +1,4 @@
-//! Integration tests for `fastskill analyze cluster` and `fastskill analyze duplicates`
+//! Integration tests for `fastskill analysis cluster` and `fastskill analysis duplicates`.
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
@@ -266,7 +266,7 @@ fn parse_json(stdout: &str) -> serde_json::Value {
 
 #[test]
 fn test_cluster_help() {
-    let result = run_fastskill_command_with_env(&["analyze", "cluster", "--help"], &[], None);
+    let result = run_fastskill_command_with_env(&["analysis", "cluster", "--help"], &[], None);
     assert!(result.success, "cluster --help should succeed");
     assert!(
         result.stdout.contains("cluster") || result.stderr.contains("cluster"),
@@ -297,7 +297,7 @@ fn test_cluster_help() {
 async fn test_cluster_no_index() {
     let (temp, _skills_dir) = setup_workspace();
     // No skills added → index is empty
-    let result = run_in(&["analyze", "cluster"], temp.path());
+    let result = run_in(&["analysis", "cluster"], temp.path());
     assert!(result.success, "cluster with empty index should exit 0");
     assert!(
         result.stdout.contains("No skills indexed") || result.stdout.contains("reindex"),
@@ -313,7 +313,7 @@ async fn test_cluster_no_index() {
 #[tokio::test]
 async fn test_cluster_k2_six_skills() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "2"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "2"], temp.path());
 
     assert!(
         result.success,
@@ -366,7 +366,7 @@ async fn test_cluster_k2_six_skills() {
 #[tokio::test]
 async fn test_cluster_json_output() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "2", "--json"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "2", "--json"], temp.path());
 
     assert!(
         result.success,
@@ -447,7 +447,7 @@ async fn test_cluster_json_output() {
 async fn test_cluster_k_greater_than_n() {
     let temp = create_cluster_fixture().await;
     // fixture has 6 skills; request k=10
-    let result = run_in(&["analyze", "cluster", "-k", "10"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "10"], temp.path());
 
     assert!(
         result.success,
@@ -487,7 +487,7 @@ async fn test_cluster_min_size_filters_small_clusters() {
     // With k=2 and --min-size 4, the small cluster (2 skills) should be hidden
 
     let result = run_in(
-        &["analyze", "cluster", "-k", "2", "--min-size", "4"],
+        &["analysis", "cluster", "-k", "2", "--min-size", "4"],
         temp.path(),
     );
 
@@ -526,7 +526,15 @@ async fn test_cluster_min_size_json() {
     let temp = create_cluster_fixture().await;
 
     let result = run_in(
-        &["analyze", "cluster", "-k", "2", "--min-size", "4", "--json"],
+        &[
+            "analysis",
+            "cluster",
+            "-k",
+            "2",
+            "--min-size",
+            "4",
+            "--json",
+        ],
         temp.path(),
     );
 
@@ -561,7 +569,7 @@ async fn test_cluster_min_size_json() {
 #[tokio::test]
 async fn test_cluster_k1() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "1"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "1"], temp.path());
 
     assert!(
         result.success,
@@ -595,7 +603,7 @@ async fn test_cluster_k1() {
 
 #[test]
 fn test_duplicates_help() {
-    let result = run_fastskill_command_with_env(&["analyze", "duplicates", "--help"], &[], None);
+    let result = run_fastskill_command_with_env(&["analysis", "duplicates", "--help"], &[], None);
     assert!(result.success, "duplicates --help should succeed");
     let out = &result.stdout;
     assert!(
@@ -623,7 +631,7 @@ fn test_duplicates_help() {
 #[tokio::test]
 async fn test_duplicates_no_index() {
     let (temp, _) = setup_workspace();
-    let result = run_in(&["analyze", "duplicates"], temp.path());
+    let result = run_in(&["analysis", "duplicates"], temp.path());
     assert!(result.success, "duplicates with empty index should exit 0");
     assert!(
         result.stdout.contains("No skills indexed") || result.stdout.contains("reindex"),
@@ -639,7 +647,7 @@ async fn test_duplicates_no_index() {
 #[tokio::test]
 async fn test_duplicates_all_pairs() {
     let temp = create_duplicates_fixture().await;
-    let result = run_in(&["analyze", "duplicates"], temp.path());
+    let result = run_in(&["analysis", "duplicates"], temp.path());
 
     assert!(
         result.success,
@@ -690,7 +698,7 @@ async fn test_duplicates_all_pairs() {
 
     // Should show the remove hint
     assert!(
-        out.contains("fastskill remove"),
+        out.contains("fastskill skill remove"),
         "Should mention remove command: {}",
         out
     );
@@ -703,7 +711,7 @@ async fn test_duplicates_all_pairs() {
 #[tokio::test]
 async fn test_duplicates_json_output() {
     let temp = create_duplicates_fixture().await;
-    let result = run_in(&["analyze", "duplicates", "--json"], temp.path());
+    let result = run_in(&["analysis", "duplicates", "--json"], temp.path());
 
     assert!(
         result.success,
@@ -788,7 +796,7 @@ async fn test_duplicates_severity_critical_no_results() {
     let temp = create_duplicates_no_critical_fixture().await;
 
     let result = run_in(
-        &["analyze", "duplicates", "--severity", "critical"],
+        &["analysis", "duplicates", "--severity", "critical"],
         temp.path(),
     );
 
@@ -819,7 +827,7 @@ async fn test_duplicates_threshold_080_severity_high() {
     // → high and critical pairs (≥0.93) SHOULD appear
     let result = run_in(
         &[
-            "analyze",
+            "analysis",
             "duplicates",
             "--threshold",
             "0.80",
@@ -862,7 +870,7 @@ async fn test_duplicates_json_effective_floor() {
 
     let result = run_in(
         &[
-            "analyze",
+            "analysis",
             "duplicates",
             "--threshold",
             "0.80",
@@ -921,7 +929,7 @@ async fn test_duplicates_json_effective_floor() {
 #[tokio::test]
 async fn test_duplicates_sorted_by_similarity() {
     let temp = create_duplicates_fixture().await;
-    let result = run_in(&["analyze", "duplicates", "--json"], temp.path());
+    let result = run_in(&["analysis", "duplicates", "--json"], temp.path());
 
     assert!(result.success, "Should succeed; stderr={}", result.stderr);
 
@@ -958,7 +966,7 @@ async fn test_duplicates_sorted_by_similarity() {
 #[tokio::test]
 async fn snapshot_cluster_k2_text() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "2"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "2"], temp.path());
     assert!(
         result.success,
         "cluster -k 2 should succeed: {}",
@@ -970,7 +978,7 @@ async fn snapshot_cluster_k2_text() {
 #[tokio::test]
 async fn snapshot_cluster_k2_json() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "2", "--json"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "2", "--json"], temp.path());
     assert!(
         result.success,
         "cluster -k 2 --json should succeed: {}",
@@ -982,7 +990,7 @@ async fn snapshot_cluster_k2_json() {
 #[tokio::test]
 async fn snapshot_cluster_k10_reduces_to_n() {
     let temp = create_cluster_fixture().await;
-    let result = run_in(&["analyze", "cluster", "-k", "10"], temp.path());
+    let result = run_in(&["analysis", "cluster", "-k", "10"], temp.path());
     assert!(
         result.success,
         "cluster -k 10 should succeed after reducing k: {}",
@@ -996,7 +1004,7 @@ async fn snapshot_cluster_k10_reduces_to_n() {
 async fn snapshot_cluster_k2_min_size_4() {
     let temp = create_cluster_fixture().await;
     let result = run_in(
-        &["analyze", "cluster", "-k", "2", "--min-size", "4"],
+        &["analysis", "cluster", "-k", "2", "--min-size", "4"],
         temp.path(),
     );
     assert!(
@@ -1010,7 +1018,7 @@ async fn snapshot_cluster_k2_min_size_4() {
 #[tokio::test]
 async fn snapshot_duplicates_default_text() {
     let temp = create_duplicates_fixture().await;
-    let result = run_in(&["analyze", "duplicates"], temp.path());
+    let result = run_in(&["analysis", "duplicates"], temp.path());
     assert!(
         result.success,
         "duplicates default should succeed: {}",
@@ -1022,7 +1030,7 @@ async fn snapshot_duplicates_default_text() {
 #[tokio::test]
 async fn snapshot_duplicates_default_json() {
     let temp = create_duplicates_fixture().await;
-    let result = run_in(&["analyze", "duplicates", "--json"], temp.path());
+    let result = run_in(&["analysis", "duplicates", "--json"], temp.path());
     assert!(
         result.success,
         "duplicates --json should succeed: {}",
@@ -1035,7 +1043,7 @@ async fn snapshot_duplicates_default_json() {
 async fn snapshot_duplicates_severity_critical_no_results() {
     let temp = create_duplicates_no_critical_fixture().await;
     let result = run_in(
-        &["analyze", "duplicates", "--severity", "critical"],
+        &["analysis", "duplicates", "--severity", "critical"],
         temp.path(),
     );
     assert!(
@@ -1051,7 +1059,7 @@ async fn snapshot_duplicates_threshold_080_severity_high() {
     let temp = create_duplicates_fixture().await;
     let result = run_in(
         &[
-            "analyze",
+            "analysis",
             "duplicates",
             "--threshold",
             "0.80",

@@ -119,7 +119,14 @@ fn global_update_prunes_dependencies_no_longer_reachable_from_any_root() {
     let result = run(
         root,
         root,
-        &["--global", "update", "root-skill", "--no-reindex", "--json"],
+        &[
+            "--global",
+            "skill",
+            "update",
+            "root-skill",
+            "--no-reindex",
+            "--json",
+        ],
     );
     assert!(
         result.status.success(),
@@ -159,14 +166,15 @@ fn lifecycle_json_domain_errors_emit_one_parseable_failure_object() {
     );
 
     let cases: &[(&Path, &[&str])] = &[
-        (&project, &["add", "missing/local-skill", "--json"]),
-        (&update_project, &["update", "--json"]),
+        (&project, &["skill", "add", "missing/local-skill", "--json"]),
+        (&update_project, &["skill", "update", "--json"]),
         (
             &project,
             &[
                 "--global",
                 "--skills-dir",
                 "custom",
+                "skill",
                 "remove",
                 "missing-skill",
                 "--json",
@@ -194,7 +202,7 @@ fn lifecycle_json_domain_errors_emit_one_parseable_failure_object() {
 
     let no_project = root.join("no-project");
     std::fs::create_dir_all(&no_project).unwrap();
-    let install = run(root, &no_project, &["install", "--json"]);
+    let install = run(root, &no_project, &["project", "install", "--json"]);
     assert!(!install.status.success());
     let value: serde_json::Value = serde_json::from_slice(&install.stdout).unwrap();
     assert!(matches!(
@@ -209,9 +217,9 @@ fn non_lifecycle_json_errors_emit_one_parseable_failure_object() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
     let cases: &[&[&str]] = &[
-        &["list", "--json"],
-        &["list", "--format", "json"],
-        &["search", "query", "--json"],
+        &["skill", "list", "--json"],
+        &["skill", "list", "--format", "json"],
+        &["skill", "search", "query", "--json"],
     ];
 
     for args in cases {
@@ -279,7 +287,11 @@ fn add_preview_rejects_an_unmanaged_destination_with_one_json_error() {
     let before = std::fs::read(unmanaged.join("SKILL.md")).unwrap();
     let source_arg = source.to_string_lossy().to_string();
 
-    let result = run(root, root, &["add", &source_arg, "--dry-run", "--json"]);
+    let result = run(
+        root,
+        root,
+        &["skill", "add", &source_arg, "--dry-run", "--json"],
+    );
 
     assert!(!result.status.success());
     let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
@@ -326,7 +338,9 @@ fn read_locked_from_nested_directory_returns_one_combined_json_value() {
     let result = run(
         root,
         &nested,
-        &["read", "demo", "--locked", "--meta", "--tree", "--json"],
+        &[
+            "skill", "read", "demo", "--locked", "--meta", "--tree", "--json",
+        ],
     );
     assert!(
         result.status.success(),
@@ -337,9 +351,9 @@ fn read_locked_from_nested_directory_returns_one_combined_json_value() {
     assert_eq!(value["metadata"]["version"], "1.0.0");
     assert_eq!(value["actual_tree"]["id"], "demo");
 
-    let versioned = run(root, root, &["read", "demo@1.0.0"]);
+    let versioned = run(root, root, &["skill", "read", "demo@1.0.0"]);
     assert!(!versioned.status.success());
-    assert!(String::from_utf8_lossy(&versioned.stderr).contains("repos versions"));
+    assert!(String::from_utf8_lossy(&versioned.stderr).contains("repo versions"));
 }
 
 #[test]
@@ -377,6 +391,7 @@ fn read_locked_uses_global_scope_without_ambient_project_lock() {
         root,
         &[
             "--global",
+            "skill",
             "read",
             "global-demo",
             "--locked",
@@ -399,7 +414,7 @@ fn list_check_detects_missing_declared_state_and_keeps_json_parseable() {
     let root = temp.path();
     write_project(root, "missing = \"2.0.0\"");
 
-    let result = run(root, root, &["list", "--check", "--json"]);
+    let result = run(root, root, &["skill", "list", "--check", "--json"]);
     assert!(!result.status.success());
     let rows: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(rows[0]["id"], "missing");
@@ -438,7 +453,7 @@ fn list_check_reports_manifest_constraint_different_from_lock() {
     });
     lock.save_to_file(&root.join("skills.lock")).unwrap();
 
-    let result = run(root, root, &["list", "--check", "--json"]);
+    let result = run(root, root, &["skill", "list", "--check", "--json"]);
     assert!(!result.status.success());
     let rows: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(rows[0]["desired_constraint"], "=2.0.0");
@@ -452,12 +467,12 @@ fn search_requires_query_and_empty_json_is_an_array() {
     let root = temp.path();
     write_project(root, "");
 
-    let missing = run(root, root, &["search"]);
+    let missing = run(root, root, &["skill", "search"]);
     assert!(!missing.status.success());
     let empty = run(
         root,
         root,
-        &["search", "no-such-skill", "--local", "--json"],
+        &["skill", "search", "no-such-skill", "--local", "--json"],
     );
     assert!(
         empty.status.success(),
@@ -485,7 +500,14 @@ fn global_add_rejects_skills_directory_override_before_mutation() {
     let result = run(
         root,
         root,
-        &["--global", "--skills-dir", &target_arg, "add", &source_arg],
+        &[
+            "--global",
+            "--skills-dir",
+            &target_arg,
+            "skill",
+            "add",
+            &source_arg,
+        ],
     );
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("cannot be used together"));
@@ -501,7 +523,7 @@ fn global_update_rejects_skills_directory_override_before_mutation() {
     let result = run(
         root,
         root,
-        &["--global", "--skills-dir", &target_arg, "update"],
+        &["--global", "--skills-dir", &target_arg, "skill", "update"],
     );
 
     assert!(!result.status.success());
@@ -527,7 +549,14 @@ fn global_add_and_update_share_preview_json_and_apply_real_content() {
     let preview = run(
         root,
         root,
-        &["--global", "add", &source_arg, "--dry-run", "--json"],
+        &[
+            "--global",
+            "skill",
+            "add",
+            &source_arg,
+            "--dry-run",
+            "--json",
+        ],
     );
     assert!(
         preview.status.success(),
@@ -541,7 +570,11 @@ fn global_add_and_update_share_preview_json_and_apply_real_content() {
     assert!(!lock_path.exists());
     assert!(!installed.exists());
 
-    let added = run(root, root, &["--global", "add", &source_arg, "--json"]);
+    let added = run(
+        root,
+        root,
+        &["--global", "skill", "add", &source_arg, "--json"],
+    );
     assert!(
         added.status.success(),
         "{}",
@@ -557,7 +590,11 @@ fn global_add_and_update_share_preview_json_and_apply_real_content() {
         "---\nname: global-demo\nversion: \"2.0.0\"\ndescription: fixture\n---\n# Two\n",
     )
     .unwrap();
-    let updated = run(root, root, &["--global", "update", "global-demo", "--json"]);
+    let updated = run(
+        root,
+        root,
+        &["--global", "skill", "update", "global-demo", "--json"],
+    );
     assert!(
         updated.status.success(),
         "{}",
@@ -610,7 +647,11 @@ fn global_list_explains_direct_and_transitive_owners_with_root_group_selection()
     lock.save_to_file(&config.join("global-skills.lock"))
         .unwrap();
 
-    let result = run(root, root, &["--global", "list", "--only", "dev", "--json"]);
+    let result = run(
+        root,
+        root,
+        &["--global", "skill", "list", "--only", "dev", "--json"],
+    );
     assert!(
         result.status.success(),
         "{}",
@@ -666,7 +707,14 @@ fn recursive_add_dry_run_and_json_use_one_multi_root_plan() {
     let preview = run(
         root,
         root,
-        &["add", &source, "--recursive", "--dry-run", "--json"],
+        &[
+            "skill",
+            "add",
+            &source,
+            "--recursive",
+            "--dry-run",
+            "--json",
+        ],
     );
     assert!(
         preview.status.success(),
@@ -678,7 +726,11 @@ fn recursive_add_dry_run_and_json_use_one_multi_root_plan() {
     assert!(!root.join("skills.lock").exists());
     assert!(!root.join(".claude/skills/one").exists());
 
-    let applied = run(root, root, &["add", &source, "--recursive", "--json"]);
+    let applied = run(
+        root,
+        root,
+        &["skill", "add", &source, "--recursive", "--json"],
+    );
     assert!(
         applied.status.success(),
         "{}",
@@ -698,7 +750,11 @@ fn add_rejects_invalid_or_conflicting_source_selectors_before_mutation() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
 
-    let unknown = run(root, root, &["add", "demo", "--source-type", "unknown"]);
+    let unknown = run(
+        root,
+        root,
+        &["skill", "add", "demo", "--source-type", "unknown"],
+    );
     assert!(!unknown.status.success());
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("invalid value"));
 
@@ -706,6 +762,7 @@ fn add_rejects_invalid_or_conflicting_source_selectors_before_mutation() {
         root,
         root,
         &[
+            "skill",
             "add",
             "https://example.invalid/demo.git",
             "--branch",
@@ -717,7 +774,7 @@ fn add_rejects_invalid_or_conflicting_source_selectors_before_mutation() {
     assert!(!conflicting.status.success());
     assert!(String::from_utf8_lossy(&conflicting.stderr).contains("cannot be used together"));
 
-    let inapplicable = run(root, root, &["add", "demo", "--branch", "main"]);
+    let inapplicable = run(root, root, &["skill", "add", "demo", "--branch", "main"]);
     assert!(!inapplicable.status.success());
     assert!(String::from_utf8_lossy(&inapplicable.stderr).contains("only valid for Git"));
     assert!(!root.join("skill-project.toml").exists());
@@ -742,7 +799,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "add",
             "local-fixture",
             &catalog_arg,
@@ -759,7 +816,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
     let listed = run(
         root,
         root,
-        &["repos", "skills", "--repository", "local-fixture", "--json"],
+        &["repo", "skills", "--repository", "local-fixture", "--json"],
     );
     assert!(
         listed.status.success(),
@@ -772,7 +829,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "show",
             "catalog-demo",
             "--repository",
@@ -785,7 +842,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "versions",
             "catalog-demo",
             "--repository",
@@ -797,7 +854,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
     let absent = run(
         root,
         root,
-        &["repos", "show", "absent", "--repository", "local-fixture"],
+        &["repo", "show", "absent", "--repository", "local-fixture"],
     );
     assert!(!absent.status.success());
 
@@ -805,7 +862,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "skills",
             "--repository",
             "local-fixture",
@@ -815,7 +872,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
     assert!(!invalid.status.success());
     assert!(String::from_utf8_lossy(&invalid.stderr).contains("HTTP registry index"));
 
-    let tested = run(root, root, &["repos", "test", "local-fixture"]);
+    let tested = run(root, root, &["repo", "test", "local-fixture"]);
     assert!(tested.status.success());
     let text = String::from_utf8_lossy(&tested.stdout);
     assert!(text.contains("Connectivity:"));
@@ -827,7 +884,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "add",
             "broken-fixture",
             &missing_catalog,
@@ -836,7 +893,7 @@ fn local_repository_catalog_lists_and_rejects_http_only_options() {
         ],
     );
     assert!(broken.status.success());
-    let partial = run(root, root, &["search", "catalog-demo", "--json"]);
+    let partial = run(root, root, &["skill", "search", "catalog-demo", "--json"]);
     assert!(!partial.status.success());
     let value: serde_json::Value = serde_json::from_slice(&partial.stdout).unwrap();
     assert_eq!(value["outcome"], "partial");
@@ -859,13 +916,13 @@ fn list_check_reconciles_relative_intent_and_permits_extraneous_content() {
         "---\nname: demo\nversion: \"1.0.0\"\ndescription: fixture\n---\n# Demo\n",
     )
     .unwrap();
-    let installed = run(root, root, &["install"]);
+    let installed = run(root, root, &["project", "install"]);
     assert!(
         installed.status.success(),
         "{}",
         String::from_utf8_lossy(&installed.stderr)
     );
-    let reconciled = run(root, root, &["list", "--check", "--json"]);
+    let reconciled = run(root, root, &["skill", "list", "--check", "--json"]);
     assert!(
         reconciled.status.success(),
         "{}{}",
@@ -876,7 +933,7 @@ fn list_check_reconciles_relative_intent_and_permits_extraneous_content() {
     assert_eq!(rows[0]["reconciliation"], "ok");
 
     write_skill(root, "personal", "1.0.0");
-    let with_personal = run(root, root, &["list", "--check", "--json"]);
+    let with_personal = run(root, root, &["skill", "list", "--check", "--json"]);
     assert!(with_personal.status.success());
     let rows: serde_json::Value = serde_json::from_slice(&with_personal.stdout).unwrap();
     assert!(rows.as_array().unwrap().iter().any(|row| {
@@ -890,7 +947,7 @@ fn list_check_reconciles_relative_intent_and_permits_extraneous_content() {
         "---\nname: demo\nversion: \"9.0.0\"\ndescription: edited\n---\n# Edited\n",
     )
     .unwrap();
-    let drifted = run(root, root, &["list", "--check", "--json"]);
+    let drifted = run(root, root, &["skill", "list", "--check", "--json"]);
     assert!(!drifted.status.success());
     let rows: serde_json::Value = serde_json::from_slice(&drifted.stdout).unwrap();
     let demo = rows
@@ -915,7 +972,7 @@ fn repos_add_persists_git_tag_and_rejects_ambiguous_refs() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "add",
             "stable",
             "--repo-type",
@@ -938,7 +995,7 @@ fn repos_add_persists_git_tag_and_rejects_ambiguous_refs() {
         root,
         root,
         &[
-            "repos",
+            "repo",
             "add",
             "ambiguous",
             "--repo-type",

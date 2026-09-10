@@ -1,6 +1,6 @@
 ---
 title: "Loading Strategies"
-description: "Practical guidance for context resolution: configuring embeddings, when to reindex, and local search."
+description: "Configure embeddings, decide when to rebuild the index, and search installed skills."
 ---
 
 ## Overview
@@ -25,22 +25,22 @@ Semantic ranking is what makes resolution useful. To turn it on:
 
 2. Set `OPENAI_API_KEY` in the environment (via a secret, never in config).
 
-If no provider is configured, `resolve` and `search` still work but fall back to keyword matching.
-Verify the setup with `fastskill doctor`.
+If no provider is configured, `resolve` and `skill search` still work but fall back to keyword matching.
+Verify the setup with `fastskill cli doctor`.
 
-## When to reindex
+## When to rebuild the index
 
-FastSkill **auto-reindexes** after `add`, `install`, `update`, and `remove` (unless
+FastSkill **auto-reindexes** after `skill add`, `project install`, `skill update`, and `skill remove` (unless
 `auto_reindex = false` in `[tool.fastskill]` or you pass `--no-reindex`), so day to day you rarely
 reindex by hand. Reindex explicitly when:
 
-- you edited a skill's `SKILL.md` in place (for example an editable `add -e` skill) without going
+- you edited a skill's `SKILL.md` in place (for example an editable `skill add -e` skill) without going
   through install/update,
 - you set `auto_reindex = false` and manage indexing yourself,
 - you first configure embeddings for a skills directory that already has content.
 
 ```bash
-fastskill reindex
+fastskill index rebuild
 ```
 
 Reindex needs an embedding provider; without `OPENAI_API_KEY` it skips silently. A change-detection
@@ -48,25 +48,25 @@ cache (`.fastskill/build-cache.json`) lets reindex re-embed only what changed.
 
 ## Search locally without the server
 
-For a quick, offline relevance check over skills already on disk, use `search --local` instead of the
+For a quick, offline relevance check over skills already on disk, use `skill search --local` instead of the
 HTTP resolve endpoint:
 
 ```bash
 # Rank installed skills for a query
-fastskill search "convert pdf to markdown" --local
+fastskill skill search "convert pdf to markdown" --local
 
 # Emit canonical skill paths (agent-friendly)
-fastskill search "convert pdf to markdown" --local --paths
+fastskill skill search "convert pdf to markdown" --local --paths
 
 # Include SKILL.md content in JSON output
-fastskill search "convert pdf to markdown" --local --paths --content full
+fastskill skill search "convert pdf to markdown" --local --paths --content full
 ```
 
-`resolve` (server) is for agents pulling context at runtime; `search --local` (CLI) is for
+`resolve` (server) is for agents pulling context at runtime; `skill search --local` (CLI) is for
 interactive and scripted lookups over the local index. Both use the same embedding index when one is
 configured.
 
 <Callout>
-Keep the embedding index fresh (auto-reindex or an explicit `fastskill reindex`) — that single habit
+Keep the embedding index fresh (auto-reindex or an explicit `fastskill index rebuild`) — that single habit
 covers essentially all resolution performance and quality concerns.
 </Callout>

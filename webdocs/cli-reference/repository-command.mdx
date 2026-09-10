@@ -1,20 +1,21 @@
 ---
-title: "repos Command"
-description: "Manage skill repositories and browse the remote catalog with fastskill repos."
+title: "repo commands"
+description: "Manage skill repositories and browse the remote catalog with fastskill repo."
 ---
 
-# repos Command
+# `repo` commands
 
-Manage skill repositories and browse remote skill catalog.
+Manage skill repositories and browse remote skill catalogs.
 
 <Callout type="info">
-The `repos` command is the primary interface for repository management and catalog browsing in FastSkill. Use `fastskill search` for semantic search of installed skills.
+The `repo` namespace manages repository configuration and catalog browsing. Use
+`fastskill skill search` for semantic search of installed skills.
 </Callout>
 
 ## Usage
 
 ```bash
-fastskill repos <SUBCOMMAND>
+fastskill repo <SUBCOMMAND>
 ```
 
 ## Subcommands
@@ -25,10 +26,10 @@ List all configured repositories.
 
 ```bash
 # List repositories in table format
-fastskill repos list
+fastskill repo list
 
 # List in JSON format
-fastskill repos list --json
+fastskill repo list --json
 ```
 
 **Output Format**:
@@ -50,22 +51,22 @@ Add a new repository to your skill sources.
 
 ```bash
 # Add HTTP registry
-fastskill repos add public --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill repo add public --repo-type http-registry https://api.fastskill.io --priority 0
 
 # Add Git marketplace
-fastskill repos add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill repo add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
 
 # Pin catalog discovery to a Git tag
-fastskill repos add stable-skills --repo-type git-marketplace https://github.com/team/skills.git --tag v1.2.0
+fastskill repo add stable-skills --repo-type git-marketplace https://github.com/team/skills.git --tag v1.2.0
 
 # Add ZIP URL source
-fastskill repos add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
+fastskill repo add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
 
 # Add local directory
-fastskill repos add local-dev --repo-type local ./skills --priority 3
+fastskill repo add local-dev --repo-type local ./skills --priority 3
 
 # Add a private HTTP registry with a PAT read from the environment
-fastskill repos add registry --repo-type http-registry https://api.example.com \
+fastskill repo add registry --repo-type http-registry https://api.example.com \
   --auth-type pat --auth-env REGISTRY_TOKEN
 ```
 
@@ -114,10 +115,10 @@ Remove a repository from your sources.
 
 ```bash
 # Remove a repository
-fastskill repos remove team-skills
+fastskill repo remove team-skills
 
 # Remove multiple repositories
-fastskill repos remove team-skills local-dev
+fastskill repo remove team-skills local-dev
 ```
 
 **Behavior**:
@@ -131,10 +132,10 @@ Display detailed information about a specific repository.
 
 ```bash
 # Show repository details
-fastskill repos info public-registry
+fastskill repo info public-registry
 
 # Show in JSON format
-fastskill repos info team-skills --json
+fastskill repo info team-skills --json
 ```
 
 **Example Output**:
@@ -155,13 +156,13 @@ For Git marketplaces, `--branch` replaces any configured tag; other repository t
 
 ```bash
 # Update branch
-fastskill repos update team-skills --branch develop
+fastskill repo update team-skills --branch develop
 
 # Update priority
-fastskill repos update public-registry --priority 0
+fastskill repo update public-registry --priority 0
 
 # Update both
-fastskill repos update team-skills --branch main --priority 2
+fastskill repo update team-skills --branch main --priority 2
 ```
 
 **Options**:
@@ -177,10 +178,10 @@ Test repository connectivity and accessibility.
 
 ```bash
 # Test a repository
-fastskill repos test public-registry
+fastskill repo test public-registry
 
 # Test git marketplace
-fastskill repos test team-skills
+fastskill repo test team-skills
 ```
 
 **What it tests**:
@@ -201,10 +202,10 @@ git marketplace, or the resolved commit for a git repository's branch or tag.
 
 ```bash
 # Refresh a specific repository
-fastskill repos refresh team-skills
+fastskill repo refresh team-skills
 
 # Refresh all configured repositories
-fastskill repos refresh
+fastskill repo refresh
 ```
 
 **When to use**:
@@ -227,7 +228,7 @@ fastskill repos refresh
 
 <Callout type="warn">
 `refresh` is a real network operation: it can fail if a repository is unreachable. Scripts
-calling `fastskill repos refresh` should check its exit code.
+calling `fastskill repo refresh` should check its exit code.
 </Callout>
 
 <Callout type="info">
@@ -247,25 +248,25 @@ adapters that do not provide it.
 
 ```bash
 # List all skills from default repository (table format, default)
-fastskill repos skills
+fastskill repo skills
 
 # Filter by scope
-fastskill repos skills --scope acme
+fastskill repo skills --scope acme
 
 # List all versions
-fastskill repos skills --all-versions
+fastskill repo skills --all-versions
 
 # Include pre-release versions
-fastskill repos skills --include-pre-release
+fastskill repo skills --include-pre-release
 
 # JSON output
-fastskill repos skills --json
+fastskill repo skills --json
 
 # Grid format
-fastskill repos skills --format grid
+fastskill repo skills --format grid
 
 # Combined options
-fastskill repos skills --scope acme --all-versions --json
+fastskill repo skills --scope acme --all-versions --json
 ```
 
 **Options**:
@@ -288,10 +289,10 @@ Display detailed information about a specific skill from the catalog.
 
 ```bash
 # Show skill details by ID
-fastskill repos show <skill-id>
+fastskill repo show <skill-id>
 
 # Show skill from specific repository
-fastskill repos show <skill-id> --repository my-repo
+fastskill repo show <skill-id> --repository my-repo
 ```
 
 **Parameters**:
@@ -320,7 +321,7 @@ Repository: my-registry
 Published: 2025-01-15T10:30:00Z
 Updated: 2025-01-20T14:00:00Z
 
-Installation: fastskill add acme/web-scraper@latest --repository my-registry
+Installation: fastskill skill add acme/web-scraper@latest --repository my-registry
 Homepage: https://github.com/acme/web-scraper
 Documentation: https://docs.acme.com/web-scraper
 
@@ -336,10 +337,10 @@ List all available versions for a specific skill.
 
 ```bash
 # List versions for a skill
-fastskill repos versions <skill-id>
+fastskill repo versions <skill-id>
 
 # List versions from specific repository
-fastskill repos versions <skill-id> --repository my-repo
+fastskill repo versions <skill-id> --repository my-repo
 ```
 
 **Parameters**:
@@ -400,7 +401,7 @@ priority = 1
   - Token stored in environment variable
   - Example:
     ```bash
-    fastskill repos add private-repo --repo-type git-marketplace https://github.com/team/repo.git \
+    fastskill repo add private-repo --repo-type git-marketplace https://github.com/team/repo.git \
       --auth-type pat --auth-env GITHUB_TOKEN
     ```
   ```bash
@@ -412,7 +413,7 @@ priority = 1
   - Key path points to private key file
   - Example:
     ```bash
-    fastskill repos add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
+    fastskill repo add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
       --auth-type ssh-key --auth-key-path ~/.ssh/id_rsa
     ```
 
@@ -421,7 +422,7 @@ priority = 1
   - Similar to SSH Key but may use system SSH agent
   - Example:
     ```bash
-    fastskill repos add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
+    fastskill repo add private-repo --repo-type git-marketplace git@github.com:team/repo.git \
       --auth-type ssh --auth-key-path ~/.ssh/id_rsa
     ```
 
@@ -430,7 +431,7 @@ priority = 1
   - Password stored in environment variable
   - Example:
     ```bash
-    fastskill repos add registry --repo-type http-registry https://api.example.com \
+    fastskill repo add registry --repo-type http-registry https://api.example.com \
       --auth-type basic --auth-username admin --auth-env REGISTRY_PASSWORD
     ```
 
@@ -439,7 +440,7 @@ priority = 1
   - API key stored in environment variable
   - Example:
     ```bash
-    fastskill repos add registry --repo-type http-registry https://api.example.com \
+    fastskill repo add registry --repo-type http-registry https://api.example.com \
       --auth-type api_key --auth-env API_KEY
     ```
 
@@ -449,9 +450,9 @@ FastSkill supports multiple sources with priority-based resolution:
 
 ```bash
 # Add multiple sources
-fastskill repos add public-registry --repo-type http-registry https://api.fastskill.io --priority 0
-fastskill repos add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
-fastskill repos add local-dev --repo-type local ./skills --priority 2
+fastskill repo add public-registry --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill repo add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill repo add local-dev --repo-type local ./skills --priority 2
 ```
 
 **Resolution process**:
@@ -470,14 +471,14 @@ fastskill repos add local-dev --repo-type local ./skills --priority 2
 
 ```bash
 # Add public registry
-fastskill repos add public --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill repo add public --repo-type http-registry https://api.fastskill.io --priority 0
 
 # Add team repository
-fastskill repos add team --repo-type git-marketplace https://github.com/team/skills.git \
+fastskill repo add team --repo-type git-marketplace https://github.com/team/skills.git \
   --auth-type pat --auth-env GITHUB_TOKEN --priority 1
 
 # Add local development directory
-fastskill repos add local-dev --repo-type local ./skills --priority 2
+fastskill repo add local-dev --repo-type local ./skills --priority 2
 ```
 
 ### Creating a Git marketplace
@@ -513,7 +514,7 @@ git push -u origin main
   <Callout type="warn">
   **Check name**: Ensure the repository name matches what you added.
   ```bash
-  fastskill repos list
+  fastskill repo list
   ```
   </Callout>
 </Accordion>
@@ -538,7 +539,7 @@ git push -u origin main
   <Callout>
   **Verify priority values**: Lower numbers have higher priority.
   ```bash
-  fastskill repos list
+  fastskill repo list
   ```
   Priority 0 is highest, priority 10 is lower.
   </Callout>

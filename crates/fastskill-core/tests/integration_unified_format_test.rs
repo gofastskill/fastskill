@@ -242,7 +242,7 @@ fn test_all_cli_commands_with_unified_format() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();
 
-    // Test 1: fastskill init creates skill-project.toml
+    // Test 1: fastskill project init creates skill-project.toml
     // This is already tested in init_tests.rs, so we just verify the file structure
     let project_file = project_root.join("skill-project.toml");
     fs::write(

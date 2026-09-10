@@ -1,4 +1,4 @@
-//! `fastskill optimize run` subcommand
+//! `fastskill optimization run` subcommand
 
 use super::config::{
     build_run_config, completion_output, count_history_steps, load_suite_with_splits,
@@ -21,7 +21,7 @@ const ARCHIVED_SKILL: &str = "skill.md";
 const ARCHIVED_SUITE: &str = "suite.csv";
 const ARCHIVED_CHECKS: &str = "checks.toml";
 
-/// Arguments for `fastskill optimize run`
+/// Arguments for `fastskill optimization run`
 #[derive(Debug)]
 pub struct RunArgs {
     /// Path to optimize config file
@@ -44,8 +44,9 @@ impl IntoCommandSpec for RunArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Run skill optimization from a config file",
-            syntax: Some("optimize run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
-            examples: vec!["fastskill optimize run --config ./optimize.toml"],
+            help_order: Some(10),
+            syntax: Some("optimization run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
+            examples: vec!["fastskill optimization run --config ./optimize.toml"],
             args: vec![
                 ArgSpec {
                     name: "config",
@@ -298,8 +299,47 @@ pub async fn execute_run(args: RunArgs) -> CliResult<()> {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
-mod no_isolation_flag_tests {
+mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    fn config_toml(checks: Option<&str>, optimizer_agent: Option<&str>) -> String {
+        let checks = checks
+            .map(|path| format!("checks = \"{path}\"\n"))
+            .unwrap_or_default();
+        let optimizer = optimizer_agent
+            .map(|agent| format!("optimizer_agent = \"{agent}\"\n"))
+            .unwrap_or_default();
+        format!(
+            "skill = \"SKILL.md\"\n\
+             skill_name = \"test-skill\"\n\
+             suite = \"suite.csv\"\n\
+             {checks}\
+             out_dir = \"runs\"\n\
+             target_agent = \"windsurf\"\n\
+             {optimizer}\
+             n_epochs = 1\n\
+             batch_size = 1\n\
+             accumulation = 1\n\
+             aggregate_group_size = 1\n\
+             lr_0 = 1\n\
+             pass_threshold = 0.5\n\
+             gate_metric = \"hard\"\n\
+             gate_trials = 1\n\
+             gate_epsilon = 0.0\n\
+             slow_update_mode = \"gated\"\n\
+             protected_soft_cap_chars = 500\n\
+             timeout_seconds = 1\n"
+        )
+    }
+
+    fn write_project(temp: &TempDir, suite: &str, config: &str) -> PathBuf {
+        std::fs::write(temp.path().join("SKILL.md"), "# Skill\n").unwrap();
+        std::fs::write(temp.path().join("suite.csv"), suite).unwrap();
+        let config_path = temp.path().join("optimize.toml");
+        std::fs::write(&config_path, config).unwrap();
+        config_path
+    }
 
     /// spec 016 D5: --no-isolation must be registered, default to false
     /// (isolated is the default), parse when present, and override the
@@ -325,5 +365,199 @@ mod no_isolation_flag_tests {
         m.insert("no-isolation".to_string(), ArgValue::Bool(true));
         let args = RunArgs::from_arg_value_map(&m);
         assert!(args.no_isolation);
+    }
+
+    #[test]
+    fn argument_map_preserves_optional_paths() {
+        let map = HashMap::from([
+            (
+                "config".to_string(),
+                ArgValue::Str("optimize.toml".to_string()),
+            ),
+            (
+                "out-dir".to_string(),
+                ArgValue::Str("custom-runs".to_string()),
+            ),
+            ("resume".to_string(), ArgValue::Str("run-one".to_string())),
+        ]);
+        let args = RunArgs::from_arg_value_map(&map);
+        assert_eq!(args.out_dir, Some(PathBuf::from("custom-runs")));
+        assert_eq!(args.resume, Some(PathBuf::from("run-one")));
+    }
+
+    #[tokio::test]
+    async fn reports_missing_and_malformed_config() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing.toml");
+        let err = execute_run(RunArgs {
+            config: missing,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_CONFIG_MISSING"));
+
+        let config = temp.path().join("bad.toml");
+        std::fs::write(&config, "not = [valid").unwrap();
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_INVALID_TOML"));
+    }
+
+    #[tokio::test]
+    async fn resume_option_delegates_before_reading_config() {
+        let temp = TempDir::new().unwrap();
+        let missing_run = temp.path().join("missing-run");
+        let err = execute_run(RunArgs {
+            config: temp.path().join("also-missing.toml"),
+            out_dir: None,
+            resume: Some(missing_run),
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_RUN_DIR_MISSING"));
+    }
+
+    #[tokio::test]
+    async fn enforces_selection_and_train_split_preconditions() {
+        let temp = TempDir::new().unwrap();
+        let config = write_project(
+            &temp,
+            "id,prompt,should_trigger,split\ntrain,hello,true,train\n",
+            &config_toml(None, Some("windsurf")),
+        );
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: Some(PathBuf::from("overridden-runs")),
+            resume: None,
+            no_isolation: true,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_NO_SELECTION_CASES"));
+
+        let temp = TempDir::new().unwrap();
+        let config = write_project(
+            &temp,
+            "id,prompt,should_trigger,split\nselect,hello,true,selection\n",
+            &config_toml(None, Some("windsurf")),
+        );
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_NO_TRAIN_CASES"));
+    }
+
+    #[tokio::test]
+    async fn reports_malformed_checks_after_valid_split_resolution() {
+        let temp = TempDir::new().unwrap();
+        let config = write_project(
+            &temp,
+            "id,prompt,should_trigger,split\ntrain,hello,true,train\nselect,world,true,selection\n",
+            &config_toml(Some("checks.toml"), None),
+        );
+        std::fs::write(temp.path().join("checks.toml"), "[[check]\n").unwrap();
+
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_CHECKS_PARSE_ERROR"));
+    }
+
+    #[tokio::test]
+    async fn reports_unreadable_skill_and_unwritable_output_directory() {
+        let suite =
+            "id,prompt,should_trigger,split\ntrain,hello,true,train\nselect,world,true,selection\n";
+        let temp = TempDir::new().unwrap();
+        let config = write_project(&temp, suite, &config_toml(None, None));
+        std::fs::remove_file(temp.path().join("SKILL.md")).unwrap();
+        std::fs::create_dir(temp.path().join("SKILL.md")).unwrap();
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_SKILL_NOT_FOUND"));
+
+        let temp = TempDir::new().unwrap();
+        let config = write_project(&temp, suite, &config_toml(None, Some("windsurf")));
+        std::fs::write(temp.path().join("runs"), "blocks create_dir_all").unwrap();
+        let err = execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_OUT_DIR_UNWRITABLE"));
+    }
+
+    #[tokio::test]
+    async fn successful_run_archives_inputs_and_writes_resumable_provenance() {
+        let temp = TempDir::new().unwrap();
+        let suite =
+            "id,prompt,should_trigger,split\ntrain,hello,true,train\nselect,world,true,selection\n";
+        let config = write_project(
+            &temp,
+            suite,
+            &config_toml(Some("checks.toml"), Some("windsurf")),
+        );
+        std::fs::write(
+            temp.path().join("checks.toml"),
+            "[[check]]\nname = \"trigger_expectation\"\npattern = \"fastskill\"\nexpected = true\n",
+        )
+        .unwrap();
+
+        let (result, output) = crate::output::capture(execute_run(RunArgs {
+            config,
+            out_dir: None,
+            resume: None,
+            no_isolation: false,
+        }))
+        .await;
+        result.unwrap();
+        assert!(output.contains("Best skill"));
+
+        let run_dir = std::fs::read_dir(temp.path().join("runs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert_eq!(
+            std::fs::read_to_string(run_dir.join(ARCHIVED_SKILL)).unwrap(),
+            "# Skill\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(run_dir.join(ARCHIVED_SUITE)).unwrap(),
+            suite
+        );
+        assert!(run_dir.join(ARCHIVED_CHECKS).is_file());
+        let provenance = std::fs::read_to_string(run_dir.join("optimize.toml")).unwrap();
+        assert!(provenance.contains("skill = \"skill.md\""));
+        assert!(provenance.contains("suite = \"suite.csv\""));
     }
 }

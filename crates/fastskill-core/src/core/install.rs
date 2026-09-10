@@ -157,7 +157,7 @@ impl FastSkillService {
             })?;
             let versions = client.get_versions(skill).await.map_err(|error| {
                 ServiceError::Config(format!(
-                    "failed to refresh versions for '{skill}' from repository '{name}': {error}; run `fastskill repos refresh {name}` and retry"
+                    "failed to refresh versions for '{skill}' from repository '{name}': {error}; run `fastskill repo refresh {name}` and retry"
                 ))
             })?;
             upsert_source_index_entry(self.skill_cache(), &name, skill, &versions)?;
@@ -603,7 +603,7 @@ impl FastSkillService {
         // `resolved_version` is already known — so the offline "a pinned,
         // cached version installs with no network" criterion holds even
         // before the content-cache check below. `newest`/a range constraint
-        // resolves via the on-disk index `repos refresh` populates (US-005),
+        // resolves via the on-disk index `repo refresh` populates (US-005),
         // not a live listing call.
         let resolved_version = resolve_registry_version(cache, &repo_name, skill, version)?;
 
@@ -765,7 +765,7 @@ impl FastSkillService {
         groups: &[String],
     ) -> Result<Vec<String>, ServiceError> {
         // Resolve the project from the injected root (the served project, for the
-        // `serve` path) if present; otherwise walk up from the process cwd, which
+        // `server serve` path) if present; otherwise walk up from the process cwd, which
         // is correct for a CLI invocation. Never resolve solely from cwd on the
         // server, where cwd is arbitrary (would write to the wrong project).
         let start_dir = match self.project_root() {
@@ -776,7 +776,7 @@ impl FastSkillService {
         if !project_file_result.found {
             return Err(ServiceError::Config(
                 "skill-project.toml not found in this directory or any parent. Run \
-                 `fastskill init` at the project root before adding skills."
+                 `fastskill project init` at the project root before adding skills."
                     .to_string(),
             ));
         }
@@ -925,7 +925,7 @@ impl FastSkillService {
                 // persist it into the on-disk index so a same-invocation
                 // `add_from_origin(.., AddMode::Update, ..)` for a `newest`/range
                 // origin resolves through the content-cache path (US-003)
-                // instead of requiring a separate `repos refresh` the caller
+                // instead of requiring a separate `repo refresh` the caller
                 // never ran. Best-effort: a write failure must not fail the
                 // preflight, which has already succeeded.
                 if let Err(e) =

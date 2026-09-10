@@ -100,7 +100,7 @@ manifest fields a doc doesn't create itself. If a doc's own steps don't create
 something a later step needs, that's a real doc finding, not a harness bug to paper
 over.
 
-Commands run with `stdin=DEVNULL`: an interactive command (`fastskill init` with no
+Commands run with `stdin=DEVNULL`: an interactive command (`fastskill project init` with no
 `--yes`) hits EOF immediately, exactly as it would for anyone who actually piped the
 doc into a non-interactive shell. Blocks run without `set -e`, matching how a person
 pastes lines one at a time — one failed line doesn't stop the rest of the block, which
@@ -141,19 +141,19 @@ Two independent, genuine doc bugs, not seeded or hand-picked:
 
 - **`webdocs/quickstart.mdx`** — the manifest the doc tells you to create in step 2
   (`skill-project.toml` with only `[dependencies]`) has no `[tool.fastskill]` /
-  `skills_directory`. Every later command in the walkthrough (`install`, `search`)
+  `skills_directory`. Every later command in the walkthrough (`project install`, `skill search`)
   fails with `Configuration error: project-level skill-project.toml requires
   [tool.fastskill] with skills_directory`.
 - **`webdocs/skill-management/reconciliation.mdx`** — 4 of its `broken` verdicts share
   one root cause, not four independent bugs: the doc is written as a *reference* (what
   do the reconciliation states mean) rather than a self-contained walkthrough, so its
-  `fastskill list` examples assume a project that was never set up earlier **in this
+  `fastskill skill list` examples assume a project that was never set up earlier **in this
   file**. A blind, literal walk of just this doc correctly reports that as broken; a
   human reading it in context understands it's describing an existing project. Worth
   a decision (add a "assumes an existing project" note, or make it self-contained) but
   not a crash.
 - `configuration/init-command.mdx`'s one `drift`: the doc's interactive-prompt
-  transcript vs. what a headless, EOF-on-stdin run of `fastskill init` (no `--yes`)
+  transcript vs. what a headless, EOF-on-stdin run of `fastskill project init` (no `--yes`)
   actually prints — expected, not a red flag; a genuinely blind non-interactive run of
   that exact command can't reproduce a human's typed answers.
 

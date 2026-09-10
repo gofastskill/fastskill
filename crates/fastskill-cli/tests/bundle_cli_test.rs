@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
@@ -58,6 +59,18 @@ fn write_recipient(root: &Path) -> std::path::PathBuf {
     )
     .unwrap();
     storage
+}
+
+fn write_skill_zip(path: &Path) {
+    let file = fs::File::create(path).unwrap();
+    let mut writer = zip::ZipWriter::new(file);
+    writer
+        .start_file("demo/SKILL.md", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    writer
+        .write_all(b"---\nname: demo\nversion: 1.0.0\n---\n# Demo\n")
+        .unwrap();
+    writer.finish().unwrap();
 }
 
 fn run(root: &Path, args: &[&str]) -> std::process::Output {
@@ -127,6 +140,7 @@ fn bundle_add_dry_run_json_is_one_nonmutating_validated_plan() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             artifact.to_str().unwrap(),
             "--dry-run",
@@ -146,6 +160,44 @@ fn bundle_add_dry_run_json_is_one_nonmutating_validated_plan() {
 }
 
 #[test]
+fn artifact_kind_mismatches_fail_before_service_initialization() {
+    let author = TempDir::new().unwrap();
+    let bundle = build_bundle(author.path(), "payments-team", "1.0.0", "review-v1", false);
+    let recipient = TempDir::new().unwrap();
+
+    let skill_add = run(
+        recipient.path(),
+        &["skill", "add", bundle.to_str().unwrap(), "--no-reindex"],
+    );
+    assert!(!skill_add.status.success());
+    assert!(
+        String::from_utf8_lossy(&skill_add.stderr).contains("fastskill bundle add <ARTIFACT>"),
+        "{}",
+        String::from_utf8_lossy(&skill_add.stderr)
+    );
+
+    let skill_zip = recipient.path().join("demo.zip");
+    write_skill_zip(&skill_zip);
+    let bundle_add = run(
+        recipient.path(),
+        &["bundle", "add", skill_zip.to_str().unwrap()],
+    );
+    assert!(!bundle_add.status.success());
+    assert!(
+        String::from_utf8_lossy(&bundle_add.stderr).contains("fastskill skill add <SOURCE>"),
+        "{}",
+        String::from_utf8_lossy(&bundle_add.stderr)
+    );
+
+    for path in ["skill-project.toml", "skills.lock", ".claude", ".fastskill"] {
+        assert!(
+            !recipient.path().join(path).exists(),
+            "artifact rejection created {path}"
+        );
+    }
+}
+
+#[test]
 fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
     let author = TempDir::new().unwrap();
     let artifact = build_bundle(author.path(), "payments-team", "1.0.0", "review-v1", false);
@@ -159,13 +211,21 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
             vec![
                 "--skills-dir",
                 storage_arg,
+                "bundle",
                 "add",
                 artifact_arg,
                 extra,
                 "dev",
             ]
         } else {
-            vec!["--skills-dir", storage_arg, "add", artifact_arg, extra]
+            vec![
+                "--skills-dir",
+                storage_arg,
+                "bundle",
+                "add",
+                artifact_arg,
+                extra,
+            ]
         };
         let output = run(recipient.path(), &args);
         assert!(!output.status.success());
@@ -177,6 +237,7 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "add",
             artifact_arg,
             "--dry-run",
@@ -186,7 +247,14 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
 
     let applied = assert_success(run(
         recipient.path(),
-        &["--skills-dir", storage_arg, "add", artifact_arg, "--json"],
+        &[
+            "--skills-dir",
+            storage_arg,
+            "bundle",
+            "add",
+            artifact_arg,
+            "--json",
+        ],
     ));
     let applied: serde_json::Value = serde_json::from_str(&applied).unwrap();
     assert_eq!(applied["outcome"], "changed");
@@ -198,6 +266,7 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "add",
             artifact_arg,
             "--dry-run",
@@ -219,8 +288,8 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "update",
-            "--bundle",
             "payments-team",
             "--from",
             updated_arg,
@@ -236,8 +305,8 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "update",
-            "--bundle",
             "payments-team",
             "--from",
             updated_arg,
@@ -253,8 +322,8 @@ fn bundle_add_modes_share_validation_preview_and_structured_apply_results() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "update",
-            "--bundle",
             "payments-team",
             "--from",
             updated_arg,
@@ -290,7 +359,7 @@ fn bundle_commands_build_install_list_update_and_remove() {
     let first_arg = first.to_str().unwrap();
     let added = assert_success(run(
         recipient.path(),
-        &["--skills-dir", storage_arg, "add", first_arg],
+        &["--skills-dir", storage_arg, "bundle", "add", first_arg],
     ));
     assert!(
         added.contains("Installed bundle payments-team@1.0.0"),
@@ -303,6 +372,7 @@ fn bundle_commands_build_install_list_update_and_remove() {
         &[
             "--skills-dir",
             storage_arg,
+            "skill",
             "remove",
             "code-review",
             "--force",
@@ -318,7 +388,7 @@ fn bundle_commands_build_install_list_update_and_remove() {
 
     let listed = assert_success(run(
         recipient.path(),
-        &["--skills-dir", storage_arg, "list", "--bundles"],
+        &["--skills-dir", storage_arg, "bundle", "list"],
     ));
     assert!(listed.contains("payments-team 1.0.0"), "{listed}");
 
@@ -340,8 +410,8 @@ fn bundle_commands_build_install_list_update_and_remove() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "update",
-            "--bundle",
             "payments-team",
             "--from",
             second.to_str().unwrap(),
@@ -360,8 +430,8 @@ fn bundle_commands_build_install_list_update_and_remove() {
         &[
             "--skills-dir",
             storage_arg,
+            "bundle",
             "remove",
-            "--bundle",
             "payments-team",
             "--force",
         ],
@@ -384,6 +454,7 @@ fn adding_and_removing_an_unrelated_skill_preserves_bundle_and_extension_tables(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             artifact.to_str().unwrap(),
         ],
@@ -401,6 +472,7 @@ fn adding_and_removing_an_unrelated_skill_preserves_bundle_and_extension_tables(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "skill",
             "add",
             local.to_str().unwrap(),
         ],
@@ -426,6 +498,7 @@ fn adding_and_removing_an_unrelated_skill_preserves_bundle_and_extension_tables(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "skill",
             "remove",
             "local-skill",
             "--force",
@@ -453,6 +526,7 @@ fn bundle_override_reset_restores_packaged_contents_and_clears_records() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             artifact.to_str().unwrap(),
         ],
@@ -477,7 +551,10 @@ fn bundle_override_reset_restores_packaged_contents_and_clears_records() {
         .unwrap()
         .contains("personal"));
 
-    for install_args in [vec!["install"], vec!["install", "--lock"]] {
+    for install_args in [
+        vec!["project", "install"],
+        vec!["project", "install", "--lock"],
+    ] {
         assert_success(run(recipient.path(), &install_args));
         assert!(fs::read_to_string(storage.join("code-review/SKILL.md"))
             .unwrap()
@@ -541,6 +618,17 @@ fn bundle_operations_reject_global_scope_before_mutation() {
     write_recipient(project.path());
     for args in [
         vec!["--global", "bundle", "build"],
+        vec!["--global", "bundle", "add", "missing.zip"],
+        vec!["--global", "bundle", "list"],
+        vec![
+            "--global",
+            "bundle",
+            "update",
+            "team",
+            "--from",
+            "missing.zip",
+        ],
+        vec!["--global", "bundle", "remove", "team", "--force"],
         vec!["--global", "bundle", "override", "code-review", "--reset"],
     ] {
         let output = run(project.path(), &args);
@@ -562,6 +650,7 @@ fn removing_final_bundle_owner_promotes_personal_override_to_direct_requirement(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             artifact.to_str().unwrap(),
         ],
@@ -578,6 +667,7 @@ fn removing_final_bundle_owner_promotes_personal_override_to_direct_requirement(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "skill",
             "add",
             shared.to_str().unwrap(),
             "--no-reindex",
@@ -614,8 +704,8 @@ fn removing_final_bundle_owner_promotes_personal_override_to_direct_requirement(
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "remove",
-            "--bundle",
             "payments-team",
             "--force",
             "--no-reindex",
@@ -677,6 +767,7 @@ fn removing_final_bundle_owner_blocks_dangling_override_dependencies() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             artifact.to_str().unwrap(),
         ],
@@ -710,8 +801,8 @@ fn removing_final_bundle_owner_blocks_dangling_override_dependencies() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "remove",
-            "--bundle",
             "payments-team",
             "--force",
             "--no-reindex",
@@ -776,6 +867,7 @@ fn install_lock_restores_the_pinned_bundle_release() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             initial.to_str().unwrap(),
         ],
@@ -797,6 +889,7 @@ fn install_lock_restores_the_pinned_bundle_release() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "project",
             "install",
             "--lock",
         ],
@@ -835,6 +928,7 @@ fn bundle_previews_emit_json_and_leave_managed_state_unchanged() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "add",
             initial.to_str().unwrap(),
         ],
@@ -849,8 +943,8 @@ fn bundle_previews_emit_json_and_leave_managed_state_unchanged() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "update",
-            "--bundle",
             "payments-team",
             "--from",
             updated.to_str().unwrap(),
@@ -891,8 +985,8 @@ fn bundle_previews_emit_json_and_leave_managed_state_unchanged() {
         &[
             "--skills-dir",
             storage.to_str().unwrap(),
+            "bundle",
             "remove",
-            "--bundle",
             "payments-team",
             "--dry-run",
             "--json",

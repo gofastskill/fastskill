@@ -12,11 +12,11 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 #[path = "remove/confirmation.rs"]
-mod confirmation;
+pub(crate) mod confirmation;
 #[path = "remove/global.rs"]
 mod global_remove;
 #[path = "remove/output.rs"]
-mod output;
+pub(crate) mod output;
 use confirmation::confirm_removal;
 
 /// Uninstall skills (only way to stop using skills)
@@ -36,9 +36,6 @@ pub struct RemoveArgs {
 
     /// Force removal without confirmation
     pub force: bool,
-
-    /// Remove an installed bundle and its ownership
-    pub bundle: Option<String>,
 
     /// Skills directory path (overrides default discovery)
     #[allow(dead_code)]
@@ -61,11 +58,12 @@ impl IntoCommandSpec for RemoveArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Uninstall skills (removes from manifest and local installation)",
-            syntax: Some("remove <SKILL_ID>... [OPTIONS]"),
-            category: Some("packages"),
+            syntax: Some("skill remove <SKILL_ID>... [OPTIONS]"),
+            category: Some("skills-projects"),
+            help_order: Some(20),
             examples: vec![
-                "fastskill remove pptx",
-                "fastskill remove pptx docx --force",
+                "fastskill skill remove pptx",
+                "fastskill skill remove pptx docx --force",
             ],
             args: vec![
                 ArgSpec {
@@ -86,17 +84,6 @@ impl IntoCommandSpec for RemoveArgs {
                     help: "Force removal without confirmation",
                     kind: ArgKind::Flag,
                     value_type: ArgValueType::Bool,
-                    cardinality: Cardinality::Optional,
-                    default: None,
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "bundle",
-                    long: Some("bundle"),
-                    short: None,
-                    help: "Installed bundle identity to remove",
-                    kind: ArgKind::Option,
-                    value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     default: None,
                     ..Default::default()
@@ -175,13 +162,6 @@ impl FromArgValueMap for RemoveArgs {
                 _ => vec![],
             },
             force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
-            bundle: map.get("bundle").and_then(|value| {
-                if let ArgValue::Str(bundle) = value {
-                    Some(bundle.clone())
-                } else {
-                    None
-                }
-            }),
             skills_dir: map.get("skills-dir").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(PathBuf::from(s))
@@ -248,64 +228,6 @@ pub async fn execute_remove(
     }
     let reindex = args.reindex;
     let no_reindex = args.no_reindex;
-
-    if let Some(bundle) = &args.bundle {
-        if global {
-            return Err(CliError::Validation(
-                "Bundle removal requires a project Manifest and does not support --global"
-                    .to_string(),
-            ));
-        }
-        if !args.skill_ids.is_empty() {
-            return Err(CliError::Validation(
-                "Use either skill IDs or --bundle <bundle-id>, not both".to_string(),
-            ));
-        }
-        let current = env::current_dir().map_err(|error| {
-            CliError::Config(format!("Failed to determine current directory: {error}"))
-        })?;
-        let project = resolve_project_file(&current);
-        if !project.found {
-            return Err(CliError::Config(
-                "skill-project.toml not found in this directory or any parent".to_string(),
-            ));
-        }
-        let root = project.path.parent().unwrap_or(Path::new("."));
-        let bundles = fastskill_core::core::bundle::BundleService::new(
-            root,
-            service.config().skill_storage_path.clone(),
-        );
-        let preview = bundles.preview_remove(bundle).map_err(CliError::Service)?;
-        if args.dry_run {
-            return output::emit_bundle_removal(&preview, true, args.json);
-        }
-        if !confirm_removal(&[format!("bundle {bundle}")], args.force)? {
-            crate::outln!("Removal cancelled.");
-            return Ok(());
-        }
-        bundles.remove(bundle).map_err(CliError::Service)?;
-        if !args.json {
-            crate::outln!("Removed bundle: {bundle}");
-            crate::outln!(
-                "{}",
-                crate::utils::messages::ok("Updated skill-project.toml and skills.lock")
-            );
-        }
-        let auto_reindex = crate::config_file::load_auto_reindex_config();
-        crate::utils::reindex_utils::maybe_auto_reindex(
-            service,
-            "remove",
-            reindex,
-            no_reindex,
-            auto_reindex,
-            false,
-        )
-        .await?;
-        if args.json {
-            output::emit_bundle_removal(&preview, false, true)?;
-        }
-        return Ok(());
-    }
 
     // Validate inputs
     if args.skill_ids.is_empty() {
@@ -489,7 +411,6 @@ mod tests {
         RemoveArgs {
             skill_ids: ids.iter().map(|id| (*id).to_string()).collect(),
             force: true,
-            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -505,11 +426,9 @@ mod tests {
                 "skill-ids".to_string(),
                 ArgValue::List(vec![ArgValue::Str("one".to_string()), ArgValue::Bool(true)]),
             ),
-            ("bundle".to_string(), ArgValue::Bool(true)),
             ("skills-dir".to_string(), ArgValue::Bool(true)),
         ]));
         assert_eq!(parsed.skill_ids, vec!["one"]);
-        assert!(parsed.bundle.is_none());
         assert!(parsed.skills_dir.is_none());
     }
 
@@ -531,44 +450,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("cannot be used together"));
-
-        let mut global_bundle = args(&[]);
-        global_bundle.bundle = Some("team".to_string());
-        assert!(execute_remove(&service, global_bundle, true)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("does not support --global"));
-
-        let mut mixed = args(&["demo"]);
-        mixed.bundle = Some("team".to_string());
-        assert!(execute_remove(&service, mixed, false)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("either skill IDs or --bundle"));
-    }
-
-    #[tokio::test]
-    async fn bundle_remove_reports_a_missing_project_before_planning() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let root = TempDir::new().unwrap();
-        let _directory = DirGuard(std::env::current_dir().ok());
-        std::env::set_current_dir(root.path()).unwrap();
-        let service = FastSkillService::new(ServiceConfig {
-            skill_storage_path: root.path().join("skills"),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-        let mut remove = args(&[]);
-        remove.bundle = Some("team".to_string());
-
-        let error = execute_remove(&service, remove, false).await.unwrap_err();
-
-        assert!(matches!(error, CliError::Config(message) if message.contains("not found")));
     }
 
     #[tokio::test]
@@ -714,7 +595,6 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec![],
             force: false,
-            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -745,7 +625,6 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["invalid@skill@id".to_string()],
             force: true,
-            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,
@@ -776,7 +655,6 @@ mod tests {
         let args = RemoveArgs {
             skill_ids: vec!["nonexistent@1.0.0".to_string()],
             force: true,
-            bundle: None,
             skills_dir: None,
             reindex: false,
             no_reindex: false,

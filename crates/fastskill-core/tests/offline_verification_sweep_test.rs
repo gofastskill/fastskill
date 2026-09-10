@@ -444,7 +444,7 @@ async fn local_install_succeeds_after_original_source_is_removed_and_is_byte_ide
 // ── US-007: `update`/`newest`-resolution fail loudly instead of silently ──
 
 /// `newest` (`version: None`) with no cached index, against an unreachable
-/// registry, fails with an actionable error naming `repos refresh` -- never
+/// registry, fails with an actionable error naming `repo refresh` -- never
 /// a panic, never silently serving stale/no data.
 #[tokio::test]
 async fn newest_resolution_offline_with_no_index_fails_naming_repos_refresh() {
@@ -468,8 +468,8 @@ async fn newest_resolution_offline_with_no_index_fails_naming_repos_refresh() {
 
     let message = err.to_string();
     assert!(
-        message.contains("repos refresh"),
-        "error must name `repos refresh` as the fix, got: {message}"
+        message.contains("repo refresh"),
+        "error must name `repo refresh` as the fix, got: {message}"
     );
 }
 

@@ -31,8 +31,6 @@ fn args() -> UpdateArgs {
         version: None,
         source: None,
         repository: None,
-        bundle: None,
-        from: None,
         strategy: "latest".to_string(),
         strategy_explicit: false,
         reindex: false,

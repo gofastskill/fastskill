@@ -22,6 +22,8 @@ use std::sync::Arc;
 
 use crate::output::{self, Mode};
 
+pub mod surface;
+
 /// Registration helpers for commands whose output must survive MCP dispatch.
 pub trait AppBuilderExt: Sized {
     /// Register a typed command, routing its [`crate::outln!`] output through

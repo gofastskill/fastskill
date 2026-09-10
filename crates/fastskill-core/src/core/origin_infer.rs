@@ -3,7 +3,7 @@
 //! `FastSkillService::infer_origin(&str) -> Result<Origin, ServiceError>` resolves
 //! a single raw string — the **Origin ref** a user types or pastes (a git URL, a
 //! `.zip` URL, a local path, or a `scope/skill[@version]` id) — into a typed
-//! [`Origin`]. This is the *one* inference path: both `fastskill serve`'s HTTP
+//! [`Origin`]. This is the *one* inference path: both `fastskill server serve`'s HTTP
 //! install endpoint and `fastskill-cli`'s `add` command call it, so there is a
 //! single place the git-URL/skill-id/path classification rules live rather than
 //! two copies drifting apart (the CLI previously had its own private
@@ -183,14 +183,14 @@ impl FastSkillService {
 
         let repo_manager = self.repository_manager().ok_or_else(|| {
             ServiceError::Config(
-                "No default repository configured. Use 'fastskill repos add' to add a \
+                "No default repository configured. Use 'fastskill repo add' to add a \
                  repository before installing by skill id."
                     .to_string(),
             )
         })?;
         let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
             ServiceError::Config(
-                "No default repository configured. Use 'fastskill repos add' to add a \
+                "No default repository configured. Use 'fastskill repo add' to add a \
                  repository before installing by skill id."
                     .to_string(),
             )

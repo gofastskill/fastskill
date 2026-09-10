@@ -5,15 +5,15 @@ description: "Analyze skill quality at portfolio level using cluster, matrix, an
 
 # Cluster and Portfolio Analysis
 
-`fastskill analyze` helps you evaluate quality at system level, not only case level.
+`fastskill analysis` helps you evaluate quality at system level, not only case level.
 
 ## 1) Cluster analysis
 
 Group skills by semantic similarity to detect taxonomy health:
 
 ```bash
-fastskill analyze cluster
-fastskill analyze cluster -k 8 --min-size 2 --json
+fastskill analysis cluster
+fastskill analysis cluster -k 8 --min-size 2 --json
 ```
 
 What to look for:
@@ -27,7 +27,7 @@ What to look for:
 Inspect relationship density:
 
 ```bash
-fastskill analyze matrix --threshold 0.8 --limit 5
+fastskill analysis matrix --threshold 0.8 --limit 5
 ```
 
 Use this to understand whether a proposed new skill is truly distinct.
@@ -37,7 +37,7 @@ Use this to understand whether a proposed new skill is truly distinct.
 Detect likely redundancy:
 
 ```bash
-fastskill analyze duplicates --threshold 0.92 --severity high
+fastskill analysis duplicates --threshold 0.92 --severity high
 ```
 
 Use this regularly to keep catalog maintenance costs low.
@@ -58,4 +58,4 @@ Use this regularly to keep catalog maintenance costs low.
 
 - [Evals and quality overview](/evals-quality/overview)
 - [Run evals](/evals-quality/run-evals)
-- [Marketplace, analyze, and doctor](/cli-reference/tooling-commands)
+- [Marketplace, analysis, and CLI tools](/cli-reference/tooling-commands)

@@ -1,4 +1,4 @@
-//! Integration tests for fastskill init command
+//! Integration tests for `fastskill project init`.
 
 #![allow(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
@@ -9,9 +9,9 @@ use fastskill_core::core::manifest::SkillProjectToml;
 use std::fs;
 use tempfile::TempDir;
 
-/// T037: Test fastskill init creating skill-project.toml with metadata
+/// T037: Test `fastskill project init` creating a manifest with metadata.
 ///
-/// Verifies that `fastskill init --yes --set-version <v> --description <d> --author <a>`
+/// Verifies that `fastskill project init --yes --set-version <v> --description <d> --author <a>`
 /// creates a `skill-project.toml` populated with the given metadata. `init`'s
 /// value-setting flag is `--set-version` (not `--version`, which clap reserves for its
 /// auto-generated `-V/--version` flag that prints the CLI version).
@@ -42,6 +42,7 @@ capabilities:
     // Run init command with --yes flag to skip prompts
     let result = run_fastskill_command(
         &[
+            "project",
             "init",
             "--yes",
             "--set-version",

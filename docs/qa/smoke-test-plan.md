@@ -47,9 +47,9 @@ Each step is one row:
   but it also feeds the **Automation-Gap Backlog** at the end of this document.
 
 **Version honesty.** You are testing an installed **released** binary. Its behavior is
-ground truth. When you check the CLI surface, trust `fastskill spec` (emitted by the binary
+ground truth. When you check the CLI surface, trust `fastskill cli spec` (emitted by the binary
 you're running) over the prose docs — the docs track the latest development and may describe
-things a released binary doesn't have yet. For CLI-shape mismatches, `spec` wins. For prose
+things a released binary doesn't have yet. For CLI-shape mismatches, `cli spec` wins. For prose
 and workflow docs, mark the GAP but add "(confirm vs tested version)".
 
 ---
@@ -66,8 +66,8 @@ plan — we test what ships.
 |---|---|---|---|---|---|
 | 0.1.1 | `fastskill --version` | Prints `fastskill <X.Y.Z>`, exit 0. **Record this version — every finding is relative to it.** | 🤖 | `--help` | ☐P ☐F ☐G |
 | 0.1.2 | `which fastskill` | Resolves to the installed release binary (not a source `target/` build). | 🧑 | — | ☐P ☐F ☐G |
-| 0.1.3 | `fastskill --help` | Lists command groups: Discovery, Packages, Project, Server, Setup, and analyze/completion/eval/marketplace/mcp/optimize/repos/spec. Exit 0. | 🧑 | README | ☐P ☐F ☐G |
-| 0.1.4 | `fastskill spec --format markdown > /tmp/fs-smoke-spec.md` | Writes the full command surface. **This file is your CLI source-of-truth for the rest of the plan.** | 🤖 | `spec` | ☐P ☐F ☐G |
+| 0.1.3 | `fastskill --help` | Shows the ordered sections Skills and projects, Sources and distribution, Quality, and Operations, with all 13 canonical namespaces. Exit 0. | 🧑 | README | ☐P ☐F ☐G |
+| 0.1.4 | `fastskill cli spec --format markdown > /tmp/fs-smoke-spec.md` | Writes the full command surface. **This file is your CLI source-of-truth for the rest of the plan.** | 🤖 | `cli spec` | ☐P ☐F ☐G |
 
 ### 0.2 Set environment variables
 
@@ -99,14 +99,14 @@ BLOCKED rather than skipping silently.
 
 ### 0.4 Build the fixtures the repo doesn't ship
 
-Two `add` modes and the optimize command need fixtures that aren't committed. Build them now
+Two `skill add` modes and the optimization command need fixtures that aren't committed. Build them now
 (this is also a mini doc-walk — if these steps are unclear, note it).
 
 ```bash
 # A .zip skill (for zip-add) — zipped from a committed folder fixture
 ( cd "$FSREPO/tests/cli/fixtures" && zip -r "$SBX/minimal-skill.zip" minimal-skill )
 
-# An optimize config over the sibling skill's proven eval suite
+# An optimization config over the sibling skill's proven eval suite
 cat > "$SBX/optimize.toml" <<EOF
 skill         = "$SKILLREPO/fastskill/SKILL.md"
 skill_name    = "fastskill"
@@ -141,8 +141,8 @@ EOF
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 0.5.1 | `fastskill doctor` | Runs a set of named checks, human-readable, exit 0. Read every line — does each check name + message make sense to a newcomer? | 🧑 | `doctor` | ☐P ☐F ☐G |
-| 0.5.2 | `fastskill doctor --json` | Same results as valid JSON. | 🤖 | `doctor` | ☐P ☐F ☐G |
+| 0.5.1 | `fastskill cli doctor` | Runs a set of named checks, human-readable, exit 0. Read every line — does each check name + message make sense to a newcomer? | 🧑 | `cli doctor` | ☐P ☐F ☐G |
+| 0.5.2 | `fastskill cli doctor --json` | Same results as valid JSON. | 🤖 | `cli doctor` | ☐P ☐F ☐G |
 
 ---
 
@@ -154,16 +154,16 @@ These build on each other's state in `$SKILLS_DIR`. Run top to bottom.
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 1.1 | `fastskill --skills-dir "$SKILLS_DIR" list` | Empty sandbox → prints "no skills"/empty list, exit 0 (not an error). | 🤖 | webdocs `skill-management` | ☐P ☐F ☐G |
-| 1.2 | `fastskill --skills-dir "$SKILLS_DIR" list --format json` | Valid JSON (empty array). Confirm `--format`/`--json` documented. | 🤖 | `spec` | ☐P ☐F ☐G |
-| 1.3 | `fastskill --skills-dir "$SKILLS_DIR" search test` | Runs without an index; falls back to text search or empty result, exit 0. | 🧑 | webdocs `skill-management` | ☐P ☐F ☐G |
-| 1.4 | `fastskill --skills-dir "$SKILLS_DIR" read nonexistent-skill` | Clean "not found" message, non-zero exit — **is the message helpful?** | 🧑 | `read` help | ☐P ☐F ☐G |
+| 1.1 | `fastskill --skills-dir "$SKILLS_DIR" skill list` | Empty sandbox → prints "no skills"/empty list, exit 0 (not an error). | 🤖 | webdocs `skill-management` | ☐P ☐F ☐G |
+| 1.2 | `fastskill --skills-dir "$SKILLS_DIR" skill list --format json` | Valid JSON (empty array). Confirm `--format`/`--json` documented. | 🤖 | `cli spec` | ☐P ☐F ☐G |
+| 1.3 | `fastskill --skills-dir "$SKILLS_DIR" skill search test` | Runs without an index; falls back to text search or empty result, exit 0. | 🧑 | webdocs `skill-management` | ☐P ☐F ☐G |
+| 1.4 | `fastskill --skills-dir "$SKILLS_DIR" skill read nonexistent-skill` | Clean "not found" message, non-zero exit — **is the message helpful?** | 🧑 | `skill read` help | ☐P ☐F ☐G |
 
 *(1.1–1.2 revisited in Section 3 once skills are installed.)*
 
 ### Section 2 — Project init
 
-Work in a scratch skill dir so `init` has somewhere to write.
+Work in a scratch skill dir so `project init` has somewhere to write.
 
 ```bash
 mkdir -p "$SBX/newskill" && cd "$SBX/newskill"
@@ -171,39 +171,39 @@ mkdir -p "$SBX/newskill" && cd "$SBX/newskill"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 2.1 | `fastskill init` | Creates `skill-project.toml` in cwd, exit 0, validates after writing. Open the file — does it match the documented schema? | 🧑 | webdocs `configuration/init-command` | ☐P ☐F ☐G |
+| 2.1 | `fastskill project init` | Creates `skill-project.toml` in cwd, exit 0, validates after writing. Open the file — does it match the documented schema? | 🧑 | webdocs `configuration/init-command` | ☐P ☐F ☐G |
 | 2.2 | `cat skill-project.toml` | Contains a `[metadata]` (skill) or `[tool.fastskill]` (project) block as the docs describe. | 🧑 | init docs | ☐P ☐F ☐G |
-| 2.3 | `fastskill init` (again, no flag) | Refuses to clobber / warns (file exists). | 🤖 | init help | ☐P ☐F ☐G |
-| 2.4 | `fastskill init --force` | Overwrites, exit 0. | 🤖 | init help | ☐P ☐F ☐G |
+| 2.3 | `fastskill project init` (again, no flag) | Refuses to clobber / warns (file exists). | 🤖 | init help | ☐P ☐F ☐G |
+| 2.4 | `fastskill project init --force` | Overwrites, exit 0. | 🤖 | init help | ☐P ☐F ☐G |
 | 2.5 | `cd -` | Return to prior dir. | 🤖 | — | ☐P ☐F ☐G |
 
-### Section 3 — Packages (add / install / update / remove / reindex)
+### Section 3 — Skills and projects
 
 All commands use `--skills-dir "$SKILLS_DIR"`.
 
-#### 3a — `add` in every mode
+#### 3a — `skill add` in every mode
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 3.1 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/minimal-skill"` | Adds the skill, exit 0, prints the added id. | 🤖 | webdocs `skill-management` | ☐P ☐F ☐G |
-| 3.2 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/complex-skill"` | Adds a second skill, exit 0. | 🤖 | " | ☐P ☐F ☐G |
-| 3.3 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/invalid-skill"` | **Fails cleanly** with a validation error (bad name/version). **Is the error specific and actionable?** | 🧑 | " | ☐P ☐F ☐G |
-| 3.4 | `fastskill --skills-dir "$SKILLS_DIR" add "$SBX/minimal-skill.zip" --force` | Installs from the zip (`--force` since minimal-skill already added), exit 0. | 🤖 | add help | ☐P ☐F ☐G |
-| 3.5 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures" --recursive` | Adds all skills under the dir; the invalid one is reported as a failure but others succeed. | 🧑 | add help | ☐P ☐F ☐G |
-| 3.6 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/minimal-skill" --editable --force` | Installs in editable mode, exit 0. | 🤖 | add help | ☐P ☐F ☐G |
-| 3.7 | `fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/complex-skill" --group dev --force` | Adds to group `dev`, exit 0. | 🤖 | add help | ☐P ☐F ☐G |
-| 3.8 | `fastskill --skills-dir "$SKILLS_DIR" add https://github.com/gofastskill/skill.git` | (Network) clones + adds from git URL, exit 0. | 🤖 | `skill/README` | ☐P ☐F ☐G |
-| 3.9 | `fastskill --skills-dir "$SKILLS_DIR" add https://github.com/gofastskill/skill.git --branch main --force` | `--branch` honored (git only), exit 0. | 🤖 | add help | ☐P ☐F ☐G |
-| 3.10 | `fastskill --skills-dir "$SKILLS_DIR" add ./nope-does-not-exist` | Clean error, non-zero exit. **Helpful?** | 🧑 | — | ☐P ☐F ☐G |
+| 3.1 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/minimal-skill"` | Adds the skill, exit 0, prints the added id. | 🤖 | webdocs `skill-management` | ☐P ☐F ☐G |
+| 3.2 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/complex-skill"` | Adds a second skill, exit 0. | 🤖 | " | ☐P ☐F ☐G |
+| 3.3 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/invalid-skill"` | **Fails cleanly** with a validation error (bad name/version). **Is the error specific and actionable?** | 🧑 | " | ☐P ☐F ☐G |
+| 3.4 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$SBX/minimal-skill.zip" --force` | Installs from the zip (`--force` since minimal-skill already added), exit 0. | 🤖 | `skill add` help | ☐P ☐F ☐G |
+| 3.5 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures" --recursive` | Adds all skills under the dir; the invalid one is reported as a failure but others succeed. | 🧑 | `skill add` help | ☐P ☐F ☐G |
+| 3.6 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/minimal-skill" --editable --force` | Installs in editable mode, exit 0. | 🤖 | `skill add` help | ☐P ☐F ☐G |
+| 3.7 | `fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/complex-skill" --group dev --force` | Adds to group `dev`, exit 0. | 🤖 | `skill add` help | ☐P ☐F ☐G |
+| 3.8 | `fastskill --skills-dir "$SKILLS_DIR" skill add https://github.com/gofastskill/skill.git` | (Network) clones + adds from git URL, exit 0. | 🤖 | `skill/README` | ☐P ☐F ☐G |
+| 3.9 | `fastskill --skills-dir "$SKILLS_DIR" skill add https://github.com/gofastskill/skill.git --branch main --force` | `--branch` honored (git only), exit 0. | 🤖 | `skill add` help | ☐P ☐F ☐G |
+| 3.10 | `fastskill --skills-dir "$SKILLS_DIR" skill add ./nope-does-not-exist` | Clean error, non-zero exit. **Helpful?** | 🧑 | — | ☐P ☐F ☐G |
 
-#### 3b — list / read the installed skills
+#### 3b — `skill list` / `skill read`
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 3.11 | `fastskill --skills-dir "$SKILLS_DIR" list` | Shows the skills added above, exit 0. | 🤖 | skill-management | ☐P ☐F ☐G |
-| 3.12 | `fastskill --skills-dir "$SKILLS_DIR" read <an-installed-id>` | Prints the full SKILL.md content, exit 0. | 🤖 | read help | ☐P ☐F ☐G |
+| 3.11 | `fastskill --skills-dir "$SKILLS_DIR" skill list` | Shows the skills added above, exit 0. | 🤖 | skill-management | ☐P ☐F ☐G |
+| 3.12 | `fastskill --skills-dir "$SKILLS_DIR" skill read <an-installed-id>` | Prints the full SKILL.md content, exit 0. | 🤖 | `skill read` help | ☐P ☐F ☐G |
 
-#### 3c — install from manifest
+#### 3c — `project install` from the manifest
 
 ```bash
 cp "$FSREPO/tests/cli/fixtures/sample-skill-project.toml" "$SBX/project/skill-project.toml"
@@ -212,19 +212,19 @@ cd "$SBX/project"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 3.13 | `fastskill install` | Reads `[dependencies]`, resolves them, installs into `[tool.fastskill].skills_directory`, writes/updates `skills.lock`. **Note:** deps reference a registry/git/zip-url — network-dependent; a resolution failure here may be an environment limit, record which dep failed. | 🧑 | webdocs `skill-management` | ☐P ☐F ☐G |
+| 3.13 | `fastskill project install` | Reads `[dependencies]`, resolves them, installs into `[tool.fastskill].skills_directory`, writes/updates `skills.lock`. **Note:** deps reference a registry/git/zip-url — network-dependent; a resolution failure here may be an environment limit, record which dep failed. | 🧑 | webdocs `skill-management` | ☐P ☐F ☐G |
 | 3.14 | `ls skills.lock` | Lockfile exists after install. | 🤖 | install help | ☐P ☐F ☐G |
-| 3.15 | `fastskill install --lock` | Installs exact pinned versions from `skills.lock`, exit 0. | 🤖 | install help | ☐P ☐F ☐G |
+| 3.15 | `fastskill project install --lock` | Installs exact pinned versions from `skills.lock`, exit 0. | 🤖 | install help | ☐P ☐F ☐G |
 | 3.16 | `cd -` | Return to sandbox. | 🤖 | — | ☐P ☐F ☐G |
 
-#### 3d — update / remove / reindex
+#### 3d — `skill update`, `skill remove`, and `index rebuild`
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 3.17 | `fastskill --skills-dir "$SKILLS_DIR" update` | Checks/updates installed skills, exit 0. | 🤖 | update help | ☐P ☐F ☐G |
-| 3.18 | `fastskill --skills-dir "$SKILLS_DIR" reindex` | With **no embedding provider** configured here: prints "Reindex skipped: … Run 'fastskill doctor' for setup guidance." and **exits 0** (informational, not an error). | 🧑 | webdocs `configuration` | ☐P ☐F ☐G |
-| 3.19 | `fastskill --skills-dir "$SKILLS_DIR" remove <an-installed-id>` | Removes from manifest + disk, exit 0. | 🤖 | remove help | ☐P ☐F ☐G |
-| 3.20 | `fastskill --skills-dir "$SKILLS_DIR" list` | Removed skill is gone. | 🤖 | — | ☐P ☐F ☐G |
+| 3.17 | `fastskill --skills-dir "$SKILLS_DIR" skill update` | Checks/updates installed skills, exit 0. | 🤖 | `skill update` help | ☐P ☐F ☐G |
+| 3.18 | `fastskill --skills-dir "$SKILLS_DIR" index rebuild` | With **no embedding provider** configured here: prints "Reindex skipped: … Run 'fastskill cli doctor' for setup guidance." and **exits 0** (informational, not an error). | 🧑 | webdocs `configuration` | ☐P ☐F ☐G |
+| 3.19 | `fastskill --skills-dir "$SKILLS_DIR" skill remove <an-installed-id>` | Removes from manifest + disk, exit 0. | 🤖 | `skill remove` help | ☐P ☐F ☐G |
+| 3.20 | `fastskill --skills-dir "$SKILLS_DIR" skill list` | Removed skill is gone. | 🤖 | — | ☐P ☐F ☐G |
 
 ---
 
@@ -237,19 +237,19 @@ global dir** — note anything you add so you can remove it.
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 4.1 | `fastskill --global list` | Lists global skills (maybe empty), exit 0. | 🤖 | `--global` flag | ☐P ☐F ☐G |
-| 4.2 | `fastskill --global add "$FSREPO/tests/cli/fixtures/minimal-skill" --force` | Installs into the global dir, exit 0. | 🤖 | — | ☐P ☐F ☐G |
-| 4.3 | `fastskill --global list` | Shows the just-added skill. | 🤖 | — | ☐P ☐F ☐G |
-| 4.4 | `fastskill --global remove test-minimal` | Removes it (cleanup). | 🤖 | — | ☐P ☐F ☐G |
+| 4.1 | `fastskill --global skill list` | Lists global skills (maybe empty), exit 0. | 🤖 | `--global` flag | ☐P ☐F ☐G |
+| 4.2 | `fastskill --global skill add "$FSREPO/tests/cli/fixtures/minimal-skill" --force` | Installs into the global dir, exit 0. | 🤖 | — | ☐P ☐F ☐G |
+| 4.3 | `fastskill --global skill list` | Shows the just-added skill. | 🤖 | — | ☐P ☐F ☐G |
+| 4.4 | `fastskill --global skill remove test-minimal` | Removes it (cleanup). | 🤖 | — | ☐P ☐F ☐G |
 
 ### Section 5 — Serve (HTTP API)
 
-> **Port note:** `serve` defaults to `localhost:8080`. `mcp serve` (Section 6) *also*
+> **Port note:** `server serve` defaults to `localhost:8080`. `mcp serve` (Section 6) *also*
 > defaults to 8080 — don't run both at once.
 
 **5a — Read-only (default):** start in one terminal:
 ```bash
-cd "$SBX/project" && fastskill serve --skills-dir "$SKILLS_DIR"
+cd "$SBX/project" && fastskill server serve --skills-dir "$SKILLS_DIR"
 ```
 
 | # | Command (in a second terminal) | Expected observable | Mode | Src | Result |
@@ -266,7 +266,7 @@ cd "$SBX/project" && fastskill serve --skills-dir "$SKILLS_DIR"
 
 Stop the server (Ctrl-C). **5b — Write-enabled:**
 ```bash
-fastskill serve --skills-dir "$SKILLS_DIR" --enable-write
+fastskill server serve --skills-dir "$SKILLS_DIR" --enable-write
 ```
 
 | # | Command | Expected observable | Mode | Src | Result |
@@ -296,15 +296,15 @@ mkdir -p "$SBX/mcp" && cd "$SBX/mcp"
 | 6.5 | `fastskill mcp install --agent copilot --scope project` | Writes `./.vscode/mcp.json` (key `servers`, VS Code shape). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.6 | `fastskill mcp install --agent opencode --scope project` | Writes `./opencode.json` (root `mcp` map). | ⚙️ | " | ☐P ☐F ☐G |
 | 6.7 | `fastskill mcp install --agent codex --stdio` | Writes `./.codex/config.toml` (`[mcp_servers.…]`) with the current executable as a stdio command. | ⚙️ | " | ☐P ☐F ☐G |
-| 6.8 | `fastskill mcp register --agent claude --scope project` | Still succeeds and writes the same `./.mcp.json` as 6.2 — `register` is a **withdrawn alias**, not a removed command (cli-framework `d1b1c61`). Also confirm neither `mcp --help` nor `fastskill spec` advertises it any more. | ⚙️ | " | ☐P ☐F ☐G |
+| 6.8 | `fastskill mcp register --agent claude --scope project` | Fails as an unknown command, returns non-zero, and does not create or change `./.mcp.json`. Confirm neither `mcp --help` nor `fastskill cli spec` advertises it. | ⚙️ | ADR-0010 | ☐P ☐F ☐G |
 
 **6b — serve + protocol handshake.**
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 6.9 | `fastskill mcp serve --transport stdio` then pipe a JSON-RPC `initialize` + `tools/list` on stdin | Returns a read-only tool list: `list`, `read`, `search`, `repos list`, `eval …`, etc. **`serve` (HTTP) must NOT appear as a tool**, and neither may any mutating tool (`add`, `install`, `remove`, `update`, `reindex`, `repos add/remove/update/refresh`, `marketplace create`, `optimize run/resume`, `cache clean`, `init`) — they are write-gated (ADR-0003). | ⚙️ | main.rs export policy | ☐P ☐F ☐G |
-| 6.9a | Same session, `tools/call` `fastskill_remove` on an installed skill **without** `--enable-write` | JSON-RPC error `-32005 MCP_TOOL_DENIED` naming `--enable-write`; **the skill directory is still on disk.** | ⚙️ | commands/mcp.rs | ☐P ☐F ☐G |
-| 6.9b | `fastskill mcp serve --transport stdio --enable-write`, then `tools/list` + `tools/call` `fastskill_remove` | `fastskill_remove` is listed and the call succeeds; the skill is removed. | ⚙️ | " | ☐P ☐F ☐G |
+| 6.9 | `fastskill mcp serve --transport stdio` then pipe a JSON-RPC `initialize` + `tools/list` on stdin | Returns read-only namespaced tools such as `fastskill_skill_list`, `fastskill_skill_read`, `fastskill_skill_search`, and `fastskill_repo_list`. `fastskill_server_serve` must not appear. Mutating skill, bundle, project, repository, index, cache, marketplace, eval, and optimization tools are write-gated under ADR-0003. | ⚙️ | registration export policy | ☐P ☐F ☐G |
+| 6.9a | Same session, `tools/call` `fastskill_skill_remove` on an installed skill **without** `--enable-write` | JSON-RPC error `-32005 MCP_TOOL_DENIED` naming `--enable-write`; **the skill directory is still on disk.** | ⚙️ | commands/mcp.rs | ☐P ☐F ☐G |
+| 6.9b | `fastskill mcp serve --transport stdio --enable-write`, then `tools/list` + `tools/call` `fastskill_skill_remove` | `fastskill_skill_remove` is listed and the call succeeds; the skill is removed. | ⚙️ | " | ☐P ☐F ☐G |
 | 6.10 | `fastskill mcp serve` (http, default `127.0.0.1:8080/mcp`) then `curl` a JSON-RPC `tools/list` to `/mcp` | Same tool list over HTTP, `200`. | ⚙️ | cli-framework MCP | ☐P ☐F ☐G |
 | 6.11 | `fastskill mcp serve --transport stdio --host 0.0.0.0` | **Rejected** with `[E004] … '--host', '--port', '--path' are only valid when --transport=http`. | 🤖 | commands.rs | ☐P ☐F ☐G |
 
@@ -312,14 +312,14 @@ mkdir -p "$SBX/mcp" && cd "$SBX/mcp"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 6.12 | Point Claude Code at the `./.mcp.json` from 6.2 and invoke one fastskill tool (e.g. `list`) | The agent lists skills through the MCP server end-to-end. | 🧑 | — | ☐P ☐F ☐G |
+| 6.12 | Point Claude Code at the `./.mcp.json` from 6.2 and invoke one fastskill tool (e.g. `skill list`) | The agent lists skills through the MCP server end-to-end. | 🧑 | — | ☐P ☐F ☐G |
 
 Cleanup: `rm -rf "$SBX/mcp"`. `cd "$SBX"`.
 
-### Section 7 — Repos (deterministic local path)
+### Section 7 — Repository commands (deterministic local path)
 
-> We use a **local** repo (no network). This exercises the full repos command surface
-> deterministically. `repos add` writes into `skill-project.toml`, so work in a project dir.
+> We use a **local** repo (no network). This exercises the full `repo` command surface
+> deterministically. `repo add` writes into `skill-project.toml`, so work in a project dir.
 
 ```bash
 mkdir -p "$SBX/repo-src/demo-skill"
@@ -329,23 +329,23 @@ cd "$SBX/project"   # has a skill-project.toml from Section 3
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 7.1 | `fastskill repos list` | Lists configured repos (may be empty if this project has none), exit 0. | 🤖 | webdocs `cli-reference/repository-command` | ☐P ☐F ☐G |
-| 7.2 | `fastskill repos add demo-local --repo-type local "$SBX/repo-src"` | Prints `Added repository: demo-local`; writes `[[tool.fastskill.repositories]]` into `skill-project.toml`. | 🤖 | repository-command | ☐P ☐F ☐G |
+| 7.1 | `fastskill repo list` | Lists configured repos (may be empty if this project has none), exit 0. | 🤖 | webdocs `cli-reference/repository-command` | ☐P ☐F ☐G |
+| 7.2 | `fastskill repo add demo-local --repo-type local "$SBX/repo-src"` | Prints `Added repository: demo-local`; writes `[[tool.fastskill.repositories]]` into `skill-project.toml`. | 🤖 | repository-command | ☐P ☐F ☐G |
 | 7.3 | `grep -A3 repositories skill-project.toml` | The repo block is persisted in the TOML. | 🤖 | " | ☐P ☐F ☐G |
-| 7.4 | `fastskill repos list` | Now shows `demo-local`. | 🤖 | " | ☐P ☐F ☐G |
-| 7.5 | `fastskill repos info demo-local` | Shows repo details, exit 0. | 🤖 | " | ☐P ☐F ☐G |
-| 7.6 | `fastskill repos test demo-local` | Connectivity/validity check passes for a local repo. | 🤖 | " | ☐P ☐F ☐G |
-| 7.7 | `fastskill repos refresh` | Refreshes the catalog cache, exit 0. | 🤖 | " | ☐P ☐F ☐G |
-| 7.8 | `fastskill repos skills demo-local` | For a **local** repo this is expected to error with "is not an HTTP registry" (documented limitation). **Is that message clear?** | 🧑 | repos integration tests | ☐P ☐F ☐G |
-| 7.9 | `fastskill repos show <scope/id>` | Catalog lookup; note behavior for a local repo. | 🧑 | " | ☐P ☐F ☐G |
-| 7.10 | `fastskill repos versions <scope/id>` | Lists versions or a clean "unavailable for local", exit code as documented. | 🧑 | " | ☐P ☐F ☐G |
-| 7.11 | `fastskill search --remote something` | With no http-registry configured, returns an **empty** result set (not an error). | 🤖 | search remote | ☐P ☐F ☐G |
-| 7.12 | `fastskill add scope/some-id` | Requires an http-registry default repo → **errors** "is not an http-registry type". **Helpful?** | 🧑 | add sources | ☐P ☐F ☐G |
-| 7.13 | `fastskill repos update demo-local --priority 5` | Updates metadata, persists, exit 0. | 🤖 | repository-command | ☐P ☐F ☐G |
-| 7.14 | `fastskill repos remove demo-local` | Removes from the TOML, exit 0. | 🤖 | " | ☐P ☐F ☐G |
+| 7.4 | `fastskill repo list` | Now shows `demo-local`. | 🤖 | " | ☐P ☐F ☐G |
+| 7.5 | `fastskill repo info demo-local` | Shows repo details, exit 0. | 🤖 | " | ☐P ☐F ☐G |
+| 7.6 | `fastskill repo test demo-local` | Connectivity/validity check passes for a local repo. | 🤖 | " | ☐P ☐F ☐G |
+| 7.7 | `fastskill repo refresh` | Refreshes the catalog cache, exit 0. | 🤖 | " | ☐P ☐F ☐G |
+| 7.8 | `fastskill repo skills demo-local` | For a **local** repo this is expected to error with "is not an HTTP registry" (documented limitation). **Is that message clear?** | 🧑 | repository integration tests | ☐P ☐F ☐G |
+| 7.9 | `fastskill repo show <scope/id>` | Catalog lookup; note behavior for a local repo. | 🧑 | " | ☐P ☐F ☐G |
+| 7.10 | `fastskill repo versions <scope/id>` | Lists versions or a clean "unavailable for local", exit code as documented. | 🧑 | " | ☐P ☐F ☐G |
+| 7.11 | `fastskill skill search --remote something` | With no http-registry configured, returns an **empty** result set (not an error). | 🤖 | search remote | ☐P ☐F ☐G |
+| 7.12 | `fastskill skill add scope/some-id` | Requires an http-registry default repo → **errors** "is not an http-registry type". **Helpful?** | 🧑 | add sources | ☐P ☐F ☐G |
+| 7.13 | `fastskill repo update demo-local --priority 5` | Updates metadata, persists, exit 0. | 🤖 | repository-command | ☐P ☐F ☐G |
+| 7.14 | `fastskill repo remove demo-local` | Removes from the TOML, exit 0. | 🤖 | " | ☐P ☐F ☐G |
 | 7.15 | `cd -` | Return. | 🤖 | — | ☐P ☐F ☐G |
 
-### Section 8 — Analyze & semantic search (embeddings)
+### Section 8 — Analysis and semantic search (embeddings)
 
 Needs an embedding provider. We run **two variants** to prove `openai_base_url` is honored.
 Configure a project and reindex.
@@ -353,8 +353,8 @@ Configure a project and reindex.
 ```bash
 cd "$SBX/project"
 # ensure several skills are installed into this project's skills dir first
-fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/minimal-skill" --force
-fastskill --skills-dir "$SKILLS_DIR" add "$FSREPO/tests/cli/fixtures/complex-skill" --force
+fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/minimal-skill" --force
+fastskill --skills-dir "$SKILLS_DIR" skill add "$FSREPO/tests/cli/fixtures/complex-skill" --force
 ```
 
 **Variant A — real OpenAI.** Add to `skill-project.toml`:
@@ -367,13 +367,13 @@ embedding_model = "text-embedding-3-small"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 8.1 | `fastskill doctor` | `embedding_config` = Pass ("configuration found"); `api_key` = Pass ("OPENAI_API_KEY is set"). | 🤖 | doctor | ☐P ☐F ☐G |
-| 8.2 | `fastskill --skills-dir "$SKILLS_DIR" reindex` | Actually builds the index (not skipped), exit 0, reports a count. | 🤖 | configuration | ☐P ☐F ☐G |
-| 8.3 | `fastskill --skills-dir "$SKILLS_DIR" search "edit documents" --embedding true` | Returns semantically-ranked results, exit 0. | 🧑 | search-command | ☐P ☐F ☐G |
-| 8.4 | `fastskill --skills-dir "$SKILLS_DIR" analyze matrix` | Pairwise similarity output, exit 0. | 🤖 | analyze | ☐P ☐F ☐G |
-| 8.5 | `fastskill --skills-dir "$SKILLS_DIR" analyze duplicates` | Duplicate/near-duplicate pairs (or none), exit 0. | 🤖 | analyze | ☐P ☐F ☐G |
-| 8.6 | `fastskill --skills-dir "$SKILLS_DIR" analyze cluster --num-clusters 2` | Clusters the skills, exit 0. | 🤖 | analyze | ☐P ☐F ☐G |
-| 8.7 | `curl -s localhost:8080/api/v1/status` (with a `serve` running on this project) | `embeddingProvider: true`. | 🤖 | status handler | ☐P ☐F ☐G |
+| 8.1 | `fastskill cli doctor` | `embedding_config` = Pass ("configuration found"); `api_key` = Pass ("OPENAI_API_KEY is set"). | 🤖 | doctor | ☐P ☐F ☐G |
+| 8.2 | `fastskill --skills-dir "$SKILLS_DIR" index rebuild` | Actually builds the index (not skipped), exit 0, reports a count. | 🤖 | configuration | ☐P ☐F ☐G |
+| 8.3 | `fastskill --skills-dir "$SKILLS_DIR" skill search "edit documents" --embedding true` | Returns semantically-ranked results, exit 0. | 🧑 | search-command | ☐P ☐F ☐G |
+| 8.4 | `fastskill --skills-dir "$SKILLS_DIR" analysis matrix` | Pairwise similarity output, exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
+| 8.5 | `fastskill --skills-dir "$SKILLS_DIR" analysis duplicates` | Duplicate/near-duplicate pairs (or none), exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
+| 8.6 | `fastskill --skills-dir "$SKILLS_DIR" analysis cluster --num-clusters 2` | Clusters the skills, exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
+| 8.7 | `curl -s localhost:8080/api/v1/status` (with a `server serve` running on this project) | `embeddingProvider: true`. | 🤖 | status handler | ☐P ☐F ☐G |
 
 **Variant B — your gateway (proves base_url override).** Change the block:
 ```toml
@@ -385,14 +385,14 @@ embedding_model = "<model your gateway serves>"
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 8.8 | `fastskill --skills-dir "$SKILLS_DIR" reindex` | Reindex succeeds **against the gateway** — confirm via gateway logs that the request hit `<gateway>/v1/embeddings`. **This is the real proof the override works.** | 🧑 | embedding.rs | ☐P ☐F ☐G |
-| 8.9 | `fastskill --skills-dir "$SKILLS_DIR" search "edit documents" --embedding true` | Semantic results via the gateway, exit 0. | 🧑 | — | ☐P ☐F ☐G |
+| 8.8 | `fastskill --skills-dir "$SKILLS_DIR" index rebuild` | Reindex succeeds **against the gateway** — confirm via gateway logs that the request hit `<gateway>/v1/embeddings`. **This is the real proof the override works.** | 🧑 | embedding.rs | ☐P ☐F ☐G |
+| 8.9 | `fastskill --skills-dir "$SKILLS_DIR" skill search "edit documents" --embedding true` | Semantic results via the gateway, exit 0. | 🧑 | — | ☐P ☐F ☐G |
 
 **Variant C — graceful skip (no provider).** Temporarily unset the key:
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 8.10 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" reindex` | "Reindex skipped: … Run 'fastskill doctor' …", **exit 0**. | 🧑 | reindex | ☐P ☐F ☐G |
-| 8.11 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" search "x"` (no `--embedding`) | Falls back to text/fuzzy search, exit 0. | 🧑 | search local | ☐P ☐F ☐G |
+| 8.10 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" index rebuild` | "Reindex skipped: … Run 'fastskill cli doctor' …", **exit 0**. | 🧑 | reindex | ☐P ☐F ☐G |
+| 8.11 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" skill search "x"` (no `--embedding`) | Falls back to text/fuzzy search, exit 0. | 🧑 | search local | ☐P ☐F ☐G |
 
 ### Section 9 — Eval
 
@@ -414,19 +414,19 @@ cd "$SKILLREPO/fastskill"
 | 9.7 | `fastskill eval score --run-dir "$SKILLREPO/fastskill/results/2026-04-08T15-47-51Z"` | Re-scores saved artifacts without re-running the agent. | 🤖 | eval.md | ☐P ☐F ☐G |
 | 9.8 | `cd -` | Return. | 🤖 | — | ☐P ☐F ☐G |
 
-### Section 10 — Optimize
+### Section 10 — Optimization
 
 Uses `$SBX/optimize.toml` from Section 0.4. **Token-heavy** (invokes agents many times).
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 10.1 | `fastskill optimize run --config "$SBX/optimize.toml"` | Starts a run, creates a run dir under `out_dir`, copies config to `<run-dir>/optimize.toml`, completes 1 epoch, exit 0. | 🧑 | webdocs `optimize/configuration` | ☐P ☐F ☐G |
-| 10.2 | `fastskill optimize status --run-dir <the run dir>` *(check `--help` for exact flag)* | Reports run status. | 🤖 | optimize help | ☐P ☐F ☐G |
-| 10.3 | `fastskill optimize inspect …` | Shows per-step artifacts. | 🧑 | optimize help | ☐P ☐F ☐G |
-| 10.4 | `fastskill optimize export …` | Exports the best skill document from the run. | 🤖 | optimize help | ☐P ☐F ☐G |
-| 10.5 | Interrupt a fresh run (Ctrl-C), then `fastskill optimize resume --run-dir <dir>` *(or `optimize run --config … --resume <dir>`)* | Resumes from the interrupted run rather than starting over. | 🧑 | optimize help | ☐P ☐F ☐G |
+| 10.1 | `fastskill optimization run --config "$SBX/optimize.toml"` | Starts a run, creates a run dir under `out_dir`, copies config to `<run-dir>/optimize.toml`, completes 1 epoch, exit 0. | 🧑 | webdocs `optimize/configuration` | ☐P ☐F ☐G |
+| 10.2 | `fastskill optimization status --run-dir <the run dir>` *(check `--help` for exact flag)* | Reports run status. | 🤖 | `optimization status` help | ☐P ☐F ☐G |
+| 10.3 | `fastskill optimization inspect …` | Shows per-step artifacts. | 🧑 | `optimization inspect` help | ☐P ☐F ☐G |
+| 10.4 | `fastskill optimization export …` | Exports the best skill document from the run. | 🤖 | `optimization export` help | ☐P ☐F ☐G |
+| 10.5 | Interrupt a fresh run (Ctrl-C), then `fastskill optimization resume --run-dir <dir>` *(or `optimization run --config … --resume <dir>`)* | Resumes from the interrupted run rather than starting over. | 🧑 | `optimization resume` help | ☐P ☐F ☐G |
 
-> Steps 10.2–10.5: confirm the exact flag names against `fastskill optimize <sub> --help`;
+> Steps 10.2–10.5: confirm the exact flag names against `fastskill optimization <sub> --help`;
 > a mismatch between help and the docs is itself a GAP.
 
 ### Section 11 — Marketplace
@@ -440,10 +440,10 @@ Uses `$SBX/optimize.toml` from Section 0.4. **Token-heavy** (invokes agents many
 
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
-| 12.1 | `for s in bash zsh fish powershell pwsh; do fastskill completion $s >/dev/null && echo "$s ok"; done` | Each shell emits a completion stub, exit 0. | 🤖 | completion | ☐P ☐F ☐G |
-| 12.2 | `fastskill spec --format json | head` | Valid JSON surface export. | 🤖 | spec | ☐P ☐F ☐G |
-| 12.3 | `fastskill spec --format yaml | head` | Valid YAML surface export. | 🤖 | spec | ☐P ☐F ☐G |
-| 12.4 | **Doc diff:** compare `/tmp/fs-smoke-spec.md` (from 0.1.4) against `webdocs/cli-reference/`. | Every command/flag in the docs exists in `spec` and vice-versa. **Any command in docs-not-in-spec (or spec-not-in-docs) is a GAP** — list each. | 🧑 | webdocs `cli-reference` | ☐P ☐F ☐G |
+| 12.1 | `for s in bash zsh fish powershell pwsh; do fastskill cli completion $s >/dev/null && echo "$s ok"; done` | Each shell emits a completion stub, exit 0. | 🤖 | completion | ☐P ☐F ☐G |
+| 12.2 | `fastskill cli spec --format json | head` | Valid JSON surface export. | 🤖 | spec | ☐P ☐F ☐G |
+| 12.3 | `fastskill cli spec --format yaml | head` | Valid YAML surface export. | 🤖 | spec | ☐P ☐F ☐G |
+| 12.4 | **Doc diff:** compare `/tmp/fs-smoke-spec.md` (from 0.1.4) against `webdocs/cli-reference/`. | Every command/flag in the docs exists in `cli spec` and vice-versa. **Any command in docs-not-in-spec (or spec-not-in-docs) is a GAP** — list each. | 🧑 | webdocs `cli-reference` | ☐P ☐F ☐G |
 
 ---
 
@@ -507,13 +507,16 @@ rm -rf "$SBX"
 List every step you marked ⚙️ (or any 🤖 step you think is under-covered by the test suite).
 These are candidate integration tests. Starter set (extend as you go):
 
-- [ ] MCP `install` config-write shape per target (6.2–6.7) — assert exact file + JSON/TOML key per agent, plus that the withdrawn `register` alias still writes the same config as `install` but is no longer advertised by `--help`/`spec` (6.8).
-- [ ] MCP `serve` protocol handshake `tools/list` over stdio and http (6.9–6.10) — assert the tool set and that `serve` is excluded.
+- [ ] `mcp install` config-write shape per target (6.2–6.7) — assert the exact file and JSON/TOML
+  key per agent. Confirm removed `mcp register` fails without changing a config file and is absent
+  from help and `cli spec` (6.8).
+- [ ] `mcp serve` protocol handshake `tools/list` over stdio and HTTP (6.9–6.10) — assert the tool
+  set and that `server serve` is excluded.
 - [ ] MCP stdio flag-rejection `[E004]` (6.11).
 - [ ] Serve write-gating returns 403 (not 404) without `--enable-write` (5.7).
 - [ ] Serve `/api` → `/api/v1` 308 redirect (5.9).
-- [ ] `reindex` graceful-skip exit 0 with no provider (3.18 / 8.10).
-- [ ] `add scope/id` error path without an http-registry (7.12).
+- [ ] `index rebuild` graceful-skip exit 0 with no provider (3.18 / 8.10).
+- [ ] `skill add scope/id` error path without an http-registry (7.12).
 
 ---
 

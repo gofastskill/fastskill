@@ -17,9 +17,9 @@ Validation happens at multiple stages: definition validation, registration valid
 - **Identifiers**: skill ids that work on disk and in manifests (an id is required and must not contain slashes, which are reserved as the scope separator)
 - **Versions**: semantic versions where a version is required (for example `1.2.0`)
 - **Paths**: references that resolve under the skill directory
-- **Consistency**: `fastskill list` compares installed files with `skill-project.toml` and `skills.lock`
+- **Consistency**: `fastskill skill list` compares installed files with `skill-project.toml` and `skills.lock`
 
-Run `fastskill install` or `fastskill add …` to surface validation errors before agents load a skill.
+Run `fastskill project install` or `fastskill skill add …` to surface validation errors before agents load a skill.
 
 ## Validation Rules
 
@@ -83,10 +83,10 @@ FastSkill automatically validates skills during installation. Validation ensures
 
 ```bash
 # Add skill with automatic validation
-fastskill add https://github.com/org/my-skill.git
+fastskill skill add https://github.com/org/my-skill.git
 
 # Install with validation (validates all skills)
-fastskill install
+fastskill project install
 ```
 
 ### Validation Process
@@ -103,7 +103,7 @@ When installing skills, FastSkill automatically checks:
 If validation fails, you'll see specific error messages:
 
 ```bash
-$ fastskill install
+$ fastskill project install
 Installing skills...
 ❌ Validation failed for 'my-skill':
    - Missing required field: 'description'
@@ -115,17 +115,17 @@ Fix issues and try again.
 ## Check everything installed
 
 ```bash
-fastskill list
-fastskill read <skill-id> --meta
+fastskill skill list
+fastskill skill read <skill-id> --meta
 ```
 
-If you use automation, run the same commands after `fastskill install` or `fastskill install --lock` so broken skills fail the job early.
+If you use automation, run the same commands after `fastskill project install` or `fastskill project install --lock` so broken skills fail the job early.
 
 ## Best Practices
 
 ### 1. Validate after every manifest change
 
-Run `fastskill install` and `fastskill list` whenever `skill-project.toml` or skills change.
+Run `fastskill project install` and `fastskill skill list` whenever `skill-project.toml` or skills change.
 
 ### 2. Use multiple validation levels
 

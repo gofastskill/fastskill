@@ -24,18 +24,18 @@ path has its separators replaced by underscores. For example:
 
 | CLI command | MCP tool name |
 |-------------|---------------|
-| `fastskill search` | `fastskill_search` |
-| `fastskill repos add` | `fastskill_repos_add` |
-| `fastskill install` | `fastskill_install` |
-| `fastskill list` | `fastskill_list` |
+| `fastskill skill search` | `fastskill_skill_search` |
+| `fastskill repo add` | `fastskill_repo_add` |
+| `fastskill project install` | `fastskill_project_install` |
+| `fastskill skill list` | `fastskill_skill_list` |
 
-The `mcp` commands themselves, `serve`, and the built-in `completion` and `spec` commands are not
+The `mcp` commands themselves, `server serve`, and the built-in `cli completion` and `cli spec` commands are not
 exported as tools.
 
 ### Write access
 
 `fastskill mcp serve` is read-only unless you pass `--enable-write`, spelled exactly as
-`fastskill serve`'s flag because it means the same thing. Both gates read one table —
+`fastskill server serve`'s flag because it means the same thing. Both gates read one table —
 `fastskill_core::write_ops::WRITE_OPERATIONS` — so a mutating command cannot be gated on one surface
 and open on the other.
 
@@ -44,20 +44,23 @@ with JSON-RPC error `-32005 MCP_TOOL_DENIED` quoting the flag, before the comman
 
 | Blocked tool | CLI command |
 |--------------|-------------|
-| `fastskill_init` | `fastskill init` |
-| `fastskill_add` | `fastskill add` |
-| `fastskill_install` | `fastskill install` |
-| `fastskill_update` | `fastskill update` |
-| `fastskill_remove` | `fastskill remove` |
-| `fastskill_reindex` | `fastskill reindex` |
-| `fastskill_repos_add` | `fastskill repos add` |
-| `fastskill_repos_remove` | `fastskill repos remove` |
-| `fastskill_repos_update` | `fastskill repos update` |
-| `fastskill_repos_refresh` | `fastskill repos refresh` |
+| `fastskill_project_init` | `fastskill project init` |
+| `fastskill_skill_add` | `fastskill skill add` |
+| `fastskill_project_install` | `fastskill project install` |
+| `fastskill_skill_update` | `fastskill skill update` |
+| `fastskill_skill_remove` | `fastskill skill remove` |
+| `fastskill_bundle_add` | `fastskill bundle add` |
+| `fastskill_bundle_update` | `fastskill bundle update` |
+| `fastskill_bundle_remove` | `fastskill bundle remove` |
+| `fastskill_index_rebuild` | `fastskill index rebuild` |
+| `fastskill_repo_add` | `fastskill repo add` |
+| `fastskill_repo_remove` | `fastskill repo remove` |
+| `fastskill_repo_update` | `fastskill repo update` |
+| `fastskill_repo_refresh` | `fastskill repo refresh` |
 | `fastskill_cache_clean` | `fastskill cache clean` |
 | `fastskill_marketplace_create` | `fastskill marketplace create` |
-| `fastskill_optimize_run` | `fastskill optimize run` |
-| `fastskill_optimize_resume` | `fastskill optimize resume` |
+| `fastskill_optimization_run` | `fastskill optimization run` |
+| `fastskill_optimization_resume` | `fastskill optimization resume` |
 
 ```bash
 # Read-only: 23 tools, none of them mutating
@@ -120,11 +123,11 @@ fastskill mcp list
 ```
 
 <Callout>
-Because MCP tools are generated from the CLI command tree, agents get the full FastSkill surface
-(search, install, repos, resolve, analyze, and more) without any per-tool wiring on your side.
+Because MCP tools are generated from the CLI command tree, agents get the FastSkill skill,
+project, repository, analysis, evaluation, and optimization operations without per-tool wiring.
 </Callout>
 
 ## See also
 
-- [serve command](/cli-reference/serve-command) — the separate HTTP REST/UI server.
+- [`server serve`](/cli-reference/serve-command) — the separate HTTP REST/UI server.
 - [Integration tutorials](/examples/integration-tutorials) — end-to-end MCP setup for Claude Code and Cursor.

@@ -43,7 +43,7 @@ Example skill for testing.
 #[test]
 fn test_analyze_help() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("--help")
         .assert()
         .success()
@@ -56,7 +56,7 @@ fn test_analyze_help() {
 #[test]
 fn test_matrix_help() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .arg("--help")
         .assert()
@@ -73,7 +73,7 @@ fn test_matrix_no_index() {
     let temp_dir = create_test_skill_dir();
 
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .env(
             "FASTSKILL_SKILLS_DIR",
@@ -83,14 +83,14 @@ fn test_matrix_no_index() {
         .success()
         .stdout(
             predicate::str::contains("No skills indexed")
-                .or(predicate::str::contains("Run 'fastskill reindex' first")),
+                .or(predicate::str::contains("Run 'fastskill index rebuild' first")),
         );
 }
 
 #[test]
 fn test_matrix_invalid_threshold() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .arg("--threshold")
         .arg("1.5") // Invalid: > 1.0
@@ -104,7 +104,7 @@ fn test_matrix_invalid_threshold() {
 #[test]
 fn test_matrix_negative_threshold() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .arg("--threshold")
         .arg("-0.1") // Invalid: < 0.0
@@ -118,7 +118,7 @@ fn test_matrix_negative_threshold() {
 #[test]
 fn test_cluster_not_implemented() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("cluster")
         .assert()
         .failure()
@@ -128,7 +128,7 @@ fn test_cluster_not_implemented() {
 #[test]
 fn test_duplicates_not_implemented() {
     fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("duplicates")
         .assert()
         .failure()

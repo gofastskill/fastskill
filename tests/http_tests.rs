@@ -82,7 +82,14 @@ skills_directory = ".skills"
     fs::write(temp_dir.path().join("skill-project.toml"), project_toml).expect("write project");
 
     Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+        .args([
+            "server",
+            "serve",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port.to_string(),
+        ])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("start fastskill serve")

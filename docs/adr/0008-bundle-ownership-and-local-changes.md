@@ -23,7 +23,8 @@ Removing a directly declared skill that is also bundle-owned removes its direct
 ownership; it MUST NOT delete the shared files. A dependency with no removable
 direct declaration MUST NOT be deleted while a retained root requires it.
 
-The same checks MUST govern ordinary add, install, update, remove, and existing
+The same checks MUST govern `skill add`, `project install`, `skill update`, `skill remove`, and
+the explicit bundle lifecycle introduced by ADR-0010, alongside existing
 HTTP mutations. `--force` MUST NOT bypass ownership, approve an override, or make
 untracked changes disposable. A bundle update MUST check independently declared
 and transitively required contents as well as other bundles. Neither side may

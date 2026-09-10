@@ -8,7 +8,7 @@
 //! ### Missing File Errors
 //! - Suggest how to create the file or what command to run
 //! - Format: "{file} not found. {suggestion}"
-//! - Example: "skill-project.toml not found. Create it or use 'fastskill add' to add skills."
+//! - Example: "skill-project.toml not found. Run 'fastskill project init' first."
 //!
 //! ### Context-Specific Errors
 //! - Skill-level context: Require a `[metadata]` table with id and version
@@ -66,8 +66,8 @@ impl SkillNotFoundMessage {
 /// Standard "Try" lines shown when a skill is not found.
 pub fn skill_not_found_try_suggestions() -> Vec<String> {
     vec![
-        "fastskill install owner/repo".to_string(),
-        "fastskill list                    # See available skills".to_string(),
+        "fastskill skill add owner/repo".to_string(),
+        "fastskill skill list                    # See available skills".to_string(),
     ]
 }
 
@@ -119,7 +119,7 @@ pub enum CliError {
     /// because a caller reads that as "analysed, found nothing".
     ///
     /// The field is the command name, so the message names what the user ran.
-    #[error("{0} requires an embedding provider. Run 'fastskill doctor' for setup guidance.")]
+    #[error("{0} requires an embedding provider. Run 'fastskill cli doctor' for setup guidance.")]
     MissingEmbeddingProvider(&'static str),
 }
 
@@ -129,22 +129,8 @@ pub type CliResult<T> = Result<T, CliError>;
 /// Used by install, list, update, and add when `!project_file_result.found`.
 pub fn manifest_required_message() -> &'static str {
     "skill-project.toml not found in this directory or any parent. \
-     Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
+     Create it at the top level of your workspace (e.g. run 'fastskill project init' there), \
      then run this command again."
-}
-
-/// The opening words every "there is no project here" message shares.
-const MANIFEST_MISSING_PREFIX: &str = "skill-project.toml not found";
-
-/// Whether this error is "there is no project manifest here".
-///
-/// Several places raise it — [`manifest_required_message`] and
-/// `fastskill_core::core::load_project_config` among them — so the test below
-/// pins the known producers rather than trusting one call site. Callers use
-/// this to add context a generic handler cannot: `main` turns a bare-word
-/// shorthand that died here into a message naming the word and `fastskill init`.
-pub fn is_manifest_missing(error: &CliError) -> bool {
-    matches!(error, CliError::Config(message) if message.starts_with(MANIFEST_MISSING_PREFIX))
 }
 
 impl CliError {
@@ -170,7 +156,7 @@ impl CliError {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_manifest_missing, manifest_required_message, CliError};
+    use super::CliError;
 
     #[test]
     fn search_service_error_uses_system_exit_code() {
@@ -186,35 +172,5 @@ mod tests {
             "invalid".to_string(),
         ));
         assert_eq!(error.exit_code(), 1);
-    }
-
-    #[test]
-    fn manifest_missing_is_recognised_from_the_canonical_message() {
-        assert!(is_manifest_missing(&CliError::Config(
-            manifest_required_message().to_string()
-        )));
-    }
-
-    #[test]
-    fn manifest_missing_is_recognised_from_the_core_loader() {
-        // The loader `resolve_skills_storage_directory` calls owns its own copy
-        // of the wording. If that copy drifts out of the prefix, the shorthand
-        // hint in `main` goes silently missing -- fail here instead.
-        let empty = tempfile::TempDir::new().unwrap();
-        let error = fastskill_core::core::load_project_config(empty.path())
-            .map(|_| ())
-            .expect_err("a directory with no skill-project.toml must not resolve");
-        assert!(
-            is_manifest_missing(&CliError::Config(error.clone())),
-            "core's loader no longer produces a recognisable manifest-missing error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn other_config_errors_are_not_manifest_missing() {
-        assert!(!is_manifest_missing(&CliError::Config(
-            "Skills directory does not exist: /nope".to_string()
-        )));
     }
 }

@@ -33,7 +33,7 @@ def run_doc_blocks(binary: str, blocks: list[Block]) -> None:
 
     Deliberately does **not** pre-seed the sandbox with anything beyond an empty
     directory. Extending the setup on the harness's own initiative (e.g. `mkdir
-    skills/` because a later `add` will need it) would be exactly the kind of silent
+    skills/` because a later `skill add` will need it) would be exactly the kind of silent
     self-correction the whole design exists to avoid — if a doc's own steps do not
     create a directory it later depends on, that is a real finding, not a harness bug.
     """
@@ -88,7 +88,7 @@ def run_doc_blocks(binary: str, blocks: list[Block]) -> None:
                     timeout=COMMAND_TIMEOUT,
                     env=env,
                     # Verbatim execution of a doc means no human is present to answer
-                    # a prompt. An interactive command (e.g. `fastskill init` with no
+                    # a prompt. An interactive command (e.g. `fastskill project init` with no
                     # `--yes`) hits EOF immediately, exactly as it would for anyone
                     # who actually piped this doc into a shell non-interactively.
                     stdin=subprocess.DEVNULL,

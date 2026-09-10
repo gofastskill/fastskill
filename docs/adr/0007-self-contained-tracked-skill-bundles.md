@@ -12,7 +12,10 @@ A bundle release is immutable and has its own identity and version, independent 
 
 Generated and published artifact filenames follow `<bundle-id>-<version>.zip` so recipients can distinguish releases without extracting them. Installation accepts renamed downloads when their embedded metadata and contents validate. Embedded identity/version and content verification are authoritative; changing a filename cannot change a release identity or bypass immutable-release checks.
 
-Initial updates explicitly receive a replacement ZIP or HTTPS URL, verify identity, preview changes, and apply the selected release. `add` does not silently upgrade an installed bundle. Automatic discovery of newer releases is deferred until an update feed or catalog is defined.
+Updates explicitly receive a replacement ZIP or HTTPS URL, verify identity, preview changes, and
+apply the selected release. `bundle add` does not silently upgrade an installed bundle. Automatic
+discovery of newer releases is deferred until an update feed or catalog is defined. ADR-0010 moves
+the complete lifecycle under `bundle`.
 
 Bundle contents come from the author's declared Manifest skill set and its resolved dependencies, including required skill resources rather than unrelated project files. Internal paths are relative. The recipient's project configuration or explicit CLI override selects the installation directory, so the author's filesystem layout does not constrain the target.
 

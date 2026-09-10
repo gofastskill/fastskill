@@ -15,6 +15,7 @@ pub(crate) fn is_json_lifecycle(args: &[String]) -> bool {
     if !args.iter().any(|arg| arg == "--json") {
         return false;
     }
+    let mut positionals = Vec::new();
     let mut skip_value = false;
     for arg in args.iter().skip(1) {
         if skip_value {
@@ -28,10 +29,19 @@ pub(crate) fn is_json_lifecycle(args: &[String]) -> bool {
         if arg.starts_with('-') {
             continue;
         }
-        return matches!(arg.as_str(), "add" | "install" | "update" | "remove")
-            || (arg == "bundle" && args.iter().any(|candidate| candidate == "override"));
+        positionals.push(arg.as_str());
     }
-    false
+    matches!(
+        positionals.as_slice(),
+        ["skill", "add", ..]
+            | ["skill", "update", ..]
+            | ["skill", "remove", ..]
+            | ["project", "install", ..]
+            | ["bundle", "add", ..]
+            | ["bundle", "update", ..]
+            | ["bundle", "remove", ..]
+            | ["bundle", "override", ..]
+    )
 }
 
 pub(crate) fn emit_lifecycle_json_error(error: &anyhow::Error, global: bool, dry_run: bool) {
@@ -72,6 +82,7 @@ mod tests {
         assert!(is_json_lifecycle(&args(&[
             "fastskill",
             "--global",
+            "skill",
             "update",
             "--json",
         ])));
@@ -86,10 +97,16 @@ mod tests {
             "fastskill",
             "--skills-dir",
             "/tmp/skills",
+            "skill",
             "add",
             "--json",
         ])));
-        assert!(!is_json_lifecycle(&args(&["fastskill", "list", "--json",])));
+        assert!(!is_json_lifecycle(&args(&[
+            "fastskill",
+            "skill",
+            "list",
+            "--json",
+        ])));
         assert!(!is_json_lifecycle(&args(&["fastskill", "--json"])));
     }
 
@@ -97,22 +114,26 @@ mod tests {
     fn output_detection_accepts_flag_and_format_forms() {
         assert!(requests_json_output(&args(&[
             "fastskill",
+            "skill",
             "list",
             "--json",
         ])));
         assert!(requests_json_output(&args(&[
             "fastskill",
+            "skill",
             "list",
             "--format",
             "json",
         ])));
         assert!(requests_json_output(&args(&[
             "fastskill",
+            "skill",
             "list",
             "--format=json",
         ])));
         assert!(!requests_json_output(&args(&[
             "fastskill",
+            "skill",
             "list",
             "--format",
             "table",

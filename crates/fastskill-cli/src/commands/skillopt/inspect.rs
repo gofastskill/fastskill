@@ -1,4 +1,4 @@
-//! `fastskill optimize inspect` subcommand
+//! `fastskill optimization inspect` subcommand
 
 use super::config::{resolve_step_versions, StepVersions};
 use crate::error::{CliError, CliResult};
@@ -9,7 +9,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill optimize inspect`
+/// Arguments for `fastskill optimization inspect`
 #[derive(Debug)]
 pub struct InspectArgs {
     /// Path to the run directory
@@ -35,10 +35,11 @@ impl IntoCommandSpec for InspectArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Inspect per-step artifacts from a training run",
-            syntax: Some("optimize inspect <run-dir> --step <n> [--show <mode>]"),
+            help_order: Some(40),
+            syntax: Some("optimization inspect <run-dir> --step <n> [--show <mode>]"),
             examples: vec![
-                "fastskill optimize inspect ./optimize-runs/run-1 --step 3",
-                "fastskill optimize inspect ./optimize-runs/run-1 --step 3 --show diffs",
+                "fastskill optimization inspect ./optimize-runs/run-1 --step 3",
+                "fastskill optimization inspect ./optimize-runs/run-1 --step 3 --show diffs",
             ],
             args: vec![
                 ArgSpec {
@@ -315,5 +316,183 @@ fn render_unified_diff(before: &str, after: &str) {
     }
     for line in &after_lines {
         crate::outln!("+{}", line);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn args(run_dir: &std::path::Path, show: ShowMode) -> InspectArgs {
+        InspectArgs {
+            run_dir: run_dir.to_path_buf(),
+            step: 1,
+            show,
+        }
+    }
+
+    fn step_dir(run_dir: &std::path::Path) -> PathBuf {
+        let path = run_dir.join("steps/step_0001");
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn argument_map_selects_every_show_mode() {
+        let spec = InspectArgs::command_spec();
+        assert_eq!(spec.help_order, Some(40));
+        assert_eq!(spec.args.len(), 3);
+
+        for (value, expected) in [
+            ("patches", "Patches"),
+            ("diffs", "Diffs"),
+            ("gate", "Gate"),
+            ("skips", "Skips"),
+            ("all", "All"),
+            ("unexpected", "All"),
+        ] {
+            let map = HashMap::from([
+                ("run-dir".to_string(), ArgValue::Str("run-one".to_string())),
+                ("step".to_string(), ArgValue::Int(7)),
+                ("show".to_string(), ArgValue::Str(value.to_string())),
+            ]);
+            let parsed = InspectArgs::from_arg_value_map(&map);
+            assert_eq!(parsed.run_dir, PathBuf::from("run-one"));
+            assert_eq!(parsed.step, 7);
+            assert_eq!(format!("{:?}", parsed.show), expected);
+        }
+
+        let map = HashMap::from([
+            ("run-dir".to_string(), ArgValue::Str("run-two".to_string())),
+            ("step".to_string(), ArgValue::Int(2)),
+        ]);
+        assert!(matches!(
+            InspectArgs::from_arg_value_map(&map).show,
+            ShowMode::All
+        ));
+    }
+
+    #[tokio::test]
+    async fn execute_reports_missing_run_and_step_directories() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing");
+        let err = execute_inspect(args(&missing, ShowMode::Patches))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_RUN_DIR_MISSING"));
+
+        let err = execute_inspect(args(temp.path(), ShowMode::Patches))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_STEP_NOT_FOUND"));
+    }
+
+    #[tokio::test]
+    async fn individual_artifact_modes_render_present_missing_and_malformed_json() {
+        let temp = TempDir::new().unwrap();
+        let step = step_dir(temp.path());
+        std::fs::write(step.join("patch.json"), r#"{"patches":["one"]}"#).unwrap();
+        std::fs::write(step.join("gate.json"), "malformed").unwrap();
+        std::fs::write(
+            step.join("update.json"),
+            r#"{"budget":4,"chosen":["one"],"skipped_count":2}"#,
+        )
+        .unwrap();
+
+        let (_, patches) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Patches))).await;
+        assert!(patches.contains("patches"));
+
+        let (_, gate) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Gate))).await;
+        assert_eq!(gate, "null\n");
+
+        let (_, skips) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Skips))).await;
+        assert!(skips.contains("derived from update.json"));
+        assert!(skips.contains("skipped_count: 2"));
+
+        std::fs::remove_file(step.join("update.json")).unwrap();
+        let (_, missing) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Skips))).await;
+        assert!(missing.contains("skip information unavailable"));
+    }
+
+    #[tokio::test]
+    async fn all_mode_labels_each_section_and_reports_absent_artifacts() {
+        let temp = TempDir::new().unwrap();
+        step_dir(temp.path());
+
+        let (result, output) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::All))).await;
+        result.unwrap();
+        for heading in ["patches", "diffs", "gate", "skips", "rollouts"] {
+            assert!(output.contains(&format!("=== {heading} ===")));
+        }
+        assert!(output.contains("no patch.json artifact"));
+        assert!(output.contains("versions cannot be resolved"));
+        assert!(output.contains("no gate.json artifact"));
+        assert!(output.contains("no rollouts.json artifact"));
+    }
+
+    #[tokio::test]
+    async fn diffs_explain_rejected_and_missing_skill_versions() {
+        let temp = TempDir::new().unwrap();
+        step_dir(temp.path());
+        std::fs::write(
+            temp.path().join("history.json"),
+            r#"[{"global_step":0,"accepted":true},{"global_step":1,"accepted":false}]"#,
+        )
+        .unwrap();
+
+        let (_, rejected) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Diffs))).await;
+        assert!(rejected.contains("step 1 was rejected"));
+
+        std::fs::write(
+            temp.path().join("history.json"),
+            r#"[{"global_step":0,"accepted":false},{"global_step":1,"accepted":true}]"#,
+        )
+        .unwrap();
+        let (_, missing_before) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Diffs))).await;
+        assert!(missing_before.contains("skill_v0000.md is missing"));
+
+        let skills = temp.path().join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::write(skills.join("skill_v0000.md"), "before").unwrap();
+        let (_, missing_after) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Diffs))).await;
+        assert!(missing_after.contains("skill_v0001.md is missing"));
+    }
+
+    #[tokio::test]
+    async fn diffs_render_empty_and_changed_documents() {
+        let temp = TempDir::new().unwrap();
+        step_dir(temp.path());
+        std::fs::write(
+            temp.path().join("history.json"),
+            r#"[{"global_step":0,"accepted":false},{"global_step":1,"accepted":true}]"#,
+        )
+        .unwrap();
+        let skills = temp.path().join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::write(skills.join("skill_v0000.md"), "").unwrap();
+        std::fs::write(skills.join("skill_v0001.md"), "").unwrap();
+
+        let (_, empty) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Diffs))).await;
+        assert!(empty.contains("--- skill_v0000.md"));
+        assert!(!empty.contains("@@"));
+
+        std::fs::write(skills.join("skill_v0000.md"), "old\nline\n").unwrap();
+        std::fs::write(skills.join("skill_v0001.md"), "new\n").unwrap();
+        let (_, changed) =
+            crate::output::capture(execute_inspect(args(temp.path(), ShowMode::Diffs))).await;
+        assert!(changed.contains("@@ -1,2 +1,1 @@"));
+        assert!(changed.contains("-old"));
+        assert!(changed.contains("+new"));
     }
 }

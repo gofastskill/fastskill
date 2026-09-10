@@ -11,7 +11,7 @@ keep them reconciled with your manifest — there is no metadata file to generat
 
 <Callout type="info">
 Modern agents (Cursor, Claude Code, …) read installed skills from the skills directory natively.
-Just `fastskill install` (or `fastskill add`) and the skills are available. Register the MCP
+Just `fastskill project install` (or `fastskill skill add`) and the skills are available. Register the MCP
 server below for richer, tool-based access from inside Cursor.
 </Callout>
 
@@ -19,13 +19,13 @@ server below for richer, tool-based access from inside Cursor.
 
 ```bash
 # 1. Install the skills declared in skill-project.toml
-fastskill install
+fastskill project install
 
 # 2. Verify what is on disk
-fastskill list
+fastskill skill list
 
 # 3. (Optional) Build the local index for semantic search
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 ```
 
 ## MCP registration
@@ -42,7 +42,8 @@ fastskill mcp install --agent cursor --stdio --dry-run
 
 After running the command, reload Cursor. The tools exposed by
 `fastskill mcp serve --transport stdio` will be callable from the agent — the read-only ones only.
-Mutating tools (`fastskill_install`, `fastskill_add`, `fastskill_remove`, …) require
+Mutating tools (`fastskill_project_install`, `fastskill_skill_add`,
+`fastskill_skill_remove`, …) require
 `mcp serve --enable-write`; see [Write access](/tool-calling/development#write-access).
 
 > **Deprecated:** Manually editing `.cursor/mcp.json` to add a `fastskill` MCP entry is
@@ -56,7 +57,7 @@ When you ask Cursor to perform a task, it:
    registered).
 2. **Matches task requirements** against each skill's `description` frontmatter.
 3. **Loads the full `SKILL.md`** for relevant skills to get instructions and parameters —
-   the same content `fastskill read <skill-id>` prints.
+   the same content `fastskill skill read <skill-id>` prints.
 
 ### Example
 
@@ -72,15 +73,15 @@ skills directory. The default is `.claude/skills/`; override it via `skills_dire
 `[tool.fastskill]` in `skill-project.toml` or the `--skills-dir` flag.
 
 ```bash
-fastskill install
-fastskill list
+fastskill project install
+fastskill skill list
 ```
 
 ### Multiple skill directories
 
 ```bash
-fastskill reindex --skills-dir .claude/skills/
-fastskill reindex --skills-dir ./custom-skills/
+fastskill index rebuild --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir ./custom-skills/
 ```
 
 ## Automation
@@ -106,9 +107,9 @@ jobs:
           # Add the steps your org uses to place `fastskill` on PATH (release tarball, package, etc.)
           fastskill -V
       - name: Install skills from lock
-        run: fastskill install --lock
+        run: fastskill project install --lock
       - name: Verify
-        run: fastskill list
+        run: fastskill skill list
 ```
 
 ## Troubleshooting
@@ -117,26 +118,26 @@ jobs:
 
 ```bash
 # Confirm it is installed and reconciled
-fastskill list
+fastskill skill list
 
 # Confirm its content is readable
-fastskill read <skill-id>
+fastskill skill read <skill-id>
 ```
 
 **Semantic search returns nothing**
 
 ```bash
-# Reindex (requires an embedding provider; see `fastskill doctor`)
-fastskill reindex --skills-dir .claude/skills/
+# Reindex (requires an embedding provider; see `fastskill cli doctor`)
+fastskill index rebuild --skills-dir .claude/skills/
 
 # Keyword fallback works without a provider
-fastskill search "test query" --local --embedding false
+fastskill skill search "test query" --local --embedding false
 ```
 
 **Check environment readiness**
 
 ```bash
-fastskill doctor
+fastskill cli doctor
 ```
 
 ## Summary
@@ -146,4 +147,4 @@ FastSkill's Cursor integration provides:
 - **Direct skill discovery** — Cursor reads installed skills from the skills directory, no sync step
 - **MCP access** — register the FastSkill MCP server for tool-based access inside Cursor
 - **Reproducible installs** — `skill-project.toml` + `skills.lock` keep the skill set consistent across the team
-- **Optional semantic search** — `fastskill reindex` + `fastskill search --local` when an embedding provider is configured
+- **Optional semantic search** — `fastskill index rebuild` + `fastskill skill search --local` when an embedding provider is configured

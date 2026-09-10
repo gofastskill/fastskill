@@ -10,7 +10,7 @@ fn fastskill_cmd() -> Command {
 #[test]
 fn snapshot_analyze_help() {
     let output = fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("--help")
         .output()
         .unwrap();
@@ -22,7 +22,7 @@ fn snapshot_analyze_help() {
 #[test]
 fn snapshot_matrix_help() {
     let output = fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .arg("--help")
         .output()
@@ -39,7 +39,7 @@ fn snapshot_matrix_no_index_message() {
     std::fs::create_dir_all(&skills_dir).unwrap();
 
     let output = fastskill_cmd()
-        .arg("analyze")
+        .arg("analysis")
         .arg("matrix")
         .env("FASTSKILL_SKILLS_DIR", &skills_dir)
         .output()

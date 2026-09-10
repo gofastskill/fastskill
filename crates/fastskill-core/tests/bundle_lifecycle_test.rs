@@ -944,7 +944,7 @@ fn bundle_detection_and_lifecycle_noops_report_precise_results() {
         .install(&next)
         .unwrap_err()
         .to_string()
-        .contains("use 'fastskill update"));
+        .contains("use 'fastskill bundle update"));
     assert!(service
         .update("other-team", &next)
         .unwrap_err()

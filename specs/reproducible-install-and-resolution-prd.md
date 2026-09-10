@@ -10,7 +10,8 @@ follow [ADR-0009](../docs/adr/0009-resolution-and-restoration-policy.md).
 
 ## Problem and outcome
 
-At audited main `2b649bf`, `install --lock` installs changed local-origin contents
+At audited main `2b649bf`, the historical `install --lock` path installed changed local-origin
+contents
 and rewrites the Lock. A cold install can miss transitive dependencies. Local ZIPs,
 HTTP registries, and skill manifests accepted on one path fail on another. Users
 cannot reliably restore what they previously added.
@@ -20,31 +21,33 @@ same resolved contents, regardless of supported origin or interface.
 
 ## User stories
 
-1. As a new user, I add a repository skill without specifying a version and receive
+1. As a new user, I run `skill add` for a repository skill without specifying a version and receive
    the newest stable selection and its complete skill dependencies.
 2. As a teammate, I restore committed requirements without moving locked versions.
-3. As an offline user, I can install available verified artifacts without catalog
+3. As an offline user, I can run `project install` with available verified artifacts without catalog
    access and receive precise errors for missing inputs.
-4. As a maintainer, I install selected groups while preserving the requirements
+4. As a maintainer, I run `project install` for selected groups while preserving the requirements
    and locked selections of other groups.
 
 ## Requirements
 
 ### Origin support and references
 
-- **R-01:** Add, install and update MUST share origin inference, fetching, metadata
+- **R-01:** `skill add`, `project install`, and `skill update` MUST share origin inference,
+  fetching, metadata
   validation and content verification. Support local directory, editable directory,
   local single-skill ZIP, ZIP URL, Git ref/subdirectory, and each advertised
-  Repository type. A supported source MUST survive add → Lock → remove installed
-  files → install → update. Bundle artifacts retain their separate validated format.
+  Repository type. A supported source MUST survive `skill add` → Lock → remove installed
+  files → `project install` → `skill update`. Bundle artifacts retain their separate validated
+  format.
 - **R-02:** Repository adapters MUST support their advertised discovery and
   acquisition capabilities. A successful catalog lookup MUST yield an installable
   canonical ID and origin. Logical repository identity MUST remain in Manifest and
   Lock provenance; resolving a download URL MUST NOT replace that intent.
 - **R-03:** A folder reference MUST designate exactly that folder. Version comes
   from validated metadata, not neighboring names. Editable is directory-only.
-  Metadata requirements and fallback rules MUST agree on every install path;
-  legacy author metadata and SKILL.md fallback MUST not disagree between add and restore.
+  Metadata requirements and fallback rules MUST agree on every installation path;
+  legacy author metadata and SKILL.md fallback MUST not disagree between `skill add` and restore.
 
 ### Version selection and freshness
 
@@ -58,7 +61,8 @@ same resolved contents, regardless of supported origin or interface.
   restoration MUST NOT depend on listing versions. The result MUST report whether
   selection used refreshed or cached metadata. Refresh failure MUST NOT silently
   substitute stale data while claiming a current online selection.
-- **R-06:** Add/install/update MUST offer an explicit `--offline` mode. It MUST
+- **R-06:** `skill add`, `project install`, and `skill update` MUST offer an explicit `--offline`
+  mode. It MUST
   prohibit network acquisition, metadata refresh and automatic embedding calls.
   It may resolve floating intent from cached metadata, clearly identifying that
   freshness limitation. Missing inputs MUST name the repository, revision or path
@@ -86,21 +90,21 @@ same resolved contents, regardless of supported origin or interface.
   Git commit where applicable, canonical content digest, dependency edges and root
   coverage. A single parent pointer is insufficient for shared requirements.
   Project Lock content MUST remain deterministic and timestamp-free.
-- **R-10:** Strict `install --lock` MUST require compatible locked coverage for all
+- **R-10:** Strict `project install --lock` MUST require compatible locked coverage for all
   selected roots. For immutable selections it MUST fetch the recorded revision and
   verify identity and content, with the explicit editable exception in R-13,
   and leave Lock bytes unchanged on both success and failure. It MUST NOT replace
   a locked SHA with a branch head or rewrite a changed local digest as a restoration.
-- **R-11:** Ordinary install MUST prefer compatible locked selections. With no
+- **R-11:** Ordinary `project install` MUST prefer compatible locked selections. With no
   Lock, it resolves selected roots and records them. It MAY extend coverage for
   previously unresolved selected roots while preserving compatible existing pins.
   If an already-recorded origin/constraint/required graph no longer matches desired
-  intent, it MUST stop and direct the user to update. It MUST NOT silently prune
+  intent, it MUST stop and direct the user to `skill update`. It MUST NOT silently prune
   unrelated installed skills; explicit removal owns pruning.
 - **R-12:** A Lock MUST represent both desired-intent compatibility and which
-  roots have complete resolved coverage. A group-limited first install MUST NOT
-  claim unresolved excluded roots are locked. Later ordinary installation may
-  complete that coverage; strict installation MUST fail if selected coverage is
+  roots have complete resolved coverage. A group-limited first `project install` MUST NOT
+  claim unresolved excluded roots are locked. Later ordinary `project install` may
+  complete that coverage; strict `project install --lock` MUST fail if selected coverage is
   missing. Unselected existing entries MUST be preserved.
 - **R-13:** Restoration of a mutable snapshot origin MUST use saved verified bytes
   or verify the origin against the recorded digest and fail on mismatch. Editable
@@ -118,7 +122,7 @@ same resolved contents, regardless of supported origin or interface.
 ### Groups and bundles
 
 - **R-15:** Ungrouped individual roots belong to the implicit `default` group.
-  Plain install selects all declared groups. `--only GROUP` selects roots in those
+  Plain `project install` selects all declared groups. `--only GROUP` selects roots in those
   groups only; `--without GROUP` excludes matching roots. Unknown groups and combining
   `--only` with `--without` MUST fail before mutation. Multiple values within one
   selector form a union. Selection occurs at roots, then includes their required
@@ -135,12 +139,12 @@ same resolved contents, regardless of supported origin or interface.
 ## Proposed command behavior
 
 ```sh
-fastskill add reviewer@1.2.0 --repository team   # exact intent
-fastskill add reviewer@latest --repository team # floating stable intent, exact Lock
-fastskill install                              # prefer compatible pins
-fastskill install --lock --without dev         # strict selected restoration
-fastskill install --lock --offline             # verified local inputs only
-fastskill update reviewer                      # deliberate resolution within intent
+fastskill skill add reviewer@1.2.0 --repository team   # exact intent
+fastskill skill add reviewer@latest --repository team # floating stable intent, exact Lock
+fastskill project install                              # prefer compatible pins
+fastskill project install --lock --without dev         # strict selected restoration
+fastskill project install --lock --offline             # verified local inputs only
+fastskill skill update reviewer                      # deliberate resolution within intent
 ```
 
 These examples describe the target contract, including flags absent in the audited
@@ -153,23 +157,23 @@ binary. Repository selection and update controls are specified in the
 | --- | --- | --- |
 | R-A01 | Cold root → child → grandchild install | All required bytes and all edges exist after the first success. |
 | R-A02 | Diamond graph, compatible and conflicting requirements | Compatible shared node installed once; conflict independent of traversal order. |
-| R-A03 | Each supported origin through add/restore/update | Same validation, canonical ID, provenance and content guarantees throughout. |
+| R-A03 | Each supported origin through `skill add`, restore, and `skill update` | Same validation, canonical ID, provenance and content guarantees throughout. |
 | R-A04 | Lock local v1, change origin to v2, restore strictly | Original verified snapshot restored or explicit mismatch; Lock unchanged. |
 | R-A05 | Lock a Git branch, advance it, restore with cache cleared | Recorded commit restored; branch movement does not alter pins. |
 | R-A06 | Corrupt/reuse a ZIP or repository artifact at a pinned location | Digest rejection before replacement; old files and Lock survive. |
 | R-A07 | Catalog stable 1.2.0 plus 2.0.0-beta.1 | Omitted/latest/wildcard choose stable; explicit prerelease can select beta. |
 | R-A08 | Exact cached pin with repository unavailable | Installs offline without querying version listings. |
 | R-A09 | Floating online/offline with empty, old, or failed metadata | Online refreshes or fails; offline uses available cache with disclosed freshness or fails precisely. |
-| R-A10 | default/dev roots share a child; install with only/without and Lock | Selected closure matches in both modes; no required child is dropped. |
-| R-A11 | First install one group, then strict/ordinary install another | Strict fails incomplete coverage; ordinary extends coverage without moving old pins. |
+| R-A10 | default/dev roots share a child; `project install` with only/without and Lock | Selected closure matches in both modes; no required child is dropped. |
+| R-A11 | First `project install` one group, then strict/ordinary install another | Strict fails incomplete coverage; ordinary extends coverage without moving old pins. |
 | R-A12 | Change already-locked Manifest intent or load an old incomplete Lock | Strict preserves state and diagnoses mismatch/evidence; update is explicit. |
 | R-A13 | Wrong fetched ID, cycle, negative/overflow depth, missing child | Validation error; no Installed message or destination mutation. |
 | R-A14 | Local bundle plus individual root sharing a member, no member network access | Embedded closure restores and shared ownership remains valid. |
 | R-A15 | Same compatible installation twice | Same pins and bytes; unchanged result; deterministic Lock. |
-| R-A16 | Add/update one global root beside another root with a shared child | Compatible shared selection retained or the operation blocks before files and Lock change. |
-| R-A17 | Edit managed global bytes, then add/update with force | Replacement blocked; edited bytes and Lock survive. |
+| R-A16 | `skill add`/`skill update` one global root beside another root with a shared child | Compatible shared selection retained or the operation blocks before files and Lock change. |
+| R-A17 | Edit managed global bytes, then `skill add`/`skill update` with force | Replacement blocked; edited bytes and Lock survive. |
 | R-A18 | Catalog selects v2 but downloaded metadata declares v1 | Validation error before cache publication, installation, Manifest, or Lock mutation. |
-| R-A19 | Restore a project Lock without its Manifest; restore a global Lock explicitly | Project path gives missing-Manifest guidance; `install --global --lock` restores global state. |
+| R-A19 | Restore a project Lock without its Manifest; restore a global Lock explicitly | Project path gives missing-Manifest guidance; `project install --global --lock` restores global state. |
 
 Test the public CLI with isolated local directories, valid ZIPs, local Git fixtures,
 and controlled catalog/download servers. Compare bytes and Lock content, not only

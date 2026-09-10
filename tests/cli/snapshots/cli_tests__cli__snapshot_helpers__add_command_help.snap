@@ -5,7 +5,7 @@ expression: normalized
 ---
 Add a skill (from local path, zip, git URL, or registry ID)
 
-Usage: fastskill add [OPTIONS] <source>
+Usage: fastskill skill add [OPTIONS] <source>
 
 Arguments:
   <source>  Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@[VERSION])
@@ -31,9 +31,9 @@ Options:
   -h, --help                       Print help
   -V, --version                    Print version
 
-Syntax: add <SOURCE> [OPTIONS]
+Syntax: skill add <SOURCE> [OPTIONS]
 
 Examples:
-  fastskill add pptx
-  fastskill add ./my-skill --editable
-  fastskill add https://github.com/org/skill-repo.git --branch main
+  fastskill skill add pptx
+  fastskill skill add ./my-skill --editable
+  fastskill skill add https://github.com/org/skill-repo.git --branch main

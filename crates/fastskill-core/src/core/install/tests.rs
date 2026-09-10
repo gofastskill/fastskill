@@ -920,7 +920,7 @@ async fn http_registry_requirement_refresh_persists_versions_and_reports_failure
         .refresh_repository_requirement("team", "missing")
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("repos refresh team"));
+    assert!(error.to_string().contains("repo refresh team"));
 
     let invalid_manager = RepositoryManager::from_definitions(vec![RepositoryDefinition {
         name: "invalid".to_string(),

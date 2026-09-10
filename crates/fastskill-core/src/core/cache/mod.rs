@@ -4,7 +4,7 @@
 //! A machine-global, content-addressed store for fetched skill content, plus
 //! the per-source index it is checked against. [`SkillCache`] is the single
 //! seam later stories (US-002 git, US-003 registry, US-004 local, US-005
-//! `repos refresh`) go through to read or write the on-disk cache — this
+//! `repo refresh`) go through to read or write the on-disk cache — this
 //! story has **no production callers yet**; it only builds and tests the
 //! store itself.
 //!
@@ -526,7 +526,7 @@ impl SkillCache {
 
     /// Remove content entries (`fastskill cache clean`): every
     /// [`ContentSourceKind`] when `source` is `None`, or just the given one.
-    /// Never touches `index/` — an explicit `repos refresh` (US-005) is the
+    /// Never touches `index/` — an explicit `repo refresh` (US-005) is the
     /// only thing that invalidates the index cache, per the PRD's "removes
     /// all content entries" (content, not index) and "Resolved Defaults"
     /// (index has no v1 TTL/GC of its own). Never touches `tmp/` either:

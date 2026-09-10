@@ -1,6 +1,6 @@
 use crate::error::{CliError, CliResult};
 
-pub(super) fn emit_bundle_removal(
+pub(crate) fn emit_bundle_removal(
     preview: &fastskill_core::core::bundle::BundleRemovalPreview,
     dry_run: bool,
     json: bool,

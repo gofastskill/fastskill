@@ -9,13 +9,13 @@ description: "Install, lock, bundle, discover, evaluate, and operate AI agent sk
 
 **Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation**, optional **`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
-The project is designed around a **CLI-first workflow**; local **`fastskill serve`** exposes an HTTP API and web UI for browsing and integration.
+The project is designed around a **CLI-first workflow**; local **`fastskill server serve`** exposes an HTTP API and web UI for browsing and integration.
 
 ## What you can do
 
 <Cards>
   <Card title="Package & lifecycle">
-    `add`, `install`, `update`, `remove`, `list`, `read` with `skill-project.toml` and `skills.lock`.
+    `skill add`, `project install`, `skill update`, `skill remove`, `skill list`, `skill read` with `skill-project.toml` and `skills.lock`.
   </Card>
 
   <Card title="Validation">
@@ -35,11 +35,11 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
   </Card>
 
   <Card title="Diagnostics">
-    `fastskill doctor` reports configuration and environment readiness, including whether semantic search is available. See [tooling commands](/cli-reference/tooling-commands).
+    `fastskill cli doctor` reports configuration and environment readiness, including whether semantic search is available. See [tooling commands](/cli-reference/tooling-commands).
   </Card>
 
   <Card title="Catalogs & sources">
-    `repos` for remote sources and registry browsing. See [Registry overview](/registry/overview).
+    `repo` for remote origins and catalog browsing. See [Registry overview](/registry/overview).
   </Card>
 </Cards>
 
@@ -47,19 +47,19 @@ The project is designed around a **CLI-first workflow**; local **`fastskill serv
 
 ```bash
 fastskill -V
-fastskill init            # in a skill directory, when authoring
-fastskill add ./my-skill -e --group dev
-fastskill install
-fastskill list
+fastskill project init            # in a skill directory, when authoring
+fastskill skill add ./my-skill -e --group dev
+fastskill project install
+fastskill skill list
 ```
 
-Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill eval validate`, `fastskill doctor`. Full walkthrough: [Quick start](/quickstart).
+Then optional: `fastskill index rebuild`, `fastskill skill search "…" --local`, `fastskill eval validate`, `fastskill cli doctor`. Full walkthrough: [Quick start](/quickstart).
 
 ## How it fits together
 
 - **You**: edit `SKILL.md` and manifests; agents **read** skill content. FastSkill does not execute skill logic as a runtime sandbox.
 - **CLI**: single entry point for installs, checks, search, and evals.
-- **Optional `serve`**: HTTP API and UI on your machine for browsing and integrations.
+- **Optional `server serve`**: HTTP API and UI on your machine for browsing and integrations.
 
 <img src="/images/hero-diagram.svg" alt="Declare, lock, and ship workflow in FastSkill" />
 
@@ -68,7 +68,7 @@ Then optional: `fastskill reindex`, `fastskill search "…" --local`, `fastskill
 - **Authors**: init, validate, eval, and ship skills via the platform.
 - **Developers**: install, list, read, search for what agents load.
 - **Teams**: shared manifest + lock, groups for optional stacks, and self-contained bundle releases.
-- **Automation**: `install --lock` and reproducible installs in CI.
+- **Automation**: `project install --lock` and reproducible installs in CI.
 
 ## Next steps
 

@@ -56,7 +56,10 @@ fn test_serve_invalid_port_error() {
     fs::create_dir_all(&skills_dir).unwrap();
     fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
-    let result = run_fastskill_command(&["serve", "--port", "99999"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["server", "serve", "--port", "99999"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("Invalid"));
@@ -81,7 +84,7 @@ fn test_serve_default_host_port() {
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--port", "18080"])
+        .args(&["server", "serve", "--port", "18080"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start server");
@@ -115,7 +118,7 @@ fn test_serve_custom_port() {
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--port", "18081"])
+        .args(&["server", "serve", "--port", "18081"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start server");
@@ -149,7 +152,7 @@ fn test_serve_custom_host() {
 
     // Spawn server in background
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--host", "127.0.0.1", "--port", "18082"])
+        .args(&["server", "serve", "--host", "127.0.0.1", "--port", "18082"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start server");
@@ -183,7 +186,7 @@ fn test_serve_starts_without_registry_config() {
 
     // serve no longer has --enable-registry; server starts and UI/API are always available
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--port", "18083"])
+        .args(&["server", "serve", "--port", "18083"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start server");
@@ -204,7 +207,7 @@ fn test_serve_health_endpoints() {
     fs::write(temp_dir.path().join("skill-project.toml"), PROJECT_TOML).unwrap();
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--port", "18085"])
+        .args(&["server", "serve", "--port", "18085"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start server");
@@ -296,12 +299,12 @@ fn test_serve_health_endpoints() {
 /// a `skill-project.toml` to exist in the working directory or an ancestor (see
 /// the "require mandatory skills_directory in project-level skill-project.toml"
 /// change). Confirmed manually:
-///   $ fastskill serve --port 28099   # (no skill-project.toml in cwd)
+///   $ fastskill server serve --port 28099   # (no skill-project.toml in cwd)
 ///   FastSkill HTTP server starting...
 ///     Write endpoints: disabled (read-only); pass --enable-write to enable
 ///   Error: Configuration error: skill-project.toml not found in this directory
 ///   or any parent. Create it at the top level of your workspace (e.g. run
-///   'fastskill init' there), then run this command again.
+///   'fastskill project init' there), then run this command again.
 ///   (exit code 1, no socket ever opened)
 /// The old test hung for the full 5s `wait_for_port` timeout waiting on a port
 /// that is never opened. Updated to assert the current, intentional behavior:
@@ -311,7 +314,10 @@ fn test_serve_starts_without_skill_project_toml() {
     // Create a temp dir with NO skill-project.toml
     let temp_dir = TempDir::new().unwrap();
 
-    let result = run_fastskill_command(&["serve", "--port", "18086"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["server", "serve", "--port", "18086"],
+        Some(temp_dir.path()),
+    );
 
     assert!(
         !result.success,
@@ -344,7 +350,7 @@ fn test_serve_port_already_in_use_error() {
 
     // Start first server
     let mut child1 = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(&["serve", "--port", "18084"])
+        .args(&["server", "serve", "--port", "18084"])
         .current_dir(temp_dir.path())
         .spawn()
         .expect("Failed to start first server");
@@ -353,7 +359,10 @@ fn test_serve_port_already_in_use_error() {
     assert!(wait_for_port(18084, 5), "First server failed to start");
 
     // Try to start second server on same port
-    let result = run_fastskill_command(&["serve", "--port", "18084"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["server", "serve", "--port", "18084"],
+        Some(temp_dir.path()),
+    );
 
     // Kill first server
     child1.kill().expect("Failed to kill first server");

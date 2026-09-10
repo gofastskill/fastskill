@@ -390,7 +390,6 @@ mod tests {
             format: None,
             json: false,
             details: false,
-            bundles: false,
             check: false,
             only: None,
             without: None,

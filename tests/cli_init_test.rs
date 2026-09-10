@@ -44,6 +44,7 @@ fn test_init_command_in_empty_directory() {
                 "--bin",
                 "fastskill",
                 "--",
+                "project",
                 "init",
                 "--yes",
                 "--skills-dir",
@@ -54,7 +55,7 @@ fn test_init_command_in_empty_directory() {
     } else {
         Command::new(&binary)
             .current_dir(&skill_dir)
-            .args(&["init", "--yes", "--skills-dir", ".claude/skills"])
+            .args(&["project", "init", "--yes", "--skills-dir", ".claude/skills"])
             .output()
             .expect("Failed to execute init command")
     };
@@ -120,6 +121,7 @@ fn test_init_command_with_existing_file() {
                 "--bin",
                 "fastskill",
                 "--",
+                "project",
                 "init",
                 "--yes",
                 "--skills-dir",
@@ -130,7 +132,7 @@ fn test_init_command_with_existing_file() {
     } else {
         Command::new(&binary)
             .current_dir(&skill_dir)
-            .args(&["init", "--yes", "--skills-dir", ".claude/skills"])
+            .args(&["project", "init", "--yes", "--skills-dir", ".claude/skills"])
             .output()
             .expect("Failed to execute init command")
     };
@@ -185,6 +187,7 @@ fn test_init_command_with_force_flag() {
                 "--bin",
                 "fastskill",
                 "--",
+                "project",
                 "init",
                 "--yes",
                 "--force",
@@ -199,6 +202,7 @@ fn test_init_command_with_force_flag() {
         Command::new(&binary)
             .current_dir(&skill_dir)
             .args(&[
+                "project",
                 "init",
                 "--yes",
                 "--force",

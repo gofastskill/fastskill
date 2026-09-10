@@ -1,19 +1,19 @@
 ---
-title: "Search Command"
+title: "skill search"
 description: "Search for skills using semantic embeddings or traditional keyword matching."
 ---
 
 ## Overview
 
-`fastskill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
+`fastskill skill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
 
 The query is required. Remote results use the catalog's canonical skill ID and include the
-repository, available version, and a copy-pasteable `fastskill add ... --repository ...` command.
+repository, available version, and a copy-pasteable `fastskill skill add ... --repository ...` command.
 
-With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill reindex` and embedding configuration when not using keyword-only mode.
+With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill index rebuild` and embedding configuration when not using keyword-only mode.
 
 <Callout type="info">
-Run `fastskill search --help` for the authoritative flag list.
+Run `fastskill skill search --help` for the authoritative flag list.
 </Callout>
 
 Remote search distinguishes these outcomes:
@@ -31,23 +31,23 @@ fields in that value instead of prose appended to stdout.
 ### Remote catalog (default)
 
 ```bash
-fastskill search "text processing"
-fastskill search "pptx" --repository my-registry --limit 5 --json
+fastskill skill search "text processing"
+fastskill skill search "pptx" --repository my-registry --limit 5 --json
 ```
 
 ### Installed skills (local)
 
 ```bash
 # Keyword-style local search (no embeddings)
-fastskill search "pdf" --local --embedding false
+fastskill skill search "pdf" --local --embedding false
 
 # Embedding / hybrid behavior (needs index + API key when embedding is true/auto)
 export OPENAI_API_KEY="your-openai-api-key"
-fastskill reindex
-fastskill search "process documents" --local --embedding auto
+fastskill index rebuild
+fastskill skill search "process documents" --local --embedding auto
 
 # Optional skills directory override (applies to local flows that need the service)
-fastskill search "powerpoint" --local --skills-dir ./.claude/skills
+fastskill skill search "powerpoint" --local --skills-dir ./.claude/skills
 ```
 
 ## Command Options
@@ -58,10 +58,10 @@ Maximum number of results to return:
 
 ```bash
 # Return top 5 results
-fastskill search "powerpoint" --limit 5
+fastskill skill search "powerpoint" --limit 5
 
 # Request a larger page (default: 10)
-fastskill search "powerpoint" --limit 50
+fastskill skill search "powerpoint" --limit 50
 ```
 
 ### --format [table|json|grid|xml]
@@ -70,21 +70,21 @@ Output format for results:
 
 ```bash
 # ASCII table (default)
-fastskill search "powerpoint" --format table
+fastskill skill search "powerpoint" --format table
 
 # JSON output
-fastskill search "powerpoint" --format json
+fastskill skill search "powerpoint" --format json
 
 # XML output
-fastskill search "powerpoint" --format xml
+fastskill skill search "powerpoint" --format xml
 ```
 
 ### Scope flags
 
 ```bash
-fastskill search "query" --local          # installed skills
-fastskill search "query" --remote         # explicit remote (default without --local)
-fastskill search "query" --repository r   # remote, single repo
+fastskill skill search "query" --local          # installed skills
+fastskill skill search "query" --remote         # explicit remote (default without --local)
+fastskill skill search "query" --repository r   # remote, single repo
 ```
 
 ### --embedding `&lt;true|false|auto&gt;`
@@ -92,9 +92,9 @@ fastskill search "query" --repository r   # remote, single repo
 **Only applies when `--local` is set**; ignored for remote search.
 
 ```bash
-fastskill search --local --embedding false "documents"
-fastskill search --local --embedding true "documents"
-fastskill search --local "documents"
+fastskill skill search --local --embedding false "documents"
+fastskill skill search --local --embedding true "documents"
+fastskill skill search --local "documents"
 ```
 
 **Modes:**
@@ -118,7 +118,7 @@ fastskill search --local "documents"
 
 **Example:**
 ```bash
-fastskill search "I need to run a meeting and summarize main points visually"
+fastskill skill search "I need to run a meeting and summarize main points visually"
 # Finds: PowerPoint tools, presentation software, chart generators
 ```
 
@@ -151,7 +151,7 @@ Found 3 skills matching 'powerpoint':
 Clean JSON without embedding vectors:
 
 ```bash
-fastskill search "powerpoint" --format json --limit 2
+fastskill skill search "powerpoint" --format json --limit 2
 ```
 
 ```json
@@ -190,7 +190,7 @@ fastskill search "powerpoint" --format json --limit 2
 Structured XML output:
 
 ```bash
-fastskill search "powerpoint" --format xml
+fastskill skill search "powerpoint" --format xml
 ```
 
 ```xml
@@ -216,7 +216,7 @@ fastskill search "powerpoint" --format xml
 Local search uses the same skills directory resolution as other commands (typically `[tool.fastskill].skills_directory` in `skill-project.toml`, or `--global` on the top-level CLI). You can override per invocation with:
 
 ```bash
-fastskill search "query" --local --skills-dir ./.claude/skills
+fastskill skill search "query" --local --skills-dir ./.claude/skills
 ```
 
 ## Examples
@@ -225,26 +225,26 @@ fastskill search "query" --local --skills-dir ./.claude/skills
 
 ```bash
 # Find document processing skills
-fastskill search "process documents and extract text"
+fastskill skill search "process documents and extract text"
 
 # Find visualization tools
-fastskill search "create charts and graphs"
+fastskill skill search "create charts and graphs"
 
 # Find meeting-related skills
-fastskill search "schedule meetings and send invites"
+fastskill skill search "schedule meetings and send invites"
 ```
 
 ### Advanced Queries
 
 ```bash
 # Limit results and use JSON output
-fastskill search "powerpoint" --limit 5 --format json
+fastskill skill search "powerpoint" --limit 5 --format json
 
 # Force keyword search for debugging
-fastskill search "presentation" --embedding false --format table
+fastskill skill search "presentation" --embedding false --format table
 
 # XML output for integration
-fastskill search "charts" --format xml > charts.xml
+fastskill skill search "charts" --format xml > charts.xml
 ```
 
 ### Integration Examples
@@ -253,7 +253,7 @@ fastskill search "charts" --format xml > charts.xml
 ```bash
 #!/bin/bash
 QUERY="$1"
-RESULTS=$(fastskill search "$QUERY" --format json --limit 3)
+RESULTS=$(fastskill skill search "$QUERY" --format json --limit 3)
 
 if [ -z "$RESULTS" ]; then
     echo "No skills found for: $QUERY"
@@ -292,11 +292,11 @@ echo "$RESULTS" | jq -r '.[].name'
 
 #### "Embedding configuration required but not found"
 - **Cause**: No `[tool.fastskill.embedding]` section found in `skill-project.toml` (walked up from the current directory)
-- **Solution**: Run `fastskill init` to set up your project, or add `[tool.fastskill.embedding]` to `skill-project.toml` manually
+- **Solution**: Run `fastskill project init` to set up your project, or add `[tool.fastskill.embedding]` to `skill-project.toml` manually
 
 #### "Vector index service not available"
 - **Cause**: Skills not indexed yet
-- **Solution**: Run `fastskill reindex` first
+- **Solution**: Run `fastskill index rebuild` first
 
 #### "OPENAI_API_KEY environment variable not set"
 - **Cause**: API key not configured for embedding search
@@ -306,7 +306,7 @@ echo "$RESULTS" | jq -r '.[].name'
 
 #### Enable Debug Logging
 ```bash
-RUST_LOG=fastskill=debug fastskill search "query"
+RUST_LOG=fastskill=debug fastskill skill search "query"
 ```
 
 #### Check Index Status
@@ -327,7 +327,7 @@ cat skill-project.toml
 echo $OPENAI_API_KEY
 
 # Test basic search functionality
-fastskill search "test query" --limit 1
+fastskill skill search "test query" --limit 1
 ```
 
 ## Best Practices
@@ -343,24 +343,24 @@ fastskill search "test query" --limit 1
 
 ```bash
 # Use appropriate limits
-fastskill search "query" --limit 10  # Not too many results
+fastskill skill search "query" --limit 10  # Not too many results
 
 # Choose appropriate output formats
-fastskill search "query" --format json  # For programmatic use
-fastskill search "query" --format table # For human reading
+fastskill skill search "query" --format json  # For programmatic use
+fastskill skill search "query" --format table # For human reading
 ```
 
 ### Integration Patterns
 
 #### API Integration
 ```bash
-# For web applications (POST JSON body to the running `fastskill serve` API)
+# For web applications (POST JSON body to the running `fastskill server serve` API)
 curl -X POST "http://localhost:8080/api/v1/search" \
   -H "Content-Type: application/json" \
   -d '{"query": "powerpoint", "limit": 10, "semantic": true}'
 
 # For command-line tools
-fastskill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
+fastskill skill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
 ```
 
 ## Related Commands
@@ -369,7 +369,8 @@ fastskill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.
 Build or update the search index:
 
 ```bash
-fastskill reindex --skills-dir .claude/skills/
+fastskill index rebuild --skills-dir .claude/skills/
 ```
 
-The search command is the primary way to discover skills from catalogs or your installed set, depending on `--local` and embedding settings.
+`skill search` discovers skills from catalogs or the installed set, depending on `--local` and
+embedding settings.

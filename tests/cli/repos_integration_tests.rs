@@ -44,7 +44,7 @@ fn test_repos_complete_workflow_matrix() {
 
     let add = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "matrix-local",
             "--repo-type",
@@ -60,7 +60,7 @@ fn test_repos_complete_workflow_matrix() {
     );
     assert!(add.stdout.contains("Added repository: matrix-local"));
 
-    let list = run_fastskill_command(&["repos", "list", "--json"], Some(temp_dir.path()));
+    let list = run_fastskill_command(&["repo", "list", "--json"], Some(temp_dir.path()));
     assert!(
         list.success,
         "repos list failed: {}{}",
@@ -69,7 +69,7 @@ fn test_repos_complete_workflow_matrix() {
     assert!(list.stdout.contains("matrix-local"));
 
     let info = run_fastskill_command(
-        &["repos", "info", "matrix-local", "--json"],
+        &["repo", "info", "matrix-local", "--json"],
         Some(temp_dir.path()),
     );
     assert!(
@@ -80,7 +80,7 @@ fn test_repos_complete_workflow_matrix() {
     assert!(info.stdout.contains("\"name\": \"matrix-local\""));
 
     let update = run_fastskill_command(
-        &["repos", "update", "matrix-local", "--priority", "3"],
+        &["repo", "update", "matrix-local", "--priority", "3"],
         Some(temp_dir.path()),
     );
     assert!(
@@ -90,7 +90,7 @@ fn test_repos_complete_workflow_matrix() {
     );
     assert!(update.stdout.contains("Updated repository: matrix-local"));
 
-    let test = run_fastskill_command(&["repos", "test", "matrix-local"], Some(temp_dir.path()));
+    let test = run_fastskill_command(&["repo", "test", "matrix-local"], Some(temp_dir.path()));
     assert!(
         test.success,
         "repos test failed: {}{}",
@@ -105,7 +105,7 @@ fn test_repos_complete_workflow_matrix() {
     let cache_dir_str = cache_dir.path().to_str().unwrap();
 
     let refresh_one = run_fastskill_command_with_env(
-        &["repos", "refresh", "matrix-local"],
+        &["repo", "refresh", "matrix-local"],
         &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
         Some(temp_dir.path()),
     );
@@ -124,7 +124,7 @@ fn test_repos_complete_workflow_matrix() {
         .is_file());
 
     let refresh_all = run_fastskill_command_with_env(
-        &["repos", "refresh"],
+        &["repo", "refresh"],
         &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
         Some(temp_dir.path()),
     );
@@ -138,7 +138,7 @@ fn test_repos_complete_workflow_matrix() {
         .contains("Refreshed matrix-local: 1 skill"));
 
     let skills = run_fastskill_command(
-        &["repos", "skills", "--repository", "matrix-local"],
+        &["repo", "skills", "--repository", "matrix-local"],
         Some(temp_dir.path()),
     );
     assert!(
@@ -150,7 +150,7 @@ fn test_repos_complete_workflow_matrix() {
 
     let show = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "show",
             "matrix-skill",
             "--repository",
@@ -167,7 +167,7 @@ fn test_repos_complete_workflow_matrix() {
 
     let versions = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "versions",
             "matrix-skill",
             "--repository",
@@ -183,7 +183,7 @@ fn test_repos_complete_workflow_matrix() {
     assert!(versions.stdout.contains("Available versions:"));
     assert!(versions.stdout.contains("1.0.0"));
 
-    let remove = run_fastskill_command(&["repos", "remove", "matrix-local"], Some(temp_dir.path()));
+    let remove = run_fastskill_command(&["repo", "remove", "matrix-local"], Some(temp_dir.path()));
     assert!(
         remove.success,
         "repos remove failed: {}{}",
@@ -197,16 +197,16 @@ fn test_repos_command_excludes_search_subcommand() {
     let temp_dir = TempDir::new().unwrap();
     write_project_manifest(temp_dir.path());
 
-    let repos_search = run_fastskill_command(&["repos", "search", "test"], Some(temp_dir.path()));
+    let repos_search = run_fastskill_command(&["repo", "search", "test"], Some(temp_dir.path()));
     assert!(!repos_search.success);
     // cli-framework's rejection wording for an unknown nested path differs
     // from clap's native "unrecognized subcommand '...'" phrasing (see the
     // command-layer migration, spec #89); assert on the current message.
     assert!(repos_search
         .stderr
-        .contains("nested command path 'repos search test' not found"));
+        .contains("nested command path 'repo search test' not found"));
 
-    let search_help = run_fastskill_command(&["search", "--help"], Some(temp_dir.path()));
+    let search_help = run_fastskill_command(&["skill", "search", "--help"], Some(temp_dir.path()));
     assert!(search_help.success);
     assert!(search_help.stdout.contains("Search skills by query"));
 }
@@ -216,9 +216,9 @@ fn test_repos_help_does_not_advertise_search() {
     let temp_dir = TempDir::new().unwrap();
     write_project_manifest(temp_dir.path());
 
-    let repos_help = run_fastskill_command(&["repos", "--help"], Some(temp_dir.path()));
+    let repos_help = run_fastskill_command(&["repo", "--help"], Some(temp_dir.path()));
     assert!(repos_help.success);
-    assert!(!repos_help.stdout.contains(" repos search "));
+    assert!(!repos_help.stdout.contains(" repo search "));
     assert!(repos_help.stdout.contains("skills"));
     assert!(repos_help.stdout.contains("show"));
     assert!(repos_help.stdout.contains("versions"));
@@ -239,7 +239,7 @@ fn test_repos_skills_positional_repository_reaches_domain_error() {
     let temp_dir = TempDir::new().unwrap();
     write_project_manifest(temp_dir.path());
 
-    let skills = run_fastskill_command(&["repos", "skills", "nosuchrepo"], Some(temp_dir.path()));
+    let skills = run_fastskill_command(&["repo", "skills", "nosuchrepo"], Some(temp_dir.path()));
 
     assert!(
         !skills.success,
@@ -274,7 +274,7 @@ fn test_repos_skills_positional_and_flag_conflict() {
     write_project_manifest(temp_dir.path());
 
     let skills = run_fastskill_command(
-        &["repos", "skills", "foo", "--repository", "bar"],
+        &["repo", "skills", "foo", "--repository", "bar"],
         Some(temp_dir.path()),
     );
 
@@ -300,7 +300,7 @@ fn test_unknown_flag_diagnostic_is_not_printed_twice() {
     write_project_manifest(temp_dir.path());
 
     let skills = run_fastskill_command(
-        &["repos", "skills", "--this-flag-does-not-exist"],
+        &["repo", "skills", "--this-flag-does-not-exist"],
         Some(temp_dir.path()),
     );
 
@@ -324,7 +324,7 @@ fn test_repos_refresh_unknown_repository_fails() {
     let cache_dir = TempDir::new().unwrap();
 
     let refresh = run_fastskill_command_with_env(
-        &["repos", "refresh", "does-not-exist"],
+        &["repo", "refresh", "does-not-exist"],
         &[("FASTSKILL_CACHE_DIR", cache_dir.path().to_str().unwrap())],
         Some(temp_dir.path()),
     );
@@ -351,7 +351,7 @@ fn test_repos_refresh_all_partial_failure_still_refreshes_others_and_exits_nonze
     let good_repo_path = write_local_skill_repo(temp_dir.path(), "healthy-skill", "1.0.0");
     let add_good = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "healthy",
             "--repo-type",
@@ -365,7 +365,7 @@ fn test_repos_refresh_all_partial_failure_still_refreshes_others_and_exits_nonze
     let missing_path = temp_dir.path().join("this-path-does-not-exist");
     let add_bad = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "broken",
             "--repo-type",
@@ -377,7 +377,7 @@ fn test_repos_refresh_all_partial_failure_still_refreshes_others_and_exits_nonze
     assert!(add_bad.success, "{}{}", add_bad.stdout, add_bad.stderr);
 
     let refresh_all = run_fastskill_command_with_env(
-        &["repos", "refresh"],
+        &["repo", "refresh"],
         &[("FASTSKILL_CACHE_DIR", cache_dir_str)],
         Some(temp_dir.path()),
     );
@@ -410,7 +410,7 @@ fn test_repos_refresh_writes_source_index_to_disk() {
     let repo_path = write_local_skill_repo(temp_dir.path(), "indexed-skill", "2.3.4");
     let add = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "idx-repo",
             "--repo-type",
@@ -422,7 +422,7 @@ fn test_repos_refresh_writes_source_index_to_disk() {
     assert!(add.success, "{}{}", add.stdout, add.stderr);
 
     let refresh = run_fastskill_command_with_env(
-        &["repos", "refresh", "idx-repo"],
+        &["repo", "refresh", "idx-repo"],
         &[("FASTSKILL_CACHE_DIR", cache_dir.path().to_str().unwrap())],
         Some(temp_dir.path()),
     );

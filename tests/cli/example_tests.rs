@@ -71,7 +71,13 @@ fn help_succeeds_and_contains_examples(args: &[&str]) {
 fn root_help_lists_command_groups() {
     let result = run_fastskill_command(&["--help"], None);
     assert!(result.success, "fastskill --help should succeed");
-    for group in ["Discovery:", "Packages:", "Options:"] {
+    for group in [
+        "Skills and projects:",
+        "Sources and distribution:",
+        "Quality:",
+        "Operations:",
+        "Options:",
+    ] {
         assert!(
             result.stdout.contains(group),
             "root help should list the `{}` section; got:\n{}",
@@ -83,27 +89,27 @@ fn root_help_lists_command_groups() {
 
 #[test]
 fn add_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["add", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "add", "--help"]);
 }
 
 #[test]
 fn init_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["init", "--help"]);
+    help_succeeds_and_contains_examples(&["project", "init", "--help"]);
 }
 
 #[test]
 fn install_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["install", "--help"]);
+    help_succeeds_and_contains_examples(&["project", "install", "--help"]);
 }
 
 #[test]
 fn list_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["list", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "list", "--help"]);
 }
 
 #[test]
 fn read_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["read", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "read", "--help"]);
 }
 
 /// `repos` is a command *group*, registered via `register_group(_, GroupMetadata)`.
@@ -113,7 +119,7 @@ fn read_help_shows_examples() {
 /// `repos <sub> --help` tests below do assert on examples.)
 #[test]
 fn repos_help_lists_subcommands() {
-    let result = run_fastskill_command(&["repos", "--help"], None);
+    let result = run_fastskill_command(&["repo", "--help"], None);
     assert!(result.success, "fastskill repos --help should succeed");
     for sub in ["list", "add", "remove", "refresh"] {
         assert!(
@@ -127,84 +133,81 @@ fn repos_help_lists_subcommands() {
 
 #[test]
 fn repos_skills_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "skills", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "skills", "--help"]);
 }
 
 #[test]
 fn repos_show_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "show", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "show", "--help"]);
 }
 
 #[test]
 fn repos_versions_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "versions", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "versions", "--help"]);
 }
 
 #[test]
 fn reindex_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["reindex", "--help"]);
+    help_succeeds_and_contains_examples(&["index", "rebuild", "--help"]);
 }
 
 #[test]
 fn remove_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["remove", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "remove", "--help"]);
 }
 
 #[test]
 fn search_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["search", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "search", "--help"]);
 }
 
 #[test]
 fn serve_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["serve", "--help"]);
+    help_succeeds_and_contains_examples(&["server", "serve", "--help"]);
 }
 
 #[test]
 fn repos_list_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "list", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "list", "--help"]);
 }
 
 #[test]
 fn repos_add_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "add", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "add", "--help"]);
 }
 
 #[test]
 fn repos_remove_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "remove", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "remove", "--help"]);
 }
 
 #[test]
 fn repos_info_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "info", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "info", "--help"]);
 }
 
 #[test]
 fn repos_update_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "update", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "update", "--help"]);
 }
 
 #[test]
 fn repos_test_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "test", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "test", "--help"]);
 }
 
 #[test]
 fn repos_refresh_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["repos", "refresh", "--help"]);
+    help_succeeds_and_contains_examples(&["repo", "refresh", "--help"]);
 }
 
 #[test]
 fn update_help_shows_examples() {
-    help_succeeds_and_contains_examples(&["update", "--help"]);
+    help_succeeds_and_contains_examples(&["skill", "update", "--help"]);
 }
 
 // `version_help_shows_examples` was removed: `version` is not a command.
-// It is absent from `fastskill spec`, and `fastskill version --help` exits 0
-// only because the unknown token falls through to the `read <skill-id>`
-// shorthand -- so the test was asserting on `read`'s help while claiming to
-// cover `version`, and passed for entirely the wrong reason. Printing the
-// version is `--version`/`-V`, already covered by
+// It is absent from `fastskill cli spec`, and `fastskill version --help` fails
+// as an unknown command. Printing the version is `--version`/`-V`, covered by
 // `help_tests::test_version_flag`. Same rationale as the `disable`/`show`
 // removals noted at the top of this file.

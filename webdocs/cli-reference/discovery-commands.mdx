@@ -1,6 +1,6 @@
 ---
-title: "Discovery Commands"
-description: "FastSkill CLI commands for skill search, vector indexing, and repository management."
+title: "Discovery commands"
+description: "Search skills, rebuild the local index, and manage repositories."
 ---
 
 ## Overview
@@ -9,8 +9,8 @@ Discovery commands help you find, index, and manage skills in your FastSkill eco
 
 <Callout type="info">
 **Command Architecture**:
-- **Repository Management**: Use `fastskill repos` for all repository operations (add, remove, list, info, update, test, refresh) and catalog browsing (skills, show, versions)
-- **Skill Discovery**: Use `fastskill search` (remote catalogs by default; add `--local` for installed skills and embeddings)
+- **Repository Management**: Use `fastskill repo` for all repository operations (add, remove, list, info, update, test, refresh) and catalog browsing (skills, show, versions)
+- **Skill Discovery**: Use `fastskill skill search` (remote catalogs by default; add `--local` for installed skills and embeddings)
 </Callout>
 
 <Callout>
@@ -19,26 +19,26 @@ For detailed documentation on specific commands, see the dedicated command pages
 
 ## Command Reference
 
-### fastskill search
+### fastskill skill search
 
 Query skills. **Default scope is remote** (catalog APIs). Use `--local` to search installed skills; local embedding search uses OpenAI when configured and respects `--embedding`.
 
 <Callout type="info">
-See [search Command](/cli-reference/search-command) for complete documentation with output formats.
+See [`skill search`](/cli-reference/search-command) for complete output documentation.
 </Callout>
 
 ```bash
 # Remote catalog search (default)
-fastskill search "text processing"
+fastskill skill search "text processing"
 
 # Installed skills + embeddings / keyword (see --embedding)
-fastskill search "analyze data" --local
+fastskill skill search "analyze data" --local
 
 # Remote, limit and JSON
-fastskill search "convert files" --limit 5 --json
+fastskill skill search "convert files" --limit 5 --json
 
 # Remote, single repository
-fastskill search "process text" --repository my-repo
+fastskill skill search "process text" --repository my-repo
 ```
 
 **What it does (local scope)**:
@@ -60,29 +60,29 @@ fastskill search "process text" --repository my-repo
 - **table** (default): Human-readable rows
 - **json** / **xml** / **grid**: Structured or machine-readable layouts
 
-### fastskill reindex
+### fastskill index rebuild
 
 Rebuild the vector search index by scanning all installed skills. Updates embeddings and similarity database.
 
 <Callout type="info">
-See [reindex Command](/cli-reference/reindex-command) for complete documentation.
+See [`index rebuild`](/cli-reference/reindex-command) for complete documentation.
 </Callout>
 
 ```bash
 # Reindex all skills (uses configured skills directory)
-fastskill reindex
+fastskill index rebuild
 
 # Force reindex (ignore file hash cache)
-fastskill reindex --force
+fastskill index rebuild --force
 
 # Optional explicit skills directory
-fastskill reindex --skills-dir ./.claude/skills
+fastskill index rebuild --skills-dir ./.claude/skills
 ```
 
 **What it does**:
 - Scans the configured skills directory for installed skills
 - Generates embeddings for SKILL.md content when embedding search is enabled
-- Stores vectors in the local index database used by `fastskill search --local`
+- Stores vectors in the local index database used by `fastskill skill search --local`
 - Tracks file hashes (SHA256) for change detection
 - Skips unchanged files unless `--force` is set
 
@@ -99,35 +99,36 @@ fastskill reindex --skills-dir ./.claude/skills
 - When search results are stale or incomplete
 - When skill content has changed
 
-### fastskill repos
+### fastskill repo
 
 Manage skill repositories for discovering and installing skills. Supports multiple repository types with authentication and priority-based resolution. This is the **primary command** for repository management and catalog browsing.
 
 <Callout type="info">
-See [repos Command](/cli-reference/repository-command) for complete documentation with subcommands and authentication.
+See [`repo` commands](/cli-reference/repository-command) for complete documentation with actions
+and authentication.
 </Callout>
 
 ```bash
 # List all configured repositories
-fastskill repos list
+fastskill repo list
 
 # Add new repository
-fastskill repos add team-tools --repo-type git-marketplace https://github.com/team/skills.git
+fastskill repo add team-tools --repo-type git-marketplace https://github.com/team/skills.git
 
 # Remove repository
-fastskill repos remove team-tools
+fastskill repo remove team-tools
 
 # Show repository details
-fastskill repos info team-tools
+fastskill repo info team-tools
 
 # Update repository configuration
-fastskill repos update team-tools --priority 1
+fastskill repo update team-tools --priority 1
 
 # Test repository connectivity
-fastskill repos test team-tools
+fastskill repo test team-tools
 
 # Refresh repository cache
-fastskill repos refresh
+fastskill repo refresh
 ```
 
 **What it does**:
@@ -199,39 +200,39 @@ When skills are available in multiple repositories, priority determines the orde
 
 ```bash
 # 1. Install skills
-fastskill install
+fastskill project install
 
 # 2. Reindex for search
-fastskill reindex
+fastskill index rebuild
 
 # 3. Test search
-fastskill search "text processing"
+fastskill skill search "text processing"
 ```
 
 ### After Updates
 
 ```bash
 # 1. Update skills
-fastskill update
+fastskill skill update
 
 # 2. Reindex to refresh embeddings
-fastskill reindex --force
+fastskill index rebuild --force
 
 # 3. Verify search results
-fastskill search "new feature"
+fastskill skill search "new feature"
 ```
 
 ### Adding New Skills
 
 ```bash
 # 1. Add skill
-fastskill add https://github.com/user/new-skill.git
+fastskill skill add https://github.com/user/new-skill.git
 
 # 2. Reindex to include in search
-fastskill reindex
+fastskill index rebuild
 
 # 3. Test discovery
-fastskill search "skill name or description"
+fastskill skill search "skill name or description"
 ```
 
 ## Performance Considerations
@@ -264,7 +265,7 @@ fastskill search "skill name or description"
 <Accordions>
 <Accordion id="search-returns-no-results" title="Search returns no results">
   <Callout type="warn">
-  **Index not built**: Make sure you've run `fastskill reindex` after installing skills.
+  **Index not built**: Make sure you've run `fastskill index rebuild` after installing skills.
   </Callout>
 
   <Callout type="warn">
@@ -272,7 +273,7 @@ fastskill search "skill name or description"
   </Callout>
 
   <Callout type="warn">
-  **Skills not installed**: Verify skills are in `.claude/skills/` with `fastskill list`.
+  **Skills not installed**: Verify skills are in `.claude/skills/` with `fastskill skill list`.
   </Callout>
 </Accordion>
 
@@ -281,7 +282,7 @@ fastskill search "skill name or description"
   **OpenAI API key not set**: Set `OPENAI_API_KEY` environment variable.
   ```bash
   export OPENAI_API_KEY="your-key-here"
-  fastskill reindex
+  fastskill index rebuild
   ```
   </Callout>
 
@@ -296,15 +297,15 @@ fastskill search "skill name or description"
 
 <Accordion id="repository-not-found" title="Repository not found">
   <Callout>
-  **Invalid repository name**: Check repository name with `fastskill repos list`.
+  **Invalid repository name**: Check repository name with `fastskill repo list`.
   </Callout>
 
   <Callout>
-  **Repository URL incorrect**: Verify URL is accessible with `fastskill repos test <name>`.
+  **Repository URL incorrect**: Verify URL is accessible with `fastskill repo test <name>`.
   </Callout>
 
   <Callout>
-  **Authentication failed**: Verify authentication type and credentials with `fastskill repos info <name>`.
+  **Authentication failed**: Verify authentication type and credentials with `fastskill repo info <name>`.
   </Callout>
 </Accordion>
 </Accordions>
@@ -313,7 +314,7 @@ fastskill search "skill name or description"
 
 ### 1. Reindex after changes
 
-Always run `fastskill reindex` after installing, updating, or modifying skills to keep search index current.
+Always run `fastskill index rebuild` after installing, updating, or modifying skills to keep search index current.
 
 ### 2. Use natural language queries
 
@@ -325,7 +326,7 @@ Set lower priority numbers for primary repositories to ensure preferred skills a
 
 ### 4. Test repositories after configuration
 
-Use `fastskill repos test <name>` to verify repositories are accessible before using them.
+Use `fastskill repo test <name>` to verify repositories are accessible before using them.
 
 ### 5. Reindex incrementally
 
@@ -334,6 +335,6 @@ Reindex skips unchanged skills by default (via the file-hash cache), so routine 
 ## See Also
 
 - [Install Command](/cli-reference/install-command) - Install skills from repositories
-- [repos Command](/cli-reference/repository-command) - Primary repository management and catalog browsing documentation
-- [Search Command](/cli-reference/search-command) - Detailed search command documentation
+- [`repo` commands](/cli-reference/repository-command) - Repository management and catalog browsing
+- [`skill search`](/cli-reference/search-command) - Search command documentation
 - [Repository System](/registry/repository-architecture) - Repository types and configuration

@@ -29,7 +29,7 @@ FastSkill uses OpenAI embeddings to enable semantic search—find skills by what
 
 ```bash
 # Semantic search finds skills by meaning
-fastskill search "create data visualizations"
+fastskill skill search "create data visualizations"
 # Returns: chart-generator, dashboard-builder, data-plotter
 ```
 
@@ -56,13 +56,13 @@ pytest = { origin = { type = "repository", repo = "team-tools", skill = "pytest"
 ### Lifecycle commands
 
 ```bash
-fastskill init                    # Skill author: create skill-project metadata
-fastskill add ./my-skill -e       # Add or link a skill (editable when local)
-fastskill install --without dev   # Install manifest without dev-only groups
-fastskill update                  # Move pinned versions forward when you choose
-fastskill read my-skill --tree    # Inspect a skill and its dependency tree
+fastskill project init                    # Skill author: create skill-project metadata
+fastskill skill add ./my-skill -e       # Add or link a skill (editable when local)
+fastskill project install --without dev   # Install manifest without dev-only groups
+fastskill skill update                  # Move pinned versions forward when you choose
+fastskill skill read my-skill --tree    # Inspect a skill and its dependency tree
 fastskill eval validate           # Check eval config and prompts (optional)
-fastskill doctor                  # Diagnose configuration and environment
+fastskill cli doctor                  # Diagnose configuration and environment
 ```
 
 ### Dependency management
@@ -80,12 +80,12 @@ data-processor = { origin = { type = "git", url = "https://github.com/org/data.g
 ### Version control and automation
 
 ```bash
-fastskill add https://github.com/org/skill.git
+fastskill skill add https://github.com/org/skill.git
 git add skill-project.toml skills.lock
 git commit -m "Add data processing skill"
 ```
 
-In automation, the same commands apply: install the `fastskill` binary in the environment, check out your repo, then run `fastskill install --lock` (and set secrets for tokens or API keys).
+In automation, the same commands apply: install the `fastskill` binary in the environment, check out your repo, then run `fastskill project install --lock` (and set secrets for tokens or API keys).
 
 #### Multi-environment manifests
 
@@ -110,7 +110,7 @@ FastSkill keeps semantic search fast and self-contained:
 - SQLite-based embedding index stored on disk (`index_path`)
 - Fast semantic search that queries local vectors — no external service call at query time
 - Incremental indexing: a change-detection cache (`.fastskill/build-cache.json`) re-embeds only what changed
-- Auto-reindex after add/install/update/remove keeps the index current
+- Automatic index rebuilding after skill, bundle, and project lifecycle changes keeps it current
 
 ## Expanding the Claude Code Standard
 
@@ -126,7 +126,7 @@ FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) an
 ### 2. **Validation & evals**
 
 - **Install-time checks**: structure and metadata when skills are added or installed
-- **Reconciliation**: `fastskill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
+- **Reconciliation**: `fastskill skill list` compares manifest, lock, and disk (see [Skill validation](/skill-management/validation))
 - **Eval suites**: `fastskill eval` for validate / run / judge / report / score / scorecard against defined cases ([eval command](/cli-reference/eval-command))
 
 ### 3. **Discovery**
@@ -138,7 +138,7 @@ FastSkill builds on the **Anthropic Claude Code skill standard** (`SKILL.md`) an
 ### 4. **Publish & registries** (when you distribute)
 
 - **Catalogs**: `fastskill marketplace create` generates a `marketplace.json` from a folder of skills
-- **Repositories**: `fastskill repos` for catalog sources—not the only story; many teams spend most time in install, list, validate, and eval
+- **Repositories**: `fastskill repo` for catalog sources—not the only story; many teams spend most time in install, list, validate, and eval
 
 ## Key Features
 
@@ -172,13 +172,13 @@ Organize skills by environment:
 
 ```bash
 # Install all skills
-fastskill install
+fastskill project install
 
 # Install without dev group
-fastskill install --without dev
+fastskill project install --without dev
 
 # Install only production
-fastskill install --only prod
+fastskill project install --only prod
 ```
 
 ### Editable installs
@@ -187,15 +187,15 @@ Point FastSkill at a folder on disk while you iterate:
 
 ```bash
 # Install in editable mode
-fastskill add ./local-skill -e --group dev
+fastskill skill add ./local-skill -e --group dev
 ```
 
 ### Repositories
 
 ```bash
-fastskill repos add team-tools --repo-type git-marketplace https://github.com/org/skills.git
-fastskill repos list
-fastskill install
+fastskill repo add team-tools --repo-type git-marketplace https://github.com/org/skills.git
+fastskill repo list
+fastskill project install
 ```
 
 ### Search
@@ -204,10 +204,10 @@ Find skills by meaning:
 
 ```bash
 # Search by capability
-fastskill search "create presentations"
+fastskill skill search "create presentations"
 
 # Find visualization tools
-fastskill search "charts and graphs"
+fastskill skill search "charts and graphs"
 ```
 
 ## Use Cases
@@ -239,7 +239,7 @@ fastskill search "charts and graphs"
 ### Skill Authors
 
 **Author, check, then ship:**
-- `fastskill init` for the manifest, `marketplace create` for a catalog
+- `fastskill project init` for the manifest, `marketplace create` for a catalog
 - Validation and `fastskill eval` before release
 - Dependencies declared in the manifest
 - Distribute via Git, ZIP, or registries when needed
@@ -268,7 +268,8 @@ FastSkill focuses on **repeatable operations** for AI agent skills:
 ## What's Next?
 
 - [Manifest system](/skill-management/manifest-system) for `skill-project.toml`, locks, and how installs resolve
-- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands) (`doctor`, `analyze`, …)
+- [CLI reference](/cli-reference/overview) and [tooling commands](/cli-reference/tooling-commands)
+  (`cli doctor`, `analysis`, and `marketplace create`)
 - [Cursor integration](/integration/cursor-integration) for using installed skills in the editor
 - [Registry overview](/registry/overview) when you are ready to browse catalogs
 

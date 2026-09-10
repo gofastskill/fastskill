@@ -30,11 +30,12 @@ impl IntoCommandSpec for ServeArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Start the FastSkill HTTP API server",
-            syntax: Some("serve [OPTIONS]"),
+            syntax: Some("server serve [OPTIONS]"),
             category: Some("server"),
+            help_order: Some(10),
             examples: vec![
-                "fastskill serve",
-                "fastskill serve --port 9000 --enable-write",
+                "fastskill server serve",
+                "fastskill server serve --port 9000 --enable-write",
             ],
             args: vec![
                 ArgSpec {

@@ -43,17 +43,17 @@ fn test_e2e_add_search_remove_workflow() {
     create_test_skill(&skills_dir, skill_name);
 
     // Test 1: Add skill from folder
-    let result = run_fastskill_command(&["add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
+    let result = run_fastskill_command(&["skill", "add", &skills_dir.join(skill_name).to_string_lossy().to_string()], Some(&skills_dir));
 
     assert_snapshot_with_settings("e2e_add_skill", &format!("{}{}", result.stdout, result.stderr), &cli_snapshot_settings());
 
     // Test 2: Search for the skill
-    let result = run_fastskill_command(&[skill_name], Some(&skills_dir));
+    let result = run_fastskill_command(&["skill", "read", skill_name], Some(&skills_dir));
 
     assert_snapshot_with_settings("e2e_search_skill", &result.stdout, &cli_snapshot_settings());
 
     // Test 3: Try to remove the skill (with force to avoid confirmation)
-    let result = run_fastskill_command(&["remove", "--force", skill_name], Some(&skills_dir));
+    let result = run_fastskill_command(&["skill", "remove", "--force", skill_name], Some(&skills_dir));
 
     assert_snapshot_with_settings("e2e_remove_skill", &result.stdout, &cli_snapshot_settings());
 }
@@ -88,14 +88,23 @@ fn test_e2e_directory_resolution() {
 #[test]
 fn test_e2e_command_help() {
     // Test individual command help
-    let commands = vec!["add", "search", "disable", "remove"];
+    let commands = [
+        ("skill_add", &["skill", "add", "--help"][..]),
+        ("skill_search", &["skill", "search", "--help"][..]),
+        ("skill_remove", &["skill", "remove", "--help"][..]),
+        ("bundle", &["bundle", "--help"][..]),
+    ];
 
-    for cmd in commands {
-        let result = run_fastskill_command(&[cmd, "--help"], None);
+    for (name, args) in commands {
+        let result = run_fastskill_command(args, None);
 
-        assert!(result.success, "Help for {} command failed", cmd);
-        assert!(!result.stdout.is_empty(), "Help for {} command was empty", cmd);
-        assert_snapshot_with_settings(&format!("e2e_{}_help", cmd), &result.stdout, &cli_snapshot_settings());
+        assert!(result.success, "Help for {name} command failed");
+        assert!(!result.stdout.is_empty(), "Help for {name} command was empty");
+        assert_snapshot_with_settings(
+            &format!("e2e_{name}_help"),
+            &result.stdout,
+            &cli_snapshot_settings(),
+        );
     }
 }
 
@@ -119,7 +128,7 @@ fn test_e2e_search_with_format_options() {
     let formats = vec!["table", "json"];
 
     for format in formats {
-        let result = run_fastskill_command(&["search", "nonexistent", "--format", format], Some(&skills_dir));
+        let result = run_fastskill_command(&["skill", "search", "nonexistent", "--format", format], Some(&skills_dir));
 
         // Should succeed (even if no results found)
         assert_snapshot_with_settings(&format!("e2e_search_format_{}", format), &result.stdout, &cli_snapshot_settings());

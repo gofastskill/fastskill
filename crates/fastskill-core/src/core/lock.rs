@@ -347,7 +347,7 @@ impl LegacyProjectLockedSkill {
         let missing = |field: &str| {
             LockError::Parse(format!(
                 "legacy lock entry '{id}' cannot be migrated: its source is '{field}' but that \
-             field is missing. Delete skills.lock and re-run `fastskill install` to rebuild it."
+             field is missing. Delete skills.lock and re-run `fastskill project install` to rebuild it."
             ))
         };
 
@@ -410,7 +410,7 @@ impl LegacyProjectLockedSkill {
             other => {
                 return Err(LockError::Parse(format!(
                     "legacy lock entry '{id}' has unknown source type '{other}'. Delete \
-                     skills.lock and re-run `fastskill install` to rebuild it."
+                     skills.lock and re-run `fastskill project install` to rebuild it."
                 )))
             }
         };
@@ -642,7 +642,7 @@ pub enum LockError {
     /// no migrator — the caller must delete the lock and reinstall.
     #[error(
         "skills lock format {found} predates the Origin model (3.0); \
-         delete the lock file and re-run `fastskill install`"
+         delete the lock file and re-run `fastskill project install`"
     )]
     UnsupportedVersion { found: String },
 }

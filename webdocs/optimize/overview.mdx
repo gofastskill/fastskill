@@ -5,7 +5,7 @@ description: "Use text-gradient optimization to automatically improve skill docu
 
 # Skill Optimization
 
-`fastskill optimize` is an automated loop that improves a skill document by running evals, scoring results, and applying gradient-style patches until the skill reliably triggers on the cases you care about.
+`fastskill optimization` is an automated loop that improves a skill document by running evals, scoring results, and applying gradient-style patches until the skill reliably triggers on the cases you care about.
 
 You provide a skill, a set of eval cases, and a grading config. FastSkill handles the rest: proposing edits, scoring outcomes, accepting or rejecting each step, and writing the best version to disk.
 
@@ -49,11 +49,11 @@ Each training step:
 
 | Command | What it does |
 |---|---|
-| `fastskill optimize run` | Start a new optimization run from a config file |
-| `fastskill optimize status` | Check progress and scores for a run |
-| `fastskill optimize resume` | Continue an interrupted run |
-| `fastskill optimize inspect` | Examine a specific step's patch and gate decision |
-| `fastskill optimize export` | Copy the best skill document to a destination path |
+| `fastskill optimization run` | Start a new optimization run from a config file |
+| `fastskill optimization status` | Check progress and scores for a run |
+| `fastskill optimization resume` | Continue an interrupted run |
+| `fastskill optimization inspect` | Examine a specific step's patch and gate decision |
+| `fastskill optimization export` | Copy the best skill document to a destination path |
 
 ## See also
 

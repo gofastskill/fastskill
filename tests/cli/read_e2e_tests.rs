@@ -43,7 +43,7 @@ Advanced web scraping capabilities for extracting structured data from websites.
 Basic usage example for web scraping.
 
 ```bash
-fastskill read web-scraper
+fastskill skill read web-scraper
 ```
 
 This skill provides comprehensive web scraping functionality.
@@ -57,7 +57,7 @@ This skill provides comprehensive web scraping functionality.
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "web-scraper"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "read", "web-scraper"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("web-scraper") && result.stdout.contains("1.2.3"));
@@ -102,7 +102,7 @@ Used for testing metadata display.
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "test-skill"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "read", "test-skill"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("name: test-skill"));
@@ -161,7 +161,7 @@ Example usage showing that the skill body should be displayed correctly.
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "body-skill"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["skill", "read", "body-skill"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("## Features"));
@@ -183,7 +183,10 @@ fn test_read_nonexistent_skill_error() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "nonexistent-skill"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "read", "nonexistent-skill"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("not found"));
@@ -208,7 +211,10 @@ fn test_read_invalid_skill_id_error() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "invalid skill id!"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "read", "invalid skill id!"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("Invalid"));
@@ -253,7 +259,10 @@ fn test_read_meta_flag() {
     let temp_dir = TempDir::new().unwrap();
     create_test_skill_dir(&temp_dir);
 
-    let result = run_fastskill_command(&["read", "meta-skill", "--meta"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "read", "meta-skill", "--meta"],
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success, "read --meta failed: {}", result.stderr);
     // --meta should show metadata, not the full SKILL.md body
@@ -277,7 +286,10 @@ fn test_read_tree_flag() {
     let temp_dir = TempDir::new().unwrap();
     create_test_skill_dir(&temp_dir);
 
-    let result = run_fastskill_command(&["read", "meta-skill", "--tree"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "read", "meta-skill", "--tree"],
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success, "read --tree failed: {}", result.stderr);
     // --tree should display dependency info and not raw body
@@ -301,7 +313,7 @@ fn test_read_meta_json_flag() {
     create_test_skill_dir(&temp_dir);
 
     let result = run_fastskill_command(
-        &["read", "meta-skill", "--meta", "--json"],
+        &["skill", "read", "meta-skill", "--meta", "--json"],
         Some(temp_dir.path()),
     );
 
@@ -345,7 +357,10 @@ fn test_read_locked_without_meta_fails() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["read", "some-skill", "--locked"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["skill", "read", "some-skill", "--locked"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success, "read --locked without --meta should fail");
     assert!(
@@ -356,7 +371,7 @@ fn test_read_locked_without_meta_fails() {
 }
 
 #[test]
-fn test_read_shorthand_streams_content() {
+fn test_explicit_read_streams_content_and_bare_id_fails() {
     let temp_dir = TempDir::new().unwrap();
     let skills_dir = temp_dir.path().join(".claude").join("skills");
     fs::create_dir_all(&skills_dir).unwrap();
@@ -374,11 +389,12 @@ fn test_read_shorthand_streams_content() {
     )
     .unwrap();
 
-    // Test `fastskill read <id>`
-    let result = run_fastskill_command(&["read", "shorthand-skill"], Some(temp_dir.path()));
+    // Test `fastskill skill read <id>`.
+    let result =
+        run_fastskill_command(&["skill", "read", "shorthand-skill"], Some(temp_dir.path()));
     assert!(
         result.success,
-        "read shorthand-skill failed: {}",
+        "skill read shorthand-skill failed: {}",
         result.stderr
     );
     assert!(
@@ -387,16 +403,16 @@ fn test_read_shorthand_streams_content() {
         result.stdout
     );
 
-    // Test bare positional shorthand `fastskill <id>` (AC 30)
+    // The retired bare positional shorthand must fail.
     let bare_result = run_fastskill_command(&["shorthand-skill"], Some(temp_dir.path()));
     assert!(
-        bare_result.success,
-        "bare positional shorthand-skill failed: {}",
-        bare_result.stderr
+        !bare_result.success,
+        "bare positional shorthand unexpectedly succeeded: {}{}",
+        bare_result.stdout, bare_result.stderr
     );
     assert!(
-        bare_result.stdout.contains("Body content here"),
-        "Expected SKILL.md body from bare positional shorthand, got: {}",
-        bare_result.stdout
+        bare_result.stderr.contains("unrecognized"),
+        "{}",
+        bare_result.stderr
     );
 }

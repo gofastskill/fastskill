@@ -97,18 +97,17 @@ crates/fastskill-core   - domain logic, storage, HTTP handlers, repositories, ve
 crates/fastskill-evals  - thin adapter over aikit-evals (suite/check/runner/artifact infra)
 ```
 
-`fastskill-cli` registers its commands and its `serve`/`mcp serve` HTTP surfaces against
+`fastskill-cli` registers its commands and its `server serve`/`mcp serve` surfaces against
 `fastskill-core` services; the HTTP layer (`crates/fastskill-core/src/http/`) is not a separate
-process — it's mounted by the `serve` command and uses the same core services as every other
+process — it is mounted by `server serve` and uses the same core services as every other
 command.
 
 ### Key Modules
 
 - **`crates/fastskill-cli/src/`** - CLI entry point and command handlers
-  - `main.rs` - Builds the `cli_framework::AppBuilder` app: registers every command with
-    `path![...]` (e.g. `path!["repos", "add"]`) via `register_out`/`register_out_no_mcp`/`register_group`
-  - `registration.rs` - `AppBuilderExt` trait (`register_out`, `register_out_no_mcp`) that routes
-    buffered `outln!` output through the MCP-safe context
+  - `main.rs` - Builds the `cli_framework::AppBuilder` app and delegates command registration.
+  - `registration.rs` and `registration/` - Register the canonical namespace tree and route
+    buffered `outln!` output through the MCP-safe context.
   - `commands/` - one module (or subdirectory) per command: `add/`, `analyze/`, `cache.rs`,
     `doctor.rs`, `eval/`, `init.rs`, `install.rs`, `list.rs`, `marketplace.rs`, `mcp.rs`,
     `read.rs`, `reindex.rs`, `remove.rs`, `repos/`, `search.rs`, `serve.rs`, `skillopt/`, `update.rs`
@@ -143,14 +142,14 @@ command.
   that both the HTTP write-gate and the MCP tool gate derive from (ADR-0003). Adding a mutating
   command or route means adding it here; there is no second list to keep in sync.
 
-- **`crates/fastskill-core/src/http/`** - HTTP API server, mounted by `fastskill serve`
+- **`crates/fastskill-core/src/http/`** - HTTP API server, mounted by `fastskill server serve`
   - `server.rs` - Axum server setup and router configuration
   - `handlers/` - API endpoint handlers: `manifest.rs`, `registry.rs`, `reindex.rs`, `resolve.rs`, `search.rs`, `skills.rs`, `status.rs`
   - `models.rs` - Request/response types, error handling
 
-- **`crates/fastskill-cli/src/commands/mcp.rs`** - `fastskill mcp serve|install|list`; `serve` is
+- **`crates/fastskill-cli/src/commands/mcp.rs`** - `fastskill mcp serve|install|list`; `server serve` is
   registered with `register_out_no_mcp` (never returns, and cli-framework's default MCP
-  auto-registration has no write gate); `install`/`list` auto-register.
+  auto-registration has no write gate); `project install`/`skill list` auto-register.
 
 ### Critical Data Structures
 
@@ -191,17 +190,19 @@ conflict resolution.
 
 ### Command Dispatch Pattern
 
-`crates/fastskill-cli/src/main.rs` builds a `cli_framework::AppBuilder` app and registers every
-command explicitly against a `path![...]` (e.g. `path!["repos", "add"]`):
+The registration layer builds a `cli_framework::AppBuilder` app and registers every command
+explicitly against a `path![...]` (e.g. `path!["repo", "add"]`):
 
 - `register_out` - the default: buffers `outln!` output and drains it into the MCP-safe context
   after the handler resolves, so the command works both as a CLI subcommand and as an MCP tool.
-- `register_out_no_mcp` - for commands that never return (`serve`) or make no sense as a
+- `register_out_no_mcp` - for commands that never return (`server serve`) or make no sense as a
   request/response MCP tool call (`mcp serve`).
-- `register_group` - registers a command group's shared metadata/help; some groups (`mcp`) leave
-  individual leaves (`install`, `list`) to cli-framework's default auto-registration.
+- `register_group` - registers a namespace's shared metadata, help section, and ordering.
+- Framework built-ins are configured under `cli`: `cli completion` and `cli spec`.
 
-The `repos` command has its own modular structure in `crates/fastskill-cli/src/commands/repos/`.
+The `repo` namespace has its own modular structure in `crates/fastskill-cli/src/commands/repos/`.
+All public commands use an explicit namespace and action. Do not add root action aliases or
+implicit skill-ID routing; [ADR-0010](docs/adr/0010-command-taxonomy.md) defines this contract.
 
 ### Vector Search Implementation
 
@@ -214,7 +215,8 @@ Located in `crates/fastskill-core/src/core/vector_index.rs`:
 
 **Key trait:** `VectorIndexService` with methods: `add_or_update_skill()`, `search_similar()`, `remove_skill()`
 
-**Note:** The `remove` and `reindex` commands automatically keep the vector index in sync by removing entries for deleted skills or skills no longer on disk.
+**Note:** `skill remove` and automatic `index rebuild` policy keep the vector index in sync by
+removing entries for deleted skills or skills no longer on disk.
 
 ### Event System
 
@@ -292,7 +294,7 @@ FastSkill is **async-first** using Tokio:
 
 1. Create a handler module (or subdirectory) under `crates/fastskill-cli/src/commands/` with a
    `TypedArgs` struct and an `execute_*()` async function.
-2. Register it in `crates/fastskill-cli/src/main.rs` against a `path![...]`, using
+2. Register it through the registration layer against a namespaced `path![...]`, using
    `register_out` (default), `register_out_no_mcp` (never returns, or meaningless as an MCP tool),
    or `register_group` for a command group's shared metadata.
 3. Wire through `FastSkillService` methods if service-dependent.
@@ -300,7 +302,7 @@ FastSkill is **async-first** using Tokio:
    `crates/fastskill-core/src/write_ops.rs` — that is the sole gate for both the HTTP write-gate
    and the MCP tool gate; there is no separate list to update.
 5. Update the documented command/flag tables (README.md, this file) — `docs_subcommand_lists_test.rs`
-   and `spec_docs_parity_test.rs` fail `cargo nextest run` if they drift from `fastskill spec`.
+   and `spec_docs_parity_test.rs` fail `cargo nextest run` if they drift from `fastskill cli spec`.
 
 ### Adding a new HTTP endpoint
 
@@ -309,7 +311,7 @@ FastSkill is **async-first** using Tokio:
 3. Add the route to the Axum router in `crates/fastskill-core/src/http/server.rs`.
 4. If the route mutates state, add it to `WriteHttpRoute` in `crates/fastskill-core/src/write_ops.rs`
    so it's mounted behind the `--enable-write` middleware.
-5. Keep handlers consistent with local `fastskill serve` unauthenticated API behavior.
+5. Keep handlers consistent with local `fastskill server serve` unauthenticated API behavior.
 
 ### Extending repository support
 

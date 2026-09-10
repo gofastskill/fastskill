@@ -57,7 +57,7 @@ pub async fn load_analysis_context(svc: &FastSkillService) -> CliResult<Option<A
         .await
         .map_err(|e| CliError::Validation(format!("Failed to get indexed skills: {}", e)))?;
     if skills.is_empty() {
-        crate::outln!("No skills indexed. Run 'fastskill reindex' first.");
+        crate::outln!("No skills indexed. Run 'fastskill index rebuild' first.");
         return Ok(None);
     }
     Ok(Some(AnalysisContext { skills, vector_svc }))
