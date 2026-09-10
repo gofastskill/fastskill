@@ -7,7 +7,7 @@ api: "repositories"
 
 Repositories allow you to define where FastSkill should look for skills. FastSkill supports multiple repository types, all configured through a unified interface.
 
-**Important**: Repositories are used for skill discovery only. They define where skills come FROM. The storage location (where skills are installed when you run `fastskill add`) is configured separately via the `skills_directory` setting under `[tool.fastskill]` in `skill-project.toml`.
+**Important**: Repositories are used for skill discovery only. They define where skills come FROM. The storage location (where skills are installed when you run `fastskill skill add`) is configured separately via the `skills_directory` setting under `[tool.fastskill]` in `skill-project.toml`.
 
 ## Configuration File
 
@@ -121,16 +121,16 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add the repository to your project
-fastskill repos add my-skills-repo \
+fastskill repo add my-skills-repo \
   --repo-type git-marketplace \
   https://github.com/your-org/my-skills-repo.git \
   --priority 0
 
 # List skills from the repository
-fastskill repos skills --repository my-skills-repo
+fastskill repo skills --repository my-skills-repo
 
 # Install a skill
-fastskill add my-skills-repo/web-scraper
+fastskill skill add my-skills-repo/web-scraper
 ```
 
 #### Configuration Options
@@ -210,7 +210,7 @@ HTTP-based registries provide skills through REST APIs with centralized index an
 **1. Registry Server Setup**
 ```bash
 # Start FastSkill registry server
-fastskill serve --port 8080
+fastskill server serve --port 8080
 
 # Or use a hosted registry service
 # FASTSKILL_API_URL=https://registry.yourcompany.com
@@ -237,22 +237,22 @@ auth = { type = "pat", env_var = "FASTSKILL_API_TOKEN" }
 **4. Browse and Install Skills**
 ```bash
 # List all skills in registry
-fastskill repos skills --repository company-registry
+fastskill repo skills --repository company-registry
 
 # List skills by scope
-fastskill repos skills --repository company-registry --scope engineering
+fastskill repo skills --repository company-registry --scope engineering
 
 # Search for skills
-fastskill search "data analysis" --repo company-registry
+fastskill skill search "data analysis" --repo company-registry
 
 # Get skill details
-fastskill repos show engineering/data-analyzer --repository company-registry
+fastskill repo show engineering/data-analyzer --repository company-registry
 
 # List skill versions
-fastskill repos versions engineering/data-analyzer --repository company-registry
+fastskill repo versions engineering/data-analyzer --repository company-registry
 
 # Install skill
-fastskill add engineering/data-analyzer
+fastskill skill add engineering/data-analyzer
 ```
 
 #### Configuration Options
@@ -333,7 +333,7 @@ priority = 0
 auth = { type = "pat", env_var = "COMPANY_TOKEN" }
 ```
 
-Use `fastskill repos skills` to list skills from HTTP registries. The command calls `GET /api/v1/registry/index/skills` on the configured registry's `index_url`.
+Use `fastskill repo skills` to list skills from HTTP registries. The command calls `GET /api/v1/registry/index/skills` on the configured registry's `index_url`.
 
 The registry server serves index files at `/index/{skill_id}` where `skill_id` follows the format `{scope}/{skill-name}` (e.g., `dev-user/web-scraper`).
 
@@ -414,17 +414,17 @@ priority = 0
 **5. Test Repository**
 ```bash
 # Add repository
-fastskill repos add company-tools \
+fastskill repo add company-tools \
   --repo-type zip-url \
   https://skills.company.com/ \
   --priority 0
 
 # List available skills
-fastskill repos skills --repository company-tools
+fastskill repo skills --repository company-tools
 
 # Install skills
-fastskill add company-tools/web-scraper
-fastskill add company-tools/data-analyzer
+fastskill skill add company-tools/web-scraper
+fastskill skill add company-tools/data-analyzer
 ```
 
 #### Configuration Options
@@ -644,20 +644,20 @@ priority = 0
 **5. Test Local Repository**
 ```bash
 # Add local repository
-fastskill repos add local-dev \
+fastskill repo add local-dev \
   --repo-type local \
   ~/local-skills \
   --priority 0
 
 # List local skills
-fastskill repos skills --repository local-dev
+fastskill repo skills --repository local-dev
 
 # Install local skills
-fastskill add local-dev/test-skill
-fastskill add local-dev/web-tool
+fastskill skill add local-dev/test-skill
+fastskill skill add local-dev/web-tool
 
 # Test skill functionality
-fastskill read local-dev/test-skill
+fastskill skill read local-dev/test-skill
 ```
 
 #### Configuration Options
@@ -704,7 +704,7 @@ local-skills/
 vim ~/local-skills/experimental/test-skill/scripts/test.js
 
 # Test changes immediately
-fastskill add local-dev/test-skill --force
+fastskill skill add local-dev/test-skill --force
 
 # No build step needed for local development
 ```
@@ -718,7 +718,7 @@ git add .
 git commit -m "Add experimental skills"
 
 # Or reference external git repos
-fastskill repos add external-dev \
+fastskill repo add external-dev \
   --repo-type git-marketplace \
   ~/projects/external-skills \
   --priority 1
@@ -740,9 +740,9 @@ fastskill eval validate --all
 **Integration Testing:**
 ```bash
 # Test skill in different contexts
-fastskill add local-dev/test-skill
-fastskill read local-dev/test-skill
-fastskill list | grep local-dev
+fastskill skill add local-dev/test-skill
+fastskill skill read local-dev/test-skill
+fastskill skill list | grep local-dev
 ```
 
 #### Advanced Examples
@@ -775,12 +775,12 @@ priority = 1
 # GitHub Actions example
 - name: Test local skills
   run: |
-    fastskill repos add test-repo \
+    fastskill repo add test-repo \
       --repo-type local \
       ./test-skills
 
-    fastskill add test-repo/test-skill
-    fastskill read test-repo/test-skill
+    fastskill skill add test-repo/test-skill
+    fastskill skill read test-repo/test-skill
 ```
 
 **Note**: Local sources are not displayed in the registry web UI. They are only available for direct CLI operations.
@@ -802,7 +802,7 @@ Sources without `marketplace.json` will not appear in the registry.
 Add a new repository using the CLI:
 
 ```bash
-fastskill repos add new-source --repo-type git-marketplace https://github.com/user/repo.git --priority 0
+fastskill repo add new-source --repo-type git-marketplace https://github.com/user/repo.git --priority 0
 ```
 
 Or edit `skill-project.toml` directly:
@@ -818,7 +818,7 @@ priority = 0
 
 ### Removing a Repository
 
-Remove the repository using `fastskill repos remove <name>` or edit `skill-project.toml` directly.
+Remove the repository using `fastskill repo remove <name>` or edit `skill-project.toml` directly.
 
 ## Best Practices
 

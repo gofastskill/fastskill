@@ -5,7 +5,7 @@ expression: normalized
 ---
 Search skills by query with explicit scope flags
 
-Usage: fastskill search [OPTIONS] <query>
+Usage: fastskill skill search [OPTIONS] <query>
 
 Arguments:
   <query>  Search query string
@@ -27,8 +27,8 @@ Options:
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: search <QUERY> [--local|--remote] [OPTIONS]
+Syntax: skill search <QUERY> [--local|--remote] [OPTIONS]
 
 Examples:
-  fastskill search "pdf generation" --local
-  fastskill search "presentation builder" --remote --limit 5
+  fastskill skill search "pdf generation" --local
+  fastskill skill search "presentation builder" --remote --limit 5

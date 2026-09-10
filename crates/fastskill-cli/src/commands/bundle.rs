@@ -12,6 +12,15 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+#[path = "bundle/add.rs"]
+pub mod add;
+#[path = "bundle/list.rs"]
+pub mod list;
+#[path = "bundle/remove.rs"]
+pub mod remove;
+#[path = "bundle/update.rs"]
+pub mod update;
+
 #[derive(Debug)]
 pub struct BuildArgs {
     output: Option<PathBuf>,
@@ -37,7 +46,8 @@ impl IntoCommandSpec for BuildArgs {
                  declared personal override.",
             ),
             syntax: Some("bundle build [--output DIRECTORY]"),
-            category: Some("packages"),
+            category: Some("skills-projects"),
+            help_order: Some(10),
             examples: vec![
                 "fastskill bundle build",
                 "fastskill bundle build --output dist",
@@ -123,7 +133,8 @@ impl IntoCommandSpec for OverrideArgs {
         CommandSpec {
             summary: "Declare a permitted personal bundle-member override",
             syntax: Some("bundle override <SKILL_ID> (--from DIRECTORY | --reset)"),
-            category: Some("packages"),
+            category: Some("skills-projects"),
+            help_order: Some(60),
             args: vec![
                 ArgSpec {
                     name: "skill-id",

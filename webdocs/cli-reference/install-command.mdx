@@ -1,9 +1,9 @@
 ---
-title: install
-api: "install"
+title: project install
+api: "project install"
 ---
 
-# install Command
+# `project install`
 
 Restore skills and their complete dependency closures from `skill-project.toml`. Compatible locked
 selections are reused; roots without coverage are resolved and added to `skills.lock`.
@@ -11,7 +11,7 @@ selections are reused; roots without coverage are resolved and added to `skills.
 ## Usage
 
 ```bash
-fastskill install [OPTIONS]
+fastskill project install [OPTIONS]
 ```
 
 ## Options
@@ -34,7 +34,7 @@ fastskill install [OPTIONS]
 Install all skills declared in `skill-project.toml`:
 
 ```bash
-fastskill install
+fastskill project install
 ```
 
 This:
@@ -48,7 +48,7 @@ This:
 Install production skills only, excluding dev group:
 
 ```bash
-fastskill install --without dev
+fastskill project install --without dev
 ```
 
 <Callout type="info">
@@ -61,13 +61,13 @@ Install only skills from specific groups:
 
 ```bash
 # Install only production skills
-fastskill install --only prod
+fastskill project install --only prod
 
 # Install only development tools
-fastskill install --only dev
+fastskill project install --only dev
 
 # Install multiple groups
-fastskill install --only prod test
+fastskill project install --only prod test
 ```
 
 ### Reproducible Installation
@@ -75,7 +75,7 @@ fastskill install --only prod test
 Install exact versions from `skills.lock`:
 
 ```bash
-fastskill install --lock --offline
+fastskill project install --lock --offline
 ```
 
 <Callout type="success">
@@ -85,7 +85,7 @@ leaves lock bytes unchanged. `--offline` also prevents network and provider call
 
 Project lock restoration still requires `skill-project.toml`; the Manifest defines selected roots,
 groups, bundles, and the install destination. To restore `global-skills.lock` without a project
-Manifest, run `fastskill install --global --lock`.
+Manifest, run `fastskill project install --global --lock`.
 
 ### Combined Example: Production Deployment
 
@@ -97,12 +97,12 @@ git add skill-project.toml skills.lock
 git commit -m "Lock dependency versions"
 
 # 2. Deploy with locked versions
-fastskill install --lock --offline --without dev
+fastskill project install --lock --offline --without dev
 ```
 
 ## Behavior
 
-The `install` command:
+The `project install` command:
 
 1. **Locates Project File**: Finds `skill-project.toml` at project root or walks up directory tree
 2. **Loads Dependencies**: Reads `[dependencies]` section from `skill-project.toml`
@@ -200,7 +200,7 @@ version = "2.1.0"
 
 ```bash
 # Reuse compatible pins and resolve uncovered roots
-fastskill install
+fastskill project install
 
 # This updates skills.lock with resolved versions
 ```
@@ -209,7 +209,7 @@ fastskill install
 
 ```bash
 # Install exact versions from skills.lock
-fastskill install --lock
+fastskill project install --lock
 
 # skill-project.toml still defines selected roots and must remain compatible with the lock
 ```
@@ -218,7 +218,7 @@ fastskill install --lock
 
 ```bash
 # 1. Development: Install with latest versions
-fastskill install
+fastskill project install
 
 # 2. Lock file is created/updated automatically
 cat skills.lock
@@ -228,7 +228,7 @@ git add skill-project.toml skills.lock
 git commit -m "Update dependencies"
 
 # 4. Production: Install with locked versions
-fastskill install --lock
+fastskill project install --lock
 
 # Output shows locked versions:
 # ✓ Installing web-scraper v1.2.3 (locked)
@@ -237,7 +237,7 @@ fastskill install --lock
 
 ## Dependency Resolution
 
-The install command resolves dependencies from multiple sources:
+`project install` resolves dependencies from multiple origins:
 
 ### Origin Types
 
@@ -283,7 +283,7 @@ Lower priority numbers take precedence. In this example, `public-registry` (prio
 ### Successful Installation
 
 ```bash
-$ fastskill install
+$ fastskill project install
 Installing skills...
 
 Resolving dependencies from skill-project.toml...
@@ -304,13 +304,13 @@ Installing demo-skill...
 Updated skills.lock with 3 skill(s)
 
 ✓ Installation complete
-Run 'fastskill reindex' to update search index
+Run 'fastskill index rebuild' to update search index
 ```
 
 ### With Group Filters
 
 ```bash
-$ fastskill install --without dev
+$ fastskill project install --without dev
 Installing skills...
 
 Resolving dependencies from skill-project.toml...
@@ -333,7 +333,7 @@ Updated skills.lock with 2 skill(s)
 ### Reproducible Installation
 
 ```bash
-$ fastskill install --lock
+$ fastskill project install --lock
 Installing skills...
 
 Installing from skills.lock (reproducible)...
@@ -356,37 +356,37 @@ Installing demo-skill...
 ### Missing Lock File
 
 ```bash
-$ fastskill install --lock
-error: skills.lock not found. Run 'fastskill install' first to create it.
+$ fastskill project install --lock
+error: skills.lock not found. Run 'fastskill project install' first to create it.
 ```
 
-**Solution**: Run `fastskill install` without `--lock` to create the lockfile first.
+**Solution**: Run `fastskill project install` without `--lock` to create the lockfile first.
 
 ### Missing skill-project.toml
 
 ```bash
-$ fastskill install
-error: skill-project.toml not found. Create it or use 'fastskill add' to add skills.
+$ fastskill project install
+error: skill-project.toml not found. Create it or use 'fastskill skill add' to add skills.
 ```
 
-**Solution**: Run `fastskill init` to create `skill-project.toml` or use `fastskill add` to add individual skills.
+**Solution**: Run `fastskill project init` to create `skill-project.toml` or use `fastskill skill add` to add individual skills.
 
 ### Unresolved Dependencies
 
 ```bash
-$ fastskill install
+$ fastskill project install
 Installing skills...
 
 Resolving dependencies from skill-project.toml...
 error: Failed to resolve skill 'unknown-skill': not found in any configured repository
 ```
 
-**Solution**: Check the skill ID and ensure repositories are configured correctly with `fastskill repos`.
+**Solution**: Check the skill ID and ensure repositories are configured correctly with `fastskill repo`.
 
 ### Conflicting Group Flags
 
 ```bash
-$ fastskill install --without dev --only prod
+$ fastskill project install --without dev --only prod
 error: Cannot use --without and --only together
 ```
 
@@ -398,7 +398,7 @@ error: Cannot use --without and --only together
 
 ```bash
 # 1. Initialize project
-fastskill init --yes
+fastskill project init --yes
 
 # 2. Add dependencies to skill-project.toml
 # Edit skill-project.toml:
@@ -406,23 +406,23 @@ fastskill init --yes
 # web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" }, groups = ["prod"] }
 
 # 3. Install dependencies
-fastskill install
+fastskill project install
 
 # 4. Reindex for search
-fastskill reindex
+fastskill index rebuild
 ```
 
 ### Development Workflow
 
 ```bash
 # Install all skills including dev tools
-fastskill install
+fastskill project install
 
 # Reindex for search
-fastskill reindex
+fastskill index rebuild
 
 # Test development skills
-fastskill search "test utility"
+fastskill skill search "test utility"
 
 # Commit lockfile
 git add skill-project.toml skills.lock
@@ -433,13 +433,13 @@ git commit -m "Install dependencies"
 
 ```bash
 # Install production skills only (no dev dependencies)
-fastskill install --without dev --lock
+fastskill project install --without dev --lock
 
 # Reindex
-fastskill reindex
+fastskill index rebuild
 
 # Verify installation
-fastskill list
+fastskill skill list
 ```
 
 ### CI/CD Pipeline
@@ -464,17 +464,17 @@ jobs:
       - name: Install dependencies
         run: |
           # Install production skills with locked versions
-          fastskill install --lock --without dev
+          fastskill project install --lock --without dev
 
       - name: Reindex skills
         run: |
-          fastskill reindex
+          fastskill index rebuild
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Verify installation
         run: |
-          fastskill list
+          fastskill skill list
 ```
 
 ## Best Practices
@@ -487,9 +487,9 @@ Always commit both files to version control. This ensures all team members insta
 
 Separate dev, test, and production dependencies into groups. Use `--without dev` for production builds.
 
-### 3. Run fastskill install before committing
+### 3. Run `fastskill project install` before committing
 
-Run `fastskill install` after modifying `skill-project.toml` to update `skills.lock` with new versions.
+Run `fastskill project install` after modifying `skill-project.toml` to update `skills.lock` with new versions.
 
 ### 4. Use --lock for production deployments
 
@@ -497,11 +497,11 @@ Always use `--lock` flag in production to ensure exact version matches.
 
 ### 5. Reindex after installation
 
-Run `fastskill reindex` after installation to update the semantic search index.
+Run `fastskill index rebuild` after installation to update the semantic search index.
 
 ## See Also
 
 - [Update Command](/cli-reference/update-command) - Update skills to latest versions
 - [Add Command](/cli-reference/skill-commands#add) - Add individual skills to project
-- [repos Command](/cli-reference/repository-command) - Manage skill repositories
+- [`repo` commands](/cli-reference/repository-command) - Manage skill repositories
 - [Manifest System](/skill-management/manifest-system) - Understanding skill-project.toml

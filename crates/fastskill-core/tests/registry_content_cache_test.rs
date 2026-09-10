@@ -329,7 +329,7 @@ async fn offline_install_of_a_pinned_cached_version_needs_no_network() {
 }
 
 /// `newest` (`version: None`) with no cached index fails with an actionable
-/// error naming `repos refresh`, rather than falling back to a live listing
+/// error naming `repo refresh`, rather than falling back to a live listing
 /// call or failing with an opaque error.
 #[tokio::test]
 async fn newest_without_a_fresh_index_fails_naming_repos_refresh() {
@@ -358,13 +358,13 @@ async fn newest_without_a_fresh_index_fails_naming_repos_refresh() {
 
     let message = err.to_string();
     assert!(
-        message.contains("repos refresh"),
-        "error must name `repos refresh` as the fix, got: {message}"
+        message.contains("repo refresh"),
+        "error must name `repo refresh` as the fix, got: {message}"
     );
 }
 
 /// `newest` resolves to a concrete version via the on-disk index (populated
-/// as if by a prior `repos refresh`), then follows the ordinary
+/// as if by a prior `repo refresh`), then follows the ordinary
 /// cached-content path for that resolved version.
 #[tokio::test]
 async fn newest_resolves_via_cached_index_then_downloads_the_resolved_version() {
@@ -416,7 +416,7 @@ async fn newest_resolves_via_cached_index_then_downloads_the_resolved_version() 
 /// on-disk index. This is what makes "`update` implicitly refreshes just the
 /// sources it touches" (PRD 006 US-003, "Resolved Defaults") true: an
 /// unpinned (`newest`) registry origin an `update` re-fetches must not
-/// require a separate, prior `repos refresh` even though `add_from_origin`'s
+/// require a separate, prior `repo refresh` even though `add_from_origin`'s
 /// own version resolution never calls the network directly.
 #[tokio::test]
 async fn update_flow_preflight_implicitly_refreshes_the_index_for_newest() {
@@ -438,7 +438,7 @@ async fn update_flow_preflight_implicitly_refreshes_the_index_for_newest() {
     };
 
     // No index cache exists yet -- mirrors a project whose dependency was
-    // added before any `repos refresh` ever ran.
+    // added before any `repo refresh` ever ran.
     let cache = SkillCache::at_root(cache_root.path());
     assert!(cache.read_source_index(REPO_NAME).unwrap().is_none());
 
@@ -463,6 +463,6 @@ async fn update_flow_preflight_implicitly_refreshes_the_index_for_newest() {
     let outcome = service
         .add_from_origin(origin, AddMode::Update, vec![])
         .await
-        .expect("update re-fetch must succeed without a separate `repos refresh`");
+        .expect("update re-fetch must succeed without a separate `repo refresh`");
     assert_eq!(outcome.resolved.version, "1.0.0");
 }

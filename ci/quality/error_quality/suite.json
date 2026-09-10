@@ -22,50 +22,50 @@
     {
       "id": "read_not_found",
       "plan_step": "1.4",
-      "command": ["read", "no-such-skill"],
+      "command": ["skill", "read", "no-such-skill"],
       "why": "The most common way a user meets an error: asking for something that isn't installed."
     },
     {
       "id": "remove_not_found",
       "plan_step": "3.x",
-      "command": ["remove", "ghost"],
+      "command": ["skill", "remove", "ghost"],
       "why": "Same class as read_not_found; catches the two paths drifting apart."
     },
     {
       "id": "add_nonexistent_path",
       "plan_step": "3.10",
-      "command": ["add", "./does-not-exist"],
+      "command": ["skill", "add", "./does-not-exist"],
       "why": "A path typo — the message must name the path and the missing SKILL.md."
     },
     {
       "id": "add_dir_without_skill_md",
       "plan_step": "3.3",
-      "command": ["add", "./empty-dir"],
+      "command": ["skill", "add", "./empty-dir"],
       "setup": {"mkdir": ["empty-dir"]},
       "why": "The directory exists but isn't a skill. Distinct from a missing path, and the message should say so."
     },
     {
       "id": "add_by_id_without_repository",
       "plan_step": "7.12",
-      "command": ["add", "someorg/someskill"],
+      "command": ["skill", "add", "someorg/someskill"],
       "why": "Installing by skill id with no repository configured — must say what to configure, not just refuse."
     },
     {
-      "id": "repos_skills_unknown_repo",
+      "id": "repo_skills_unknown_repo",
       "plan_step": "7.8",
-      "command": ["repos", "skills", "nosuchrepo"],
-      "why": "Was known-poor (hit clap's generic E002 unknown-argument path, unnamed, printed twice). `repos skills` now accepts REPOSITORY positionally, so this exercises the domain 'Repository not found' error instead — kept to guard against the parser path regressing."
+      "command": ["repo", "skills", "nosuchrepo"],
+      "why": "Was known-poor (hit clap's generic E002 unknown-argument path, unnamed, printed twice). `repo skills` now accepts REPOSITORY positionally, so this exercises the domain 'Repository not found' error instead — kept to guard against the parser path regressing."
     },
     {
       "id": "search_invalid_limit",
       "plan_step": "12.x",
-      "command": ["search", "--limit", "notanumber", "anything"],
+      "command": ["skill", "search", "--limit", "notanumber", "anything"],
       "why": "Type error on a flag — the message should name the value, the flag, and the expected type."
     },
     {
       "id": "install_without_dependencies_section",
       "plan_step": "2.x",
-      "command": ["install"],
+      "command": ["project", "install"],
       "setup": {"manifest": "minimal_no_dependencies"},
       "why": "A manifest missing a required section. Exercises the config-validation path rather than the skill-lookup path."
     }

@@ -23,9 +23,9 @@ This separation ensures that global and project skills remain isolated, improves
 **Purpose**: Records all skills installed in the current project, including transitive dependencies. This file should be committed to version control.
 
 **Created by**:
-- `fastskill init` (empty)
-- `fastskill install`
-- `fastskill add <skill>` (without `--global`)
+- `fastskill project init` (empty)
+- `fastskill project install`
+- `fastskill skill add <skill>` (without `--global`)
 
 **Format version**: `2.0`
 
@@ -38,7 +38,7 @@ This separation ensures that global and project skills remain isolated, improves
 **Purpose**: Records all globally installed skills for the current user. This file is NOT committed to version control and includes operational metadata like install timestamps.
 
 **Created by**:
-- `fastskill add --global <skill>`
+- `fastskill skill add --global <skill>`
 
 **Format version**: `1.0`
 
@@ -71,7 +71,7 @@ parent_skill = "parent-skill-id"  # Optional, only for transitive deps
 **Key characteristics**:
 - **No timestamps**: No `generated_at` in metadata, no `fetched_at` in skill entries
 - **Sorted entries**: Skills are always sorted alphabetically by `id`
-- **Deterministic**: Running `install` twice produces identical output
+- **Deterministic**: Running `project install` twice produces identical output
 - **Version 2.0**: Format version indicates deterministic schema
 
 **Fields**:
@@ -116,7 +116,7 @@ groups = []
 
 **Additional fields** (vs project lock):
 - `installed_at`: When the skill was first installed globally
-- `last_checked_at`: When `update --check --global` last ran for this skill
+- `last_checked_at`: When `skill update --check --global` last ran for this skill
 - `last_updated_at`: When the skill was last updated to a new version
 
 ---
@@ -125,19 +125,19 @@ groups = []
 
 | Command | Project Lock | Global Lock |
 |---------|-------------|-------------|
-| `fastskill init` | Created (empty) | Not touched |
-| `fastskill add <skill>` | Written | Not touched |
-| `fastskill add --global <skill>` | Not touched | Written |
-| `fastskill install` | Written | Not touched |
-| `fastskill install --lock` | Read (pinned versions) | Not touched |
-| `fastskill remove <skill>` | Written (entry removed) | Not touched |
-| `fastskill remove --global <skill>` | Not touched | Written (entry removed) |
-| `fastskill update` | Written (versions bumped) | Not touched |
-| `fastskill update --global` | Not touched | Written (versions bumped) |
-| `fastskill update --check` | Read-only | Not touched |
-| `fastskill update --check --global` | Not touched | Read + Write (`last_checked_at`) |
+| `fastskill project init` | Created (empty) | Not touched |
+| `fastskill skill add <skill>` | Written | Not touched |
+| `fastskill skill add --global <skill>` | Not touched | Written |
+| `fastskill project install` | Written | Not touched |
+| `fastskill project install --lock` | Read (pinned versions) | Not touched |
+| `fastskill skill remove <skill>` | Written (entry removed) | Not touched |
+| `fastskill skill remove --global <skill>` | Not touched | Written (entry removed) |
+| `fastskill skill update` | Written (versions bumped) | Not touched |
+| `fastskill skill update --global` | Not touched | Written (versions bumped) |
+| `fastskill skill update --check` | Read-only | Not touched |
+| `fastskill skill update --check --global` | Not touched | Read + Write (`last_checked_at`) |
 
-**Important**: `fastskill install` is **always project-scoped**. It reads `skill-project.toml` and writes `skills.lock`. It never touches the global lock.
+**Important**: `fastskill project install` is **always project-scoped**. It reads `skill-project.toml` and writes `skills.lock`. It never touches the global lock.
 
 ---
 
@@ -167,7 +167,8 @@ When you load a v1.0.0 lock file and perform any operation that writes the lock 
 ### Compatibility
 
 - **Reading v1.0.0 locks**: Fully supported. Extra fields are ignored during deserialization.
-- **`install --lock` with v1.0.0**: Fully supported. Pinned versions are respected, file is migrated on write.
+- **`project install --lock` with v1.0.0**: Fully supported. Pinned versions are respected; the
+  file is migrated on write.
 - **Backward compatibility**: Code using the `SkillsLock` type alias continues to work (type alias points to `ProjectSkillsLock`).
 
 ### Verification
@@ -206,7 +207,7 @@ grep -E 'generated_at|fetched_at' skills.lock
 To ensure reproducible CI builds:
 
 1. Commit `skill-project.toml` and `skills.lock` to git
-2. In CI, run `fastskill install --lock` to install pinned versions
+2. In CI, run `fastskill project install --lock` to install pinned versions
 3. Lock file content will be byte-identical across runs
 4. No unexpected dependency updates during CI
 
@@ -214,7 +215,7 @@ Example CI workflow:
 
 ```yaml
 - name: Install FastSkill dependencies
-  run: fastskill install --lock
+  run: fastskill project install --lock
 
 - name: Verify lock file unchanged
   run: git diff --exit-code skills.lock
@@ -226,10 +227,10 @@ To update project dependencies:
 
 ```bash
 # Check for available updates (doesn't modify lock)
-fastskill update --check
+fastskill skill update --check
 
 # Update all skills to latest compatible versions
-fastskill update
+fastskill skill update
 
 # Review changes
 git diff skills.lock
@@ -249,11 +250,11 @@ Global skills are available across all projects for the current user:
 
 ```bash
 # Install a skill globally
-fastskill add --global my-utility-skill
+fastskill skill add --global my-utility-skill
 
 # The skill is available in all projects
 cd ~/any-project
-fastskill list --global  # Shows my-utility-skill
+fastskill skill list --global  # Shows my-utility-skill
 ```
 
 Global installation:
@@ -265,16 +266,16 @@ Global installation:
 
 ```bash
 # List globally installed skills
-fastskill list --global
+fastskill skill list --global
 
 # Check for updates to global skills
-fastskill update --check --global
+fastskill skill update --check --global
 
 # Update all global skills
-fastskill update --global
+fastskill skill update --global
 
 # Remove a global skill
-fastskill remove --global my-utility-skill
+fastskill skill remove --global my-utility-skill
 ```
 
 ### Global vs Project Skills
@@ -309,9 +310,9 @@ See [TROUBLESHOOTING.md](../../webdocs/TROUBLESHOOTING.md#lock-file-issues) for 
 - Ensure directory permissions allow writes
 
 **Skills out of sync after migration**
-- Run `fastskill install` to reconcile
+- Run `fastskill project install` to reconcile
 - Compare `skill-project.toml` with `skills.lock`
-- Use `fastskill update --check` to verify versions
+- Use `fastskill skill update --check` to verify versions
 
 ---
 
@@ -334,7 +335,8 @@ Project lock entries are **always sorted alphabetically by skill ID** before wri
 
 ### Checksum Verification
 
-When available, skills include a SHA-256 checksum in the lock file. This is used to verify integrity during `install --lock` operations.
+When available, skills include a SHA-256 checksum in the lock file. This verifies integrity during
+`project install --lock` operations.
 
 Not all source types provide checksums (e.g., editable local paths), so `checksum` is optional.
 

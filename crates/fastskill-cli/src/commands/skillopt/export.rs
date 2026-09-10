@@ -1,4 +1,4 @@
-//! `fastskill optimize export` subcommand
+//! `fastskill optimization export` subcommand
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -8,7 +8,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill optimize export`
+/// Arguments for `fastskill optimization export`
 #[derive(Debug)]
 pub struct ExportArgs {
     /// Path to the run directory
@@ -22,8 +22,9 @@ impl IntoCommandSpec for ExportArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Export the best skill document from a completed run",
-            syntax: Some("optimize export <run-dir> --out <path>"),
-            examples: vec!["fastskill optimize export ./optimize-runs/run-1 --out ./SKILL.md"],
+            help_order: Some(50),
+            syntax: Some("optimization export <run-dir> --out <path>"),
+            examples: vec!["fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md"],
             args: vec![
                 ArgSpec {
                     name: "run-dir",

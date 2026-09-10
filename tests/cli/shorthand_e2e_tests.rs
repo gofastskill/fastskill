@@ -1,19 +1,8 @@
-//! `fastskill <skill-id>` shorthand: what the CLI says when it cannot proceed.
+//! The retired `fastskill <skill-id>` shorthand must never dispatch a read.
 //!
-//! `fastskill <word>` with no subcommand is shorthand for `fastskill read
-//! <word>` (README "Reading a skill"). Reading needs an initialised project, so
-//! before `fastskill init` the shorthand fails during config resolution — and
-//! used to fail with the *generic* manifest error, identical to the one
-//! `fastskill list` prints. A user who simply mistyped a command was told their
-//! workspace was misconfigured and never told that the word was not a command
-//! at all.
-//!
-//! These tests pin the three things that must stay true:
-//!   1. outside a project, the shorthand's failure names the unknown word, says
-//!      it was read as a skill ID, and points at `fastskill init`;
-//!   2. a *known* command outside a project still gets the plain manifest error
-//!      (the shorthand note must not leak onto commands that never used it);
-//!   3. inside a project, a near-miss command name still gets the typo hint.
+//! Skill reads are explicit through `fastskill skill read <skill-id>`. A bare
+//! token is always an unknown command, regardless of project state or whether
+//! a matching skill is installed.
 
 use super::snapshot_helpers::run_fastskill_command;
 use std::fs;
@@ -29,7 +18,7 @@ fn init_project(dir: &std::path::Path) {
 }
 
 #[test]
-fn bare_word_outside_a_project_names_the_unknown_command_and_init() {
+fn bare_word_outside_a_project_is_an_unknown_command() {
     let project = TempDir::new().unwrap();
 
     let result = run_fastskill_command(&["totallybogus"], Some(project.path()));
@@ -40,71 +29,58 @@ fn bare_word_outside_a_project_names_the_unknown_command_and_init() {
         result.stdout, result.stderr
     );
 
-    let stderr = &result.stderr;
-    assert!(
-        stderr.contains("'totallybogus' is not a fastskill command"),
-        "the failure must name the word that was not a command; got: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("skill ID"),
-        "the failure must say the word was treated as a skill ID; got: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("fastskill init"),
-        "the failure must point at `fastskill init`; got: {}",
-        stderr
-    );
+    assert!(result.stderr.contains("unrecognized"), "{}", result.stderr);
+    assert!(!result.stderr.contains("skill ID"), "{}", result.stderr);
+    assert!(!project.path().join("skill-project.toml").exists());
 }
 
 #[test]
 fn known_command_outside_a_project_keeps_the_plain_manifest_error() {
     let project = TempDir::new().unwrap();
 
-    let result = run_fastskill_command(&["list"], Some(project.path()));
+    let result = run_fastskill_command(&["skill", "list"], Some(project.path()));
 
     assert!(
         !result.success,
-        "`list` outside a project must fail: {}{}",
+        "`skill list` outside a project must fail: {}{}",
         result.stdout, result.stderr
     );
     assert!(
         result
             .stderr
             .contains("skill-project.toml not found in this directory or any parent"),
-        "`list` must keep the plain manifest error; got: {}",
+        "`skill list` must keep the plain manifest error; got: {}",
         result.stderr
     );
     assert!(
         !result.stderr.contains("is not a fastskill command"),
-        "`list` is a command -- the shorthand note must not appear; got: {}",
+        "`skill list` is a command -- no unknown-command note should appear; got: {}",
         result.stderr
     );
 }
 
 #[test]
-fn command_typo_inside_a_project_still_suggests_the_command() {
+fn installed_skill_still_requires_the_explicit_read_path() {
     let project = TempDir::new().unwrap();
     init_project(project.path());
+    let installed = project.path().join(".claude/skills/demo");
+    fs::create_dir_all(&installed).unwrap();
+    fs::write(
+        installed.join("SKILL.md"),
+        "---\nname: demo\ndescription: fixture\n---\n# Demo\n",
+    )
+    .unwrap();
 
-    let result = run_fastskill_command(&["instal"], Some(project.path()));
+    let result = run_fastskill_command(&["demo"], Some(project.path()));
 
     assert!(
         !result.success,
-        "a mistyped command must fail: {}{}",
+        "a bare installed skill ID must fail: {}{}",
         result.stdout, result.stderr
     );
-    assert!(
-        result
-            .stderr
-            .contains("error: unrecognized subcommand 'instal'"),
-        "the typo path must keep its own message; got: {}",
-        result.stderr
-    );
-    assert!(
-        result.stderr.contains("Did you mean 'install'?"),
-        "the typo path must keep its suggestion; got: {}",
-        result.stderr
-    );
+    assert!(result.stderr.contains("unrecognized"), "{}", result.stderr);
+
+    let explicit = run_fastskill_command(&["skill", "read", "demo"], Some(project.path()));
+    assert!(explicit.success, "{}{}", explicit.stdout, explicit.stderr);
+    assert!(explicit.stdout.contains("# Demo"));
 }

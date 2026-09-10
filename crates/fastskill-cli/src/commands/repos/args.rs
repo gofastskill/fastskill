@@ -99,9 +99,10 @@ impl IntoCommandSpec for ReposListArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "List all configured repositories",
-            syntax: Some("repos list [OPTIONS]"),
+            syntax: Some("repo list [OPTIONS]"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos list", "fastskill repos list --json"],
+            help_order: Some(20),
+            examples: vec!["fastskill repo list", "fastskill repo list --json"],
             args: vec![
                 ArgSpec {
                     name: "format",
@@ -149,11 +150,12 @@ impl IntoCommandSpec for ReposAddArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Add a new repository",
-            syntax: Some("repos add <NAME> <URL-OR-PATH> [OPTIONS]"),
+            syntax: Some("repo add <NAME> <URL-OR-PATH> [OPTIONS]"),
             category: Some("repositories"),
+            help_order: Some(10),
             examples: vec![
-                "fastskill repos add my-repo https://github.com/org/skills.git --repo-type git-marketplace",
-                "fastskill repos add local-skills ./skills --repo-type local",
+                "fastskill repo add my-repo https://github.com/org/skills.git --repo-type git-marketplace",
+                "fastskill repo add local-skills ./skills --repo-type local",
             ],
             args: vec![
                 ArgSpec {
@@ -341,9 +343,10 @@ impl IntoCommandSpec for ReposRemoveArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Remove a repository",
-            syntax: Some("repos remove <NAME>"),
+            syntax: Some("repo remove <NAME>"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos remove my-repo"],
+            help_order: Some(50),
+            examples: vec!["fastskill repo remove my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -378,9 +381,10 @@ impl IntoCommandSpec for ReposInfoArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Show repository details",
-            syntax: Some("repos info <NAME> [OPTIONS]"),
+            syntax: Some("repo info <NAME> [OPTIONS]"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos info my-repo"],
+            help_order: Some(30),
+            examples: vec!["fastskill repo info my-repo"],
             args: vec![
                 ArgSpec {
                     name: "name",
@@ -446,9 +450,10 @@ impl IntoCommandSpec for ReposUpdateArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Update repository metadata",
-            syntax: Some("repos update <NAME> [OPTIONS]"),
+            syntax: Some("repo update <NAME> [OPTIONS]"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos update my-repo --branch main --priority 1"],
+            help_order: Some(40),
+            examples: vec!["fastskill repo update my-repo --branch main --priority 1"],
             args: vec![
                 ArgSpec {
                     name: "name",
@@ -517,9 +522,10 @@ impl IntoCommandSpec for ReposTestArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Test repository connectivity",
-            syntax: Some("repos test <NAME>"),
+            syntax: Some("repo test <NAME>"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos test my-repo"],
+            help_order: Some(60),
+            examples: vec!["fastskill repo test my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -554,9 +560,10 @@ impl IntoCommandSpec for ReposRefreshArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Refresh repository cache",
-            syntax: Some("repos refresh [NAME]"),
+            syntax: Some("repo refresh [NAME]"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos refresh", "fastskill repos refresh my-repo"],
+            help_order: Some(70),
+            examples: vec!["fastskill repo refresh", "fastskill repo refresh my-repo"],
             args: vec![ArgSpec {
                 name: "name",
                 kind: ArgKind::Positional,
@@ -588,12 +595,13 @@ impl IntoCommandSpec for ReposSkillsArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "List skills in repository catalog",
-            syntax: Some("repos skills [REPOSITORY] [OPTIONS]"),
+            syntax: Some("repo skills [REPOSITORY] [OPTIONS]"),
             category: Some("repositories"),
+            help_order: Some(80),
             examples: vec![
-                "fastskill repos skills",
-                "fastskill repos skills my-repo --all-versions",
-                "fastskill repos skills --repository my-repo --all-versions",
+                "fastskill repo skills",
+                "fastskill repo skills my-repo --all-versions",
+                "fastskill repo skills --repository my-repo --all-versions",
             ],
             args: vec![
                 ArgSpec {
@@ -716,11 +724,12 @@ impl IntoCommandSpec for ReposShowArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Show skill details from catalog",
-            syntax: Some("repos show <SKILL-ID> [OPTIONS]"),
+            syntax: Some("repo show <SKILL-ID> [OPTIONS]"),
             category: Some("repositories"),
+            help_order: Some(90),
             examples: vec![
-                "fastskill repos show pptx",
-                "fastskill repos show pptx --repository my-repo",
+                "fastskill repo show pptx",
+                "fastskill repo show pptx --repository my-repo",
             ],
             args: vec![
                 ArgSpec {
@@ -774,9 +783,10 @@ impl IntoCommandSpec for ReposVersionsArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "List available versions for a skill",
-            syntax: Some("repos versions <SKILL-ID> [OPTIONS]"),
+            syntax: Some("repo versions <SKILL-ID> [OPTIONS]"),
             category: Some("repositories"),
-            examples: vec!["fastskill repos versions pptx"],
+            help_order: Some(100),
+            examples: vec!["fastskill repo versions pptx"],
             args: vec![
                 ArgSpec {
                     name: "skill-id",

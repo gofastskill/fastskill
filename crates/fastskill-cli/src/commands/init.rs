@@ -53,11 +53,12 @@ impl IntoCommandSpec for InitArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Initialize skill-project.toml in current skill directory",
-            syntax: Some("init [OPTIONS]"),
+            syntax: Some("project init [OPTIONS]"),
             category: Some("project"),
+            help_order: Some(10),
             examples: vec![
-                "fastskill init",
-                "fastskill init --yes --description \"My skill\"",
+                "fastskill project init",
+                "fastskill project init --yes --description \"My skill\"",
             ],
             args: vec![
                 ArgSpec {
@@ -330,7 +331,7 @@ fn resolve_skills_directory(is_skill_level: bool, args: &InitArgs) -> CliResult<
         return Ok(dir);
     }
     // `--yes` means "use defaults", matching this command's own `--help`
-    // examples (`fastskill init --yes --description "My skill"`) and the
+    // examples (`fastskill project init --yes --description "My skill"`) and the
     // README quick start -- neither passes `--skills-dir`. The interactive
     // path above already defaults an empty answer to ".claude/skills"; `--yes`
     // must take that same default rather than erroring.
@@ -462,7 +463,7 @@ fn print_success(is_skill_level: bool, version: &str, skills_directory: Option<&
         "{}",
         messages::info("This file configures your project's skill dependencies.")
     );
-    crate::outln!("   Add skills with: fastskill add <skill-id>");
+    crate::outln!("   Add skills with: fastskill skill add <skill-id>");
 }
 
 fn extract_version_from_skill_md(content: &str, skip_prompts: bool) -> CliResult<String> {
@@ -761,11 +762,11 @@ mod tests {
         }
     }
 
-    /// Regression test for spec 013 minor #2: `fastskill init --yes` (no
+    /// Regression test for spec 013 minor #2: `fastskill project init --yes` (no
     /// `--skills-dir`) at project level must succeed using the same default
     /// the interactive path uses (`.claude/skills`), not error -- this is the
     /// exact invocation shown in the command's own `--help` examples
-    /// (`fastskill init --yes --description "My skill"`) and the README
+    /// (`fastskill project init --yes --description "My skill"`) and the README
     /// quick start. Verified against the real binary: before this fix, this
     /// reproduces `Error: Configuration error: Project-level init requires
     /// --skills-dir <path>`, while plain interactive `init` (stdin from

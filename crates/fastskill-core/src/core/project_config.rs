@@ -47,7 +47,7 @@ pub fn load_project_config(start_path: &Path) -> Result<ProjectConfig, String> {
     if !project_file_result.found {
         return Err(
             "skill-project.toml not found in this directory or any parent. \
-            Create it at the top level of your workspace (e.g. run 'fastskill init' there), \
+            Create it at the top level of your workspace (e.g. run 'fastskill project init' there), \
             then run this command again."
                 .to_string(),
         );
@@ -81,13 +81,13 @@ pub fn load_project_config(start_path: &Path) -> Result<ProjectConfig, String> {
         None => {
             return Err(
                 "project-level skill-project.toml requires [tool.fastskill] with skills_directory. \
-                Run 'fastskill init --skills-dir <path>' at project root or add it manually.".to_string()
+                Run 'fastskill project init --skills-dir <path>' at project root or add it manually.".to_string()
             );
         }
     };
 
     // skills_directory is a plain string in skill-project.toml (e.g.
-    // `skills_directory = ".claude/skills"`, which is what `fastskill init`
+    // `skills_directory = ".claude/skills"`, which is what `fastskill project init`
     // writes) and serde deserializes it straight into a PathBuf without
     // splitting on '/'. On Windows that leaves a single path component whose
     // OsStr *contains* a literal '/' character. `Path::join()` only inserts

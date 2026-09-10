@@ -132,7 +132,8 @@ pub(super) async fn prepare(
     if selection.strict {
         let lock = existing_lock.as_ref().ok_or_else(|| {
             CliError::Config(
-                "skills.lock not found. Run 'fastskill install' first to create it.".to_string(),
+                "skills.lock not found. Run 'fastskill project install' first to create it."
+                    .to_string(),
             )
         })?;
         if !roots_have_compatible_coverage(lock, &selected_roots, manifest_dir)? {
@@ -403,20 +404,20 @@ fn validate_recorded_roots(
             .ok_or_else(|| CliError::Config(format!("skills.lock is missing '{}'", root.id)))?;
         if locked.origin.resolved_against(manifest_dir) != root.origin {
             return Err(CliError::Config(format!(
-                "locked intent for '{}' differs from the Manifest; run `fastskill update {}`",
+                "locked intent for '{}' differs from the Manifest; run `fastskill skill update {}`",
                 root.id, root.id
             )));
         }
         let immutable = !matches!(locked.origin, Origin::Local { editable: true, .. });
         if immutable && locked.resolved.checksum.is_none() {
             return Err(CliError::Config(format!(
-                "skills.lock has no integrity evidence for '{}'; run `fastskill update {}`",
+                "skills.lock has no integrity evidence for '{}'; run `fastskill skill update {}`",
                 root.id, root.id
             )));
         }
         if matches!(locked.origin, Origin::Git { .. }) && locked.resolved.commit_hash.is_none() {
             return Err(CliError::Config(format!(
-                "skills.lock has no commit for '{}'; run `fastskill update {}`",
+                "skills.lock has no commit for '{}'; run `fastskill skill update {}`",
                 root.id, root.id
             )));
         }

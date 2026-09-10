@@ -32,7 +32,7 @@ pub(crate) fn preview_install(
         }
         if installed.version != prepared.descriptor.version {
             return Err(ServiceError::InvalidOperation(format!(
-                "Bundle '{}' is already installed at {}; use 'fastskill update --bundle {} --from <artifact>'",
+                "Bundle '{}' is already installed at {}; use 'fastskill bundle update {} --from <artifact>'",
                 installed.id, installed.version, installed.id
             )));
         }

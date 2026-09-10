@@ -6,7 +6,10 @@
 
 ## Context
 
-`fastskill serve` ships a bundled web UI. To let a local user *manage* skills from the browser (install from a source, update, remove), the HTTP handlers need to run the same install/update/reindex work the CLI does. Two facts, surfaced while auditing the codebase (PR #201), make this non-trivial:
+Command-path terms in the original context below are historical. ADR-0010 assigns the current CLI
+paths; service and function names retain their source-code spelling.
+
+`fastskill server serve` ships a bundled web UI. To let a local user *manage* skills from the browser (install from a source, update, remove), the HTTP handlers need to run the same install/update/reindex work the CLI does. Two facts, surfaced while auditing the codebase (PR #201), make this non-trivial:
 
 1. **The orchestration lives in the CLI crate.** `execute_add` (install), the update apply path, and `execute_reindex` are in `fastskill-cli`. An HTTP handler in `fastskill-core` cannot call *up* into the CLI crate. The `reindex` handler already returns `501` for exactly this reason, and the `upgrade` handler *shells out* to the `fastskill` binary — a request-body-to-subprocess path we do not want (against the SEC-2 hardening direction).
 
@@ -97,4 +100,5 @@ defined in
   A requested dependency ID MUST match the resolved skill ID before committing.
   A conflicting existing installation MUST expose its Origin and owners so a
   provenance change is deliberate and subject to ownership checks.
-- `FastSkillService` now carries an optional embedding provider; the `serve` binary must construct and pass it (or `None`).
+- `FastSkillService` now carries an optional embedding provider; `server serve` must construct and
+  pass it (or `None`).

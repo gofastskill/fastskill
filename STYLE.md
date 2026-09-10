@@ -297,7 +297,7 @@ if is_tty && !no_progress {
 
 ```bash
 # Disable all progress indicators
-FASTSKILL_NO_PROGRESS=1 fastskill install requests
+FASTSKILL_NO_PROGRESS=1 fastskill project install requests
 ```
 
 #### Structured data output
@@ -346,10 +346,10 @@ FASTSKILL_NO_PROGRESS=1 fastskill install requests
 **Output format selection:**
 
 ```
-fastskill list                    # Human-readable table (default)
-fastskill list --json            # JSON format
-fastskill search web --xml       # XML format
-fastskill show requests --table  # Explicit table format
+fastskill skill list                    # Human-readable table (default)
+fastskill skill list --json            # JSON format
+fastskill skill search web --xml       # XML format
+fastskill skill read requests --meta  # Human-readable metadata
 ```
 
 **Machine-readable vs human-readable:**
@@ -375,7 +375,7 @@ fastskill --version
 fastskill 1.2.3
 
 # In help text
-fastskill install --help
+fastskill project install --help
 # Shows: fastskill-install 1.2.3
 ```
 
@@ -529,8 +529,8 @@ fn format_error_with_details(error: &str, details: &[&str]) -> String {
 ```
 error: Skill 'web-scraper' not found
 
-hint: Run 'fastskill search web scraper' to find similar skills
-hint: Check available skills with 'fastskill list'
+hint: Run 'fastskill skill search web scraper' to find similar skills
+hint: Check available skills with 'fastskill skill list'
 ```
 
 **Multiple hints formatting:**
@@ -701,7 +701,7 @@ match (is_tty(), is_piped()) {
 
 ### FS201: Skill Not Found
 **Description:** Requested skill does not exist in registry.
-**Recovery:** Use `fastskill search` to find similar skills.
+**Recovery:** Use `fastskill skill search` to find similar skills.
 ```
 
 #### Error message template
@@ -722,8 +722,8 @@ Use this format for consistent error presentation. Include error codes for docum
 ```
 error: Skill 'web-scraper' not found
 
-hint: Run 'fastskill search web scraper' to find similar skills
-hint: Check available skills with 'fastskill list'
+hint: Run 'fastskill skill search web scraper' to find similar skills
+hint: Check available skills with 'fastskill skill list'
 ```
 
 **Complex error with details and code:**
@@ -747,8 +747,8 @@ Skill 'data-analyzer' requires 'pandas>=1.0.0', but 'pandas=0.25.3' is installed
 Conflicting skill: 'legacy-analyzer' (installed via requirements.txt)
 
 hint: Update pandas to version 1.0.0 or higher
-hint: Remove conflicting skill with 'fastskill remove legacy-analyzer'
-hint: Use 'fastskill show data-analyzer' to see full dependency requirements
+hint: Remove conflicting skill with 'fastskill skill remove legacy-analyzer'
+hint: Use 'fastskill skill read data-analyzer --meta --tree' to see full dependency requirements
 ```
 
 **Warning example:**
@@ -758,7 +758,7 @@ warning: Using deprecated skill 'old-parser'
 
 This skill will be removed in FastSkill 2.0. Consider migrating to 'new-parser'.
 
-hint: Run 'fastskill search parser' to find alternatives
+hint: Run 'fastskill skill search parser' to find alternatives
 hint: Update your skill requirements to use 'new-parser'
 ```
 

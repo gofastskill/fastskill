@@ -55,7 +55,7 @@ pub use build_cache::{BuildCache, SkillCacheEntry};
 pub use bundle::{BundleBuildResult, BundleService, InstalledBundle, BUNDLE_FORMAT};
 // cache (PRD 006 / RFQ 004): on-disk skill content + index cache. `SkillCache`
 // is the single seam for it -- `install.rs` (US-002/003/004) fetches through
-// it, `repos refresh` (US-005) writes its index through it, and `fastskill
+// it, `repo refresh` (US-005) writes its index through it, and `fastskill
 // cache info`/`clean` (US-006) read/delete through it.
 pub use cache::{
     CacheIdentity, CacheStats, CachedContent, CleanReport, ContentSourceKind, ContentSourceStats,

@@ -22,14 +22,14 @@ cargo build -p fastskill-cli
 
 ```bash
 # Initialize a project manifest
-fastskill init
+fastskill project init
 
 # Add and install a local skill
-fastskill add ./skills/my-skill -e --group dev
-fastskill install
+fastskill skill add ./skills/my-skill -e --group dev
+fastskill project install
 
 # Search skills
-fastskill search "text processing"
+fastskill skill search "text processing"
 ```
 
 ## What this crate owns

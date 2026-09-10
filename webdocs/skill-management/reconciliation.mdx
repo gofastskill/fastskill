@@ -17,14 +17,14 @@ An installed directory alone does not prove that the environment matches its des
 
 ## Reconciliation States
 
-When you run `fastskill list`, each skill is assigned a reconciliation status:
+When you run `fastskill skill list`, each skill is assigned a reconciliation status:
 
 | Status | Description | Action Required |
 |---------|-------------|-----------------|
 | `ok` | Required identity, constraint, locked facts, contents, and ownership agree | None |
-| `missing` | A selected root or required dependency is absent | Run `fastskill install` |
+| `missing` | A selected root or required dependency is absent | Run `fastskill project install` |
 | `extraneous` | Installed content has no managed owner | Review it; this alone does not fail `--check` |
-| `mismatch` | Desired, locked, or actual version/content differs | Restore with `install --lock` or deliberately `update` |
+| `mismatch` | Desired, locked, or actual version/content differs | Restore with `project install --lock` or deliberately `skill update` |
 | `unverifiable` | A required immutable selection lacks integrity evidence | Update explicitly to establish a verified selection |
 | `mutable` | An editable local selection is structurally valid but its bytes are intentionally mutable | Review the linked source when needed |
 | `conflict` | Retained owners require incompatible content or constraints | Resolve the listed owners before applying changes |
@@ -42,7 +42,7 @@ Skill is in the desired state:
 
 **Example:**
 ```bash
-$ fastskill list
+$ fastskill skill list
 ID               Version  Source              Status
 ──────────────────────────────────────────────────────────────
 web-scraper      1.2.3    git                  ok
@@ -54,7 +54,7 @@ data-processor    2.1.0    registry              ok
 Skill is declared in `skill-project.toml` but not installed:
 
 ```bash
-$ fastskill list
+$ fastskill skill list
 ID               Version  Source              Status
 ──────────────────────────────────────────────────────────────
 web-scraper      1.2.3    git                  missing
@@ -64,7 +64,7 @@ data-processor    2.1.0    registry              ok
 **Resolution:**
 ```bash
 # Install missing skills
-fastskill install
+fastskill project install
 ```
 
 #### Extraneous
@@ -72,7 +72,7 @@ fastskill install
 Skill is installed but not declared in `skill-project.toml`:
 
 ```bash
-$ fastskill list
+$ fastskill skill list
 ID               Version  Source              Status
 ──────────────────────────────────────────────────────────────
 web-scraper      1.2.3    git                  ok
@@ -83,7 +83,7 @@ old-skill        0.1.0    local                extraneous
 **Resolution options:**
 ```bash
 # Option 1: Remove extraneous skill
-fastskill remove old-skill
+fastskill skill remove old-skill
 
 # Option 2: Add to skill-project.toml
 # Edit skill-project.toml and add:
@@ -96,7 +96,7 @@ fastskill remove old-skill
 Installed version differs from `skills.lock`:
 
 ```bash
-$ fastskill list
+$ fastskill skill list
 ID               Version  Source              Status
 ──────────────────────────────────────────────────────────────
 web-scraper      1.2.3    git                  ok
@@ -110,15 +110,15 @@ Version mismatches indicate manual changes or corruption. Resolve to ensure repr
 **Resolution:**
 ```bash
 # Option 1: Reinstall from lockfile (reproducible)
-fastskill install --lock
+fastskill project install --lock
 
 # Option 2: Update to latest and update lock
-fastskill update
+fastskill skill update
 ```
 
 ## Reconciliation Process
 
-The `list` command performs reconciliation in this order:
+The `skill list` command performs reconciliation in this order:
 
 ```mermaid
 graph TD
@@ -150,58 +150,58 @@ graph TD
 # new-skill = { origin = { type = "git", url = "https://github.com/user/new-skill.git" } }
 
 # 2. Install skills
-fastskill install
+fastskill project install
 
 # 3. Check reconciliation
-fastskill list
+fastskill skill list
 # Output: new-skill shows as "ok"
 
 # 4. Install with lock for reproducibility
-fastskill install --lock
+fastskill project install --lock
 ```
 
 ### Team Collaboration
 
 ```bash
 # Team member A: Add skill and install
-fastskill add https://github.com/user/new-skill.git
+fastskill skill add https://github.com/user/new-skill.git
 git add skill-project.toml skills.lock
 git commit -m "Add new-skill"
 
 # Team member B: Pull and verify
 git pull
-fastskill list
+fastskill skill list
 # Output: All skills should be "ok"
 
 # Team member B: Install with lock
-fastskill install --lock
+fastskill project install --lock
 ```
 
 ### CI/CD Deployment
 
 ```bash
 # Restore without network access, then verify the same selected closure
-fastskill install --lock --offline --without dev
-fastskill list --check --without dev --json > skills-status.json
+fastskill project install --lock --offline --without dev
+fastskill skill list --check --without dev --json > skills-status.json
 ```
 
 ### Troubleshooting Discrepancies
 
 ```bash
 # 1. Identify issues
-fastskill list
+fastskill skill list
 
 # 2. Install missing skills
-fastskill install
+fastskill project install
 
 # 3. Remove extraneous skills
-fastskill remove old-skill
+fastskill skill remove old-skill
 
 # 4. Fix version mismatches
-fastskill install --lock
+fastskill project install --lock
 
 # 5. Verify all are ok
-fastskill list
+fastskill skill list
 ```
 
 ## Lockfile-Based Reconciliation
@@ -212,10 +212,10 @@ When using `skills.lock`, reconciliation focuses on exact version matching:
 
 ```bash
 # Deploy with locked versions
-fastskill install --lock
+fastskill project install --lock
 
 # Verify reconciliation
-fastskill list
+fastskill skill list
 # Required immutable skills should be "ok"; editable skills are labeled "mutable"
 ```
 
@@ -223,7 +223,7 @@ fastskill list
 
 ```bash
 # Check for version drift
-fastskill list
+fastskill skill list
 
 # If mismatch found:
 # data-processor    2.2.0    registry              mismatch (lock: 2.1.0)
@@ -235,7 +235,7 @@ fastskill list
 
 ## Reconciliation JSON Format
 
-The `list --format json` output includes detailed reconciliation status:
+The `skill list --format json` output includes detailed reconciliation status:
 
 ```json
 [
@@ -287,10 +287,10 @@ dev-tool = { origin = { type = "local", path = "./dev-tool" }, groups = ["dev"] 
 
 ```bash
 # Install production skills only
-fastskill install --without dev
+fastskill project install --without dev
 
 # Check reconciliation
-fastskill list
+fastskill skill list
 
 # Output:
 # prod-skill: ok
@@ -307,13 +307,13 @@ Missing status is expected for skills excluded by group filters. Only report as 
 
 Always commit `skill-project.toml` and `skills.lock` together to version control. This ensures team members can reproduce exact installations.
 
-### 2. Run fastskill list after changes
+### 2. Run fastskill skill list after changes
 
-Run `fastskill list` after installing, updating, or removing skills to verify reconciliation status.
+Run `fastskill skill list` after installing, updating, or removing skills to verify reconciliation status.
 
 ### 3. Use --lock for production
 
-Always use `fastskill install --lock` for production deployments to ensure exact version reproducibility.
+Always use `fastskill project install --lock` for production deployments to ensure exact version reproducibility.
 
 ### 4. Investigate mismatches promptly
 
@@ -332,7 +332,7 @@ Remove or add extraneous skills to `skill-project.toml` to avoid confusion and e
 cp -r /path/to/skill ~/.claude/skills/manual-skill
 
 # Check reconciliation
-fastskill list
+fastskill skill list
 
 # Output:
 # manual-skill: extraneous (not in manifest)
@@ -348,13 +348,13 @@ cd ~/.claude/skills/web-scraper
 git pull origin main
 
 # Check reconciliation
-fastskill list
+fastskill skill list
 
 # Output:
 # web-scraper: mismatch (lock: 1.2.3, installed: 1.3.0)
 
 # Resolution: Update lockfile or reinstall from lock
-fastskill install --lock
+fastskill project install --lock
 ```
 
 ### Scenario: Missing Skills After Clone
@@ -365,13 +365,13 @@ git clone repo
 cd repo
 
 # Check reconciliation
-fastskill list
+fastskill skill list
 
 # Output:
 # web-scraper: missing (skills.lock not found)
 
 # Resolution: Install skills
-fastskill install
+fastskill project install
 ```
 
 ## Reconciliation in Automation
@@ -395,7 +395,7 @@ jobs:
 
       - name: Check reconciliation status
         run: |
-          fastskill list --format json > skills-status.json
+          fastskill skill list --format json > skills-status.json
 
       - name: Verify no reconciliation issues
         run: |
@@ -419,7 +419,7 @@ echo "Generated: $(date)"
 echo ""
 
 # Get reconciliation status
-fastskill list --format json > /tmp/skills-status.json
+fastskill skill list --format json > /tmp/skills-status.json
 
 # Count by status
 ok_count=$(jq '[.[] | select(.status == "ok")] | length' /tmp/skills-status.json)
@@ -454,11 +454,11 @@ exit 0
   </Callout>
 
   <Callout type="warn">
-  **skill-project.toml missing**: Create `skill-project.toml` or use `fastskill init`.
+  **skill-project.toml missing**: Create `skill-project.toml` or use `fastskill project init`.
   </Callout>
 
   <Callout>
-  **Resolution**: Run `fastskill install` to install skills from manifest.
+  **Resolution**: Run `fastskill project install` to install skills from manifest.
   </Callout>
 </Accordion>
 
@@ -468,11 +468,11 @@ exit 0
   </Callout>
 
   <Callout>
-  **Resolution**: Add to `skill-project.toml` if intentional, or remove with `fastskill remove`.
+  **Resolution**: Add to `skill-project.toml` if intentional, or remove with `fastskill skill remove`.
   </Callout>
 
   <Callout>
-  **Prevention**: Always use `fastskill add` to install skills for proper tracking.
+  **Prevention**: Always use `fastskill skill add` to install skills for proper tracking.
   </Callout>
 </Accordion>
 
@@ -486,7 +486,7 @@ exit 0
   </Callout>
 
   <Callout>
-  **Resolution**: Run `fastskill install --lock` to reinstall from lockfile, or `fastskill update` to update lockfile.
+  **Resolution**: Run `fastskill project install --lock` to reinstall from lockfile, or `fastskill skill update` to update lockfile.
   </Callout>
 </Accordion>
 </Accordions>
@@ -497,4 +497,4 @@ exit 0
 - [Update Command](/cli-reference/update-command) - Update skills and lockfile
 - [List Command](/cli-reference/skill-commands#list) - List skills with reconciliation status
 - [Manifest System](/skill-management/manifest-system) - Understanding skill-project.toml and skills.lock
-- [init Command](/configuration/init-command) - Project initialization and setup
+- [`project init`](/configuration/init-command) - Project initialization and setup

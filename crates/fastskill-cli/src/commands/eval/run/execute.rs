@@ -90,7 +90,7 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     let resolution = resolve_project_file(&current_dir);
     if !resolution.found {
         return Err(CliError::Config(
-            "EVAL_CONFIG_MISSING: No skill-project.toml found. Run 'fastskill init' first."
+            "EVAL_CONFIG_MISSING: No skill-project.toml found. Run 'fastskill project init' first."
                 .to_string(),
         ));
     }

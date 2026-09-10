@@ -10,11 +10,11 @@ description: "Drill into step artifacts to understand what changed, and export t
 After a run completes (or while it's running), use `inspect` to see what happened at a step:
 
 ```bash
-fastskill optimize inspect .skillopt/runs/<timestamp> --step 0
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0
 ```
 
 `--step` is **0-based** — it is the same `global_step` value that
-[`optimize status`](#finding-a-step-to-inspect) prints in its `step` column, and the same
+[`optimization status`](#finding-a-step-to-inspect) prints in its `step` column, and the same
 number used in the on-disk directory name (`steps/step_0000`). Pass the number you read
 off `status`; there is no off-by-one to translate.
 
@@ -23,10 +23,10 @@ With no `--show`, `inspect` prints every artifact for that step (`--show all`).
 ### Show only what you need
 
 ```bash
-fastskill optimize inspect .skillopt/runs/<timestamp> --step 0 --show patches
-fastskill optimize inspect .skillopt/runs/<timestamp> --step 0 --show gate
-fastskill optimize inspect .skillopt/runs/<timestamp> --step 0 --show skips
-fastskill optimize inspect .skillopt/runs/<timestamp> --step 0 --show diffs
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show patches
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show gate
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show skips
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show diffs
 ```
 
 | Value | Output |
@@ -102,7 +102,7 @@ N. For a rejected step it reports that directly:
 
 ```
 (no diff: step 0 was rejected, so no new skill version was written — run
-`optimize inspect --step 0 --show gate` for the scores)
+`optimization inspect --step 0 --show gate` for the scores)
 ```
 
 If the step isn't recorded in `history.json` at all, `inspect` says that instead of
@@ -126,7 +126,7 @@ Use `status` to read the history table first, then pick the step you care about 
 largest positive delta, or the last accepted step before a regression:
 
 ```bash
-fastskill optimize status .skillopt/runs/<timestamp>
+fastskill optimization status .skillopt/runs/<timestamp>
 ```
 
 ```
@@ -147,7 +147,7 @@ zero-step warning in [Running and monitoring](/optimize/running).
 When you're happy with the results, export the best skill document:
 
 ```bash
-fastskill optimize export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
+fastskill optimization export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
 ```
 
 This copies `best_skill.md` from the run directory to the destination path. Parent
@@ -163,8 +163,8 @@ the optimizer's protected-region markers added.
 ## Comparing multiple runs
 
 ```bash
-fastskill optimize status .skillopt/runs/run-A
-fastskill optimize status .skillopt/runs/run-B
+fastskill optimization status .skillopt/runs/run-A
+fastskill optimization status .skillopt/runs/run-B
 
 diff \
   .skillopt/runs/run-A/best_skill.md \

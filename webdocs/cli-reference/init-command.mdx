@@ -1,16 +1,16 @@
 ---
-title: init
-api: "init"
+title: project init
+api: "project init"
 ---
 
-# init Command
+# `project init`
 
 Initialize `skill-project.toml` for skill authors. This command creates a project manifest file for managing skill metadata, dependencies, and version information.
 
 ## Usage
 
 ```bash
-fastskill init [OPTIONS]
+fastskill project init [OPTIONS]
 ```
 
 ## Options
@@ -31,7 +31,7 @@ fastskill init [OPTIONS]
 Run interactively with prompts for all required fields:
 
 ```bash
-fastskill init
+fastskill project init
 ```
 
 The command will prompt for:
@@ -45,7 +45,7 @@ The command will prompt for:
 Use `--yes` to skip prompts and use defaults:
 
 ```bash
-fastskill init --yes
+fastskill project init --yes
 ```
 
 ### Set All Fields Non-Interactively
@@ -53,7 +53,7 @@ fastskill init --yes
 Set all fields via command-line options:
 
 ```bash
-fastskill init \
+fastskill project init \
   --version "1.0.0" \
   --description "My awesome skill" \
   --author "Your Name" \
@@ -65,7 +65,7 @@ fastskill init \
 Overwrite existing `skill-project.toml`:
 
 ```bash
-fastskill init --force
+fastskill project init --force
 ```
 
 <Callout type="warn">
@@ -74,7 +74,7 @@ Using `--force` will overwrite your existing `skill-project.toml` file. Make sur
 
 ## Behavior
 
-The `init` command:
+The `project init` command:
 
 1. **Detects Context**: Determines if you're in a skill directory (with SKILL.md) or a project directory
 2. **Extracts Metadata**: If SKILL.md exists, extracts version, description, and author from YAML frontmatter
@@ -89,7 +89,7 @@ The `init` command:
 
 ## Generated File Structure
 
-The `init` command creates a `skill-project.toml` file with the following structure:
+The `project init` command creates a `skill-project.toml` file with the following structure:
 
 ```toml skill-project.toml
 schema_version = "1"
@@ -119,7 +119,7 @@ auto_reindex = true
 # priority = 0
 ```
 
-Add dependencies by hand or with `fastskill add`. Each one names an **origin**:
+Add dependencies by hand or with `fastskill skill add`. Each one names an **origin**:
 
 ```toml skill-project.toml
 [dependencies]
@@ -135,12 +135,12 @@ The skill ID is automatically derived from the current directory name:
 # → Skill ID: my-skill
 
 cd my-skill
-fastskill init
+fastskill project init
 # Creates: [metadata] id = "my-skill"
 ```
 
 <Callout type="info">
-If you're in a project directory (no SKILL.md), the `skill-project.toml` can still be used to declare dependencies for installation via `fastskill install`.
+If you're in a project directory (no SKILL.md), the `skill-project.toml` can still be used to declare dependencies for installation via `fastskill project install`.
 </Callout>
 
 ## Context Detection
@@ -157,7 +157,7 @@ my-skill/
 └── (skill files)
 
 cd my-skill
-fastskill init
+fastskill project init
 # → Creates skill-project.toml for this skill
 ```
 
@@ -175,11 +175,11 @@ my-project/
 └── (project files)
 
 cd my-project
-fastskill init
+fastskill project init
 # → Creates skill-project.toml for declaring dependencies
 ```
 
-Use `fastskill install` to install skills declared in `[dependencies]` section.
+Use `fastskill project install` to install skills declared in `[dependencies]` section.
 
 ## SKILL.md Frontmatter Integration
 
@@ -259,7 +259,7 @@ Skill content here...
 EOF
 
 # 3. Initialize project
-fastskill init --yes
+fastskill project init --yes
 
 # 4. Add to skill-project.toml dependencies (if needed)
 # Edit skill-project.toml to add dependencies
@@ -273,17 +273,17 @@ mkdir my-project
 cd my-project
 
 # 2. Initialize project manifest
-fastskill init --yes \
+fastskill project init --yes \
   --version "1.0.0" \
   --description "My multi-skill project" \
   --author "Your Name"
 
 # 3. Add skills
-fastskill add https://github.com/user/skill-a.git
-fastskill add https://github.com/user/skill-b.git
+fastskill skill add https://github.com/user/skill-a.git
+fastskill skill add https://github.com/user/skill-b.git
 
 # 4. Install skills
-fastskill install
+fastskill project install
 ```
 
 ### Updating Metadata for Existing Skill
@@ -292,7 +292,7 @@ fastskill install
 cd my-existing-skill
 
 # Update metadata in skill-project.toml
-fastskill init \
+fastskill project init \
   --version "2.0.0" \
   --description "Updated description" \
   --force
@@ -302,7 +302,7 @@ fastskill init \
 
 ### For Skill Authors
 
-Use `fastskill init` to:
+Use `fastskill project init` to:
 - Create project metadata for publishing skills
 - Track skill versions independent of SKILL.md
 - Override SKILL.md frontmatter for publishing
@@ -310,14 +310,14 @@ Use `fastskill init` to:
 
 ### For Project Maintainers
 
-Use `fastskill init` to:
+Use `fastskill project init` to:
 - Declare skill dependencies in `[dependencies]` section
 - Configure repositories in `[tool.fastskill.repositories]`
-- Set up reproducible installations via `fastskill install`
+- Set up reproducible installations via `fastskill project install`
 
 ### For CI/CD Pipelines
 
-Use `fastskill init --yes` to:
+Use `fastskill project init --yes` to:
 - Create manifests without interactive prompts
 - Generate consistent metadata across environments
 - Automate project setup

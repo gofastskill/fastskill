@@ -5,14 +5,14 @@ description: "Create skill-project.toml for skill authors and project configurat
 
 ## Overview
 
-`fastskill init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
+`fastskill project init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
 
 <Callout type="info">
-`init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
+`project init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
 </Callout>
 
 <Callout type="info">
-**Context detection**: `init` detects whether you're in a skill directory or a project root:
+**Context detection**: `project init` detects whether you're in a skill directory or a project root:
 - **Skill-level**: run in a directory containing `SKILL.md` — writes a `[metadata]` section for skill authors. `skills_directory` is optional.
 - **Project-level**: run at a project root — writes `[dependencies]` for skill consumers. A skills directory is required (via `--skills-dir`, or the prompt).
 </Callout>
@@ -30,7 +30,7 @@ description: "Create skill-project.toml for skill authors and project configurat
 ### Interactive setup
 
 ```bash
-fastskill init
+fastskill project init
 ```
 
 Prompts for each missing field. For example, at a project root:
@@ -51,13 +51,13 @@ Skills directory: .claude/skills
 
 ```bash
 # Skill-level: skip all prompts, take metadata from SKILL.md
-fastskill init --yes
+fastskill project init --yes
 
 # Project-level with --yes: a skills directory is required
-fastskill init --yes --skills-dir .claude/skills
+fastskill project init --yes --skills-dir .claude/skills
 
 # Provide metadata directly
-fastskill init --yes --set-version 1.2.0 --description "Team skills" --author "Jane Doe"
+fastskill project init --yes --set-version 1.2.0 --description "Team skills" --author "Jane Doe"
 ```
 
 <Callout type="warn">
@@ -78,7 +78,7 @@ At a project root, `--yes` requires `--skills-dir <path>`. Without it, either dr
 
 ## The file it creates
 
-At a project root, `init` produces a `skill-project.toml` like:
+At a project root, `project init` produces a `skill-project.toml` like:
 
 ```toml skill-project.toml
 [metadata]
@@ -146,7 +146,7 @@ origin = { type = "git", url = "https://github.com/org/repo", ref = { branch = "
 ```
 
 **Reading never rewrites your file.** The upgraded form is written to disk only the next
-time something changes the manifest for its own reasons — `add`, `remove`, `init`, a
+time something changes the manifest for its own reasons — `skill add`, `skill remove`, `project init`, a
 version bump. So a legacy project keeps working untouched until you modify it, and then
 migrates once, as a side effect.
 
@@ -162,7 +162,7 @@ silently would be worse than stopping.
 
 ## Embedding configuration
 
-Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `init` — add it when you need it):
+Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `project init` — add it when you need it):
 
 ```toml
 [tool.fastskill.embedding]
@@ -198,7 +198,7 @@ export OPENAI_API_KEY="your-gateway-key"
 An empty or whitespace-only value counts as unset, so a blank variable in a shell
 profile or CI matrix will not silently blank out a working manifest setting.
 
-Run `fastskill doctor` to see which endpoint and model are actually in effect:
+Run `fastskill cli doctor` to see which endpoint and model are actually in effect:
 
 ```
 [PASS] embedding_config: Embedding configuration found
@@ -208,7 +208,7 @@ Run `fastskill doctor` to see which endpoint and model are actually in effect:
 <Callout type="warn">
 **Changing the embedding model invalidates your index.** Vectors from different
 models are not comparable — and often not even the same length. After switching
-models, run `fastskill reindex` before searching, or results will be meaningless.
+models, run `fastskill index rebuild` before searching, or results will be meaningless.
 </Callout>
 
 The API key stays environment-only on purpose: a committed manifest is the wrong
@@ -251,20 +251,20 @@ jobs:
         run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 
       - name: Initialize FastSkill
-        run: fastskill init --yes --skills-dir .claude/skills
+        run: fastskill project init --yes --skills-dir .claude/skills
 
       - name: Install skills from the manifest
-        run: fastskill install
+        run: fastskill project install
 
       - name: Index skills (needs OPENAI_API_KEY for semantic search)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: fastskill reindex
+        run: fastskill index rebuild
 ```
 
 ## Next steps after init
 
-1. **Add skills**: `fastskill add <skill-id>` (registry, Git, or local path).
-2. **Install from the manifest**: `fastskill install`.
-3. **Index for search**: `fastskill reindex` (requires `OPENAI_API_KEY`).
-4. **Search**: `fastskill search "your query"`.
+1. **Add skills**: `fastskill skill add <skill-id>` (registry, Git, or local path).
+2. **Install from the manifest**: `fastskill project install`.
+3. **Index for search**: `fastskill index rebuild` (requires `OPENAI_API_KEY`).
+4. **Search**: `fastskill skill search "your query"`.

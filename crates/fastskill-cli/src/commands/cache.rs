@@ -4,7 +4,7 @@
 //! (`fastskill_core::core::cache::SkillCache`).
 //!
 //! `cache info` and `cache clean` both work directly against
-//! [`SkillCache::from_env`] -- like `repos refresh` (US-005), neither needs a
+//! [`SkillCache::from_env`] -- like `repo refresh` (US-005), neither needs a
 //! full `FastSkillService`, just the resolved cache root.
 
 use crate::commands::common::validate_format_args;
@@ -54,6 +54,7 @@ impl IntoCommandSpec for CacheInfoArgs {
             summary: "Show the skill content cache location, entry counts, and disk usage",
             syntax: Some("cache info [OPTIONS]"),
             category: Some("cache"),
+            help_order: Some(10),
             examples: vec!["fastskill cache info", "fastskill cache info --json"],
             args: vec![
                 ArgSpec {
@@ -160,6 +161,7 @@ impl IntoCommandSpec for CacheCleanArgs {
             summary: "Remove cached skill content and print bytes reclaimed",
             syntax: Some("cache clean [--source <git|registry|local|zip>]"),
             category: Some("cache"),
+            help_order: Some(20),
             examples: vec![
                 "fastskill cache clean",
                 "fastskill cache clean --source git",
@@ -203,11 +205,11 @@ impl FromArgValueMap for CacheCleanArgs {
 }
 
 /// `cache clean` (US-006). Content only -- the index cache (`index/`,
-/// including `repos refresh`'s per-source listings and the git-resolutions
+/// including `repo refresh`'s per-source listings and the git-resolutions
 /// map) is left untouched, per the PRD's "removes all content entries"
 /// wording and its "no v1 TTL/GC" stance on the index: cleaning content is a
 /// disk-reclaim operation, not a "forget what I know" operation, and the
-/// only thing that invalidates the index is an explicit `repos refresh`.
+/// only thing that invalidates the index is an explicit `repo refresh`.
 pub async fn execute_cache_clean(args: CacheCleanArgs) -> CliResult<()> {
     let source = args
         .source

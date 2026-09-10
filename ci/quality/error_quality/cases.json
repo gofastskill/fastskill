@@ -8,10 +8,10 @@
     "actually emits, not about idealised prose.",
     "",
     "The `bad` cases are messages fastskill could realistically regress into. Three are",
-    "historical: `clap_duplicate_arg_panic` is the panic that `fastskill init` really",
+    "historical: `clap_duplicate_arg_panic` is the panic that `fastskill project init` really",
     "produced before PR #225 (an arg named `version` collided with clap's generated",
     "--version), `unwrap_panic` is the shape any stray .unwrap() produces, and",
-    "`repos_skills_unknown_argument` is what `repos skills nosuchrepo` really produced",
+    "`repos_skills_unknown_argument` is what `repo skills nosuchrepo` really produced",
     "before it gained a positional REPOSITORY arg. They are reconstructed rather than",
     "captured because the bugs are fixed -- which is the point: the judge exists to catch",
     "a return to them.",
@@ -27,9 +27,9 @@
   "cases": [
     {
       "id": "read_not_found",
-      "command": "fastskill read no-such-skill",
+      "command": "fastskill skill read no-such-skill",
       "exit_code": 1,
-      "output": "Error: Skill 'no-such-skill' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill install owner/repo\n  fastskill list                    # See available skills",
+      "output": "Error: Skill 'no-such-skill' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill project install owner/repo\n  fastskill skill list                    # See available skills",
       "expected": {
         "pass": true,
         "score_range": [4, 5],
@@ -38,7 +38,7 @@
     },
     {
       "id": "add_nonexistent_path",
-      "command": "fastskill add ./does-not-exist",
+      "command": "fastskill skill add ./does-not-exist",
       "exit_code": 1,
       "output": "Error: Validation error: No SKILL.md found in ./does-not-exist. A skill directory must contain a SKILL.md file. If this folder has multiple skills in subdirectories, use --recursive.",
       "expected": {
@@ -49,9 +49,9 @@
     },
     {
       "id": "remove_not_found",
-      "command": "fastskill remove ghost",
+      "command": "fastskill skill remove ghost",
       "exit_code": 1,
-      "output": "Error: Skill 'ghost' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill install owner/repo\n  fastskill list                    # See available skills",
+      "output": "Error: Skill 'ghost' not found\n\nSearched locations:\n  ✓ /tmp/proj/skills (project)\n\nTry:\n  fastskill project install owner/repo\n  fastskill skill list                    # See available skills",
       "expected": {
         "pass": true,
         "score_range": [4, 5],
@@ -60,9 +60,9 @@
     },
     {
       "id": "install_missing_dependencies_section",
-      "command": "fastskill install",
+      "command": "fastskill project install",
       "exit_code": 1,
-      "output": "Installing skills...\n\nError: Configuration error: skill-project.toml validation failed: Project-level skill-project.toml (at project root) requires [dependencies] section. Add '[dependencies]' section to manage skill dependencies. Use 'fastskill add <skill-id>' to add skills.",
+      "output": "Installing skills...\n\nError: Configuration error: skill-project.toml validation failed: Project-level skill-project.toml (at project root) requires [dependencies] section. Add '[dependencies]' section to manage skill dependencies. Use 'fastskill skill add <skill-id>' to add skills.",
       "expected": {
         "pass": true,
         "score_range": [3, 5],
@@ -71,7 +71,7 @@
     },
     {
       "id": "search_invalid_limit",
-      "command": "fastskill search --limit notanumber x",
+      "command": "fastskill skill search --limit notanumber x",
       "exit_code": 1,
       "output": "error[E004]: invalid value 'notanumber' for 'limit'; expected integer",
       "expected": {
@@ -82,29 +82,29 @@
     },
     {
       "id": "repos_skills_unknown_argument",
-      "command": "fastskill repos skills nosuchrepo",
+      "command": "fastskill repo skills nosuchrepo",
       "exit_code": 1,
       "output": "error[E002]: unknown argument\n  hint: Use --help to see available arguments\nError: unknown argument",
       "expected": {
         "pass": false,
         "score_range": [1, 2],
-        "why": "HISTORICAL, not current: this was the real output before `repos skills` grew a positional REPOSITORY arg (fastskill-cli/src/commands/repos.rs) and main.rs stopped double-printing already-reported UsageErrors. `nosuchrepo` now resolves to `Repository 'nosuchrepo' not found`. Kept, like clap_duplicate_arg_panic below, as a regression fixture -- the judge should still fail this exact shape if the parser path regresses."
+        "why": "HISTORICAL, not current: this was the real output before `repo skills` grew a positional REPOSITORY arg (fastskill-cli/src/commands/repos.rs) and main.rs stopped double-printing already-reported UsageErrors. `nosuchrepo` now resolves to `Repository 'nosuchrepo' not found`. Kept, like clap_duplicate_arg_panic below, as a regression fixture -- the judge should still fail this exact shape if the parser path regresses."
       }
     },
     {
       "id": "clap_duplicate_arg_panic",
-      "command": "fastskill init --yes",
+      "command": "fastskill project init --yes",
       "exit_code": 101,
       "output": "thread 'main' panicked at /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/clap_builder-4.5.23/src/builder/debug_asserts.rs:99:13:\nCommand init: Argument names must be unique, but 'version' is in use by more than one argument or group\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
       "expected": {
         "pass": false,
         "score_range": [1, 1],
-        "why": "The panic `fastskill init` really produced before PR #225. Raw Rust panic with a vendored crate path and an internal invariant. Says nothing the user can act on -- it is not even their fault. Exit 101 signals a crash, not a usage error."
+        "why": "The panic `fastskill project init` really produced before PR #225. Raw Rust panic with a vendored crate path and an internal invariant. Says nothing the user can act on -- it is not even their fault. Exit 101 signals a crash, not a usage error."
       }
     },
     {
       "id": "unwrap_panic",
-      "command": "fastskill list",
+      "command": "fastskill skill list",
       "exit_code": 101,
       "output": "thread 'main' panicked at crates/fastskill-core/src/core/manifest.rs:412:38:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
       "expected": {
@@ -115,7 +115,7 @@
     },
     {
       "id": "generic_invalid_input",
-      "command": "fastskill add some/skill",
+      "command": "fastskill skill add some/skill",
       "exit_code": 1,
       "output": "Error: invalid input",
       "expected": {
@@ -126,7 +126,7 @@
     },
     {
       "id": "serde_error_leak",
-      "command": "fastskill install",
+      "command": "fastskill project install",
       "exit_code": 1,
       "output": "Error: data did not match any variant of untagged enum DependencySpec",
       "expected": {

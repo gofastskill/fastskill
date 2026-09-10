@@ -5,26 +5,25 @@ expression: normalized
 ---
 Uninstall skills (removes from manifest and local installation)
 
-Usage: fastskill remove [OPTIONS] [skill-ids]...
+Usage: fastskill skill remove [OPTIONS] [skill-ids]...
 
 Arguments:
   [skill-ids]...  Skill IDs to remove
 
 Options:
   -f, --force                    Force removal without confirmation
-      --bundle <bundle>          Installed bundle identity to remove
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --skills-dir <skills-dir>  Skills directory path (overrides default discovery)
-  -v, --verbose                  Enable verbose output
       --reindex                  Trigger reindex after removal (overrides config)
+  -v, --verbose                  Enable verbose output
       --no-reindex               Skip reindex after removal
       --dry-run                  Validate and preview without changing managed state
       --json                     Emit one machine-readable lifecycle result
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: remove <SKILL_ID>... [OPTIONS]
+Syntax: skill remove <SKILL_ID>... [OPTIONS]
 
 Examples:
-  fastskill remove pptx
-  fastskill remove pptx docx --force
+  fastskill skill remove pptx
+  fastskill skill remove pptx docx --force

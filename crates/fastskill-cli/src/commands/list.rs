@@ -44,9 +44,6 @@ pub struct ListArgs {
     /// Show detailed information (version, manifest/lock/installed status, source path, type)
     pub details: bool,
 
-    /// List installed bundles rather than individual skills
-    pub bundles: bool,
-
     /// Return nonzero when selected managed state needs reconciliation
     pub check: bool,
 
@@ -75,12 +72,12 @@ impl IntoCommandSpec for ListArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "List locally installed skills",
-            syntax: Some("list [OPTIONS]"),
-            category: Some("discovery"),
+            syntax: Some("skill list [OPTIONS]"),
+            category: Some("skills-projects"),
+            help_order: Some(40),
             examples: vec![
-                "fastskill list",
-                "fastskill list --details --format json",
-                "fastskill list --bundles",
+                "fastskill skill list",
+                "fastskill skill list --details --format json",
             ],
             args: vec![
                 ArgSpec {
@@ -108,15 +105,6 @@ impl IntoCommandSpec for ListArgs {
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
                     help: "Show detailed information",
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "bundles",
-                    kind: ArgKind::Flag,
-                    long: Some("bundles"),
-                    value_type: ArgValueType::Bool,
-                    cardinality: Cardinality::Optional,
-                    help: "List installed bundles",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -167,7 +155,6 @@ impl FromArgValueMap for ListArgs {
                 .and_then(parse_output_format),
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
             details: matches!(map.get("details"), Some(ArgValue::Bool(true))),
-            bundles: matches!(map.get("bundles"), Some(ArgValue::Bool(true))),
             check: matches!(map.get("check"), Some(ArgValue::Bool(true))),
             only: map.get("only").and_then(repeated_strings),
             without: map.get("without").and_then(repeated_strings),
@@ -234,11 +221,6 @@ pub async fn execute_list(
             "--only and --without cannot be used together".to_string(),
         ));
     }
-    if args.bundles && (args.check || args.only.is_some() || args.without.is_some()) {
-        return Err(CliError::Validation(
-            "--bundles cannot be combined with --check, --only, or --without".to_string(),
-        ));
-    }
     if global {
         return execute_global_list(service, args, format).await;
     }
@@ -252,35 +234,6 @@ pub async fn execute_list(
     }
 
     let project_file_path = project_file_result.path;
-    if args.bundles {
-        let root = project_file_path.parent().ok_or_else(|| {
-            CliError::Config("skill-project.toml has no project directory".to_string())
-        })?;
-        let bundles = fastskill_core::core::bundle::BundleService::new(
-            root,
-            service.config().skill_storage_path.clone(),
-        )
-        .list()
-        .map_err(CliError::Service)?;
-        if matches!(format, OutputFormat::Json) {
-            let rendered = serde_json::to_string_pretty(&bundles).map_err(|error| {
-                CliError::Config(format!("Failed to format bundle list as JSON: {error}"))
-            })?;
-            crate::outln!("{rendered}");
-        } else if bundles.is_empty() {
-            crate::outln!("No bundles installed");
-        } else {
-            for bundle in bundles {
-                crate::outln!(
-                    "{} {} [{}]",
-                    bundle.id,
-                    bundle.version,
-                    bundle.members.join(", ")
-                );
-            }
-        }
-        return Ok(());
-    }
     let lock_path = project_file_path
         .parent()
         .map(|p| p.join("skills.lock"))

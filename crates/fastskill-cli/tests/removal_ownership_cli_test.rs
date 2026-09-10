@@ -111,12 +111,15 @@ fn global_remove_detaches_roots_prunes_only_orphans_and_blocks_required_members(
 
     let required = run_global(
         root.path(),
-        &["remove", "shared", "--force", "--no-reindex"],
+        &["skill", "remove", "shared", "--force", "--no-reindex"],
     );
     assert!(!required.status.success());
     assert!(String::from_utf8_lossy(&required.stderr).contains("required by retained root(s)"));
 
-    let removed = run_global(root.path(), &["remove", "alpha", "--force", "--no-reindex"]);
+    let removed = run_global(
+        root.path(),
+        &["skill", "remove", "alpha", "--force", "--no-reindex"],
+    );
     assert!(
         removed.status.success(),
         "{}",
@@ -146,7 +149,7 @@ fn global_remove_blocks_local_edits_without_poisoning_the_next_attempt() {
 
     let rejected = run_global(
         root.path(),
-        &["remove", "managed", "--force", "--no-reindex"],
+        &["skill", "remove", "managed", "--force", "--no-reindex"],
     );
     assert!(!rejected.status.success());
     assert!(String::from_utf8_lossy(&rejected.stderr).contains("locally modified"));
@@ -158,7 +161,7 @@ fn global_remove_blocks_local_edits_without_poisoning_the_next_attempt() {
     write_global_skill(root.path(), "managed", "original");
     let accepted = run_global(
         root.path(),
-        &["remove", "managed", "--force", "--no-reindex"],
+        &["skill", "remove", "managed", "--force", "--no-reindex"],
     );
     assert!(
         accepted.status.success(),
@@ -185,7 +188,7 @@ fn global_remove_unlinks_an_editable_root_and_preserves_its_source() {
 
     let output = run_global(
         root.path(),
-        &["remove", "editable", "--force", "--no-reindex"],
+        &["skill", "remove", "editable", "--force", "--no-reindex"],
     );
     assert!(
         output.status.success(),
@@ -230,7 +233,7 @@ fn declared_skill_with_missing_files_can_be_removed_from_a_nested_directory() {
     let nested = project.path().join("nested/child");
     fs::create_dir_all(&nested).unwrap();
 
-    let output = run(&nested, &["remove", "missing", "--force"]);
+    let output = run(&nested, &["skill", "remove", "missing", "--force"]);
 
     assert!(
         output.status.success(),
@@ -263,7 +266,7 @@ fn required_transitive_skill_cannot_be_removed_while_root_is_retained() {
         fs::write(project.path().join("skills").join(id).join("SKILL.md"), id).unwrap();
     }
 
-    let output = run(project.path(), &["remove", "shared", "--force"]);
+    let output = run(project.path(), &["skill", "remove", "shared", "--force"]);
 
     assert!(!output.status.success());
     let error = String::from_utf8_lossy(&output.stderr);
@@ -299,7 +302,7 @@ fn removing_an_editable_skill_unlinks_only_the_installation() {
     );
     std::os::unix::fs::symlink(&origin, project.path().join("skills/editable")).unwrap();
 
-    let output = run(project.path(), &["remove", "editable", "--force"]);
+    let output = run(project.path(), &["skill", "remove", "editable", "--force"]);
 
     assert!(
         output.status.success(),
@@ -339,7 +342,7 @@ fn editable_skill_that_is_not_a_link_is_never_deleted() {
     fs::create_dir_all(&installed).unwrap();
     fs::write(installed.join("SKILL.md"), "installed sentinel").unwrap();
 
-    let output = run(project.path(), &["remove", "editable", "--force"]);
+    let output = run(project.path(), &["skill", "remove", "editable", "--force"]);
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("not installed as a link"));
@@ -373,7 +376,7 @@ fn modified_immutable_skill_is_preserved_and_failed_validation_does_not_poison_s
     lock.save_to_file(&lock_path).unwrap();
     fs::write(installed.join("SKILL.md"), "locally edited").unwrap();
 
-    let rejected = run(project.path(), &["remove", "managed", "--force"]);
+    let rejected = run(project.path(), &["skill", "remove", "managed", "--force"]);
     assert!(!rejected.status.success());
     assert!(String::from_utf8_lossy(&rejected.stderr).contains("locally modified"));
     assert_eq!(
@@ -383,7 +386,7 @@ fn modified_immutable_skill_is_preserved_and_failed_validation_does_not_poison_s
     assert!(!project.path().join(".fastskill/recovery-required").exists());
 
     fs::write(installed.join("SKILL.md"), "original").unwrap();
-    let accepted = run(project.path(), &["remove", "managed", "--force"]);
+    let accepted = run(project.path(), &["skill", "remove", "managed", "--force"]);
     assert!(
         accepted.status.success(),
         "{}",
@@ -422,7 +425,7 @@ fn project_remove_dry_run_json_uses_validated_plan_without_mutation() {
 
     let output = run(
         project.path(),
-        &["remove", "managed", "--dry-run", "--json"],
+        &["skill", "remove", "managed", "--dry-run", "--json"],
     );
 
     assert!(
@@ -475,7 +478,7 @@ fn project_remove_json_requires_force_and_emits_one_error_without_mutation() {
     let before_lock = fs::read(&lock_path).unwrap();
     let before_skill = fs::read(installed.join("SKILL.md")).unwrap();
 
-    let output = run(project.path(), &["remove", "managed", "--json"]);
+    let output = run(project.path(), &["skill", "remove", "managed", "--json"]);
 
     assert!(!output.status.success());
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -506,6 +509,7 @@ fn global_remove_rejects_an_explicit_skills_directory_before_mutation() {
             "--global",
             "--skills-dir",
             destination.to_str().unwrap(),
+            "skill",
             "remove",
             "anything",
             "--force",

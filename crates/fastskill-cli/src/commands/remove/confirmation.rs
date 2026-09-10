@@ -2,7 +2,7 @@ use crate::error::{CliError, CliResult};
 use std::io::{self, BufRead, Write};
 
 /// Prompt the user for confirmation unless forced by the caller.
-pub(super) fn confirm_removal(skill_ids: &[String], force: bool) -> CliResult<bool> {
+pub(crate) fn confirm_removal(skill_ids: &[String], force: bool) -> CliResult<bool> {
     if force {
         return Ok(true);
     }

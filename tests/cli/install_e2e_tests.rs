@@ -34,7 +34,7 @@ fn test_install_from_project_toml() {
     let temp_dir = TempDir::new().unwrap();
     write_local_fixture(temp_dir.path());
 
-    let result = run_fastskill_command(&["install"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["project", "install"], Some(temp_dir.path()));
 
     assert!(result.success, "{}{}", result.stdout, result.stderr);
     assert!(result.stdout.contains("Installing"));
@@ -50,12 +50,12 @@ fn test_install_from_project_toml() {
 fn test_install_with_lock_file() {
     let temp_dir = TempDir::new().unwrap();
     write_local_fixture(temp_dir.path());
-    let initial = run_fastskill_command(&["install"], Some(temp_dir.path()));
+    let initial = run_fastskill_command(&["project", "install"], Some(temp_dir.path()));
     assert!(initial.success, "{}{}", initial.stdout, initial.stderr);
     fs::remove_dir_all(temp_dir.path().join(".skills/main-skill")).unwrap();
     fs::remove_dir_all(temp_dir.path().join(".skills/dev-skill")).unwrap();
 
-    let result = run_fastskill_command(&["install", "--lock"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["project", "install", "--lock"], Some(temp_dir.path()));
 
     assert!(result.success, "{}{}", result.stdout, result.stderr);
     assert!(temp_dir
@@ -70,7 +70,10 @@ fn test_install_without_dev_dependencies() {
     let temp_dir = TempDir::new().unwrap();
     write_local_fixture(temp_dir.path());
 
-    let result = run_fastskill_command(&["install", "--without", "dev"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["project", "install", "--without", "dev"],
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success, "{}{}", result.stdout, result.stderr);
     assert!(temp_dir
@@ -85,7 +88,10 @@ fn test_install_only_group() {
     let temp_dir = TempDir::new().unwrap();
     write_local_fixture(temp_dir.path());
 
-    let result = run_fastskill_command(&["install", "--only", "main"], Some(temp_dir.path()));
+    let result = run_fastskill_command(
+        &["project", "install", "--only", "main"],
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success, "{}{}", result.stdout, result.stderr);
     assert!(temp_dir
@@ -101,7 +107,7 @@ fn test_install_missing_project_file_error() {
     let skills_dir = temp_dir.path().join(".skills");
     fs::create_dir_all(&skills_dir).unwrap();
 
-    let result = run_fastskill_command(&["install"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["project", "install"], Some(temp_dir.path()));
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("not found"));
@@ -129,7 +135,7 @@ version = "1.0.0"
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
-    let result = run_fastskill_command(&["install"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["project", "install"], Some(temp_dir.path()));
 
     assert!(!result.success);
     assert!(result.stderr.contains("error") || result.stderr.contains("Invalid"));

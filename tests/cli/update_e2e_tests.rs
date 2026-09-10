@@ -35,7 +35,7 @@ fn fixture() -> LocalUpdateFixture {
     let source = root.path().join("source/local-update");
     write_skill(&source, "1.0.0", "version one");
     let added = run_fastskill_command(
-        &["add", source.to_str().unwrap(), "--no-reindex"],
+        &["skill", "add", source.to_str().unwrap(), "--no-reindex"],
         Some(root.path()),
     );
     assert!(
@@ -60,7 +60,10 @@ fn update_all_applies_verified_local_content() {
     let fixture = fixture();
     advance_source(&fixture);
 
-    let result = run_fastskill_command(&["update", "--no-reindex"], Some(fixture.root.path()));
+    let result = run_fastskill_command(
+        &["skill", "update", "--no-reindex"],
+        Some(fixture.root.path()),
+    );
 
     assert!(
         result.success,
@@ -79,7 +82,7 @@ fn update_named_skill_reports_and_applies_target() {
     advance_source(&fixture);
 
     let result = run_fastskill_command(
-        &["update", "local-update", "--no-reindex"],
+        &["skill", "update", "local-update", "--no-reindex"],
         Some(fixture.root.path()),
     );
 
@@ -113,6 +116,7 @@ fn update_honors_project_skills_directory_override() {
         &[
             "--skills-dir",
             override_arg,
+            "skill",
             "add",
             source_arg,
             "--no-reindex",
@@ -132,6 +136,7 @@ fn update_honors_project_skills_directory_override() {
         &[
             "--skills-dir",
             override_arg,
+            "skill",
             "update",
             "local-update",
             "--no-reindex",
@@ -158,7 +163,7 @@ fn update_check_is_a_truthful_non_mutating_plan() {
     let before_installed = fs::read(fixture.installed.join("SKILL.md")).unwrap();
 
     let result = run_fastskill_command(
-        &["update", "local-update", "--check", "--json"],
+        &["skill", "update", "local-update", "--check", "--json"],
         Some(fixture.root.path()),
     );
 
@@ -186,7 +191,7 @@ fn update_dry_run_is_a_truthful_non_mutating_plan() {
     let before_installed = fs::read(fixture.installed.join("SKILL.md")).unwrap();
 
     let result = run_fastskill_command(
-        &["update", "--dry-run", "--json"],
+        &["skill", "update", "--dry-run", "--json"],
         Some(fixture.root.path()),
     );
 
@@ -214,7 +219,7 @@ fn update_preview_rejects_local_edits_before_reporting_a_change() {
     let before_installed = fs::read(fixture.installed.join("SKILL.md")).unwrap();
 
     let result = run_fastskill_command(
-        &["update", "local-update", "--dry-run", "--json"],
+        &["skill", "update", "local-update", "--dry-run", "--json"],
         Some(fixture.root.path()),
     );
 
@@ -247,7 +252,7 @@ fn repository_strategies_reject_local_origins_before_mutation() {
         let before_installed = fs::read(fixture.installed.join("SKILL.md")).unwrap();
 
         let result = run_fastskill_command(
-            &["update", "local-update", "--strategy", strategy],
+            &["skill", "update", "local-update", "--strategy", strategy],
             Some(fixture.root.path()),
         );
 
@@ -274,7 +279,7 @@ fn update_missing_lock_file_is_an_error() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["update"], Some(root.path()));
+    let result = run_fastskill_command(&["skill", "update"], Some(root.path()));
 
     assert!(!result.success);
     assert!(result.stderr.contains("skills.lock") && result.stderr.contains("not found"));

@@ -1,6 +1,6 @@
 //! Update command - updates skills in the configured skills directory
 
-use crate::config::{create_service_config, resolve_skills_storage_directory};
+use crate::config::create_service_config;
 use crate::error::{manifest_required_message, CliError, CliResult};
 use crate::utils::messages;
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -13,16 +13,14 @@ use fastskill_core::core::{
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 use std::env;
-use std::fs;
 use std::path::PathBuf;
-use tempfile::TempDir;
 
 #[path = "update/global.rs"]
 pub(crate) mod global;
 #[path = "update/options.rs"]
 mod options;
 #[path = "update/output.rs"]
-mod output;
+pub(crate) mod output;
 use global::execute_update_global;
 use options::{controlled_origin, validate_update_args};
 use output::print_update_json;
@@ -52,12 +50,6 @@ pub struct UpdateArgs {
     /// Configured repository to use for a repository-backed target
     repository: Option<String>,
 
-    /// Installed bundle identity to update
-    bundle: Option<String>,
-
-    /// Replacement bundle artifact
-    from: Option<String>,
-
     /// Update strategy: latest, patch, minor, major
     strategy: String,
 
@@ -78,12 +70,13 @@ impl IntoCommandSpec for UpdateArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Update skills to latest versions",
-            syntax: Some("update [SKILL_ID] [OPTIONS]"),
-            category: Some("packages"),
+            syntax: Some("skill update [SKILL_ID] [OPTIONS]"),
+            category: Some("skills-projects"),
+            help_order: Some(30),
             examples: vec![
-                "fastskill update",
-                "fastskill update pptx",
-                "fastskill update --check",
+                "fastskill skill update",
+                "fastskill skill update pptx",
+                "fastskill skill update --check",
             ],
             args: vec![
                 ArgSpec {
@@ -137,24 +130,6 @@ impl IntoCommandSpec for UpdateArgs {
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     help: "Use this configured repository for one repository-backed skill",
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "bundle",
-                    kind: ArgKind::Option,
-                    long: Some("bundle"),
-                    value_type: ArgValueType::String,
-                    cardinality: Cardinality::Optional,
-                    help: "Update this installed bundle",
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "from",
-                    kind: ArgKind::Option,
-                    long: Some("from"),
-                    value_type: ArgValueType::String,
-                    cardinality: Cardinality::Optional,
-                    help: "Replacement bundle ZIP artifact",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -217,10 +192,6 @@ fn opt_str(v: &ArgValue) -> Option<String> {
     }
 }
 
-fn is_remote_bundle_artifact(value: &str) -> bool {
-    value.starts_with("https://") || (cfg!(test) && value.starts_with("http://127.0.0.1"))
-}
-
 #[allow(clippy::panic)]
 impl FromArgValueMap for UpdateArgs {
     fn from_arg_value_map(map: &HashMap<String, ArgValue>) -> Self {
@@ -231,8 +202,6 @@ impl FromArgValueMap for UpdateArgs {
             version: map.get("to-version").and_then(opt_str),
             source: map.get("source").and_then(opt_str),
             repository: map.get("repository").and_then(opt_str),
-            bundle: map.get("bundle").and_then(opt_str),
-            from: map.get("from").and_then(opt_str),
             strategy: map
                 .get("strategy")
                 .and_then(opt_str)
@@ -265,112 +234,6 @@ pub async fn execute_update(
             "--reindex and --no-reindex cannot be used together".to_string(),
         ));
     }
-    if args.bundle.is_some() || args.from.is_some() {
-        if global {
-            return Err(CliError::Validation(
-                "Bundle updates require a project Manifest and do not support --global".to_string(),
-            ));
-        }
-        let bundle = args.bundle.as_deref().ok_or_else(|| {
-            CliError::Validation("--from requires --bundle <bundle-id>".to_string())
-        })?;
-        let artifact = args.from.as_deref().ok_or_else(|| {
-            CliError::Validation("--bundle requires --from <bundle.zip>".to_string())
-        })?;
-        if args.skill_id.is_some() {
-            return Err(CliError::Validation(
-                "A bundle update does not accept a skill ID positional argument".to_string(),
-            ));
-        }
-        let current = env::current_dir().map_err(|error| {
-            CliError::Config(format!("Failed to determine current directory: {error}"))
-        })?;
-        let project = resolve_project_file(&current);
-        if !project.found {
-            return Err(CliError::Config(manifest_required_message().to_string()));
-        }
-        let root = project.path.parent().ok_or_else(|| {
-            CliError::Config("skill-project.toml has no project directory".to_string())
-        })?;
-        let downloaded_artifact;
-        let artifact_path = if is_remote_bundle_artifact(artifact) {
-            let response = reqwest::get(artifact)
-                .await
-                .map_err(|error| {
-                    CliError::InvalidSource(format!("Failed to download '{artifact}': {error}"))
-                })?
-                .error_for_status()
-                .map_err(|error| {
-                    CliError::InvalidSource(format!("Failed to download '{artifact}': {error}"))
-                })?;
-            let bytes = response.bytes().await.map_err(|error| {
-                CliError::InvalidSource(format!("Failed to read '{artifact}': {error}"))
-            })?;
-            downloaded_artifact = TempDir::new().map_err(CliError::Io)?;
-            let path = downloaded_artifact.path().join("bundle.zip");
-            fs::write(&path, bytes).map_err(CliError::Io)?;
-            path
-        } else if artifact.contains("://") {
-            return Err(CliError::Validation(
-                "Bundle URLs must use HTTPS. Download private artifacts with your authenticated tool, then pass the local ZIP."
-                    .to_string(),
-            ));
-        } else {
-            PathBuf::from(artifact)
-        };
-        let skills_directory = match skills_dir_override {
-            Some(path) => path,
-            None => resolve_skills_storage_directory(false)?,
-        };
-        let service =
-            fastskill_core::core::bundle::BundleService::new(root, skills_directory.clone());
-        let preview = service
-            .plan_update(bundle, &artifact_path)
-            .map_err(CliError::Service)?;
-        if !args.json {
-            for change in &preview.changes {
-                crate::outln!("  {change}");
-            }
-        }
-        if args.dry_run || args.check {
-            if args.json {
-                let indexing = crate::utils::reindex_utils::LifecycleIndexResult {
-                    outcome: "skipped",
-                    count: 0,
-                    diagnostic: Some("preview does not run derived indexing".to_string()),
-                };
-                output::emit_bundle_update_result(&preview, true, &indexing)?;
-            } else if preview.changes.is_empty() {
-                crate::outln!("Bundle {} is already unchanged", preview.id);
-            }
-            return Ok(());
-        }
-        let result = service
-            .update(bundle, &artifact_path)
-            .map_err(CliError::Service)?;
-        if !args.json {
-            if result.unchanged {
-                crate::outln!(
-                    "Bundle {}@{} is already unchanged",
-                    result.id,
-                    result.version
-                );
-            } else {
-                crate::outln!("Updated bundle {}@{}", result.id, result.version);
-                crate::outln!(
-                    "{}",
-                    messages::ok("Updated skill-project.toml and skills.lock")
-                );
-            }
-        }
-        let indexing = bundle_update_indexing(&args, skills_directory).await;
-        if args.json {
-            output::emit_bundle_update_result(&preview, false, &indexing)?;
-        } else {
-            crate::utils::reindex_utils::report_lifecycle_index_result(&indexing);
-        }
-        return Ok(());
-    }
     if global {
         execute_update_global(args, skills_dir_override).await?;
     } else {
@@ -378,40 +241,6 @@ pub async fn execute_update(
     }
 
     Ok(())
-}
-
-async fn bundle_update_indexing(
-    args: &UpdateArgs,
-    skills_directory: PathBuf,
-) -> crate::utils::reindex_utils::LifecycleIndexResult {
-    let failed = |diagnostic: String| crate::utils::reindex_utils::LifecycleIndexResult {
-        outcome: "failed",
-        count: 0,
-        diagnostic: Some(diagnostic),
-    };
-    let config = match create_service_config(false, Some(skills_directory)) {
-        Ok(config) => config,
-        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
-    };
-    let mut service = match FastSkillService::new(config).await {
-        Ok(service) => service,
-        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
-    };
-    if let Err(error) = service.initialize().await {
-        return failed(format!("Index setup failed after bundle update: {error}"));
-    }
-    let service = match crate::config::inject_edge_services(service) {
-        Ok(service) => service,
-        Err(error) => return failed(format!("Index setup failed after bundle update: {error}")),
-    };
-    crate::utils::reindex_utils::lifecycle_reindex_result(
-        &service,
-        "bundle update",
-        args.reindex,
-        args.no_reindex,
-        crate::config_file::load_auto_reindex_config(),
-    )
-    .await
 }
 
 /// Resolve and validate every selected project update before applying any of it.
@@ -482,7 +311,7 @@ async fn execute_update_project(
     };
     if !lock_path.exists() {
         return Err(CliError::Config(
-            "skills.lock not found. Run 'fastskill install' first.".to_string(),
+            "skills.lock not found. Run 'fastskill project install' first.".to_string(),
         ));
     }
     let lock = ProjectSkillsLock::load_from_file(&lock_path)

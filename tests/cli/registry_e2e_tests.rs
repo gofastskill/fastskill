@@ -39,7 +39,7 @@ async fn start_mock_server_or_skip() -> Option<MockServer> {
 fn test_repos_list_empty() {
     let temp_dir = TempDir::new().unwrap();
 
-    let result = run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repo", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("No repositories") || result.stdout.is_empty());
@@ -73,7 +73,7 @@ priority = 5
 "#;
     fs::write(temp_dir.path().join("skill-project.toml"), project_content).unwrap();
 
-    let result = run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repo", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("local-skills") && result.stdout.contains("git-repo"));
@@ -99,7 +99,7 @@ fn test_repos_add_with_priority() {
     // setting priority at `add` time is a separate code path.
     let result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "priority-repo",
             "--repo-type",
@@ -115,7 +115,7 @@ fn test_repos_add_with_priority() {
     assert!(result.stdout.contains("Added repository: priority-repo"));
 
     let info = run_fastskill_command(
-        &["repos", "info", "priority-repo", "--json"],
+        &["repo", "info", "priority-repo", "--json"],
         Some(temp_dir.path()),
     );
     assert!(info.success);
@@ -142,7 +142,7 @@ fn test_repos_add_git_marketplace() {
     // `git-marketplace` type (with `--branch`) is also wired up via `add`.
     let result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "git-repo",
             "--repo-type",
@@ -157,7 +157,7 @@ fn test_repos_add_git_marketplace() {
     assert!(result.success);
     assert!(result.stdout.contains("Added repository: git-repo"));
 
-    let info = run_fastskill_command(&["repos", "info", "git-repo"], Some(temp_dir.path()));
+    let info = run_fastskill_command(&["repo", "info", "git-repo"], Some(temp_dir.path()));
     assert!(info.success);
     assert!(info.stdout.contains("Type: git-marketplace"));
     assert!(info.stdout.contains("Branch: main"));
@@ -174,7 +174,7 @@ fn test_repos_add_validation_missing_url() {
     let temp_dir = TempDir::new().unwrap();
 
     let result = run_fastskill_command(
-        &["repos", "add", "missing-url", "--repo-type", "local"],
+        &["repo", "add", "missing-url", "--repo-type", "local"],
         Some(temp_dir.path()),
     );
 
@@ -200,7 +200,7 @@ fn test_repos_add_duplicate_name_error() {
 
     let result1 = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "duplicate-repo",
             "--repo-type",
@@ -213,7 +213,7 @@ fn test_repos_add_duplicate_name_error() {
 
     let result2 = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "duplicate-repo",
             "--repo-type",
@@ -238,7 +238,7 @@ fn test_repos_remove_nonexistent_error() {
     let temp_dir = TempDir::new().unwrap();
 
     let result = run_fastskill_command(
-        &["repos", "remove", "nonexistent-repo"],
+        &["repo", "remove", "nonexistent-repo"],
         Some(temp_dir.path()),
     );
 
@@ -264,7 +264,7 @@ fn test_repos_info_repository_details() {
 
     let add_result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "showable-repo",
             "--repo-type",
@@ -278,7 +278,7 @@ fn test_repos_info_repository_details() {
     assert!(add_result.success);
 
     // Text-mode `repos info` (the matrix only exercises `--json` mode).
-    let result = run_fastskill_command(&["repos", "info", "showable-repo"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repo", "info", "showable-repo"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(result.stdout.contains("showable-repo") && result.stdout.contains("git-marketplace"));
@@ -302,7 +302,7 @@ fn test_repos_update_branch() {
 
     let add_result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "updateable-repo",
             "--repo-type",
@@ -318,7 +318,7 @@ fn test_repos_update_branch() {
     // The matrix only exercises `repos update --priority`; verify
     // `--branch` updates independently.
     let result = run_fastskill_command(
-        &["repos", "update", "updateable-repo", "--branch", "develop"],
+        &["repo", "update", "updateable-repo", "--branch", "develop"],
         Some(temp_dir.path()),
     );
 
@@ -327,7 +327,7 @@ fn test_repos_update_branch() {
         .stdout
         .contains("Updated repository: updateable-repo"));
 
-    let info = run_fastskill_command(&["repos", "info", "updateable-repo"], Some(temp_dir.path()));
+    let info = run_fastskill_command(&["repo", "info", "updateable-repo"], Some(temp_dir.path()));
     assert!(info.success);
     assert!(info.stdout.contains("Branch: develop"));
 
@@ -362,7 +362,7 @@ async fn test_repos_test_connectivity_reachable() {
 
     let add_result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "testable-repo",
             "--repo-type",
@@ -373,7 +373,7 @@ async fn test_repos_test_connectivity_reachable() {
     );
     assert!(add_result.success);
 
-    let result = run_fastskill_command(&["repos", "test", "testable-repo"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["repo", "test", "testable-repo"], Some(temp_dir.path()));
 
     assert!(
         result.success,
@@ -404,7 +404,7 @@ fn test_repos_test_unreachable_error() {
 
     let result = run_fastskill_command(
         &[
-            "repos",
+            "repo",
             "add",
             "unreachable-repo",
             "--repo-type",
@@ -415,10 +415,8 @@ fn test_repos_test_unreachable_error() {
     );
     assert!(result.success);
 
-    let test_result = run_fastskill_command(
-        &["repos", "test", "unreachable-repo"],
-        Some(temp_dir.path()),
-    );
+    let test_result =
+        run_fastskill_command(&["repo", "test", "unreachable-repo"], Some(temp_dir.path()));
 
     assert!(!test_result.success);
     assert!(test_result.stderr.contains("error") || test_result.stderr.contains("test failed"));

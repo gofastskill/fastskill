@@ -25,7 +25,7 @@ const ZIP_VALIDATORS_FILE_NAME: &str = "zip-validators.json";
 
 /// `<cache-root>/index/<source>.json` — what a single configured source
 /// currently advertises: which skills, at which versions. Written by a real
-/// `repos refresh` (US-005); read by version resolution (US-002/US-003).
+/// `repo refresh` (US-005); read by version resolution (US-002/US-003).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceIndex {
     pub fetched_at: DateTime<Utc>,

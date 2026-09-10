@@ -1,9 +1,9 @@
 ---
-title: Bundle command
+title: Bundle commands
 description: Build, install, update, restore, and customize self-contained team skill bundles.
 ---
 
-# Bundle command
+# `bundle` commands
 
 Bundles turn a selected team setup into one versioned ZIP. The artifact contains the selected
 skills, their installed dependency closure, resource files, and content digests. A recipient can
@@ -37,7 +37,7 @@ missing, has invalid frontmatter, or has a different version.
 Build the release:
 
 ```bash
-fastskill install
+fastskill project install
 fastskill bundle build --output dist
 ```
 
@@ -46,12 +46,12 @@ digests are authoritative, so renaming the download does not change the release.
 
 ## Install and inspect
 
-Install a local artifact or an HTTPS download with `add`:
+Install a local artifact or an HTTPS download with `bundle add`:
 
 ```bash
-fastskill add ./payments-team-1.2.0.zip
-fastskill add https://releases.example.com/payments-team-1.2.0.zip
-fastskill list --bundles
+fastskill bundle add ./payments-team-1.2.0.zip
+fastskill bundle add https://releases.example.com/payments-team-1.2.0.zip
+fastskill bundle list
 ```
 
 Installation copies the artifact into `.fastskill/bundles/`, adds its declaration to
@@ -66,7 +66,7 @@ git add skill-project.toml skills.lock .fastskill/bundles/
 Then restore the exact locked release:
 
 ```bash
-fastskill install --lock --offline
+fastskill project install --lock --offline
 ```
 
 `--lock` uses the bundle artifact, version, digest, and membership recorded in `skills.lock`.
@@ -78,8 +78,8 @@ guarantees that restore does not contact a repository or embedding provider.
 Bundle updates are explicit. Preview and apply a selected replacement:
 
 ```bash
-fastskill update --bundle payments-team --from ./payments-team-1.3.0.zip --dry-run
-fastskill update --bundle payments-team --from ./payments-team-1.3.0.zip
+fastskill bundle update payments-team --from ./payments-team-1.3.0.zip --dry-run
+fastskill bundle update payments-team --from ./payments-team-1.3.0.zip
 ```
 
 FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
@@ -91,8 +91,8 @@ policy-only changes, such as a member becoming non-overridable, even when its by
 Remove the bundle identity and the members that have no other owner:
 
 ```bash
-fastskill remove --bundle payments-team
-fastskill remove --bundle payments-team --force
+fastskill bundle remove payments-team
+fastskill bundle remove payments-team --force
 ```
 
 Removing a direct declaration detaches that owner. FastSkill retains the installed member while a
@@ -110,7 +110,7 @@ member as `overridable = true`.
 fastskill bundle override payments-debugging --from ./my-payments-debugging
 ```
 
-`fastskill install` and `fastskill install --lock` restore valid personal overrides after
+`fastskill project install` and `fastskill project install --lock` restore valid personal overrides after
 bundle members. Updates stop when a new bundle policy no longer permits an existing override.
 
 Return to the packaged member and clear the override records in one operation:
@@ -125,6 +125,6 @@ as an individual requirement instead of deleting it. FastSkill validates the rep
 dependency closure first; bundle removal is blocked if that closure cannot be retained.
 
 <Callout type="info">
-`bundle build` and `bundle override` change files. The MCP server hides and refuses both tools
-unless it starts with `fastskill mcp serve --enable-write`.
+Every bundle action except `bundle list` changes files. The MCP server hides and refuses these
+tools unless it starts with `fastskill mcp serve --enable-write`.
 </Callout>

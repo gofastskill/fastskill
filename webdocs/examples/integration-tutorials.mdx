@@ -6,7 +6,7 @@ description: "Connect FastSkill to agents and pipelines: MCP into Claude Code an
 ## Overview
 
 These tutorials cover FastSkill's real integration surfaces: the **MCP** server for agents, the
-**HTTP API** from `fastskill serve`, and **locked installs** in CI. Each uses commands and endpoints
+**HTTP API** from `fastskill server serve`, and **locked installs** in CI. Each uses commands and endpoints
 that exist in the tool.
 
 ## 1. MCP into Claude Code
@@ -22,11 +22,12 @@ fastskill mcp install --agent claude --scope project --stdio
 fastskill mcp list
 ```
 
-Claude Code will now see tools named `fastskill_<command>` — for example `fastskill_search`,
-`fastskill_list`, `fastskill_read`, and `fastskill_repos_show`. Mutating tools such as
-`fastskill_install` and `fastskill_repos_add` are withheld until the server is started with
-`--enable-write`; see [Write access](/tool-calling/development#write-access). To point the agent at
-a running HTTP MCP server instead of spawning FastSkill itself:
+Claude Code will now see tools named after complete command paths, such as
+`fastskill_skill_search`, `fastskill_skill_list`, `fastskill_skill_read`, and
+`fastskill_repo_show`. Mutating tools such as `fastskill_project_install` and
+`fastskill_repo_add` are withheld until the server is started with `--enable-write`; see
+[Write access](/tool-calling/development#write-access). To point the agent at a running HTTP MCP
+server instead of spawning FastSkill itself:
 
 ```bash
 fastskill mcp serve --transport http --port 8080 --path /mcp --enable-write
@@ -49,7 +50,7 @@ Supported agents: `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `codex`. 
 Run the server and use the versioned `/api/v1/...` REST surface. Start read-only:
 
 ```bash
-fastskill serve
+fastskill server serve
 ```
 
 ```bash
@@ -68,9 +69,9 @@ curl -X POST http://localhost:8080/api/v1/resolve \
 ```
 
 These are all read endpoints and work without `--enable-write`. To manage skills over HTTP (install /
-update / delete), start with `fastskill serve --enable-write`, and front the port with an
-authenticating proxy if it is exposed — `serve` enforces no auth of its own. See the
-[serve command reference](/cli-reference/serve-command) and [security model](/security/model).
+update / delete), start with `fastskill server serve --enable-write`, and front the port with an
+authenticating proxy if it is exposed — `server serve` enforces no auth of its own. See the
+[`server serve` reference](/cli-reference/serve-command) and [security model](/security/model).
 
 ## 4. Reproducible installs in CI
 
@@ -78,14 +79,14 @@ Commit `skill-project.toml` and `skills.lock`, then install exact locked version
 
 ```bash
 # In CI: install exactly what the lockfile records
-fastskill install --lock
+fastskill project install --lock
 ```
 
 Set `OPENAI_API_KEY` from a CI secret if the pipeline needs semantic search or reindex; without it
 those steps skip silently rather than failing.
 
 <Callout>
-For agents, install FastSkill as an MCP server. For services and pipelines, use the `serve` HTTP API
-and `install --lock`. There is no separate SDK to integrate — the CLI, MCP tools, and HTTP API are
-the surface.
+For agents, install FastSkill as an MCP server. For services and pipelines, use the `server serve`
+HTTP API and `project install --lock`. There is no separate SDK to integrate — the CLI, MCP tools,
+and HTTP API are the surface.
 </Callout>

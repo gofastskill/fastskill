@@ -1,6 +1,6 @@
 ---
 title: "Registry Index System"
-description: "Understanding the on-disk registry index format read by fastskill serve and registry search"
+description: "Understanding the on-disk registry index format read by fastskill server serve and registry search"
 ---
 
 # Registry Index System
@@ -9,7 +9,7 @@ FastSkill uses a simple organization/package directory structure for skill distr
 
 ## Overview
 
-The registry index is an on-disk NDJSON catalog read by `fastskill serve` and the registry search endpoints. It is populated externally (for example, by the platform operator that hosts the registry) rather than by a self-hosted CLI write path.
+The registry index is an on-disk NDJSON catalog read by `fastskill server serve` and the registry search endpoints. It is populated externally (for example, by the platform operator that hosts the registry) rather than by a self-hosted CLI write path.
 
 ## Registry Structure
 
@@ -90,11 +90,11 @@ curl https://api.fastskill.io/index/dev-user/web-scraper
 
 This returns the newline-delimited JSON entries for all versions of that skill.
 These `/index/...` NDJSON paths are the hosted registry server's own convention,
-not part of the `fastskill serve` versioned API.
+not part of the `fastskill server serve` versioned API.
 
-### From `fastskill serve`
+### From `fastskill server serve`
 
-When you run `fastskill serve` locally, the registry browse/search surface is
+When you run `fastskill server serve` locally, the registry browse/search surface is
 exposed under the versioned API:
 
 ```
@@ -110,10 +110,10 @@ Skills in a registry can be installed using the standard FastSkill commands:
 
 ```bash
 # Install a skill by its scope/package name
-fastskill add dev-user/web-scraper
+fastskill skill add dev-user/web-scraper
 
 # Install a specific version
-fastskill add dev-user/web-scraper@1.2.3
+fastskill skill add dev-user/web-scraper@1.2.3
 ```
 
 ## Version Management

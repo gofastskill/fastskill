@@ -102,7 +102,7 @@ fn run_fastskill(args: &[&str], working_dir: &Path) -> Output {
 
 fn assert_analyze_refuses_without_provider(subcommand: &str) {
     let (temp, _skills_dir) = workspace_with_twin_skills(PROJECT_TOML_NO_PROVIDER);
-    let output = run_fastskill(&["analyze", subcommand], temp.path());
+    let output = run_fastskill(&["analysis", subcommand], temp.path());
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -129,7 +129,7 @@ fn assert_analyze_refuses_without_provider(subcommand: &str) {
     );
     assert!(
         stderr.contains("doctor"),
-        "`analyze {subcommand}` must point at `fastskill doctor` for setup guidance, got:\n{stderr}"
+        "`analysis {subcommand}` must point at `fastskill cli doctor` for setup guidance, got:\n{stderr}"
     );
 
     // No promise the code does not keep. The removed wording claimed results
@@ -197,7 +197,7 @@ async fn test_analyze_produces_output_with_provider_and_index() {
     index_twins(&skills_dir).await;
 
     // matrix
-    let output = run_fastskill(&["analyze", "matrix"], temp.path());
+    let output = run_fastskill(&["analysis", "matrix"], temp.path());
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     assert!(
         output.status.success(),
@@ -216,7 +216,7 @@ async fn test_analyze_produces_output_with_provider_and_index() {
     }
 
     // duplicates — the twins are a critical-severity pair (similarity 1.0).
-    let output = run_fastskill(&["analyze", "duplicates"], temp.path());
+    let output = run_fastskill(&["analysis", "duplicates"], temp.path());
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     assert!(
         output.status.success(),
@@ -231,7 +231,7 @@ async fn test_analyze_produces_output_with_provider_and_index() {
     }
 
     // cluster
-    let output = run_fastskill(&["analyze", "cluster", "-k", "1"], temp.path());
+    let output = run_fastskill(&["analysis", "cluster", "-k", "1"], temp.path());
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     assert!(
         output.status.success(),

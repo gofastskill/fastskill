@@ -7,7 +7,7 @@ use fastskill_core::core::project::resolve_project_file;
 use std::fs;
 use tempfile::TempDir;
 
-/// T025: Integration test for fastskill add updating dependencies in skill-project.toml
+/// T025: Integration test for `fastskill skill add` updating dependencies.
 #[test]
 fn test_add_updates_dependencies_in_skill_project_toml() {
     let temp_dir = TempDir::new().unwrap();
@@ -45,8 +45,8 @@ web-scraper = "1.0.0"
     assert!(updated_deps.dependencies.contains_key("dev-tools"));
 }
 
-/// Resolution returns path at project root when file is missing; user can create file there (e.g. fastskill init).
-/// Add command no longer auto-creates skill-project.toml; user must run fastskill init first.
+/// Resolution returns the project-root path when missing; users can create it
+/// with `fastskill project init`. Skill add does not create the manifest.
 #[test]
 fn test_resolve_project_file_returns_path_user_can_create_manifest() {
     let temp_dir = TempDir::new().unwrap();

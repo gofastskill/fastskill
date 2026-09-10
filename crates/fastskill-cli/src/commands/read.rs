@@ -54,9 +54,13 @@ impl IntoCommandSpec for ReadArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Read full SKILL.md content for a skill",
-            syntax: Some("read <SKILL_ID> [OPTIONS]"),
+            syntax: Some("skill read <SKILL_ID> [OPTIONS]"),
             category: Some("discovery"),
-            examples: vec!["fastskill read pptx", "fastskill read pptx --meta --json"],
+            help_order: Some(50),
+            examples: vec![
+                "fastskill skill read pptx",
+                "fastskill skill read pptx --meta --json",
+            ],
             args: vec![
                 ArgSpec {
                     name: "skill-id",
@@ -157,7 +161,7 @@ async fn resolve_skill(
 ) -> CliResult<SkillDefinition> {
     if skill_id_str.contains('@') {
         return Err(CliError::Validation(format!(
-            "Installed read accepts an exact canonical ID without a version, got '{skill_id_str}'. Use 'fastskill repos versions <ID>' to discover repository versions."
+            "Installed read accepts an exact canonical ID without a version, got '{skill_id_str}'. Use 'fastskill repo versions <ID>' to discover repository versions."
         )));
     }
     let skill_id = fastskill_core::SkillId::new(skill_id_str.to_string()).map_err(|error| {
@@ -252,7 +256,7 @@ pub async fn execute_read(
 ) -> CliResult<()> {
     if args.skill_id.contains('@') {
         return Err(CliError::Validation(
-            "read accepts an installed canonical ID without @version; use 'fastskill repos versions ID' to discover repository versions"
+            "read accepts an installed canonical ID without @version; use 'fastskill repo versions ID' to discover repository versions"
                 .to_string(),
         ));
     }
@@ -481,7 +485,7 @@ mod tests {
         assert_eq!(args.format, None);
         assert_eq!(
             ReadArgs::command_spec().syntax,
-            Some("read <SKILL_ID> [OPTIONS]")
+            Some("skill read <SKILL_ID> [OPTIONS]")
         );
     }
 

@@ -1,5 +1,9 @@
 use super::*;
+use crate::commands::bundle::update::{
+    execute_update as execute_bundle_update, UpdateArgs as BundleUpdateArgs,
+};
 use fastskill_core::core::{Origin, VersionConstraint};
+use fastskill_core::ServiceConfig;
 use options::{controlled_origin, selected_repository, strategy_constraint};
 use std::fs;
 use tempfile::TempDir;
@@ -15,8 +19,6 @@ fn validation_args() -> UpdateArgs {
         version: None,
         source: None,
         repository: None,
-        bundle: None,
-        from: None,
         strategy: "latest".to_string(),
         strategy_explicit: false,
         reindex: false,
@@ -48,81 +50,8 @@ fn typed_argument_map_ignores_wrong_optional_types() {
     );
     assert_eq!(
         UpdateArgs::command_spec().syntax,
-        Some("update [SKILL_ID] [OPTIONS]")
+        Some("skill update [SKILL_ID] [OPTIONS]")
     );
-}
-
-#[tokio::test]
-async fn bundle_controls_are_validated_before_artifact_access() {
-    let _lock = fastskill_core::test_utils::DIR_MUTEX
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let temp = TempDir::new().unwrap();
-    let original = std::env::current_dir().unwrap();
-    struct Restore(std::path::PathBuf);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.0);
-        }
-    }
-    let _restore = Restore(original);
-    std::env::set_current_dir(temp.path()).unwrap();
-
-    let mut args = validation_args();
-    args.bundle = Some("release".to_string());
-    args.from = Some("release.zip".to_string());
-    assert!(execute_update(args.clone(), true, None).await.is_err());
-    assert!(execute_update(args.clone(), false, None).await.is_err());
-
-    args.skill_id = None;
-    assert!(execute_update(args.clone(), false, None).await.is_err());
-
-    let mut deprecated = validation_args();
-    deprecated.source = Some("repo".to_string());
-    assert!(execute_update(deprecated, false, None).await.is_err());
-
-    std::fs::write(temp.path().join("skill-project.toml"), "[dependencies]\n").unwrap();
-    assert!(execute_update(args.clone(), false, None).await.is_err());
-    args.skill_id = None;
-    args.from = None;
-    assert!(execute_update(args.clone(), false, None).await.is_err());
-    args.from = Some("ftp://example.invalid/release.zip".to_string());
-    assert!(matches!(
-        execute_update(args, false, None).await,
-        Err(CliError::Validation(message)) if message.contains("HTTPS")
-    ));
-
-    let mut args = validation_args();
-    args.from = Some("release.zip".to_string());
-    assert!(execute_update(args, false, None).await.is_err());
-
-    let mut args = validation_args();
-    args.reindex = true;
-    args.no_reindex = true;
-    assert!(execute_update(args, false, None).await.is_err());
-}
-
-#[tokio::test]
-async fn bundle_indexing_reports_an_invalid_storage_override() {
-    let _lock = fastskill_core::test_utils::DIR_MUTEX
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let temp = TempDir::new().unwrap();
-    let result = bundle_update_indexing(&validation_args(), temp.path().join("missing")).await;
-    assert_eq!(result.outcome, "failed");
-    assert!(result
-        .diagnostic
-        .as_deref()
-        .is_some_and(|message| message.contains("Index setup failed")));
-
-    let storage_file = temp.path().join("storage-file");
-    fs::write(&storage_file, "not a directory").unwrap();
-    let result = bundle_update_indexing(&validation_args(), storage_file).await;
-    assert_eq!(result.outcome, "failed");
-    assert!(result
-        .diagnostic
-        .as_deref()
-        .is_some_and(|message| message.contains("Index setup failed")));
 }
 
 #[test]
@@ -195,17 +124,6 @@ fn validation_rejects_every_conflicting_update_control() {
     let mut args = validation_args();
     args.version = Some("not-semver".to_string());
     assert!(validate_update_args(&args).is_err());
-
-    for configure in [
-        |args: &mut UpdateArgs| args.version = Some("1.2.3".to_string()),
-        |args: &mut UpdateArgs| args.repository = Some("community".to_string()),
-        |args: &mut UpdateArgs| args.strategy_explicit = true,
-    ] {
-        let mut args = validation_args();
-        args.bundle = Some("release".to_string());
-        configure(&mut args);
-        assert!(validate_update_args(&args).is_err());
-    }
 }
 
 #[test]
@@ -293,8 +211,6 @@ async fn test_execute_update_no_manifest() {
         version: None,
         source: None,
         repository: None,
-        bundle: None,
-        from: None,
         strategy: "latest".to_string(),
         strategy_explicit: false,
         reindex: false,
@@ -306,8 +222,8 @@ async fn test_execute_update_no_manifest() {
     assert!(result.is_err());
     if let Err(CliError::Validation(msg) | CliError::Config(msg)) = result {
         assert!(
-            msg.contains("skill-project.toml not found") && msg.contains("fastskill init"),
-            "Error message must mention skill-project.toml and fastskill init: '{}'",
+            msg.contains("skill-project.toml not found") && msg.contains("fastskill project init"),
+            "Error message must mention skill-project.toml and fastskill project init: '{}'",
             msg
         );
     } else {
@@ -364,8 +280,6 @@ async fn test_execute_update_check_mode() {
         version: None,
         source: None,
         repository: None,
-        bundle: None,
-        from: None,
         strategy: "latest".to_string(),
         strategy_explicit: false,
         reindex: false,
@@ -432,8 +346,6 @@ source = { path = ".claude/skills/test-skill" }
         version: None,
         source: None,
         repository: None,
-        bundle: None,
-        from: None,
         strategy: "latest".to_string(),
         strategy_explicit: false,
         reindex: false,
@@ -494,6 +406,28 @@ fn validation_args_with_target(skill_id: Option<&str>) -> UpdateArgs {
     args
 }
 
+fn bundle_args(id: &str, from: impl Into<String>) -> BundleUpdateArgs {
+    BundleUpdateArgs {
+        id: id.to_string(),
+        from: from.into(),
+        check: false,
+        dry_run: false,
+        json: false,
+        reindex: false,
+        no_reindex: false,
+        offline: false,
+    }
+}
+
+async fn bundle_service(root: &std::path::Path) -> FastSkillService {
+    FastSkillService::new(ServiceConfig {
+        skill_storage_path: root.join("skills"),
+        ..Default::default()
+    })
+    .await
+    .unwrap()
+}
+
 #[tokio::test]
 async fn remote_bundle_download_errors_are_reported_before_any_bundle_mutation() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -525,11 +459,10 @@ async fn remote_bundle_download_errors_are_reported_before_any_bundle_mutation()
         .respond_with(ResponseTemplate::new(404))
         .mount(&server)
         .await;
-    let mut args = validation_args_with_target(None);
-    args.bundle = Some("release".to_string());
-    args.from = Some(format!("{}/missing.zip", server.uri()));
+    let service = bundle_service(temp.path()).await;
+    let mut args = bundle_args("release", format!("{}/missing.zip", server.uri()));
     assert!(matches!(
-        execute_update(args.clone(), false, None).await,
+        execute_bundle_update(&service, args.clone(), false).await,
         Err(CliError::InvalidSource(message)) if message.contains("Failed to download")
     ));
     Mock::given(method("GET"))
@@ -537,8 +470,8 @@ async fn remote_bundle_download_errors_are_reported_before_any_bundle_mutation()
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"not a bundle"))
         .mount(&server)
         .await;
-    args.from = Some(format!("{}/invalid.zip", server.uri()));
-    assert!(execute_update(args, false, None).await.is_err());
+    args.from = format!("{}/invalid.zip", server.uri());
+    assert!(execute_bundle_update(&service, args, false).await.is_err());
     assert!(!temp.path().join("skills.lock").exists());
 }
 
@@ -607,17 +540,16 @@ async fn bundle_update_preview_and_apply_report_the_same_release() {
         project.path().join("skills"),
     );
     bundles.install(&first).unwrap();
+    let service = bundle_service(project.path()).await;
     let manifest = fs::read(project.path().join("skill-project.toml")).unwrap();
     let lock = fs::read(project.path().join("skills.lock")).unwrap();
 
-    let mut args = validation_args_with_target(None);
-    args.bundle = Some("team".to_string());
-    args.from = Some(second.to_string_lossy().into_owned());
+    let mut args = bundle_args("team", second.to_string_lossy().into_owned());
     args.dry_run = true;
     args.json = true;
     args.no_reindex = true;
     let (result, rendered) =
-        crate::output::capture(execute_update(args.clone(), false, None)).await;
+        crate::output::capture(execute_bundle_update(&service, args.clone(), false)).await;
     result.unwrap();
     let preview: serde_json::Value = serde_json::from_str(&rendered).unwrap();
     assert_eq!(preview["dry_run"], true);
@@ -629,17 +561,17 @@ async fn bundle_update_preview_and_apply_report_the_same_release() {
     );
     assert_eq!(fs::read(project.path().join("skills.lock")).unwrap(), lock);
 
-    args.from = Some(first.to_string_lossy().into_owned());
+    args.from = first.to_string_lossy().into_owned();
     args.json = false;
     let (result, rendered) =
-        crate::output::capture(execute_update(args.clone(), false, None)).await;
+        crate::output::capture(execute_bundle_update(&service, args.clone(), false)).await;
     result.unwrap();
     assert!(rendered.contains("already unchanged"), "{rendered}");
 
-    args.from = Some(second.to_string_lossy().into_owned());
+    args.from = second.to_string_lossy().into_owned();
     args.dry_run = false;
     let (result, rendered) =
-        crate::output::capture(execute_update(args.clone(), false, None)).await;
+        crate::output::capture(execute_bundle_update(&service, args.clone(), false)).await;
     result.unwrap();
     assert!(rendered.contains("Updated bundle team@2.0.0"), "{rendered}");
     assert!(
@@ -649,7 +581,8 @@ async fn bundle_update_preview_and_apply_report_the_same_release() {
     );
 
     args.json = true;
-    let (result, rendered) = crate::output::capture(execute_update(args, false, None)).await;
+    let (result, rendered) =
+        crate::output::capture(execute_bundle_update(&service, args, false)).await;
     result.unwrap();
     let applied: serde_json::Value = serde_json::from_str(&rendered).unwrap();
     assert_eq!(applied["dry_run"], false);
@@ -706,19 +639,16 @@ async fn bundle_transport_failures_preserve_existing_project_state() {
         .unwrap_or_else(|error| error.into_inner());
     let project = UpdateProject::new();
     let manifest = fs::read(project.path().join("skill-project.toml")).unwrap();
-    let mut args = validation_args_with_target(None);
-    args.bundle = Some("team".to_string());
-    args.from = Some("https://[invalid".to_string());
+    let service = bundle_service(project.path()).await;
+    let skills_existed_before = project.path().join("skills").exists();
+    let mut args = bundle_args("team", "https://[invalid");
     assert!(matches!(
-        execute_update(args.clone(), false, None).await,
+        execute_bundle_update(&service, args.clone(), false).await,
         Err(CliError::InvalidSource(message)) if message.contains("Failed to download")
     ));
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    args.from = Some(format!(
-        "http://{}/truncated.zip",
-        listener.local_addr().unwrap()
-    ));
+    args.from = format!("http://{}/truncated.zip", listener.local_addr().unwrap());
     let server = std::thread::spawn(move || {
         let (mut connection, _) = listener.accept().unwrap();
         let mut request = [0; 4096];
@@ -729,7 +659,7 @@ async fn bundle_transport_failures_preserve_existing_project_state() {
             .unwrap();
     });
     assert!(matches!(
-        execute_update(args, false, None).await,
+        execute_bundle_update(&service, args, false).await,
         Err(CliError::InvalidSource(message)) if message.contains("Failed to read")
     ));
     server.join().unwrap();
@@ -738,5 +668,8 @@ async fn bundle_transport_failures_preserve_existing_project_state() {
         manifest
     );
     assert!(!project.path().join("skills.lock").exists());
-    assert!(!project.path().join("skills").exists());
+    assert_eq!(
+        project.path().join("skills").exists(),
+        skills_existed_before
+    );
 }

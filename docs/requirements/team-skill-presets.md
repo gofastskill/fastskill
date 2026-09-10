@@ -8,7 +8,11 @@ The user supports a team whose members use incorrect or outdated skills. Keeping
 
 ## Confirmed initial feature
 
-Create a publishable ZIP bundle containing a `skill-project.toml` and multiple skill files/directories. A recipient uses `fastskill add` for the entire bundle to install its skills on the target. Initial distribution uses local ZIP files and public HTTPS downloads from existing artifact storage. Private downloads and uploads use existing external tools. The accepted command surface and archive contract are recorded below.
+Create a publishable ZIP bundle containing a `skill-project.toml` and multiple skill
+files/directories. A recipient uses `fastskill bundle add` for the entire bundle to install its
+skills on the target. Initial distribution uses local ZIP files and public HTTPS downloads from
+existing artifact storage. Private downloads and uploads use existing external tools. The accepted
+command surface and archive contract are recorded below.
 
 Q4: A managed launcher may be offered later as an optional convenience. It cannot be required or relied on for enforcement. Bundle creation, publication, and installation must work independently of managed agent sessions. Installation does not establish that an independently launched agent used or followed the installed skills.
 
@@ -25,12 +29,14 @@ Q19: Bundle members are required unless explicitly marked overridable. Unrelated
 - Q7: Identical contents under the same skill ID may be shared, with all bundle owners recorded. Different contents MUST cause a conflict before installation changes occur. Removing a bundle MUST preserve skills still owned by another bundle or explicitly installed by the user.
 - Q8: An update or removal that would replace or delete a locally modified member MUST stop before changing the installation. The user must explicitly discard the modification or retain it as a permitted personal override. Local changes MUST NOT be silently overwritten or deleted.
 - Q10: Bundle identity and version identify immutable packaged contents, independently of member skill versions. Changed packaged contents require a new bundle version. FastSkill MUST record content digests and reject different artifacts claiming an already-known identity/version.
-- Q11: Initial updates explicitly take a replacement ZIP or HTTPS URL, verify bundle identity, preview changes, and apply that release. `add` MUST NOT silently upgrade an installed bundle. Automatic update discovery is deferred until an update feed or catalog is defined.
+- Q11: Initial updates explicitly take a replacement ZIP or HTTPS URL, verify bundle identity,
+  preview changes, and apply that release. `bundle add` MUST NOT silently upgrade an installed
+  bundle. Automatic update discovery is deferred until an update feed or catalog is defined.
 - Q12: Stage and validate the complete bundle before applying it. Retain recovery information sufficient to restore the previous setup if application fails. Skill files, bundle membership, Manifest, and Lock MUST remain consistent; a partial installation MUST NOT be reported as successful.
 - Q13: Build from skills declared in `skill-project.toml` and their resolved dependency closure, including each skill's required resource files. Unrelated project files MUST NOT be included merely because they exist in the author's directory.
 - Q15: The recipient chooses the destination through project configuration or an explicit CLI override. Bundle-internal paths MUST be relative. The author's installation directory MUST NOT control installation on the target. The same artifact can be installed into different agents' skill directories.
 - Q16: Package verified, explicitly selected contents. Local working edits MUST be deliberately incorporated into the build inputs before packaging. Packaging MUST NOT silently upgrade dependencies or substitute an ambient installed copy. Dependency resolution during bundle preparation must be explicit; producing the artifact preserves that selection.
-- Q17: Record bundle dependencies in the recipient's Manifest and exact bundle releases in the Lock. Normal `fastskill install` restores declared bundles alongside individually declared skills, provided their artifacts are available. Private artifact acquisition still follows Q14.
+- Q17: Record bundle dependencies in the recipient's Manifest and exact bundle releases in the Lock. Normal `fastskill project install` restores declared bundles alongside individually declared skills, provided their artifacts are available. Private artifact acquisition still follows Q14.
 - Q18: The initial bundle declares its complete skill selection and per-skill customization rules. Users may install multiple compatible bundles and add permitted personal skills. Organization/team/project preset inheritance and bundles containing other bundles are deferred.
 - See [ADR-0007](../adr/0007-self-contained-tracked-skill-bundles.md) and [ADR-0008](../adr/0008-bundle-ownership-and-local-changes.md).
 
@@ -50,13 +56,15 @@ Q20: Bundle lifecycle uses existing commands, with explicit bundle selection whe
 
 ```bash
 fastskill bundle build
-fastskill add ./payments-team-1.2.0.zip
-fastskill list --bundles
-fastskill update --bundle payments-team --from ./payments-team-2.0.0.zip
-fastskill remove --bundle payments-team
+fastskill bundle add ./payments-team-1.2.0.zip
+fastskill bundle list
+fastskill bundle update payments-team --from ./payments-team-2.0.0.zip
+fastskill bundle remove payments-team
 ```
 
-`fastskill add` recognizes bundle archives and existing single-skill archives. Normal `fastskill install` restores both bundle and individual dependencies. Existing single-skill behavior MUST remain unambiguous.
+`fastskill bundle add` accepts bundle archives and rejects individual skill archives.
+`fastskill skill add` accepts individual skills and rejects bundle archives. Normal
+`fastskill project install` restores bundle and individual dependencies.
 
 ## Agreed validation boundary
 
@@ -101,7 +109,8 @@ Q23 (agreed): An override is a deliberately declared personal skill selection, w
 5. Share identical skill contents between two bundles and an individual declaration; remove owners one at a time and preserve the skill until no owner requires it.
 6. Reject differing contents under a shared skill ID before changing files or metadata.
 7. Detect local edits before replacement/removal; permit an explicit override only when every owner allows it; reject policy-tightening updates that invalidate an override.
-8. Reject changed artifacts under a previously known bundle identity/version; do not silently upgrade an installed bundle through `add`.
+8. Reject changed artifacts under a previously known bundle identity/version; do not silently
+   upgrade an installed bundle through `bundle add`.
 9. Inject a failure during application and recover the previous consistent skill files, membership, Manifest, and Lock. Do not report partial success.
 10. Reject malformed manifests, missing dependencies, digest mismatches, and malicious archive paths without writing outside the target.
 11. Distinguish bundle archives from supported single-skill ZIPs and retain ordinary single-skill lifecycle behavior.

@@ -486,7 +486,7 @@ pub(super) async fn execute_update_global(
             crate::outln!(
                 "{}",
                 messages::info(
-                    "No global-skills.lock found. Run 'fastskill add --global <skill>' first."
+                    "No global-skills.lock found. Run 'fastskill skill add --global <skill>' first."
                 )
             );
         }

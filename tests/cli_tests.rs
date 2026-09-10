@@ -64,7 +64,8 @@ fn test_list_default_grid_format() {
     )
     .unwrap();
 
-    let result = cli::snapshot_helpers::run_fastskill_command(&["list"], Some(temp_dir.path()));
+    let result =
+        cli::snapshot_helpers::run_fastskill_command(&["skill", "list"], Some(temp_dir.path()));
 
     assert!(result.success);
     assert!(
@@ -93,8 +94,10 @@ fn test_list_json_format() {
     )
     .unwrap();
 
-    let result =
-        cli::snapshot_helpers::run_fastskill_command(&["list", "--json"], Some(temp_dir.path()));
+    let result = cli::snapshot_helpers::run_fastskill_command(
+        &["skill", "list", "--json"],
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success);
     assert!(result.stdout.contains("[]") || result.stdout.contains("\"id\""));
@@ -130,7 +133,7 @@ embedding_model = "text-embedding-3-small"
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
     let result = cli::snapshot_helpers::run_fastskill_command_with_env(
-        &["reindex"],
+        &["index", "rebuild"],
         &env_vars,
         Some(temp_dir.path()),
     );
@@ -152,7 +155,10 @@ fn test_install_missing_project_file_error() {
 
     let temp_dir = TempDir::new().unwrap();
 
-    let result = cli::snapshot_helpers::run_fastskill_command(&["install"], Some(temp_dir.path()));
+    let result = cli::snapshot_helpers::run_fastskill_command(
+        &["project", "install"],
+        Some(temp_dir.path()),
+    );
 
     assert!(!result.success);
     assert!(result.stderr.contains("skill-project.toml"));
@@ -188,7 +194,7 @@ fn test_show_nonexistent_skill_error() {
     .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["read", "--meta", "nonexistent-skill"],
+        &["skill", "read", "--meta", "nonexistent-skill"],
         Some(temp_dir.path()),
     );
 
@@ -215,7 +221,7 @@ fn test_show_invalid_skill_id_format() {
     .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["read", "--meta", "invalid skill id!"],
+        &["skill", "read", "--meta", "invalid skill id!"],
         Some(temp_dir.path()),
     );
 
@@ -236,7 +242,7 @@ fn test_read_nonexistent_skill_error() {
     let temp_dir = TempDir::new().unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["read", "nonexistent-skill"],
+        &["skill", "read", "nonexistent-skill"],
         Some(temp_dir.path()),
     );
 
@@ -263,7 +269,7 @@ fn test_read_invalid_skill_id_format() {
     .unwrap();
 
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["read", "invalid skill id!"],
+        &["skill", "read", "invalid skill id!"],
         Some(temp_dir.path()),
     );
 
@@ -297,7 +303,7 @@ fn test_registry_list_empty() {
 
     // `sources` was renamed to `repos` (see `fastskill --help`).
     let result =
-        cli::snapshot_helpers::run_fastskill_command(&["repos", "list"], Some(temp_dir.path()));
+        cli::snapshot_helpers::run_fastskill_command(&["repo", "list"], Some(temp_dir.path()));
     assert!(result.success);
     assert!(result.stdout.contains("No repositories") || result.stdout.is_empty());
 
@@ -318,9 +324,9 @@ fn test_registry_add_validation_missing_url() {
     fs::create_dir_all(&config_dir).unwrap();
 
     // `sources add` was renamed to `repos add`; it still requires both
-    // `<name>` and `<url-or-path>` positionals (see `fastskill repos add --help`).
+    // `<name>` and `<url-or-path>` positionals (see `fastskill repo add --help`).
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["repos", "add", "missing-url", "--repo-type", "local"],
+        &["repo", "add", "missing-url", "--repo-type", "local"],
         None,
     );
     assert!(!result.success);
@@ -351,7 +357,7 @@ fn test_registry_remove_nonexistent_error() {
     // working directory and asserts on the wrong error entirely.
     let temp_dir = TempDir::new().unwrap();
     let result = cli::snapshot_helpers::run_fastskill_command(
-        &["repos", "remove", "nonexistent-repo"],
+        &["repo", "remove", "nonexistent-repo"],
         Some(temp_dir.path()),
     );
     assert!(!result.success);

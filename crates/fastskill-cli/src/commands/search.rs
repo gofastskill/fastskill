@@ -61,11 +61,12 @@ impl IntoCommandSpec for SearchArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Search skills by query with explicit scope flags",
-            syntax: Some("search <QUERY> [--local|--remote] [OPTIONS]"),
+            syntax: Some("skill search <QUERY> [--local|--remote] [OPTIONS]"),
             category: Some("discovery"),
+            help_order: Some(60),
             examples: vec![
-                "fastskill search \"pdf generation\" --local",
-                "fastskill search \"presentation builder\" --remote --limit 5",
+                "fastskill skill search \"pdf generation\" --local",
+                "fastskill skill search \"presentation builder\" --remote --limit 5",
             ],
             args: vec![
                 ArgSpec {
@@ -416,14 +417,14 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
 
     if args.paths && !args.local {
         return Err(CliError::Config(
-            "Error: --paths requires --local. Use 'fastskill search --local --paths <query>'."
+            "Error: --paths requires --local. Use 'fastskill skill search --local --paths <query>'."
                 .to_string(),
         ));
     }
 
     if args.content.is_some() && !args.local {
         return Err(CliError::Config(
-            "--content is only valid with --local. Use 'fastskill search --local --paths --content <mode> <query>'.".to_string(),
+            "--content is only valid with --local. Use 'fastskill skill search --local --paths --content <mode> <query>'.".to_string(),
         ));
     }
 

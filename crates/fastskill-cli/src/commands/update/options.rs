@@ -60,14 +60,6 @@ pub(super) fn validate_update_args(args: &UpdateArgs) -> CliResult<()> {
             "--repository requires one SKILL_ID".to_string(),
         ));
     }
-    if args.bundle.is_some()
-        && (args.version.is_some() || repository.is_some() || args.strategy_explicit)
-    {
-        return Err(CliError::Validation(
-            "bundle updates do not accept skill version, repository, or strategy controls"
-                .to_string(),
-        ));
-    }
     Ok(())
 }
 

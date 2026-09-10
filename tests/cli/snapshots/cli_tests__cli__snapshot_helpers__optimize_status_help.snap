@@ -1,10 +1,11 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Show the status of a training run
 
-Usage: fastskill optimize status [OPTIONS] <run-dir>
+Usage: fastskill optimization status [OPTIONS] <run-dir>
 
 Arguments:
   <run-dir>  Path to the run directory
@@ -17,8 +18,8 @@ Options:
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: optimize status <run-dir> [--watch]
+Syntax: optimization status <run-dir> [--watch]
 
 Examples:
-  fastskill optimize status ./optimize-runs/run-1
-  fastskill optimize status ./optimize-runs/run-1 --watch
+  fastskill optimization status ./optimize-runs/run-1
+  fastskill optimization status ./optimize-runs/run-1 --watch

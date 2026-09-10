@@ -13,7 +13,8 @@ This page is the reference for **authoring** an eval suite: the config table in 
 - `SKILL.md` exists alongside it if you're authoring a single skill's suite.
 - For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk: `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine; a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`. `fastskill eval validate --all` reports which keys are detected in *your* environment.
 
-Evals do not require embedding or `OPENAI_API_KEY` — that's only for `reindex` / `search`.
+Evals do not require embedding or `OPENAI_API_KEY`; those are used by `index rebuild` and
+`skill search --local`.
 
 ## 1. The `[tool.fastskill.eval]` table
 
@@ -117,7 +118,7 @@ Empty lines are skipped.
 Point `checks` at a TOML file with one or more `[[check]]` tables, keyed by the required `name` field. There are exactly five check types (`aikit_evals::checks::CheckDefinition`):
 
 <Callout type="info">
-**Checks score the canonical trace, never raw stdout.** Every check below matches against the run's `trace.jsonl` — the parsed, structured event stream. Raw stdout is deliberately excluded: with the `claude` agent it opens with a `system`/`init` event listing **every skill installed in the environment**, which used to make any skill-name pattern pass vacuously. Assistant text still reaches the trace as message events, so matching on what the agent actually said continues to work.
+**Checks score the canonical trace, never raw stdout.** Every check below matches against the run's `trace.jsonl` — the parsed, structured event stream. Raw stdout is deliberately excluded: with the `claude` agent it opens with a `system`/`project init` event listing **every skill installed in the environment**, which used to make any skill-name pattern pass vacuously. Assistant text still reaches the trace as message events, so matching on what the agent actually said continues to work.
 </Callout>
 
 ### `skill_invoked`

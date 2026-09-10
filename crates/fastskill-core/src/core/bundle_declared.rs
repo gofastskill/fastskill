@@ -72,7 +72,7 @@ pub(crate) fn ensure_individual_removal_allowed(
         return Ok(());
     }
     Err(ServiceError::InvalidOperation(format!(
-        "Skill '{id}' is managed by installed bundle(s): {}. Remove the owning bundle with 'fastskill remove --bundle <bundle-id>'",
+        "Skill '{id}' is managed by installed bundle(s): {}. Remove the owning bundle with 'fastskill bundle remove <bundle-id>'",
         owners.join(", ")
     )))
 }

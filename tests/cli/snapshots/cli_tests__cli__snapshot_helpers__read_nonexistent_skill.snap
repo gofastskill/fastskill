@@ -9,5 +9,5 @@ Searched locations:
   ✓ [TEMP_DIR] (project)
 
 Try:
-  fastskill install owner/repo
-  fastskill list                    # See available skills
+  fastskill skill add owner/repo
+  fastskill skill list                    # See available skills

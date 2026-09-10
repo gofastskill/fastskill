@@ -1,4 +1,4 @@
-//! `fastskill optimize resume` subcommand
+//! `fastskill optimization resume` subcommand
 
 use super::config::{
     build_run_config, completion_output, count_history_steps, load_suite_with_splits,
@@ -12,7 +12,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill optimize resume`
+/// Arguments for `fastskill optimization resume`
 #[derive(Debug)]
 pub struct ResumeArgs {
     /// Path to the run directory to resume
@@ -23,8 +23,9 @@ impl IntoCommandSpec for ResumeArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Resume an interrupted optimization run",
-            syntax: Some("optimize resume <run-dir>"),
-            examples: vec!["fastskill optimize resume ./optimize-runs/run-1"],
+            help_order: Some(20),
+            syntax: Some("optimization resume <run-dir>"),
+            examples: vec!["fastskill optimization resume ./optimize-runs/run-1"],
             args: vec![ArgSpec {
                 name: "run-dir",
                 kind: ArgKind::Positional,

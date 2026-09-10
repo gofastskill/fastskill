@@ -12,7 +12,8 @@ Status: implemented and updated for the public release (2026-06-16). FastSkill u
 
 References (verified against source 2026-05-25, MCP/AppBuilder note added 2026-09-04):
 - cli-framework host API: `aroff/cli-framework` `src/api/mod.rs` (`ApiServerBuilder`, `ApiServer`), `skill/examples/with_api/src/main.rs`. Features `api-server`, `api-swagger`.
-- fastskill server: `crates/fastskill-core/src/http/server.rs`; serve cmd `crates/fastskill-cli/src/commands/serve.rs`.
+- FastSkill HTTP server: `crates/fastskill-core/src/http/server.rs`; `server serve` command:
+  `crates/fastskill-cli/src/commands/serve.rs`.
 
 ---
 
@@ -111,7 +112,7 @@ The raw `/index/*` surface is preserved verbatim via `mount(...)`, so external c
 
 ## 5. Static console UI → `root_fallback`
 
-fastskill serves an embedded console (`server.rs:28-55`, `create_ui_routes` `366-374`) at `/`, `/index.html`, `/app.js`, `/styles.css`, plus dynamic `/dashboard`. The host owns the root router; PR #74 added `ApiServerBuilder::root_fallback(router)` for exactly this — "any path not matched by a versioned API, health, MCP, or Swagger route … serving a SPA or static assets at the root", wired last so all host routes win.
+fastskill server serves an embedded console (`server.rs:28-55`, `create_ui_routes` `366-374`) at `/`, `/index.html`, `/app.js`, `/styles.css`, plus dynamic `/dashboard`. The host owns the root router; PR #74 added `ApiServerBuilder::root_fallback(router)` for exactly this — "any path not matched by a versioned API, health, MCP, or Swagger route … serving a SPA or static assets at the root", wired last so all host routes win.
 
 Action: collect the UI routes (the `serve_embedded_static` handler + `/dashboard`) into one `Router`, `.with_state(state)`, pass to `.root_fallback(...)`. The `include_dir!` embedding is unchanged. Verify `/dashboard` (dynamic HTML via `status::root`) still resolves through the fallback router.
 
@@ -178,7 +179,7 @@ Documentation is in-scope for this migration, not a follow-up. Update everything
 
 ## 11. Acceptance criteria
 
-1. `fastskill serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...`; `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`. (The multipart publish endpoint planned in §8 was never shipped.)
+1. `fastskill server serve` brings up: `/api/v1/skills`, `/api/v1/search`, `/api/v1/status`, `/api/v1/manifest/...`, `/api/v1/registry/...`; `/index/*`; the console UI at `/`; and framework `/healthz` + `/readyz`. (The multipart publish endpoint planned in §8 was never shipped.)
 2. `/healthz` returns `{status, version}` with **fastskill's** crate version; `/readyz` reflects the readiness check (or always-ready).
 3. `X-API-Version: v1` present on `/api/v1/...` responses.
 4. `GET /api/...` with no version → 308 redirect to `/api/v1/...` (default Pinned) — or, if `DefaultVersion::None` is chosen, a 404 listing versions.

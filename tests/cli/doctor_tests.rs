@@ -18,7 +18,7 @@ fn test_doctor_runs_successfully() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["doctor"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["cli", "doctor"], Some(temp_dir.path()));
     // Doctor should succeed (skills dir exists)
     assert!(result.success, "doctor failed: {}", result.stderr);
 }
@@ -35,7 +35,7 @@ fn test_doctor_json_flag() {
     )
     .unwrap();
 
-    let result = run_fastskill_command(&["doctor", "--json"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["cli", "doctor", "--json"], Some(temp_dir.path()));
     assert!(result.success, "doctor --json failed: {}", result.stderr);
     // Output should be a valid JSON array (top-level '[')
     let trimmed = result.stdout.trim();
@@ -54,7 +54,7 @@ fn test_doctor_json_flag() {
 
 #[test]
 fn test_doctor_help() {
-    let result = run_fastskill_command(&["doctor", "--help"], None);
+    let result = run_fastskill_command(&["cli", "doctor", "--help"], None);
     assert!(result.success);
     assert!(result.stdout.contains("doctor"));
 }

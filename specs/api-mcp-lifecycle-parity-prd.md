@@ -13,7 +13,7 @@ authentication system or new HTTP bundle endpoints.
 At audited main `2b649bf`, HTTP deletion removes bundle-required members outside
 the CLI ownership checks. Manifest PUT returns requested group/editable values
 without persisting them and replaces structured origin data during version edits.
-A read-only MCP session can call optimize export and write its chosen file.
+A read-only MCP session can call `optimization export` and write its chosen file.
 
 Users must receive the same constraints, persistence and truthful outcomes through
 the browser, REST clients and agents as through the CLI. Read-only exposure must
@@ -86,12 +86,12 @@ enforce the published capability boundary.
 | Effect | Classification requirement |
 | --- | --- |
 | Add/install/update/remove, bundle override/reset | Write: managed files, intent, ownership, and Lock. |
-| Init, repository mutations/refresh, cache clean, reindex | Write: configuration, cache/index updates, or provider activity. |
-| Bundle build, marketplace create, optimize export | Write: caller-selected artifact creation/replacement. |
+| Project init, repository mutations/refresh, cache clean, index rebuild | Write: configuration, cache/index updates, or provider activity. |
+| Bundle build, marketplace create, optimization export | Write: caller-selected artifact creation/replacement. |
 | MCP client install | Write: external client configuration. |
-| Eval run/judge and optimize run/resume | Write/execution: run artifacts, agents or evaluation/judging providers. |
+| Eval run/judge and optimization run/resume | Write/execution: run artifacts, agents or evaluation/judging providers. |
 | Eval score/scorecard/report | Gate any tool supporting persistent output/artifact updates; classify actual effects, not its read-sounding name. |
-| List/read/search, repo browsing, doctor, analysis, eval validate, optimize inspect/status | Allow only documented inspection effects; classify provider calls, persistent cache writes or output-file variants explicitly before admitting them. |
+| Skill list/read/search, repo browsing, cli doctor, analysis, eval validate, optimization inspect/status | Allow only documented inspection effects; classify provider calls, persistent cache writes or output-file variants explicitly before admitting them. |
 | MCP serve/HTTP serve | Keep long-running server startup outside request/response auto-registration. |
 
 - **P-11:** Protocol responses/stdout and internal diagnostic logging do not by
@@ -116,7 +116,7 @@ enforce the published capability boundary.
 | P-A05 | Serve a project with another cwd; invoke mutations | Only served state changes, never the ambient project's files. |
 | P-A06 | HTTP batch update with one failed target | Structured partial failure; client accurately distinguishes committed and failed targets. |
 | P-A07 | MCP read-only list and direct calls for every write/execution tool | Hidden and denied before dispatch; no files, client edits, processes or provider calls. |
-| P-A08 | Read-only optimize export aimed at a harmless output and a skill path | Both denied; destination/sentinel content unchanged. |
+| P-A08 | Read-only `optimization export` aimed at a harmless output and a skill path | Both denied; destination/sentinel content unchanged. |
 | P-A09 | Enable MCP writes and invoke conflicting add/remove | Tool is callable but ownership policy still blocks the conflicting mutation. |
 | P-A10 | Register a new command without effect classification | Coverage/registration failure; tool cannot silently become read-only. |
 | P-A11 | Equivalent CLI, HTTP and MCP install/update/remove requests | Same selected state, result, errors and restoration behavior. |

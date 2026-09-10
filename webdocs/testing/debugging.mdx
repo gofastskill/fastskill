@@ -1,19 +1,19 @@
 ---
 title: "Debugging Guide"
-description: "Diagnose FastSkill setup and behavior with `fastskill doctor` and `--verbose` output."
+description: "Diagnose FastSkill setup and behavior with `fastskill cli doctor` and `--verbose` output."
 ---
 
 ## Overview
 
-The two tools for debugging FastSkill are `fastskill doctor` — an environment/configuration health
+The two tools for debugging FastSkill are `fastskill cli doctor` — an environment/configuration health
 check — and the global `--verbose` / `-v` flag for detailed command output.
 
-## `fastskill doctor`
+## `fastskill cli doctor`
 
-`doctor` inspects your environment and reports what is and isn't set up:
+`cli doctor` inspects your environment and reports what is and isn't set up:
 
 ```bash
-fastskill doctor
+fastskill cli doctor
 ```
 
 It runs these checks:
@@ -29,12 +29,12 @@ It runs these checks:
 For machine-readable output (CI, scripts):
 
 ```bash
-fastskill doctor --json
+fastskill cli doctor --json
 ```
 
 Common findings and fixes:
 
-- **`project_toml` failing** — run `fastskill init` to create `skill-project.toml`.
+- **`project_toml` failing** — run `fastskill project init` to create `skill-project.toml`.
 - **`embedding_config` / `api_key` failing** — add `[tool.fastskill.embedding]` and set
   `OPENAI_API_KEY`; without them semantic search and reindex are disabled (they skip silently, they
   don't error).
@@ -47,12 +47,12 @@ Add `--verbose` (or `-v`) to any command to see detailed diagnostic output about
 doing — useful for understanding install resolution, indexing, and registry access:
 
 ```bash
-fastskill install --verbose
-fastskill search "pdf" -v
+fastskill project install --verbose
+fastskill skill search "pdf" -v
 ```
 
 <Callout>
-Start with `fastskill doctor` to confirm the environment, then re-run the failing command with
+Start with `fastskill cli doctor` to confirm the environment, then re-run the failing command with
 `--verbose` to see the detail.
 </Callout>
 

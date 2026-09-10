@@ -82,9 +82,9 @@ fn typed_specs_describe_every_repository_subcommand() {
         );
     }
 
-    assert_spec::<ReposListArgs>("repos list [OPTIONS]", &["format", "json"]);
+    assert_spec::<ReposListArgs>("repo list [OPTIONS]", &["format", "json"]);
     assert_spec::<ReposAddArgs>(
-        "repos add <NAME> <URL-OR-PATH> [OPTIONS]",
+        "repo add <NAME> <URL-OR-PATH> [OPTIONS]",
         &[
             "name",
             "url-or-path",
@@ -98,16 +98,16 @@ fn typed_specs_describe_every_repository_subcommand() {
             "auth-username",
         ],
     );
-    assert_spec::<ReposRemoveArgs>("repos remove <NAME>", &["name"]);
-    assert_spec::<ReposInfoArgs>("repos info <NAME> [OPTIONS]", &["name", "format", "json"]);
+    assert_spec::<ReposRemoveArgs>("repo remove <NAME>", &["name"]);
+    assert_spec::<ReposInfoArgs>("repo info <NAME> [OPTIONS]", &["name", "format", "json"]);
     assert_spec::<ReposUpdateArgs>(
-        "repos update <NAME> [OPTIONS]",
+        "repo update <NAME> [OPTIONS]",
         &["name", "branch", "priority"],
     );
-    assert_spec::<ReposTestArgs>("repos test <NAME>", &["name"]);
-    assert_spec::<ReposRefreshArgs>("repos refresh [NAME]", &["name"]);
+    assert_spec::<ReposTestArgs>("repo test <NAME>", &["name"]);
+    assert_spec::<ReposRefreshArgs>("repo refresh [NAME]", &["name"]);
     assert_spec::<ReposSkillsArgs>(
-        "repos skills [REPOSITORY] [OPTIONS]",
+        "repo skills [REPOSITORY] [OPTIONS]",
         &[
             "repo",
             "repository",
@@ -119,11 +119,11 @@ fn typed_specs_describe_every_repository_subcommand() {
         ],
     );
     assert_spec::<ReposShowArgs>(
-        "repos show <SKILL-ID> [OPTIONS]",
+        "repo show <SKILL-ID> [OPTIONS]",
         &["skill-id", "repository"],
     );
     assert_spec::<ReposVersionsArgs>(
-        "repos versions <SKILL-ID> [OPTIONS]",
+        "repo versions <SKILL-ID> [OPTIONS]",
         &["skill-id", "repository"],
     );
 }

@@ -82,7 +82,7 @@ timeout_seconds          = 120
 
 **Note on `aggregate_group_size` and `gate_trials`:** unlike the other numeric fields, these two
 are not checked by `fastskill`'s own config validation. A `0` value parses fine and passes
-`fastskill optimize run`'s validation step, then fails once the training loop starts, as
+`fastskill optimization run`'s validation step, then fails once the training loop starts, as
 `OPTIMIZE_TRAINING_FAILED: TEXTGRAD_INVALID_CONFIG: gate_trials must be > 0` (or the
 equivalent for `aggregate_group_size`) — confirmed by running the binary with `gate_trials = 0`.
 
@@ -168,7 +168,7 @@ protected_soft_cap_chars = 3000
 
 ## Validation errors
 
-If the config is invalid, `fastskill optimize run` exits with a structured error code. The
+If the config is invalid, `fastskill optimization run` exits with a structured error code. The
 error prefix is inconsistent in the current implementation — some codes are `OPTIMIZE_*`
 (from `run.rs` itself) and some are `SKILLOPT_*` (from the older shared `validate_config`
 helper it calls) — match on the full string, not the prefix. All of the following were

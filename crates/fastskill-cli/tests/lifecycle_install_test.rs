@@ -133,7 +133,11 @@ fn global_install_restores_the_complete_locked_set_without_a_project_manifest() 
     lock.save_to_file(&fastskill_config.join("global-skills.lock"))
         .unwrap();
 
-    let result = run_with_config(workspace.path(), &config, &["--global", "install"]);
+    let result = run_with_config(
+        workspace.path(),
+        &config,
+        &["--global", "project", "install"],
+    );
     assert_success(&result);
     assert!(config
         .join("fastskill/skills/global-demo/SKILL.md")
@@ -141,7 +145,7 @@ fn global_install_restores_the_complete_locked_set_without_a_project_manifest() 
     let unchanged = run_with_config(
         workspace.path(),
         &config,
-        &["--global", "install", "--dry-run", "--json"],
+        &["--global", "project", "install", "--dry-run", "--json"],
     );
     assert_success(&unchanged);
     let value: serde_json::Value = serde_json::from_slice(&unchanged.stdout).unwrap();
@@ -150,7 +154,11 @@ fn global_install_restores_the_complete_locked_set_without_a_project_manifest() 
 
     let installed = config.join("fastskill/skills/global-demo/SKILL.md");
     std::fs::write(&installed, "untracked local edit").unwrap();
-    let protected = run_with_config(workspace.path(), &config, &["--global", "install"]);
+    let protected = run_with_config(
+        workspace.path(),
+        &config,
+        &["--global", "project", "install"],
+    );
     assert!(!protected.status.success());
     assert!(output(&protected).contains("was modified"));
     assert_eq!(
@@ -161,7 +169,7 @@ fn global_install_restores_the_complete_locked_set_without_a_project_manifest() 
     let invalid = run_with_config(
         workspace.path(),
         &config,
-        &["--global", "--skills-dir", "/tmp", "install"],
+        &["--global", "--skills-dir", "/tmp", "project", "install"],
     );
     assert!(!invalid.status.success());
     assert!(output(&invalid).contains("cannot be used together"));
@@ -183,7 +191,7 @@ fn cold_install_fetches_and_records_complete_dependency_closure() {
         "root = { origin = { type = \"local\", path = \"sources/root\" } }",
     );
 
-    let result = run(&root, &["install"]);
+    let result = run(&root, &["project", "install"]);
     assert_success(&result);
     assert!(root.join(".claude/skills/root/SKILL.md").is_file());
     assert!(root.join(".claude/skills/child/SKILL.md").is_file());
@@ -203,7 +211,7 @@ fn cold_install_fetches_and_records_complete_dependency_closure() {
     ));
     std::fs::remove_dir_all(root.join(".claude/skills/root")).unwrap();
     std::fs::remove_dir_all(root.join(".claude/skills/child")).unwrap();
-    assert_success(&run(&root, &["install", "--lock"]));
+    assert_success(&run(&root, &["project", "install", "--lock"]));
 }
 
 #[test]
@@ -221,7 +229,7 @@ fn sibling_local_dependency_records_a_durable_origin_and_restores() {
         "alpha = { origin = { type = \"local\", path = \"sources/alpha\" } }",
     );
 
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let lock = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
     let beta = lock.skills.iter().find(|entry| entry.id == "beta").unwrap();
     assert!(matches!(
@@ -230,7 +238,7 @@ fn sibling_local_dependency_records_a_durable_origin_and_restores() {
     ));
     std::fs::remove_dir_all(root.join(".claude/skills/alpha")).unwrap();
     std::fs::remove_dir_all(root.join(".claude/skills/beta")).unwrap();
-    assert_success(&run(&root, &["install", "--lock"]));
+    assert_success(&run(&root, &["project", "install", "--lock"]));
 }
 
 #[test]
@@ -250,6 +258,7 @@ fn project_install_honors_the_scoped_skills_directory_override() {
         &[
             "--skills-dir",
             override_arg.as_ref(),
+            "project",
             "install",
             "--no-reindex",
         ],
@@ -269,9 +278,12 @@ fn bundle_member_is_managed_for_identical_direct_add_and_local_edits_are_protect
 
     let (_first, first_root) = project();
     write_bundle_project(&first_root, &artifact, "");
-    assert_success(&run(&first_root, &["install", "--no-reindex"]));
+    assert_success(&run(&first_root, &["project", "install", "--no-reindex"]));
     let source_arg = source.to_string_lossy();
-    let add = run(&first_root, &["add", source_arg.as_ref(), "--no-reindex"]);
+    let add = run(
+        &first_root,
+        &["skill", "add", source_arg.as_ref(), "--no-reindex"],
+    );
     assert_success(&add);
     let lock = ProjectSkillsLock::load_from_file(&first_root.join("skills.lock")).unwrap();
     assert!(lock.skills.iter().any(|entry| entry.id == "demo"));
@@ -279,10 +291,13 @@ fn bundle_member_is_managed_for_identical_direct_add_and_local_edits_are_protect
 
     let (_second, second_root) = project();
     write_bundle_project(&second_root, &artifact, "");
-    assert_success(&run(&second_root, &["install", "--no-reindex"]));
+    assert_success(&run(&second_root, &["project", "install", "--no-reindex"]));
     let installed = second_root.join(".claude/skills/demo/SKILL.md");
     std::fs::write(&installed, "personal edit").unwrap();
-    let blocked = run(&second_root, &["add", source_arg.as_ref(), "--no-reindex"]);
+    let blocked = run(
+        &second_root,
+        &["skill", "add", source_arg.as_ref(), "--no-reindex"],
+    );
     assert!(!blocked.status.success(), "{}", output(&blocked));
     assert!(output(&blocked).contains("was modified"));
     assert_eq!(std::fs::read_to_string(installed).unwrap(), "personal edit");
@@ -294,7 +309,7 @@ fn repeated_install_reports_unchanged_with_a_valid_bundle_override() {
     let artifact = build_demo_bundle(author.path());
     let (_project, root) = project();
     write_bundle_project(&root, &artifact, "");
-    assert_success(&run(&root, &["install", "--no-reindex"]));
+    assert_success(&run(&root, &["project", "install", "--no-reindex"]));
 
     let personal = root.join("personal-demo");
     write_skill(&personal, "demo", "2.0.0", "");
@@ -315,8 +330,8 @@ fn repeated_install_reports_unchanged_with_a_valid_bundle_override() {
     let override_bytes = std::fs::read(&installed).unwrap();
 
     for args in [
-        &["install", "--no-reindex", "--json"][..],
-        &["install", "--lock", "--no-reindex", "--json"][..],
+        &["project", "install", "--no-reindex", "--json"][..],
+        &["project", "install", "--lock", "--no-reindex", "--json"][..],
     ] {
         let repeated = run(&root, args);
         assert_success(&repeated);
@@ -344,13 +359,13 @@ fn dropping_an_ordinary_edge_retains_bundle_owned_content() {
         &artifact,
         "root = { origin = { type = \"local\", path = \"root-source\" } }",
     );
-    assert_success(&run(&root, &["install", "--no-reindex"]));
+    assert_success(&run(&root, &["project", "install", "--no-reindex"]));
     let first = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
     assert!(first.skills.iter().any(|entry| entry.id == "demo"));
 
     write_skill(&root_source, "root", "2.0.0", "");
     std::fs::remove_file(root_source.join("skill-project.toml")).unwrap();
-    let update = run(&root, &["update", "root", "--no-reindex"]);
+    let update = run(&root, &["skill", "update", "root", "--no-reindex"]);
 
     assert_success(&update);
     let final_lock = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
@@ -378,7 +393,7 @@ fn cold_offline_install_accepts_available_local_dependency_closure() {
         "root = { origin = { type = \"local\", path = \"source\" } }",
     );
 
-    let result = run(&root, &["install", "--offline"]);
+    let result = run(&root, &["project", "install", "--offline"]);
 
     assert_success(&result);
     assert!(root.join(".claude/skills/root/SKILL.md").is_file());
@@ -396,11 +411,14 @@ fn strict_and_ordinary_restore_do_not_accept_changed_local_snapshot() {
         &root,
         "demo = { origin = { type = \"local\", path = \"source\" } }",
     );
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let lock_before = std::fs::read(root.join("skills.lock")).unwrap();
     write_skill(&source, "demo", "2.0.0", "");
 
-    for args in [&["install", "--lock"][..], &["install"][..]] {
+    for args in [
+        &["project", "install", "--lock"][..],
+        &["project", "install"][..],
+    ] {
         let result = run(&root, args);
         assert!(!result.status.success(), "{}", output(&result));
         assert!(
@@ -426,13 +444,13 @@ fn update_refuses_to_replace_untracked_installed_edits() {
         &root,
         "demo = { origin = { type = \"local\", path = \"source\" } }",
     );
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let installed = root.join(".claude/skills/demo/SKILL.md");
     std::fs::write(&installed, "personal untracked edit").unwrap();
     write_skill(&source, "demo", "2.0.0", "");
     let lock_before = std::fs::read(root.join("skills.lock")).unwrap();
 
-    let result = run(&root, &["update", "demo"]);
+    let result = run(&root, &["skill", "update", "demo"]);
 
     assert!(!result.status.success(), "{}", output(&result));
     assert!(
@@ -461,14 +479,17 @@ fn group_limited_install_tracks_coverage_and_strict_requires_it() {
          dev-skill = { origin = { type = \"local\", path = \"dev\" }, groups = [\"dev\"] }",
     );
 
-    assert_success(&run(&root, &["install", "--only", "dev"]));
+    assert_success(&run(&root, &["project", "install", "--only", "dev"]));
     let first = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
     assert_eq!(first.covered_roots, vec!["dev-skill"]);
-    assert!(!run(&root, &["install", "--lock", "--only", "default"])
-        .status
-        .success());
+    assert!(!run(
+        &root,
+        &["project", "install", "--lock", "--only", "default"]
+    )
+    .status
+    .success());
 
-    assert_success(&run(&root, &["install", "--only", "default"]));
+    assert_success(&run(&root, &["project", "install", "--only", "default"]));
     let second = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
     assert_eq!(second.covered_roots, vec!["default-skill", "dev-skill"]);
     assert!(second.skills.iter().any(|entry| entry.id == "dev-skill"));
@@ -483,10 +504,10 @@ fn invalid_depth_and_wrong_identity_fail_before_mutation() {
         "expected = { origin = { type = \"local\", path = \"source\" } }",
     );
 
-    let negative = run(&root, &["install", "--depth=-1"]);
+    let negative = run(&root, &["project", "install", "--depth=-1"]);
     assert!(!negative.status.success());
     assert!(!root.join("skills.lock").exists());
-    let wrong_id = run(&root, &["install"]);
+    let wrong_id = run(&root, &["project", "install"]);
     assert!(!wrong_id.status.success());
     assert!(output(&wrong_id).contains("wrong identity"));
     assert!(!root.join(".claude/skills/actual").exists());
@@ -508,7 +529,7 @@ fn depth_one_rejects_a_required_child_before_installing_root() {
         "root = { origin = { type = \"local\", path = \"source\" } }",
     );
 
-    let result = run(&root, &["install", "--depth", "1"]);
+    let result = run(&root, &["project", "install", "--depth", "1"]);
     assert!(!result.status.success(), "{}", output(&result));
     assert!(output(&result).contains("root -> child"));
     assert!(!root.join(".claude/skills/root").exists());
@@ -536,7 +557,7 @@ fn dependency_cycle_across_two_selected_roots_is_rejected_before_apply() {
          beta = { origin = { type = \"local\", path = \"sources/beta\" } }",
     );
 
-    let result = run(&root, &["install"]);
+    let result = run(&root, &["project", "install"]);
 
     assert!(!result.status.success(), "{}", output(&result));
     assert!(output(&result).contains("circular dependency"));
@@ -559,7 +580,7 @@ fn add_dry_run_json_plans_complete_closure_without_mutation() {
     write_manifest(&root, "");
     let manifest_before = std::fs::read(root.join("skill-project.toml")).unwrap();
 
-    let preview = run(&root, &["add", "./source", "--dry-run", "--json"]);
+    let preview = run(&root, &["skill", "add", "./source", "--dry-run", "--json"]);
     assert_success(&preview);
     let value: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
     assert_eq!(value["scope"], "project");
@@ -573,7 +594,7 @@ fn add_dry_run_json_plans_complete_closure_without_mutation() {
     assert!(!root.join(".claude/skills/root").exists());
     assert!(!root.join(".claude/skills/child").exists());
 
-    assert_success(&run(&root, &["add", "./source"]));
+    assert_success(&run(&root, &["skill", "add", "./source"]));
     assert!(root.join(".claude/skills/root/SKILL.md").is_file());
     assert!(root.join(".claude/skills/child/SKILL.md").is_file());
     let lock = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
@@ -602,8 +623,8 @@ fn adding_a_root_merges_shared_ownership_and_rejects_incompatible_shared_content
     );
     write_manifest(&root, "");
 
-    assert_success(&run(&root, &["add", "./sources/alpha"]));
-    assert_success(&run(&root, &["add", "./sources/beta"]));
+    assert_success(&run(&root, &["skill", "add", "./sources/alpha"]));
+    assert_success(&run(&root, &["skill", "add", "./sources/beta"]));
     let lock_path = root.join("skills.lock");
     let lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
     assert_eq!(
@@ -616,7 +637,7 @@ fn adding_a_root_merges_shared_ownership_and_rejects_incompatible_shared_content
     );
     let before = std::fs::read(&lock_path).unwrap();
 
-    let rejected = run(&root, &["add", "./sources/gamma"]);
+    let rejected = run(&root, &["skill", "add", "./sources/gamma"]);
 
     assert!(!rejected.status.success(), "{}", output(&rejected));
     assert!(output(&rejected).contains("retained roots"));
@@ -638,7 +659,7 @@ fn add_refuses_to_replace_an_unmanaged_destination() {
     write_skill(&destination, "alpha", "1.0.0", "");
     std::fs::write(destination.join("my-work.txt"), "keep me").unwrap();
 
-    let result = run(&root, &["add", "./source"]);
+    let result = run(&root, &["skill", "add", "./source"]);
 
     assert!(!result.status.success(), "{}", output(&result));
     assert!(output(&result).contains("unmanaged"));
@@ -664,7 +685,7 @@ fn update_replans_changed_dependency_closure_and_preview_is_non_mutating() {
         &root,
         "root = { origin = { type = \"local\", path = \"source\" } }",
     );
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let lock_before = std::fs::read(root.join("skills.lock")).unwrap();
     let installed_before = std::fs::read(root.join(".claude/skills/root/SKILL.md")).unwrap();
 
@@ -675,7 +696,7 @@ fn update_replans_changed_dependency_closure_and_preview_is_non_mutating() {
         "new-child = { origin = { type = \"local\", path = \"new-child\" } }",
     );
     write_skill(&source.join("new-child"), "new-child", "1.0.0", "");
-    let preview = run(&root, &["update", "root", "--dry-run", "--json"]);
+    let preview = run(&root, &["skill", "update", "root", "--dry-run", "--json"]);
     assert_success(&preview);
     let value: serde_json::Value = serde_json::from_slice(&preview.stdout).unwrap();
     assert_eq!(value["targets"][0]["current_revision"], "1.0.0");
@@ -689,7 +710,7 @@ fn update_replans_changed_dependency_closure_and_preview_is_non_mutating() {
         installed_before
     );
 
-    assert_success(&run(&root, &["update", "root"]));
+    assert_success(&run(&root, &["skill", "update", "root"]));
     let lock = ProjectSkillsLock::load_from_file(&root.join("skills.lock")).unwrap();
     assert!(lock.skills.iter().any(|entry| entry.id == "root"));
     assert!(lock.skills.iter().any(|entry| entry.id == "new-child"));
@@ -707,13 +728,13 @@ fn unchanged_update_does_not_rewrite_project_state_or_installed_content() {
         &root,
         "demo = { origin = { type = \"local\", path = \"source\" } }",
     );
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let manifest_before = std::fs::read(root.join("skill-project.toml")).unwrap();
     let lock_before = std::fs::read(root.join("skills.lock")).unwrap();
     let installed = root.join(".claude/skills/demo/SKILL.md");
     let modified_before = std::fs::metadata(&installed).unwrap().modified().unwrap();
 
-    let result = run(&root, &["update", "demo", "--json"]);
+    let result = run(&root, &["skill", "update", "demo", "--json"]);
 
     assert_success(&result);
     let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
@@ -747,7 +768,7 @@ fn strict_restore_rejects_missing_integrity_evidence_in_transitive_lock_entry() 
         &root,
         "root = { origin = { type = \"local\", path = \"source\" } }",
     );
-    assert_success(&run(&root, &["install"]));
+    assert_success(&run(&root, &["project", "install"]));
     let lock_path = root.join("skills.lock");
     let mut lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
     lock.skills
@@ -761,7 +782,7 @@ fn strict_restore_rejects_missing_integrity_evidence_in_transitive_lock_entry() 
     std::fs::remove_dir_all(root.join(".claude/skills/child")).unwrap();
     let before = std::fs::read(&lock_path).unwrap();
 
-    let result = run(&root, &["install", "--lock"]);
+    let result = run(&root, &["project", "install", "--lock"]);
 
     assert!(!result.status.success(), "{}", output(&result));
     assert!(

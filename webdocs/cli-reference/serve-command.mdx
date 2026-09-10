@@ -1,16 +1,16 @@
 ---
-title: serve
-api: "serve"
+title: server serve
+api: "server serve"
 ---
 
-# serve Command
+# `server serve`
 
 Start the local fastskill HTTP API server and web UI.
 
 ## Usage
 
 ```bash
-fastskill serve [OPTIONS]
+fastskill server serve [OPTIONS]
 ```
 
 ## Options
@@ -26,24 +26,24 @@ fastskill serve [OPTIONS]
 ### Basic Server
 
 ```bash
-fastskill serve
+fastskill server serve
 ```
 
 ### Custom Host and Port
 
 ```bash
-fastskill serve --host 0.0.0.0 --port 3000
+fastskill server serve --host 0.0.0.0 --port 3000
 ```
 
 ### Manage skills from the browser (enable writes)
 
 ```bash
-fastskill serve --enable-write
+fastskill server serve --enable-write
 ```
 
 ## Read-only by default
 
-**Breaking change:** `fastskill serve` is **read-only by default**. Read endpoints (list/get skills,
+**Breaking change:** `fastskill server serve` is **read-only by default**. Read endpoints (list/get skills,
 project, search, resolve, status, registry browse, the dashboard) are always available; every
 state-changing endpoint (see the *write* rows in [Core Endpoints](#core-endpoints)) is **disabled
 unless you start the server with `--enable-write`**.
@@ -55,12 +55,12 @@ HTTP 403 Forbidden
 { "error": "write operations disabled; start server with --enable-write" }
 ```
 
-Run `fastskill serve --enable-write` when you want to manage skills (install / update / remove) from
+Run `fastskill server serve --enable-write` when you want to manage skills (install / update / remove) from
 the web UI or API on your own machine.
 
 ## Security model
 
-`fastskill serve` is **not a security boundary**: it enforces no authentication of its own (no token
+`fastskill server serve` is **not a security boundary**: it enforces no authentication of its own (no token
 endpoint; API routes require no `Authorization`/`x-api-key` header). It is designed to run
 **local-first** on your machine.
 
@@ -127,7 +127,7 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 > **Removed:** `POST /api/v1/skills` (create) and `PUT /api/v1/skills/{id}` (edit) — a skill is a
 > multi-file directory, so it is installed from a source rather than authored via the API. Use the
-> install/update/remove flow (and the CLI `fastskill add`/`update`/`remove`).
+> install/update/remove flow (and the CLI `fastskill skill add`/`skill update`/`skill remove`).
 
 ## Redirect Behavior
 

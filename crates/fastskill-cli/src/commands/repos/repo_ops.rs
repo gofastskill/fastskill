@@ -197,7 +197,7 @@ fn acquisition_capability(
     }
 }
 
-/// `repos refresh [name]` (PRD 006 "Local Skill Cache", US-005): refresh the
+/// `repo refresh [name]` (PRD 006 "Local Skill Cache", US-005): refresh the
 /// on-disk index cache for one repository, or every configured repository,
 /// via [`fastskill_core::core::repository::RepositoryManager::refresh_index`].
 ///
@@ -494,7 +494,7 @@ skills_directory = ".claude/skills"
         assert!(list_result.is_ok());
     }
 
-    // ── PRD 006 "Local Skill Cache", US-005: `repos refresh` real semantics ──
+    // ── PRD 006 "Local Skill Cache", US-005: `repo refresh` real semantics ──
 
     /// RAII guard restoring `FASTSKILL_CACHE_DIR` to whatever it was before
     /// the test set it, so these tests never leak into the real platform

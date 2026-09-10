@@ -1,4 +1,4 @@
-//! `fastskill optimize inspect` subcommand
+//! `fastskill optimization inspect` subcommand
 
 use super::config::{resolve_step_versions, StepVersions};
 use crate::error::{CliError, CliResult};
@@ -9,7 +9,7 @@ use cli_framework::spec::value::ArgValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Arguments for `fastskill optimize inspect`
+/// Arguments for `fastskill optimization inspect`
 #[derive(Debug)]
 pub struct InspectArgs {
     /// Path to the run directory
@@ -35,10 +35,11 @@ impl IntoCommandSpec for InspectArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Inspect per-step artifacts from a training run",
-            syntax: Some("optimize inspect <run-dir> --step <n> [--show <mode>]"),
+            help_order: Some(40),
+            syntax: Some("optimization inspect <run-dir> --step <n> [--show <mode>]"),
             examples: vec![
-                "fastskill optimize inspect ./optimize-runs/run-1 --step 3",
-                "fastskill optimize inspect ./optimize-runs/run-1 --step 3 --show diffs",
+                "fastskill optimization inspect ./optimize-runs/run-1 --step 3",
+                "fastskill optimization inspect ./optimize-runs/run-1 --step 3 --show diffs",
             ],
             args: vec![
                 ArgSpec {

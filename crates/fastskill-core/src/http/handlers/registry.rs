@@ -46,7 +46,7 @@ fn get_repository_manager(project_file_path: &std::path::Path) -> RepositoryMana
 /// cache (`SourcesManager::with_skill_cache`) — `refresh_sources` (`POST
 /// /api/v1/registry/refresh`) reuses this same helper via `list_all_skills`
 /// to serve its "post-refresh" listing, and that call must stay a real,
-/// live fetch (mirroring FR-4's requirement for `repos refresh`): a disk-
+/// live fetch (mirroring FR-4's requirement for `repo refresh`): a disk-
 /// first read-through here would let `/refresh` silently answer from a
 /// stale on-disk index instead of actually refreshing. The plain read-only
 /// browse endpoints (`list_all_skills`, `list_source_skills`,

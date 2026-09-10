@@ -1,6 +1,6 @@
 ---
-title: "Marketplace, analyze, and doctor"
-description: "CLI reference for fastskill marketplace, fastskill analyze, and fastskill doctor."
+title: "Marketplace, analysis, and CLI tools"
+description: "CLI reference for fastskill marketplace, fastskill analysis, and fastskill cli doctor."
 ---
 
 <Callout>
@@ -26,18 +26,18 @@ fastskill marketplace create -p . -o .claude-plugin/marketplace.json --name "My 
 | `--name <NAME>` | **Required.** Marketplace name |
 | `--owner-name`, `--owner-email`, `--description`, `--version` | Optional metadata |
 
-## fastskill analyze
+## fastskill analysis
 
 Requires a running service context (installed skills and index) like other service commands.
 
-### analyze matrix
+### analysis matrix
 
 Pairwise similarity between indexed skills.
 
 ```bash
-fastskill analyze matrix
-fastskill analyze matrix --threshold 0.8 --limit 5
-fastskill analyze matrix --full --json
+fastskill analysis matrix
+fastskill analysis matrix --threshold 0.8 --limit 5
+fastskill analysis matrix --full --json
 ```
 
 | Option | Description |
@@ -48,13 +48,13 @@ fastskill analyze matrix --full --json
 | `-l, --limit <N>` | Similar skills per skill (default `10`) |
 | `--full` | Show all pairs instead of condensed view |
 
-### analyze cluster
+### analysis cluster
 
 Groups skills by semantic similarity.
 
 ```bash
-fastskill analyze cluster
-fastskill analyze cluster -k 8 --min-size 2 --json
+fastskill analysis cluster
+fastskill analysis cluster -k 8 --min-size 2 --json
 ```
 
 | Option | Description |
@@ -63,13 +63,13 @@ fastskill analyze cluster -k 8 --min-size 2 --json
 | `--min-size <N>` | Hide smaller clusters (default `1`) |
 | `--format`, `--json` | Output selection |
 
-### analyze duplicates
+### analysis duplicates
 
 Finds near-duplicate skills.
 
 ```bash
-fastskill analyze duplicates
-fastskill analyze duplicates --threshold 0.92 --severity critical
+fastskill analysis duplicates
+fastskill analysis duplicates --threshold 0.92 --severity critical
 ```
 
 | Option | Description |
@@ -79,13 +79,13 @@ fastskill analyze duplicates --threshold 0.92 --severity critical
 | `--severity <LEVEL>` | `all`, `medium`, `high`, or `critical` |
 | `--format`, `--json` | Output selection |
 
-## fastskill doctor
+## fastskill cli doctor
 
 Check environment readiness for fastskill. Reports the status of the skills directory, `skill-project.toml`, embedding provider, API key, and auth token. Exits 0 when no hard failures are found; exits 1 when the skills directory is inaccessible.
 
 ```bash
-fastskill doctor
-fastskill doctor --json
+fastskill cli doctor
+fastskill cli doctor --json
 ```
 
 | Option | Description |
@@ -103,5 +103,5 @@ fastskill doctor --json
 
 ## See also
 
-- [Discovery commands](/cli-reference/discovery-commands) (search, reindex)
-- [Repository command](/cli-reference/repository-command) (`repos`)
+- [Discovery commands](/cli-reference/discovery-commands) (`skill search`, `index rebuild`)
+- [Repository commands](/cli-reference/repository-command) (`repo`)

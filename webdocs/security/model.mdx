@@ -7,12 +7,12 @@ description: "How FastSkill treats trust boundaries: read-only-by-default serve,
 
 FastSkill is a skill **package manager**, not a runtime. It installs, indexes, and serves skill
 directories; it does **not** execute skills, so there is no sandbox, no resource governor, and no
-per-request audit log to speak of. Its security model is about two things: what the `fastskill serve`
+per-request audit log to speak of. Its security model is about two things: what the `fastskill server serve`
 HTTP surface lets a caller do, and how repository credentials are handled.
 
-## `fastskill serve` is read-only by default
+## `fastskill server serve` is read-only by default
 
-Per ADR-0003, `fastskill serve` mounts **only read endpoints** unless you start it with
+Per ADR-0003, `fastskill server serve` mounts **only read endpoints** unless you start it with
 `--enable-write`. Reads (list/get skills, `POST /api/v1/search`, `POST /api/v1/resolve`,
 `GET /api/v1/status`, registry browse, manifest reads, the dashboard) are always available.
 
@@ -34,9 +34,9 @@ HTTP 403 Forbidden
 "Anything that is not a pure read is gated" — reindex and registry refresh are included because they
 are side-effecting (disk, network, embedding-API cost), not just because they are destructive. This
 is one switch: `--enable-write` enables all mutations at once. See the
-[serve command reference](/cli-reference/serve-command).
+[`server serve` reference](/cli-reference/serve-command).
 
-## `serve` is not a security boundary
+## `server serve` is not a security boundary
 
 FastSkill enforces **no authentication of its own**. There is no token endpoint, and API routes
 require no `Authorization` or `x-api-key` header. It handles no identity and no per-user
@@ -77,8 +77,8 @@ the token in your shell profile, CI secrets, or a secrets manager. Never commit 
 
 ## Reproducible, verifiable installs
 
-`fastskill install` resolves the manifest and writes a lockfile (`skills.lock`, or
-`global-skills.lock` with `--global`). `fastskill install --lock` installs the **exact** versions
+`fastskill project install` resolves the manifest and writes a lockfile (`skills.lock`, or
+`global-skills.lock` with `--global`). `fastskill project install --lock` installs the **exact** versions
 recorded in the lock, giving reproducible and verifiable installs for CI and locked environments.
 Commit both `skill-project.toml` and `skills.lock`.
 

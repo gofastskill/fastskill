@@ -4,7 +4,7 @@
 //! `ArgSpec` (id, `--long`, or short flag) colliding with a clap
 //! auto-generated flag (`--version`/`-V` propagated to every subcommand from
 //! the root, or `--help`/`-h`). Such a collision panics in debug builds the
-//! *instant* the offending command is built -- e.g. `fastskill update --help`
+//! *instant* the offending command is built -- e.g. `fastskill skill update --help`
 //! -- not just when the colliding flag is actually used.
 //!
 //! Concrete incident: `crates/fastskill-cli/src/commands/update.rs` declared
@@ -12,8 +12,8 @@
 //! collided with clap's auto-generated `--version`/`-V` (propagated to every
 //! subcommand via `Command::propagate_version(true)` on the root in
 //! `cli-framework`'s `build_clap_root`). This panicked on *every* invocation
-//! of `fastskill update`, including plain `--help`. An audit of the full
-//! command surface (driven by `fastskill spec --format json`, the same
+//! of `fastskill skill update`, including plain `--help`. An audit of the full
+//! command surface (driven by `fastskill cli spec --format json`, the same
 //! source of truth used by `spec_docs_parity_test.rs`) found the identical
 //! defect in `init` and `marketplace create` as well.
 //!
@@ -34,35 +34,35 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
-/// Command path separator used by `fastskill spec`'s JSON output (`"repos/add"`).
+/// Command path separator used by `fastskill cli spec` JSON (`"repo/add"`).
 const SPEC_PATH_SEP: char = '/';
 
 /// Leaf command paths from the live command tree, as `Vec<&str>` segments
 /// (e.g. `["repos", "add"]`, `["update"]`).
 fn leaf_command_paths() -> Vec<Vec<String>> {
     let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(["spec", "--format", "json"])
+        .args(["cli", "spec", "--format", "json"])
         .output()
-        .expect("spawn `fastskill spec --format json`");
+        .expect("spawn `fastskill cli spec --format json`");
 
     assert!(
         output.status.success(),
-        "`fastskill spec --format json` exited with {}\nstderr:\n{}",
+        "`fastskill cli spec --format json` exited with {}\nstderr:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
 
     let doc: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .expect("parse `fastskill spec --format json` stdout as JSON");
+        .expect("parse `fastskill cli spec --format json` stdout as JSON");
 
     doc["commands"]
         .as_array()
-        .expect("`commands` array in `fastskill spec` JSON output")
+        .expect("`commands` array in `fastskill cli spec` JSON output")
         .iter()
         .map(|c| {
             let path = c["path"]
                 .as_str()
-                .expect("command `path` string in `fastskill spec` JSON output");
+                .expect("command `path` string in `fastskill cli spec` JSON output");
             path.split(SPEC_PATH_SEP)
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
@@ -71,8 +71,8 @@ fn leaf_command_paths() -> Vec<Vec<String>> {
 }
 
 /// Every command path that should have a working `--help`: every leaf
-/// command, plus every intermediate group prefix (e.g. `["repos", "add"]`
-/// implies the group `["repos"]` also needs checking -- `fastskill repos
+/// command, plus every intermediate group prefix (e.g. `["repo", "add"]`
+/// implies the group `["repo"]` also needs checking -- `fastskill repo
 /// --help` builds and prints the same clap `Command` tree as any leaf under
 /// it).
 fn all_paths_including_groups(leaves: &[Vec<String>]) -> BTreeSet<Vec<String>> {
@@ -126,7 +126,7 @@ fn all_commands_help_succeeds() {
     let leaves = leaf_command_paths();
     assert!(
         !leaves.is_empty(),
-        "extracted zero command paths from `fastskill spec --format json` -- \
+        "extracted zero command paths from `fastskill cli spec --format json` -- \
          extraction logic is likely broken"
     );
 

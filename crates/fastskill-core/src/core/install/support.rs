@@ -43,7 +43,7 @@ pub(super) fn resolve_registry_version(
 
     let idx = cache.read_source_index(repo_name)?.ok_or_else(|| {
         ServiceError::Config(format!(
-            "no cached index for repository '{repo_name}'; run `fastskill repos refresh \
+            "no cached index for repository '{repo_name}'; run `fastskill repo refresh \
              {repo_name}` to resolve the newest version of '{skill}'"
         ))
     })?;
@@ -54,7 +54,7 @@ pub(super) fn resolve_registry_version(
         .ok_or_else(|| {
             ServiceError::Config(format!(
                 "skill '{skill}' not found in the cached index for repository '{repo_name}'; run \
-             `fastskill repos refresh {repo_name}` to refresh it"
+             `fastskill repo refresh {repo_name}` to refresh it"
             ))
         })?;
     // Validate every advertised value before filtering. Otherwise a malicious
@@ -86,7 +86,7 @@ pub(super) fn resolve_registry_version(
             format!("no version of '{skill}' satisfies the requested constraint")
         };
         ServiceError::Config(format!(
-            "{reason} in the cached index for repository '{repo_name}'; run `fastskill repos refresh \
+            "{reason} in the cached index for repository '{repo_name}'; run `fastskill repo refresh \
              {repo_name}` to refresh it"
         ))
     })?;
@@ -118,12 +118,12 @@ fn validate_resolved_version(version: String) -> Result<String, ServiceError> {
 /// touches). Used by [`FastSkillService::preflight`]'s `Origin::Repository`
 /// branch to persist a listing call it already made live, so a
 /// same-invocation update can resolve through the index instead of needing a
-/// separate `repos refresh`.
+/// separate `repo refresh`.
 ///
 /// `client.get_versions` (this function's only caller) has no `name`/
 /// `description` to offer, so an existing entry's `name`/`description`
 /// (spec 008) are left as they were rather than clobbered with blanks, and a
-/// newly-created entry gets empty strings until a `repos refresh` or a live
+/// newly-created entry gets empty strings until a `repo refresh` or a live
 /// marketplace fetch fills them in.
 pub(super) fn upsert_source_index_entry(
     cache: &SkillCache,
@@ -266,7 +266,7 @@ pub(super) fn safe_subdir_join(root: &Path, subdir: &Path) -> Result<PathBuf, Se
 /// `GitRef`'s `Display` (it has none). The `Default`/`Branch`/`Tag` arms
 /// delegate to [`crate::core::cache::GitResolutions::branch_or_tag_key`] — the
 /// single place that encoding lives — so this stays interchangeable with the
-/// resolutions `repos refresh` records (PRD 006, US-005). `Commit` has no
+/// resolutions `repo refresh` records (PRD 006, US-005). `Commit` has no
 /// branch/tag form and is encoded here, its only caller.
 pub(super) fn git_ref_cache_key(git_ref: &GitRef) -> String {
     match git_ref {

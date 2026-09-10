@@ -28,8 +28,8 @@ confirm/date them as the tester (or an agent) hits them.
   (x86_64, arm64)."` — macOS is a genuinely supported path, matching the README. If a tester
   still hits an install failure on macOS, triage it as a **new** finding, not this one.
 
-### K2 — Port 8080 collision between `serve` and `mcp serve` (Serve / MCP, S5 / S6)
-- **What:** `fastskill serve` defaults to `localhost:8080`; `fastskill mcp serve --transport http`
+### K2 — Port 8080 collision between `server serve` and `mcp serve` (Serve / MCP, S5 / S6)
+- **What:** `fastskill server serve` defaults to `localhost:8080`; `fastskill mcp serve --transport http`
   *also* defaults to `127.0.0.1:8080`. Running both with defaults collides.
 - **Source:** `crates/fastskill-cli/src/commands/serve.rs` defaults;
   `crates/fastskill-cli/src/commands/mcp.rs` defaults.
@@ -62,7 +62,7 @@ confirm/date them as the tester (or an agent) hits them.
 - **Expect the tester to hit it at:** 12.4 (spec-vs-docs diff), D.1/D.3/D.4 doc walks.
 - **Caveat:** confirm against the *tested released version* — some may already be fixed.
 
-### K6 — `optimize` subcommand flag names need help-vs-docs confirmation (Optimize, S10)
+### K6 — `optimization` flag names need help-vs-docs confirmation (Optimization, S10)
 - **What:** No real `optimize.toml` ships in-repo, and the exact flags for `status` / `inspect`
   / `export` / `resume` weren't pinned during authoring. The plan tells the tester to confirm
   each against `--help`.
@@ -70,21 +70,21 @@ confirm/date them as the tester (or an agent) hits them.
 - **Severity:** unknown until run — potential S3 doc drift.
 - **Expect at:** §10 (10.2–10.5).
 
-### K7 — `repos skills` errors for local repos ("is not an HTTP registry") (Repos, 7.8)
-- **What:** `repos skills <local-repo>` is expected to error because catalog listing requires
+### K7 — `repo skills` errors for local repositories ("is not an HTTP registry") (Repo, 7.8)
+- **What:** `repo skills <local-repo>` is expected to error because catalog listing requires
   an http-registry. This is **intended**; asserted by integration tests.
 - **Source:** `tests/cli/repos_integration_tests.rs:131`.
 - **Severity:** informational — triage "clear error" reports as not-a-bug; but if the *message*
   is confusing, that's a legit S3.
 - **FIXED (2026-08-18):** the sibling defect under the same plan step —
-  `repos skills nosuchrepo` (bare positional, no `--repository`) — used to miss this
+  `repo skills nosuchrepo` (bare positional, no `--repository`) — used to miss this
   domain logic entirely and fail during arg *parsing* instead: cli-framework's clap
-  adapter had no positional declared for `repos skills`, so it hit the generic
+  adapter had no positional declared for `repo skills`, so it hit the generic
   `error[E002]: unknown argument` path (never names the argument; boilerplate hint),
   and fastskill's `main.rs` then printed the error a second time because it didn't
-  recognize the already-reported `UsageError`. `repos skills` now declares an optional
+  recognize the already-reported `UsageError`. `repo skills` now declares an optional
   positional `REPOSITORY` arg (shorthand for `--repository`,
-  `crates/fastskill-cli/src/commands/repos.rs`), so `repos skills nosuchrepo` reaches
+  `crates/fastskill-cli/src/commands/repos.rs`), so `repo skills nosuchrepo` reaches
   this K7 code path and correctly reports `Repository 'nosuchrepo' not found`; the
   double-print in `main.rs` is fixed for all `UsageError`s, not just this command.
   Tracked live in `ci/quality/error_quality/suite.json` (`repos_skills_unknown_repo`);
@@ -98,15 +98,15 @@ confirm/date them as the tester (or an agent) hits them.
 - **Severity:** N/A for the plan; flagged so that if a tester *does* try the http-registry path
   and it times out, it's a known-inconclusive, not necessarily a product bug.
 
-### K9 — `search` defaults to Remote scope, silently missing indexed local skills (Search)
-- **What:** `fastskill search "<query>"` with neither `--local` nor `--repository` defaults to
+### K9 — `skill search` defaults to Remote scope, silently missing indexed local skills (Search)
+- **What:** `fastskill skill search "<query>"` with neither `--local` nor `--repository` defaults to
   **`SearchScope::Remote`**, per the code comment "Default to remote search (even if --remote is
   not explicit)". In a project with skills indexed locally (`.fastskill/index.db`) but no
-  registry/repository configured, this means `search` never consults the local index at all —
+  registry/repository configured, this means `skill search` never consults the local index at all —
   it prints `No skills found matching '<query>'` with no warning, no fallback to local, and no
   hint to try `--local`. Confirmed 2026-08-18 against v0.9.176: with two skills indexed
   (`k8s-debug`, `pdf-tools`, real embeddings), `search "why is my container restarting"` →
-  "No skills found matching...". `search --local --embedding true "why is my container
+  "No skills found matching...". `skill search --local --embedding true "why is my container
   restarting"` → correct semantic ranking, `k8s-debug` (0.504), `pdf-tools` (0.311). The failure
   is silent and misattributable: a user with no registry configured has every reason to assume
   their skills aren't indexed or embeddings are broken, when the actual cause is scope

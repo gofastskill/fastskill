@@ -57,6 +57,7 @@ impl IntoCommandSpec for ValidateArgs {
             summary: "Validate eval configuration and files",
             syntax: Some("eval validate [OPTIONS]"),
             category: Some("quality"),
+            help_order: Some(10),
             examples: vec!["fastskill eval validate --all"],
             args: vec![
                 ArgSpec {
@@ -172,7 +173,7 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
 
     if !resolution.found {
         return Err(CliError::Config(
-            "EVAL_CONFIG_MISSING: No skill-project.toml found. Run 'fastskill init' first."
+            "EVAL_CONFIG_MISSING: No skill-project.toml found. Run 'fastskill project init' first."
                 .to_string(),
         ));
     }

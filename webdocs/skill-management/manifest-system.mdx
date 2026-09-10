@@ -111,9 +111,9 @@ monitoring = { origin = { type = "repository", repo = "team-tools", skill = "mon
 ```
 
 **Install commands:**
-- `fastskill install` - Installs all skills (default + all groups)
-- `fastskill install --without dev` - Installs all except dev group
-- `fastskill install --only prod` - Installs only prod group
+- `fastskill project install` - Installs all skills (default + all groups)
+- `fastskill project install --without dev` - Installs all except dev group
+- `fastskill project install --only prod` - Installs only prod group
 
 ### Editable Installs
 
@@ -212,10 +212,10 @@ exact `commit_hash` or `checksum` when there is one.
 ### When Lock File is Updated
 
 The lock file is automatically updated when you:
-- Run `fastskill install`
-- Run `fastskill add <skill>`
-- Run `fastskill update`
-- Run `fastskill remove <skill>`
+- Run `fastskill project install`
+- Run `fastskill skill add <skill>`
+- Run `fastskill skill update`
+- Run `fastskill skill remove <skill>`
 
 **Never edit the lock file manually** - it's generated automatically to ensure accuracy.
 
@@ -225,10 +225,10 @@ The lock file is automatically updated when you:
 
 ```bash
 # 1. Add a skill to manifest
-fastskill add https://github.com/org/skill.git --group dev
+fastskill skill add https://github.com/org/skill.git --group dev
 
 # 2. Install all skills
-fastskill install
+fastskill project install
 
 # 3. Commit both files
 git add skill-project.toml skills.lock
@@ -239,21 +239,21 @@ git commit -m "Add development skill"
 
 ```bash
 # 1. Install from lock file (reproducible)
-fastskill install --lock
+fastskill project install --lock
 
 # 2. Only production skills
-fastskill install --without dev
+fastskill project install --without dev
 ```
 
 ### Team Collaboration
 
 ```bash
 # Developer 1: Adds a skill
-fastskill add --group dev pytest
+fastskill skill add --group dev pytest
 
 # Developer 2: Gets updates
 git pull
-fastskill install
+fastskill project install
 
 # Both have identical skill installations
 ```
@@ -323,7 +323,7 @@ another-skill = { origin = { type = "repository", repo = "team-tools", skill = "
 - The `id` field is required and must not contain forward slashes or scope information
 - The `version` field is also required
 - Skill name for display comes from `SKILL.md` frontmatter, not from `skill-project.toml`
-- Created using `fastskill init` command in the skill directory
+- Created using `fastskill project init` command in the skill directory
 - When generating `marketplace.json` or during skill registration, fields in `skill-project.toml` take precedence over `SKILL.md` frontmatter
 
 **Context Detection**: FastSkill automatically detects skill-level context when `skill-project.toml` exists in a directory containing `SKILL.md`, requiring the `[metadata]` section instead of `[dependencies]`.
@@ -357,7 +357,7 @@ monitoring = { origin = { type = "repository", repo = "team-tools", skill = "mon
 Use `--lock` flag for reproducible production deployments:
 
 ```bash
-fastskill install --lock
+fastskill project install --lock
 ```
 
 ### 4. Regular Updates
@@ -366,13 +366,13 @@ Keep skills up to date:
 
 ```bash
 # Check for updates
-fastskill update --check
+fastskill skill update --check
 
 # Update all skills
-fastskill update
+fastskill skill update
 
 # Update specific skill
-fastskill update my-skill-id
+fastskill skill update my-skill-id
 ```
 
 ### 5. Editable for Local Development
@@ -380,7 +380,7 @@ fastskill update my-skill-id
 Use editable installs for skills you're developing:
 
 ```bash
-fastskill add ./my-skill -e --group dev
+fastskill skill add ./my-skill -e --group dev
 ```
 
 ## Comparison with Other Package Managers
@@ -403,7 +403,7 @@ If your lock file doesn't match installed skills:
 
 ```bash
 # Regenerate lock file
-fastskill install
+fastskill project install
 ```
 
 ### Missing Skills
@@ -412,7 +412,7 @@ If skills are missing after `git pull`:
 
 ```bash
 # Install from lock file
-fastskill install --lock
+fastskill project install --lock
 ```
 
 ### Version Conflicts
@@ -421,9 +421,9 @@ If you see version conflicts:
 
 ```bash
 # Check what's installed
-fastskill list
+fastskill skill list
 
 # Update to resolve conflicts
-fastskill update
+fastskill skill update
 ```
 

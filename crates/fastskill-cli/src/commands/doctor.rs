@@ -43,9 +43,10 @@ impl IntoCommandSpec for DoctorArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Diagnose FastSkill configuration and environment",
-            syntax: Some("doctor [OPTIONS]"),
+            syntax: Some("cli doctor [OPTIONS]"),
             category: Some("setup"),
-            examples: vec!["fastskill doctor", "fastskill doctor --json"],
+            help_order: Some(10),
+            examples: vec!["fastskill cli doctor", "fastskill cli doctor --json"],
             args: vec![ArgSpec {
                 name: "json",
                 long: Some("json"),
@@ -142,8 +143,9 @@ pub async fn execute_doctor(
             DoctorCheckResult {
                 check: "project_toml".to_string(),
                 status: DoctorStatus::Warn,
-                message: "skill-project.toml not found. Run 'fastskill init' to create one."
-                    .to_string(),
+                message:
+                    "skill-project.toml not found. Run 'fastskill project init' to create one."
+                        .to_string(),
             }
         };
         checks.push(project_file_check);
@@ -487,7 +489,7 @@ mod tests {
         assert_eq!(DoctorStatus::Warn.to_string(), "warn");
         assert_eq!(DoctorStatus::Fail.to_string(), "fail");
         let spec = DoctorArgs::command_spec();
-        assert_eq!(spec.syntax, Some("doctor [OPTIONS]"));
+        assert_eq!(spec.syntax, Some("cli doctor [OPTIONS]"));
         assert_eq!(spec.args[0].long, Some("json"));
     }
 

@@ -1,4 +1,4 @@
-# `fastskill serve` is read-only by default; deployment security is external
+# `fastskill server serve` is read-only by default; deployment security is external
 
 ## Status
 
@@ -6,14 +6,14 @@ accepted
 
 ## Context & decision
 
-At the time of this decision, `fastskill serve` exposed destructive, state-mutating
+At the time of this decision, `fastskill server serve` exposed destructive, state-mutating
 endpoints: skill deletion removed directories, the older upgrade handler shelled out to
-`fastskill update`, and manifest/reindex/refresh routes rewrote state or spawned work. The
+`fastskill skill update`, and manifest/reindex/refresh routes rewrote state or spawned work. The
 audit in [spec 002](../../specs/002-codebase-issues-audit.md) found these routes carried **no in-app
 authentication** (SEC-1, SEC-2). ADR-0005 subsequently moved installation/update orchestration
 into core; the exposure boundary here remains applicable.
 
-`fastskill serve` is **local-first and single-user by default**: an operator runs it on their own
+`fastskill server serve` is **local-first and single-user by default**: an operator runs it on their own
 machine for a web UI / REST view over their own skills. A **deployed mode** (container behind an
 edge proxy) is supported but *secondary*, and is scoped as a **single-purpose appliance** — one
 instance per trust domain (one team / one purpose), **not** a shared multi-user platform.
@@ -29,7 +29,7 @@ We decide two things:
    requirement needs multiple distinct users with *different* permissions against one instance,
    that is a different product and this ADR does not cover it.
 
-2. **`serve` is read-only by default; mutation is opt-in via `--enable-write`.** With no flag, only
+2. **`server serve` is read-only by default; mutation is opt-in via `--enable-write`.** With no flag, only
    read endpoints are usable (list/get skills, `search`, `resolve`, `status`, dashboard, registry
    browse, manifest reads). Write routes remain registered but return 403 before dispatch.
    `--enable-write` enables **all** state-changing operations in one
@@ -55,7 +55,7 @@ they trigger for a legitimate caller, and most run in the **CLI** with no server
 fixed independently.
 
 The write-gate principle applies to **any** surface that mutates state, not just HTTP. The MCP
-server (`fastskill mcp serve`, kept separate from `serve` by design) exports the CLI's commands as
+server (`fastskill mcp serve`, kept separate from `server serve` by design) exports the CLI's commands as
 tools — mutating commands included — so it needs the same gate, and now has one: `mcp serve` takes
 the same `--enable-write` flag, spelled identically because it means the same thing. Without it the
 mutating tools are absent from `tools/list`, and a `tools/call` naming one is refused with JSON-RPC
@@ -64,12 +64,16 @@ are listed and dispatched normally.
 
 An earlier revision of this section recorded that MCP exposed no mutating tools and so needed no
 gate. That was already false when written: every mutating command was registered with
-`register_out`, which exports it as an MCP tool, so an `initialize` + `tools/call fastskill_remove`
+`register_out`, which exported it as an MCP tool, so an `initialize` +
+`tools/call fastskill_remove`
 over stdio deleted an installed skill. The claim is corrected here rather than dropped so the drift
 stays on the record.
 
+The `fastskill_remove` name above is historical. ADR-0010 replaces it with the explicit
+`fastskill_skill_remove` tool name.
+
 Both gates read **one** definition — `fastskill_core::write_ops::WRITE_OPERATIONS` — which names
-each mutating operation once and carries its HTTP routes and its command path. `serve` mounts its
+each mutating operation once and carries its HTTP routes and its command path. `server serve` mounts its
 write routes from that table and `mcp serve` derives blocked tool names from it. A shared table
 avoids divergent gate lists. Registration coverage requires every exported command to have an
 explicit classification and prevents an unknown command from becoming a read-only tool.
@@ -104,6 +108,9 @@ or integrity checks. HTTP handlers and MCP tools MUST call the same domain opera
   references MUST document the flag and the effects it enables; registration coverage MUST keep
   newly added tools classified.
 - No `FASTSKILL_API_TOKEN`, no `--insecure`, no bind-address policing — the app stays thin.
+
+[ADR-0010](0010-command-taxonomy.md) assigns the HTTP command to `server serve` and gives MCP tools
+their complete namespaced command paths. The exposure decision here is unchanged.
 
 ## Considered alternatives
 

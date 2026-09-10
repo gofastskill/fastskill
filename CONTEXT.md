@@ -1,8 +1,31 @@
 # FastSkill
 
-FastSkill is a package manager and operational toolkit for Claude Code-compatible **skills**: it installs them from sources, reconciles them against a manifest, and exposes them for discovery (search/read) by humans and agents.
+FastSkill is a package manager and operational toolkit for Claude Code-compatible **skills**. It
+installs them from origins, reconciles them against a manifest, and exposes them through
+`skill list`, `skill read`, and `skill search`.
 
 ## Language
+
+### Command taxonomy
+
+**Command path**:
+An explicit `<namespace> <action>` pair. Namespaces identify a resource or operational area;
+actions name the operation. The canonical namespaces are `skill`, `bundle`, `project`, `repo`,
+`marketplace`, `analysis`, `eval`, `optimization`, `index`, `cache`, `server`, `mcp`, and `cli`.
+A bare action or skill ID is not a command path. See
+[ADR-0010](./docs/adr/0010-command-taxonomy.md).
+
+**Skill lifecycle**:
+`skill add`, `skill update`, and `skill remove` manage explicitly selected individual skills.
+
+**Bundle lifecycle**:
+`bundle build`, `bundle add`, `bundle list`, `bundle update`, `bundle remove`, and
+`bundle override` manage bundle artifacts and ownership. Bundle artifacts are not accepted by
+`skill add`.
+
+**Project restoration**:
+`project init` creates `skill-project.toml`; `project install` restores the complete selected
+project, including skills and bundles.
 
 ### Core entities
 
@@ -14,14 +37,18 @@ A unit of agent capability defined by a `SKILL.md` (frontmatter + body) plus an 
 _Avoid_: project file, config.
 
 **Lock**:
-`skills.lock` — the *pinned* exact skill versions and bundle releases resolved from the Manifest. Used by `install --lock` for reproducible installs.
+`skills.lock` — the *pinned* exact skill versions and bundle releases resolved from the Manifest.
+Used by `project install --lock` for reproducible installs.
 _Avoid_: lockfile (in prose), pin file.
 
 **Installed skill**:
-A skill physically present in the **skills directory** (`.claude/skills/` by default). The skills directory — not the Manifest — is the source of truth for what `list` reports.
+A skill physically present in the **skills directory** (`.claude/skills/` by default). The skills
+directory — not the Manifest — is the source of truth for what `skill list` reports.
 
 **Reconciliation**:
-The comparison of the three states — Manifest (desired), Lock (pinned), skills directory (actual) — producing a status per skill: `ok`, `missing`, `extraneous`, `mismatch`. Owned by `list`.
+The comparison of the three states — Manifest (desired), Lock (pinned), skills directory
+(actual) — producing a status per skill: `ok`, `missing`, `extraneous`, `mismatch`. Owned by
+`skill list`.
 
 **Installation scope**:
 The project or global environment whose requirements and installed contents an
@@ -80,59 +107,84 @@ A skill outside the preset's selections that its customization rules allow a use
 These two axes — not the verb names — are what actually distinguish the read-side commands. The verbs should expose them, not hide them.
 
 **Selector**:
-*How* a skill is named for a read operation. Three values, one verb each: **all** (enumerate every installed skill — `list`), **by-id** (one exact skill — `read`, with `--meta`/`--tree` for the metadata/dependency view), **by-query** (semantic match — `search`). `show` is removed; its metadata/tree view is folded into `read --meta`.
+*How* a skill is named for a read operation. Three values, one action each: **all** (enumerate every
+installed skill — `skill list`), **by-id** (one exact skill — `skill read`, with
+`--meta`/`--tree`), and **by-query** (semantic match — `skill search`). The historical `show`
+command was removed; its metadata/tree view moved to `skill read --meta`.
 
 **Scope**:
-*Where* skills are read from. **local** = installed skills (+ the local vector index); **remote** = repository catalogs. `search` is the only command that spans both (`--local` / `--remote`, remote is the default).
+*Where* skills are read from. **local** = installed skills plus the local vector index;
+**remote** = repository catalogs. `skill search` is the only command that spans both
+(`--local` / `--remote`; remote is the default).
 _Avoid_: source (means a repository elsewhere), location.
 
 **Audience / depth**:
-Whether output is a human summary or machine-consumable detail. `read` and the `--json`/`--paths` flags on `search` serve agents; `list`/`show` tables serve humans. (Resolved: there is no distinct *resolve* concept — machine-readable query results are `search --local --json --paths`.)
+Whether output is a human summary or machine-consumable detail. `skill read` and the
+`--json`/`--paths` flags on `skill search` serve agents; `skill list` serves humans. There is no
+distinct *resolve* command; machine-readable query results use
+`skill search --local --json --paths`.
 
 ### Indexing
 
 **Embedding provider**:
-The LLM/embeddings backend (e.g. OpenAI) used to vectorize `SKILL.md` for semantic `search --local`. It is **optional and may be absent**: FastSkill must work with no embedding provider configured (keyword search only). Configuration presence is a first-class, inspectable state — `doctor` reports whether it is enabled.
+The LLM/embeddings backend (e.g. OpenAI) used to vectorize `SKILL.md` for semantic
+`skill search --local`. It is **optional and may be absent**: FastSkill must work with no embedding
+provider configured. `cli doctor` reports whether it is enabled.
 _Avoid_: "the LLM" (too broad), AI backend.
 
 **Vector index**:
-The local SQLite store of embeddings produced by `reindex`, consumed by `search --local` and by `analyze` (matrix/cluster/duplicates). Only meaningful when an **Embedding provider** is configured. Rebuilding it is therefore a *conditional* step, never an unconditional one — and every consumer (`search --local`, `analyze`) inherits the same provider precondition and `doctor` visibility.
+The local SQLite store of embeddings produced by `index rebuild`, consumed by
+`skill search --local` and `analysis matrix/cluster/duplicates`. It is meaningful only when an
+**Embedding provider** is configured. Rebuilding is conditional, and every semantic consumer
+inherits the same provider precondition and `cli doctor` visibility.
 
-**doctor**:
-A diagnostic command that reports environment readiness — chiefly whether an **Embedding provider** is configured, so users know if semantic `reindex`/`search --local` will work before they run them.
+**cli doctor**:
+A diagnostic command that reports environment readiness, chiefly whether an **Embedding provider**
+is configured, so users know if semantic `index rebuild` and `skill search --local` will work.
 
 ### Distribution
 
 The distribution commands form an orthogonal pipeline, not overlapping verbs:
 
 **Registry index**:
-The on-disk NDJSON catalog read by `fastskill serve`; populated externally (e.g. by the platform operator) for an **http-registry** repository; consumed by `repos skills` / `search --remote`. FastSkill's *native* catalog format.
+The on-disk NDJSON catalog read by `fastskill server serve`; populated externally for an
+**http-registry** repository; consumed by `repo skills` and `skill search --remote`. FastSkill's
+native catalog format.
 
 **marketplace.json**:
-A *distinct, first-class* catalog produced by `marketplace create`, consumed by plugin-marketplace tooling (e.g. Claude Code plugin marketplaces). **Not** interchangeable with the **Registry index** — two real formats for two different consumers; do not conflate or collapse them.
+A *distinct, first-class* catalog produced by `marketplace create`, consumed by plugin-marketplace
+tooling. It is not interchangeable with the **Registry index**.
 
 ### Repositories
 
 **Repository**:
-A configured remote (or local) source of skills, managed by `repos`. Types: `git-marketplace`, `http-registry`, `zip-url`, `local`. Conflicts resolved by **priority** (lower number = higher precedence).
-_Avoid_: **source**, **registry** — both are deprecated command aliases now folded into `repos`; do not reintroduce them as concepts.
+A configured remote or local origin catalog, managed by `repo`. Types: `git-marketplace`,
+`http-registry`, `zip-url`, and `local`. Conflicts resolve by **priority** (lower number = higher
+precedence).
+_Avoid_: **source**, **registry**, **repos** — historical command names must not be reintroduced as
+current concepts.
 
 **Origin**:
 Where a single installed skill came from — the install **intent** (what the user asked for), recorded as provenance on the installed skill. Variants: `git` (url + ref + subdir), `local` (a filesystem path — directory *or* `.zip` — plus `editable`, dir-only), `zip-url` (a remote zip), and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is intent only: the **resolved** facts (exact commit, resolved version, checksum, timestamps) live in the **Lock**, not in `Origin`. It is the single canonical model — replacing the former `SkillSource` (two colliding types), `SourceType`, `SourceSpecificFields`, and the flat `source_*` fields on the manifest/lock/skill records.
 _Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference; always names a concrete Repository) with **Repository** (the configured place itself).
 
 **Origin ref**:
-The *textual* form of an **Origin** — the single string a user types to name where a skill comes from (a git URL, a `.zip` URL, a local path, or `scope/skill`). It is resolved into a typed `Origin` by one seam, `Origin::infer(&str)`, which is the **only** place ref→`Origin` inference lives: both the CLI (`add`) and the HTTP install route call it, so the browser never re-implements detection. An Origin ref is *unresolved intent as text*; the `Origin` is *typed intent*; the **Lock** holds *resolved facts*. (Do not call it a "source" — banned.)
+The *textual* form of an **Origin** — the single string a user types to name where a skill comes
+from. It is resolved into a typed `Origin` by one seam, `Origin::infer(&str)`, which is the only
+place ref-to-`Origin` inference lives. Both `skill add` and the HTTP install route call it. An
+Origin ref is unresolved intent as text; the `Origin` is typed intent; the **Lock** holds resolved
+facts.
 
 ### Serving surfaces
 
 Two orthogonal, first-class ways to expose skills to a client — distinguished by *protocol/consumer*, not redundant:
 
-**serve**:
+**server serve**:
 The HTTP REST API + bundled web UI. Consumers: humans (browser), CI, REST clients.
 
-**mcp**:
-The Model Context Protocol server. Consumer: agents speaking MCP. Kept separate from `serve` on purpose — different transport, different audience. Do not fold one into the other.
+**mcp serve**:
+The Model Context Protocol server. Its consumers are agents speaking MCP. It remains separate from
+`server serve` because the protocol and audience differ.
 
 ### Evaluation
 
@@ -156,12 +208,20 @@ _Avoid_: Dashboard, page, export, scorecard (the measurement it renders)
 
 ## Resolved decisions
 
-- **`sync` is removed.** It wrote skills into an agent metadata file for *older agents that lacked native skill support*. Modern targets (Claude Code) read skills directly, so the command is obsolete. Propagation now has exactly two members: `install` (Manifest → skills dir) and `reindex` (skills dir → Vector index, conditional on an Embedding provider).
-- **`reindex` is conditional, never unconditional.** It runs only when an **Embedding provider** is configured. After mutating commands it may auto-run *only if* embeddings are enabled (config flag / `--reindex`/`--no-reindex` to override); with no provider it is skipped silently rather than failing. `doctor` surfaces the provider state.
-- **`disable` is removed (and `enable` is not added).** The enabled/disabled flag is vestigial — disabling a skill in place is not a real workflow; the lifecycle is install ↔ remove. Drop the `disable` command; do not expose the dormant `enable_skill` core method. (The `enabled` field/filter in core becomes dead weight pending a deeper cleanup.)
+- **Historical `sync` is removed.** Modern targets read skills directly. Propagation has exactly two
+  members: `project install` (Manifest → skills directory) and `index rebuild` (skills directory →
+  Vector index, conditional on an Embedding provider).
+- **`index rebuild` is conditional.** It runs only when an **Embedding provider** is configured.
+  Mutating commands may auto-run it only when embeddings are enabled; `--reindex` and
+  `--no-reindex` override configuration. `cli doctor` surfaces provider state.
+- **Historical `disable` is removed.** The lifecycle is `skill add` ↔ `skill remove`. Do not expose
+  the dormant `enable_skill` core method.
+- **Command paths use explicit namespaces.** Old root actions, plural `repo`, and implicit skill-ID
+  reads are removed without aliases. See [ADR-0010](./docs/adr/0010-command-taxonomy.md).
 
-## Open / pending
+## Related decisions
 
-- [ADR-0009](./docs/adr/0009-resolution-and-restoration-policy.md) proposes lock-first
-  restoration and explicit latest-stable resolution. The associated PRDs describe
-  target behavior; they do not establish that it is implemented.
+- [ADR-0009](./docs/adr/0009-resolution-and-restoration-policy.md) defines lock-first restoration
+  and explicit latest-stable resolution.
+- [ADR-0010](./docs/adr/0010-command-taxonomy.md) defines the command namespaces and breaking
+  migration policy.

@@ -5,7 +5,7 @@ description: "Diagnose and fix common FastSkill issues: lock files, embedding se
 
 # Troubleshooting
 
-Common issues and fixes when operating FastSkill. Run `fastskill doctor` first — it checks the
+Common issues and fixes when operating FastSkill. Run `fastskill cli doctor` first — it checks the
 skills directory, `skill-project.toml`, embedding configuration, `OPENAI_API_KEY`, and auth token.
 
 ## Lock File Issues
@@ -74,7 +74,7 @@ cp skills.lock skills.lock.backup
 rm skills.lock
 
 # Regenerate from skill-project.toml
-fastskill install
+fastskill project install
 ```
 
 This will re-resolve all dependencies and create a fresh lock file.
@@ -88,7 +88,7 @@ If `skills.lock` is committed to git:
 git checkout skills.lock
 
 # Verify it works
-fastskill install --lock
+fastskill project install --lock
 ```
 
 #### Option 3: Manually Fix TOML Syntax
@@ -98,7 +98,7 @@ If you know what's wrong, you can manually edit the file:
 1. Open `skills.lock` in a text editor
 2. Fix TOML syntax errors (check quotes, brackets, commas)
 3. Ensure all required fields are present
-4. Save and test with `fastskill install --lock`
+4. Save and test with `fastskill project install --lock`
 
 **Validation**: Use a TOML validator to check syntax:
 
@@ -119,7 +119,7 @@ cp ~/.config/fastskill/global-skills.lock ~/.config/fastskill/global-skills.lock
 rm ~/.config/fastskill/global-skills.lock
 
 # Reinstall global skills manually
-fastskill add --global <skill-name>
+fastskill skill add --global <skill-name>
 ```
 
 ---
@@ -171,13 +171,13 @@ dir $env:APPDATA\fastskill\
    ```bash
    # Linux/macOS
    export XDG_CONFIG_HOME="$HOME/.config"
-   fastskill add --global <skill>
+   fastskill skill add --global <skill>
    ```
 
    ```powershell
    # Windows PowerShell
    $env:XDG_CONFIG_HOME = "$HOME\.config"
-   fastskill add --global <skill>
+   fastskill skill add --global <skill>
    ```
 
 ---
@@ -212,7 +212,7 @@ dir $env:APPDATA\fastskill\
 
 3. Reconcile with manifest:
    ```bash
-   fastskill install
+   fastskill project install
    ```
 
 If you see unexpected changes in `git diff skills.lock`, this is likely due to the migration. The new format is deterministic and won't cause spurious diffs in future operations.
@@ -221,7 +221,7 @@ If you see unexpected changes in `git diff skills.lock`, this is likely due to t
 
 ### Skills.lock Not Deterministic (Pre-v2.0)
 
-**Symptom**: Every time you run `fastskill install` or `fastskill add`, `skills.lock` shows changes in git even though no dependencies changed.
+**Symptom**: Every time you run `fastskill project install` or `fastskill skill add`, `skills.lock` shows changes in git even though no dependencies changed.
 
 **Cause**: You're using an old version of FastSkill (≤ 0.9.111) with lock file format v1.0.0.
 
@@ -236,7 +236,7 @@ cd fastskill
 cargo build --release
 
 # Run any command to trigger migration
-fastskill install
+fastskill project install
 
 # Verify migration
 grep '^version = ' skills.lock
@@ -265,7 +265,7 @@ To avoid lock file issues:
 
 3. **Use `--lock` in CI** for reproducible builds:
    ```bash
-   fastskill install --lock
+   fastskill project install --lock
    ```
 
 4. **Don't manually edit lock files** unless you understand the TOML schema
@@ -282,7 +282,7 @@ If you encounter lock file issues not covered here:
 
 1. Check lock file format: `head -20 skills.lock`
 2. Validate TOML syntax with a validator
-3. Try regenerating with `rm skills.lock && fastskill install`
+3. Try regenerating with `rm skills.lock && fastskill project install`
 4. Report the issue at: https://github.com/yourusername/fastskill/issues
 
 Include:

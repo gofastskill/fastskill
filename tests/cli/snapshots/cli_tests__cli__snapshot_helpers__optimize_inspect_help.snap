@@ -1,10 +1,11 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Inspect per-step artifacts from a training run
 
-Usage: fastskill optimize inspect [OPTIONS] --step <step> <run-dir>
+Usage: fastskill optimization inspect [OPTIONS] --step <step> <run-dir>
 
 Arguments:
   <run-dir>  Path to the run directory
@@ -19,8 +20,8 @@ Options:
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: optimize inspect <run-dir> --step <n> [--show <mode>]
+Syntax: optimization inspect <run-dir> --step <n> [--show <mode>]
 
 Examples:
-  fastskill optimize inspect ./optimize-runs/run-1 --step 3
-  fastskill optimize inspect ./optimize-runs/run-1 --step 3 --show diffs
+  fastskill optimization inspect ./optimize-runs/run-1 --step 3
+  fastskill optimization inspect ./optimize-runs/run-1 --step 3 --show diffs

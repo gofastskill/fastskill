@@ -1,7 +1,7 @@
 //! `fastskill mcp serve` — the MCP server, with a runtime write gate.
 //!
 //! ADR-0003 makes read-only-by-default the rule for every surface that can
-//! mutate state, not just HTTP. `fastskill serve` implements it as an Axum
+//! mutate state, not just HTTP. `fastskill server serve` implements it as an Axum
 //! middleware over the routes in [`fastskill_core::write_ops`]; this module
 //! implements the same gate for MCP, over the *commands* in that same table:
 //!
@@ -9,7 +9,7 @@
 //!   a `tools/call` naming one is refused with `MCP_TOOL_DENIED`;
 //! * with `--enable-write`, they are listed and dispatched normally.
 //!
-//! The flag is spelled exactly as `fastskill serve --enable-write`, because it
+//! The flag is spelled exactly as `fastskill server serve --enable-write`, because it
 //! means the same thing.
 //!
 //! ## Why this replaces cli-framework's built-in `mcp serve`
@@ -84,6 +84,8 @@ pub fn group_metadata() -> GroupMetadata {
     GroupMetadata {
         summary: "MCP server management",
         hidden: false,
+        category: Some("Operations"),
+        help_order: Some(40),
     }
 }
 
@@ -124,6 +126,7 @@ impl IntoCommandSpec for McpServeArgs {
                 "mcp serve [--transport http|stdio] [--host H] [--port P] [--path PATH] [--enable-write]",
             ),
             category: Some("mcp"),
+            help_order: Some(10),
             examples: vec![
                 "fastskill mcp serve --transport stdio",
                 "fastskill mcp serve --transport stdio --enable-write",
@@ -457,20 +460,23 @@ mod tests {
     fn mutating_tool_names_cover_the_known_writers() {
         let names = mutating_tool_names("fastskill");
         for expected in [
-            "fastskill_init",
-            "fastskill_install",
-            "fastskill_add",
-            "fastskill_update",
-            "fastskill_remove",
-            "fastskill_reindex",
-            "fastskill_repos_add",
-            "fastskill_repos_remove",
-            "fastskill_repos_update",
-            "fastskill_repos_refresh",
+            "fastskill_project_init",
+            "fastskill_project_install",
+            "fastskill_skill_add",
+            "fastskill_skill_update",
+            "fastskill_skill_remove",
+            "fastskill_index_rebuild",
+            "fastskill_repo_add",
+            "fastskill_repo_remove",
+            "fastskill_repo_update",
+            "fastskill_repo_refresh",
             "fastskill_marketplace_create",
             "fastskill_bundle_build",
+            "fastskill_bundle_add",
+            "fastskill_bundle_update",
+            "fastskill_bundle_remove",
             "fastskill_bundle_override",
-            "fastskill_optimize_run",
+            "fastskill_optimization_run",
         ] {
             assert!(names.contains(expected), "{} was not gated", expected);
         }
@@ -480,11 +486,12 @@ mod tests {
     fn read_only_tools_are_not_gated() {
         let names = mutating_tool_names("fastskill");
         for readonly in [
-            "fastskill_list",
-            "fastskill_read",
-            "fastskill_search",
-            "fastskill_doctor",
-            "fastskill_repos_list",
+            "fastskill_skill_list",
+            "fastskill_skill_read",
+            "fastskill_skill_search",
+            "fastskill_cli_doctor",
+            "fastskill_repo_list",
+            "fastskill_bundle_list",
         ] {
             assert!(!names.contains(readonly), "{} must stay exported", readonly);
         }

@@ -12,14 +12,14 @@ use tempfile::TempDir;
 
 #[test]
 fn test_skillopt_help() {
-    let result = run_fastskill_command(&["optimize", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings("optimize_help", &result.stdout, &cli_snapshot_settings());
 }
 
 #[test]
 fn test_skillopt_run_help() {
-    let result = run_fastskill_command(&["optimize", "run", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "run", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
         "optimize_run_help",
@@ -30,7 +30,7 @@ fn test_skillopt_run_help() {
 
 #[test]
 fn test_skillopt_resume_help() {
-    let result = run_fastskill_command(&["optimize", "resume", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "resume", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
         "optimize_resume_help",
@@ -41,7 +41,7 @@ fn test_skillopt_resume_help() {
 
 #[test]
 fn test_skillopt_status_help() {
-    let result = run_fastskill_command(&["optimize", "status", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "status", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
         "optimize_status_help",
@@ -52,7 +52,7 @@ fn test_skillopt_status_help() {
 
 #[test]
 fn test_skillopt_inspect_help() {
-    let result = run_fastskill_command(&["optimize", "inspect", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "inspect", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
         "optimize_inspect_help",
@@ -63,7 +63,7 @@ fn test_skillopt_inspect_help() {
 
 #[test]
 fn test_skillopt_export_help() {
-    let result = run_fastskill_command(&["optimize", "export", "--help"], None);
+    let result = run_fastskill_command(&["optimization", "export", "--help"], None);
     assert!(result.success);
     assert_snapshot_with_settings(
         "optimize_export_help",
@@ -78,7 +78,7 @@ fn test_skillopt_export_help() {
 fn test_skillopt_run_config_missing() {
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "run",
             "--config",
             "/tmp/nonexistent-skillopt-config-xyz.toml",
@@ -125,7 +125,12 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        &[
+            "optimization",
+            "run",
+            "--config",
+            config_path.to_str().unwrap(),
+        ],
         None,
     );
     assert!(!result.success);
@@ -179,7 +184,12 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        &[
+            "optimization",
+            "run",
+            "--config",
+            config_path.to_str().unwrap(),
+        ],
         None,
     );
     assert!(!result.success);
@@ -220,7 +230,12 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        &[
+            "optimization",
+            "run",
+            "--config",
+            config_path.to_str().unwrap(),
+        ],
         None,
     );
     assert!(!result.success);
@@ -260,7 +275,12 @@ timeout_seconds = 30
     fs::write(&config_path, toml).unwrap();
 
     let result = run_fastskill_command(
-        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        &[
+            "optimization",
+            "run",
+            "--config",
+            config_path.to_str().unwrap(),
+        ],
         None,
     );
     assert!(!result.success);
@@ -336,7 +356,12 @@ fn test_skillopt_run_then_resume_real_layout() {
     fs::write(&config_path, roundtrip_config_toml()).unwrap();
 
     let run_result = run_fastskill_command(
-        &["optimize", "run", "--config", config_path.to_str().unwrap()],
+        &[
+            "optimization",
+            "run",
+            "--config",
+            config_path.to_str().unwrap(),
+        ],
         None,
     );
     assert!(
@@ -386,7 +411,7 @@ fn test_skillopt_run_then_resume_real_layout() {
 
     // And the actual payoff: resume works on the layout run produced.
     let resume_result =
-        run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+        run_fastskill_command(&["optimization", "resume", run_dir.to_str().unwrap()], None);
     let combined = format!("{}{}", resume_result.stdout, resume_result.stderr);
     assert!(
         !combined.contains("SKILLOPT_SKILL_NOT_FOUND")
@@ -444,7 +469,8 @@ timeout_seconds = 30
 "#;
     fs::write(run_dir.join("optimize.toml"), toml).unwrap();
 
-    let result = run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    let result =
+        run_fastskill_command(&["optimization", "resume", run_dir.to_str().unwrap()], None);
     assert!(!result.success);
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
@@ -493,7 +519,8 @@ timeout_seconds = 30
 "#;
     fs::write(run_dir.join("optimize.toml"), toml).unwrap();
 
-    let result = run_fastskill_command(&["optimize", "resume", run_dir.to_str().unwrap()], None);
+    let result =
+        run_fastskill_command(&["optimization", "resume", run_dir.to_str().unwrap()], None);
     assert!(!result.success);
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
@@ -507,7 +534,7 @@ timeout_seconds = 30
 fn test_skillopt_resume_missing_run_dir() {
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "resume",
             "/tmp/nonexistent-skillopt-run-dir-xyz",
         ],
@@ -528,7 +555,7 @@ fn test_skillopt_export_missing_best_skill() {
     // Run dir exists but has no best_skill.md
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "export",
             dir.path().to_str().unwrap(),
             "--out",
@@ -608,7 +635,7 @@ fn test_skillopt_inspect_show_patches_reads_real_layout() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -637,7 +664,7 @@ fn test_skillopt_inspect_show_gate_reads_real_layout() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -666,7 +693,7 @@ fn test_skillopt_inspect_show_skips_reads_update_json() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -709,7 +736,7 @@ fn test_skillopt_inspect_show_diffs_missing_next_version_prints_message() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -756,7 +783,7 @@ fn test_skillopt_inspect_show_diffs_renders_diff_when_both_versions_exist() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -822,7 +849,7 @@ fn test_skillopt_inspect_diffs_after_rejected_step_uses_accepted_version_count()
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -856,7 +883,7 @@ fn test_skillopt_inspect_show_all_includes_rollouts() {
 
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "inspect",
             dir.path().to_str().unwrap(),
             "--step",
@@ -891,7 +918,7 @@ fn test_skillopt_export_byte_identical() {
     let out_path = dir.path().join("exported_skill.md");
     let result = run_fastskill_command(
         &[
-            "optimize",
+            "optimization",
             "export",
             dir.path().to_str().unwrap(),
             "--out",

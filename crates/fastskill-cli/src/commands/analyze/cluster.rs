@@ -35,11 +35,12 @@ impl IntoCommandSpec for ClusterArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Group skills by semantic similarity",
-            syntax: Some("analyze cluster [OPTIONS]"),
+            syntax: Some("analysis cluster [OPTIONS]"),
             category: Some("analysis"),
+            help_order: Some(20),
             examples: vec![
-                "fastskill analyze cluster",
-                "fastskill analyze cluster --num-clusters 8 --format json",
+                "fastskill analysis cluster",
+                "fastskill analysis cluster --num-clusters 8 --format json",
             ],
             args: vec![
                 ArgSpec {
@@ -155,7 +156,7 @@ pub async fn execute_cluster(ctx: AnalysisContext, args: ClusterArgs) -> CliResu
 
     if all_skills[0].embedding.is_empty() {
         return Err(CliError::Validation(
-            "Skills have empty embeddings. Run 'fastskill reindex' to rebuild the index."
+            "Skills have empty embeddings. Run 'fastskill index rebuild' to rebuild the index."
                 .to_string(),
         ));
     }

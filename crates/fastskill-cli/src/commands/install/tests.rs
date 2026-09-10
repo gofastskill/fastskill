@@ -33,7 +33,8 @@ async fn test_execute_install_no_manifest() {
     assert!(result.is_err(), "Expected error, got: {:?}", result);
     if let Err(CliError::Config(msg)) = result {
         assert!(
-            (msg.contains("skill-project.toml not found") && msg.contains("fastskill init"))
+            (msg.contains("skill-project.toml not found")
+                && msg.contains("fastskill project init"))
                 || msg.contains("skill-project.toml")
                     && (msg.contains("not found") || msg.contains("Manifest file not found")),
             "Error message must mention skill-project.toml and creation/init: '{}'",

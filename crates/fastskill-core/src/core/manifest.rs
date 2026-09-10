@@ -730,7 +730,7 @@ impl SkillProjectToml {
                     return Err(
                         "Project-level skill-project.toml (at project root) requires [dependencies] section. \
                         Add '[dependencies]' section to manage skill dependencies. \
-                        Use 'fastskill add <skill-id>' to add skills.".to_string()
+                        Use 'fastskill skill add <skill-id>' to add skills.".to_string()
                     );
                 }
 
@@ -745,7 +745,7 @@ impl SkillProjectToml {
                 if !has_skills_directory {
                     return Err(
                         "Project-level skill-project.toml requires [tool.fastskill] with skills_directory. \
-                        Run 'fastskill init --skills-dir <path>' or add [tool.fastskill] with skills_directory = \"...\".".to_string()
+                        Run 'fastskill project init --skills-dir <path>' or add [tool.fastskill] with skills_directory = \"...\".".to_string()
                     );
                 }
             }

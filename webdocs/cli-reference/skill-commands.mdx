@@ -1,11 +1,12 @@
 ---
-title: "Skill Commands"
-description: "FastSkill CLI commands for skill management including registration, validation, and lifecycle operations."
+title: "Skill and project commands"
+description: "Manage individual skills and restore projects through explicit skill and project namespaces."
 ---
 
 ## Overview
 
-Skill commands provide comprehensive management of FastSkill skills through command line interface. These commands allow you to register, install, update, remove, and manage skills in your FastSkill ecosystem.
+Use `fastskill skill` to manage individual skills. Use `fastskill project` to create a manifest and
+restore all declared skills and bundles.
 
 <Callout>
 For detailed documentation on specific commands, see the dedicated command pages linked below.
@@ -13,26 +14,26 @@ For detailed documentation on specific commands, see the dedicated command pages
 
 ## Command Reference
 
-### fastskill init
+### fastskill project init
 
 Initialize `skill-project.toml` for skill authors in current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
 
 <Callout type="info">
-See [init Command](/cli-reference/init-command) for complete documentation with all flags and examples.
+See [`project init`](/cli-reference/init-command) for complete flags and examples.
 </Callout>
 
 ```bash
 # Create skill-project.toml interactively
-fastskill init
+fastskill project init
 
 # Set version directly
-fastskill init --set-version 1.2.3
+fastskill project init --set-version 1.2.3
 
 # Skip prompts, use defaults
-fastskill init --yes
+fastskill project init --yes
 
 # Force overwrite existing skill-project.toml
-fastskill init --force
+fastskill project init --force
 ```
 
 **What it does**:
@@ -49,18 +50,18 @@ fastskill init --force
 - `--author <AUTHOR>`: Set skill author
 - `--download-url <URL>`: Set download URL
 
-### fastskill read
+### fastskill skill read
 
 Retrieve skill documentation and base directory path in an agent-optimized format. This command is designed for programmatic consumption by AI agents and automation tools.
 
 ```bash
 # Read a skill by ID
-fastskill read <skill-id>
+fastskill skill read <skill-id>
 
 # Examples
-fastskill read pptx
-fastskill read data-analyzer
-fastskill read web-scraper
+fastskill skill read pptx
+fastskill skill read data-analyzer
+fastskill skill read web-scraper
 ```
 
 **Output Format**:
@@ -126,28 +127,28 @@ Adds a new slide to an existing presentation.
 - Read-only operation (does not execute scripts or modify data)
 - Only works with already-installed skills
 
-You can also run `fastskill <skill-id>` with no subcommand; it routes to the same read behavior.
+A skill ID must follow the explicit `skill read` path. Bare skill IDs are rejected.
 
-### fastskill install
+### fastskill project install
 
 Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 <Callout type="info">
-See [install Command](/cli-reference/install-command) for complete documentation with groups, lockfile, and reconciliation features.
+See [`project install`](/cli-reference/install-command) for groups, lockfile, and reconciliation.
 </Callout>
 
 ```bash
 # Install all skills from skill-project.toml
-fastskill install
+fastskill project install
 
 # Install without dev group skills
-fastskill install --without dev
+fastskill project install --without dev
 
 # Install only production group skills
-fastskill install --only prod
+fastskill project install --only prod
 
 # Install and verify the exact lock without network access
-fastskill install --lock --offline
+fastskill project install --lock --offline
 ```
 
 **Options**:
@@ -156,29 +157,29 @@ fastskill install --lock --offline
 - `--lock`: Install from skills.lock (exact versions) instead of resolving from skill-project.toml
 - `--offline`: Use verified local and cached inputs without network, refresh, or automatic indexing
 
-### fastskill update
+### fastskill skill update
 
 Update skills in skills storage directory to their latest versions from source. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 <Callout type="info">
-See [update Command](/cli-reference/update-command) for complete documentation of the working flags.
+See [`skill update`](/cli-reference/update-command) for complete flag documentation.
 </Callout>
 
 ```bash
 # Update all skills
-fastskill update
+fastskill skill update
 
 # Update specific skill
-fastskill update my-skill-id
+fastskill skill update my-skill-id
 
 # Check for updates without installing
-fastskill update --check
+fastskill skill update --check
 
 # Show what would be updated
-fastskill update --dry-run
+fastskill skill update --dry-run
 
 # Move one repository skill to an exact version
-fastskill update my-skill-id --to-version 2.1.0
+fastskill skill update my-skill-id --to-version 2.1.0
 ```
 
 **Options**:
@@ -191,35 +192,35 @@ fastskill update my-skill-id --to-version 2.1.0
 - `--offline`: Use verified cached/local inputs only
 - `--reindex` / `--no-reindex`: Control whether the vector index is rebuilt after updating
 
-### fastskill read (metadata and tree)
+### fastskill skill read (metadata and tree)
 
 Display skill metadata or dependency tree. Use `--meta` for structured metadata and `--tree` for the dependency tree.
 
 ```bash
 # Read full SKILL.md content (default)
-fastskill read my-skill-id
+fastskill skill read my-skill-id
 
 # Show structured metadata (replaces `fastskill show <id>`)
-fastskill read my-skill-id --meta
+fastskill skill read my-skill-id --meta
 
 # Show dependency tree (replaces `fastskill show <id> --tree`)
-fastskill read my-skill-id --tree
+fastskill skill read my-skill-id --tree
 
 # Metadata and tree together
-fastskill read my-skill-id --meta --tree
+fastskill skill read my-skill-id --meta --tree
 
 # Metadata as JSON
-fastskill read my-skill-id --meta --json
+fastskill skill read my-skill-id --meta --json
 
 # List all installed skills
-fastskill list
+fastskill skill list
 ```
 
 <Callout>
-`fastskill show` has been removed. Use `fastskill read <id> --meta` to view skill metadata or `fastskill list` to enumerate all installed skills.
+`fastskill show` has been removed. Use `fastskill skill read <id> --meta` to view skill metadata or `fastskill skill list` to enumerate all installed skills.
 </Callout>
 
-### fastskill add
+### fastskill skill add
 
 Add a skill from a source (git URL, local folder, or zip file) and install it to the skills storage directory. Updates both `skill-project.toml` and `skills.lock`.
 
@@ -229,31 +230,31 @@ Add a skill from a source (git URL, local folder, or zip file) and install it to
 
 ```bash
 # Add skill from git URL
-fastskill add https://github.com/org/skill.git
+fastskill skill add https://github.com/org/skill.git
 
 # Add skill from a subdirectory (GitHub tree URL)
-fastskill add "https://github.com/org/repo/tree/main/path/to/skill"
+fastskill skill add "https://github.com/org/repo/tree/main/path/to/skill"
 
 # Add skill in editable mode (for local development)
-fastskill add ./local-skill -e
+fastskill skill add ./local-skill -e
 
 # Add skill to a group
-fastskill add https://github.com/org/skill.git --group dev
+fastskill skill add https://github.com/org/skill.git --group dev
 
 # Add editable skill to dev group
-fastskill add ./local-skill -e --group dev
+fastskill skill add ./local-skill -e --group dev
 
 # Add all skills under a directory recursively
-fastskill add ./skills -r
+fastskill skill add ./skills -r
 
 # Add all skills recursively with editable mode and group
-fastskill add ./skills -r -e --group dev
+fastskill skill add ./skills -r -e --group dev
 
 # Add the newest stable release from a selected repository
-fastskill add scope/reviewer@latest --repository team
+fastskill skill add scope/reviewer@latest --repository team
 
 # Add an exact cached release without network access
-fastskill add scope/reviewer@1.2.0 --repository team --offline
+fastskill skill add scope/reviewer@1.2.0 --repository team --offline
 ```
 
 **Git URL formats:**
@@ -270,19 +271,19 @@ fastskill add scope/reviewer@1.2.0 --repository team --offline
 - `--tag <TAG>`: Git tag to checkout (for git URLs)
 - `--force`: Force registration even if skill already exists
 
-### fastskill remove
+### fastskill skill remove
 
 Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
 
 ```bash
 # Remove skill (with confirmation)
-fastskill remove my-skill-id
+fastskill skill remove my-skill-id
 
 # Force removal without confirmation
-fastskill remove my-skill-id --force
+fastskill skill remove my-skill-id --force
 
 # Remove multiple skills
-fastskill remove skill1 skill2 skill3
+fastskill skill remove skill1 skill2 skill3
 ```
 
 **Options**:
@@ -293,46 +294,46 @@ Removing a direct root detaches that declaration and retains content still requi
 root or bundle. Removing an ID that is only transitive fails and names its owners. `--force`
 skips confirmation; it does not bypass ownership, integrity, or local-edit protection.
 
-### fastskill repos
+### fastskill repo
 
 Manage skill repositories and browse remote skill catalog for discovering and installing skills.
 
 ```bash
 # Add a repository
-fastskill repos add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
+fastskill repo add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
 
 # List all repositories
-fastskill repos list
+fastskill repo list
 
 # Remove a repository
-fastskill repos remove team-tools
+fastskill repo remove team-tools
 
 # Update repository metadata
-fastskill repos update team-tools --branch develop
+fastskill repo update team-tools --branch develop
 
 # List skills from a repository
-fastskill repos skills
+fastskill repo skills
 
 # Show skill details
-fastskill repos show skill-id
+fastskill repo show skill-id
 ```
 
-### fastskill list
+### fastskill skill list
 
 List locally installed skills with reconciliation against project and lock files. Similar to `pip list` or `uv list`.
 
 ```bash
 # List all installed skills (table format, default)
-fastskill list
+fastskill skill list
 
 # List in JSON format
-fastskill list --json
+fastskill skill list --json
 
 # Explicitly request grid format
-fastskill list --format grid
+fastskill skill list --format grid
 
 # XML output for agent consumption
-fastskill list --format xml
+fastskill skill list --format xml
 ```
 
 **Output Format**:
@@ -376,19 +377,19 @@ fastskill list --format xml
 
 ```bash
 # 1. Add skill from Git repository
-fastskill add https://github.com/org/my-skill.git
+fastskill skill add https://github.com/org/my-skill.git
 
 # 2. List skills to verify installation
-fastskill list
+fastskill skill list
 
 # 3. Show skill metadata
-fastskill read my-skill --meta
+fastskill skill read my-skill --meta
 
 # 4. Update to latest version
-fastskill update my-skill
+fastskill skill update my-skill
 
 # 5. Remove skill when no longer needed
-fastskill remove my-skill --force
+fastskill skill remove my-skill --force
 ```
 
 ### Batch Operations
@@ -396,29 +397,31 @@ fastskill remove my-skill --force
 ```bash
 # Install multiple local skills (editable) and install
 for dir in ./skills/*; do
-  fastskill add "$dir" -e --group dev
+  fastskill skill add "$dir" -e --group dev
 done
 
-fastskill install
-fastskill reindex
+fastskill project install
+fastskill index rebuild
 ```
 
 ### CI/CD Integration
 
 ```bash
 # Install with locked versions for reproducible builds
-fastskill install --lock --without dev
+fastskill project install --lock --without dev
 
 # Reindex for search (auto-triggered after add/install/update/remove when embedding is configured)
-fastskill reindex
+fastskill index rebuild
 
 # Check environment readiness
-fastskill doctor
+fastskill cli doctor
 
 # Verify installation
-fastskill list
+fastskill skill list
 ```
 
 <Callout>
-Skill commands support both interactive use and automation. Use appropriate options for your workflow. Reindex runs automatically after `add`/`install`/`update`/`remove` when an embedding provider is configured; use `--no-reindex` to suppress or `fastskill doctor` to check environment readiness.
+Skill commands support interactive use and automation. Index rebuilding runs automatically after
+`skill add`, `project install`, `skill update`, and `skill remove` when an embedding provider is
+configured. Use `--no-reindex` to suppress it or `fastskill cli doctor` to check readiness.
 </Callout>

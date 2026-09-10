@@ -44,7 +44,7 @@ UX extension. Shipping a document or a passing help test does not complete a PRD
 | F07 | Update flags ignored, global timestamps-only, failure exits zero | C-03–C-06; C-09 |
 | F08 | Removal breaks retained dependency; missing declaration cannot be removed | S-04; S-06–S-10 |
 | F09 | Global/storage flags and nested Lock roots disagree | S-02–S-03; C-13; P-02 |
-| F10 | Read-only MCP optimize export writes its destination | P-08–P-11 |
+| F10 | Read-only MCP `optimization export` writes its destination | P-08–P-11 |
 | F11 | HTTP edits echo unpersisted values or discard origin/groups | P-03–P-06 |
 | F12 | List compares presence and misses actual revision/content drift | C-11–C-12 |
 | F13 | Locked group filters ignored; only includes ungrouped roots | R-12; R-15–R-16 |
@@ -63,21 +63,22 @@ locations (R-03). No separate status/why/sync command family is planned.
 
 ## Command coverage
 
-| Commands | Count | Primary PRD concerns |
+| Command paths | Count | Primary PRD concerns |
 | --- | ---: | --- |
-| add, install, update, remove | 4 | State, resolution, command outcomes |
-| bundle build, bundle override | 2 | State/ownership; artifact integrity; MCP effects |
-| list, read, search | 3 | Reconciliation, scope, discovery and output |
-| init, doctor, reindex | 3 | Context, readiness, validation and indexing |
-| repos add, remove, update, list, info, test, refresh, show, skills, versions | 10 | Repository configuration/capabilities, acquisition and canonical references |
-| cache info, cache clean | 2 | Cache versus managed state; effects |
+| skill add, remove, update, list, read, search | 6 | State, reconciliation, resolution, discovery, output |
+| bundle build, add, list, update, remove, override | 6 | State/ownership; artifact integrity; MCP effects |
+| project init, install | 2 | Context and project restoration |
+| repo add, remove, update, list, info, test, refresh, show, skills, versions | 10 | Repository configuration/capabilities, acquisition and canonical references |
 | marketplace create | 1 | Distinct catalog role; artifact effects |
-| serve; mcp serve, install, list | 4 | API parity, context and effect classification |
-| analyze matrix, cluster, duplicates | 3 | Selected index, output and actual effect classification |
+| analysis matrix, cluster, duplicates | 3 | Selected index, output and actual effect classification |
 | eval validate, run, judge, score, scorecard, report | 6 | Preserve pipeline; output and actual effect classification |
-| optimize run, resume, status, inspect, export | 5 | Preserve workflow; explicit execution/export effects |
-| completion, spec | 2 | Authoritative schema and generated discoverability |
-| Total | 45 | All exported command paths in the audit baseline |
+| optimization run, resume, status, inspect, export | 5 | Preserve workflow; explicit execution/export effects |
+| index rebuild | 1 | Readiness, validation and indexing |
+| cache info, clean | 2 | Cache versus managed state; effects |
+| server serve | 1 | HTTP API parity, context and effect classification |
+| mcp serve, install, list | 3 | MCP parity, context and effect classification |
+| cli doctor, completion, spec | 3 | Readiness, authoritative schema, discoverability |
+| Total | 49 | All canonical command paths under ADR-0010 |
 
 ## Decisions and scope
 

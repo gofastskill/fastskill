@@ -540,7 +540,7 @@ fn build_explicit_origin(source: &SkillSource, args: &AddArgs) -> CliResult<Orig
             } else {
                 manager.get_default_repository().ok_or_else(|| {
                     CliError::Config(
-                        "No default repository configured. Use 'fastskill repos add' to add a repository."
+                        "No default repository configured. Use 'fastskill repo add' to add a repository."
                             .to_string(),
                     )
                 })?

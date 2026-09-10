@@ -66,13 +66,13 @@ cargo insta test --accept --test-runner nextest
 
 ```shell
 # Add a skill from local path
-cargo run --bin fastskill -- add ./path/to/skill
+cargo run --bin fastskill -- skill add ./path/to/skill
 
 # Search for skills
-cargo run --bin fastskill -- search "query"
+cargo run --bin fastskill -- skill search "query"
 
 # Start the web server
-cargo run --bin fastskill -- serve
+cargo run --bin fastskill -- server serve
 ```
 
 ## General recommendations for all crates
@@ -95,7 +95,7 @@ cargo run --bin fastskill -- serve
 Bundle lifecycle code spans `crates/fastskill-core/src/core/bundle*.rs`, the typed CLI commands,
 and the manifest and lock files. Preserve these invariants when changing it:
 
-- `fastskill install --lock` restores bundle identity, version, artifact, digest, and members from
+- `fastskill project install --lock` restores bundle identity, version, artifact, digest, and members from
   `skills.lock`; it must not select a different release from the manifest.
 - Direct, transitive, bundle, and personal-override ownership must remain distinct. Removing one
   owner must not delete content that another retained root still requires.
@@ -130,7 +130,7 @@ Keep these selection rules consistent across commands and APIs:
 
 - `id@1.2.0` is exact; omitted versions and `@latest` select the newest stable repository release.
 - downloaded repository metadata must match the catalog-selected ID and version before apply;
-- strict `install --lock` verifies locked identity, revision, and digest and does not rewrite the
+- strict `project install --lock` verifies locked identity, revision, and digest and does not rewrite the
   lock file;
 - ungrouped roots belong to `default`; group selection applies to roots and then includes their
   required closure;
@@ -254,7 +254,7 @@ python3 scripts/check-modified-rust-coverage.py origin/main coverage-summary.jso
 Tests requiring optional features will be skipped if those features are not enabled.
 
 `crates/fastskill-cli/tests/docs_subcommand_lists_test.rs` and `spec_docs_parity_test.rs` gate
-documented command lists against `fastskill spec`; a new or renamed command that isn't
+documented command lists against `fastskill cli spec`; a new or renamed command that isn't
 reflected in the docs tables they scan fails `cargo nextest run`.
 
 ### Local testing
@@ -263,16 +263,16 @@ You can invoke your development version of fastskill with `cargo run --bin fasts
 
 ```shell
 # Add a skill from a local path
-cargo run --bin fastskill -- add ./path/to/skill
+cargo run --bin fastskill -- skill add ./path/to/skill
 
 # Search for skills
-cargo run --bin fastskill -- search "data processing"
+cargo run --bin fastskill -- skill search "data processing"
 
 # Start the HTTP API server
-cargo run --bin fastskill -- serve
+cargo run --bin fastskill -- server serve
 
 # List installed skills
-cargo run --bin fastskill -- list
+cargo run --bin fastskill -- skill list
 ```
 
 #### Running Tests with nextest

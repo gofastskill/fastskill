@@ -20,10 +20,10 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 
 | You are… | FastSkill gives you… |
 |----------|----------------------|
-| **A developer** using Claude Code / Cursor | One command to install a skill from git, a folder, a zip, or a registry — and `list`/`read`/`search` to see exactly what your agent will load. |
+| **A developer** using Claude Code / Cursor | One command to install a skill from git, a folder, a zip, or a repository — and `skill list`/`skill read`/`skill search` to see exactly what your agent will load. |
 | **A team** sharing an agent setup | A committed manifest and lockfile for identical installs, plus one-file bundles for versioned, offline-ready team setups. |
 | **An organization** operating skills at scale | Private repositories, reproducible locked installs, duplicate/cluster analysis across large skill collections, and a local API/MCP surface for integration. |
-| **A skill author** | `init` to scaffold a manifest, `eval` to test that your skill triggers on the cases you care about, `optimize` to refine it automatically, and `marketplace create` to publish a catalog. |
+| **A skill author** | `project init` to scaffold a manifest, `eval` to test that your skill triggers on the cases you care about, `optimization` to refine it automatically, and `marketplace create` to publish a catalog. |
 
 ## What you can do
 
@@ -32,10 +32,10 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 - **Ship a complete team setup** as a verified, versioned bundle containing its full skill dependency closure.
 - **Discover skills** by meaning with semantic search (remote catalogs by default, `--local` for installed skills).
 - **Test skill quality** with eval suites (`fastskill eval`) before you ship — each case runs isolated in a scratch workspace with only your skill, so trigger rates are reproducible across machines.
-- **Improve skills automatically** with the text-gradient optimizer (`fastskill optimize`).
-- **Analyze a collection** for near-duplicates, clusters, and similarity (`fastskill analyze`).
-- **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill serve`), plus an MCP server for your agent (`fastskill mcp serve`) whose tools are read-only by default too, until you pass `--enable-write`.
-- **Diagnose** your setup at any time with `fastskill doctor`.
+- **Improve skills automatically** with the text-gradient optimizer (`fastskill optimization`).
+- **Analyze a collection** for near-duplicates, clusters, and similarity (`fastskill analysis`).
+- **Serve locally** — a read-only-by-default HTTP API and web UI (`fastskill server serve`), plus an MCP server for your agent (`fastskill mcp serve`) whose tools are read-only by default too, until you pass `--enable-write`.
+- **Diagnose** your setup at any time with `fastskill cli doctor`.
 
 ## Install
 
@@ -62,17 +62,17 @@ fastskill -V
 ## Quick start
 
 ```bash
-fastskill init                              # scaffold skill-project.toml
-fastskill add ./skills/my-skill -e --group dev   # add a local skill (editable), in the dev group
-fastskill install                           # restore compatible pins, resolve anything not locked
-fastskill list --check                      # verify desired, locked, and installed state
+fastskill project init                                  # scaffold skill-project.toml
+fastskill skill add ./skills/my-skill -e --group dev   # add an editable skill to the dev group
+fastskill project install                               # restore compatible pins and resolve new roots
+fastskill skill list --check                            # verify desired, locked, and installed state
 ```
 
 Optional semantic search (needs an embedding provider — set `OPENAI_API_KEY`):
 
 ```bash
-fastskill reindex                           # build the local vector index
-fastskill search "text processing" --local  # find installed skills by meaning
+fastskill index rebuild                           # build the local vector index
+fastskill skill search "text processing" --local  # find installed skills by meaning
 ```
 
 ## Common scenarios
@@ -80,30 +80,30 @@ fastskill search "text processing" --local  # find installed skills by meaning
 **Add a skill from anywhere**
 
 ```bash
-fastskill add ./skills/pptx-helper -e             # local folder, editable (symlink)
-fastskill add ./skills -r --group dev             # every SKILL.md under a folder
-fastskill add https://github.com/org/skill.git --branch main
-fastskill add "https://github.com/org/repo/tree/main/path/to/skill"   # git subdirectory
-fastskill add scope/pptx@1.0.0 --repository team  # exact repository version
-fastskill add scope/pptx@latest --repository team # newest stable version
+fastskill skill add ./skills/pptx-helper -e             # local folder, editable (symlink)
+fastskill skill add ./skills -r --group dev             # every SKILL.md under a folder
+fastskill skill add https://github.com/org/skill.git --branch main
+fastskill skill add "https://github.com/org/repo/tree/main/path/to/skill"   # git subdirectory
+fastskill skill add scope/pptx@1.0.0 --repository team  # exact repository version
+fastskill skill add scope/pptx@latest --repository team # newest stable version
 ```
 
 For repository skills, an omitted version and `@latest` both mean the newest stable release.
 `@1.2.0` is an exact selection; prereleases require an explicit prerelease selector. Use
-`--offline` with `add`, `install`, or `update` when the operation must use local and verified
-cached inputs without network access or automatic indexing.
+`--offline` with `skill add`, `project install`, or `skill update` when the operation must use
+local and verified cached inputs without network access or automatic indexing.
 
 **Reproducible install in CI**
 
 ```bash
-fastskill install --lock --offline # verify and restore exact locked contents
-fastskill install --without dev    # skip dev roots, retain their declarations and files
-fastskill list --check --without dev # CI check for the same selected closure
+fastskill project install --lock --offline # verify and restore exact locked contents
+fastskill project install --without dev    # skip dev roots, retain their declarations and files
+fastskill skill list --check --without dev # CI check for the same selected closure
 ```
 
 Project installs, including `--lock`, require `skill-project.toml` because it defines roots,
 groups, bundles, and the install destination. Restore `global-skills.lock` with
-`fastskill install --global --lock`.
+`fastskill project install --global --lock`.
 
 **Build and share a team bundle**
 
@@ -121,14 +121,15 @@ code-review = "2.1.0"
 
 ```bash
 fastskill bundle build --output dist
-fastskill add dist/platform-team-1.0.0.zip
-fastskill list --bundles
+fastskill bundle add dist/platform-team-1.0.0.zip
+fastskill bundle list
 ```
 
 Bundle builds validate each selected skill against its declared version. Installed bundle members
-stay protected from ordinary `remove`; remove the owning setup with
-`fastskill remove --bundle platform-team --force`. See the [bundle guide](webdocs/cli-reference/bundle-command.mdx)
-for updates, lock-based restoration, and personal overrides.
+stay protected from `skill remove`; remove the owning setup with
+`fastskill bundle remove platform-team --force`. See the
+[bundle guide](webdocs/cli-reference/bundle-command.mdx) for updates, lock-based restoration, and
+personal overrides.
 
 Reset a permitted personal replacement to the packaged member with
 `fastskill bundle override <member-id> --reset`. FastSkill keeps a shared member until its last
@@ -137,11 +138,11 @@ direct, transitive, bundle, or override owner is removed.
 **Use a shared catalog (repository)**
 
 ```bash
-fastskill repos add team-skills --repo-type git-marketplace https://github.com/org/team-skills.git
-fastskill repos add stable-skills --repo-type git-marketplace https://github.com/org/skills.git --tag v1.2.0
-fastskill repos list
-fastskill search "web scraping" --repository team-skills
-fastskill add scope/scraper@latest --repository team-skills
+fastskill repo add team-skills --repo-type git-marketplace https://github.com/org/team-skills.git
+fastskill repo add stable-skills --repo-type git-marketplace https://github.com/org/skills.git --tag v1.2.0
+fastskill repo list
+fastskill skill search "web scraping" --repository team-skills
+fastskill skill add scope/scraper@latest --repository team-skills
 ```
 
 Git repository `--branch` and `--tag` selections are saved in `skill-project.toml` and reused by
@@ -152,7 +153,7 @@ catalog refresh and installation.
 ```bash
 fastskill eval validate           # check your eval config
 fastskill eval run --all --output-dir ./eval-runs
-fastskill optimize run --config optimize.toml     # auto-improve the skill document
+fastskill optimization run --config optimize.toml     # auto-improve the skill document
 ```
 
 **Integrate with your agent**
@@ -160,44 +161,37 @@ fastskill optimize run --config optimize.toml     # auto-improve the skill docum
 ```bash
 fastskill mcp install --agent claude --scope project   # expose fastskill as MCP tools
 fastskill mcp serve --transport stdio                  # MCP over stdio (read-only tools)
-fastskill serve                                        # local HTTP API + web UI (read-only)
+fastskill server serve                              # local HTTP API + web UI (read-only)
 ```
 
 Both servers are read-only by default, from one table of mutating operations. Without
-`--enable-write`, `fastskill mcp serve` omits the mutating tools (`init`, `add`, `install`,
-`update`, `remove`, `reindex`, `repos add/remove/update/refresh`, `cache clean`,
-`bundle build/override`, `marketplace create`, evaluation or optimization execution, and artifact
-exports) from `tools/list` and refuses a `tools/call` naming one with JSON-RPC
-`-32005 MCP_TOOL_DENIED`; `fastskill serve` likewise rejects write routes. Pass
+`--enable-write`, `fastskill mcp serve` omits mutating tools for `project init/install`,
+`skill add/update/remove`, `bundle build/add/update/remove/override`, `index rebuild`, repository
+changes, `cache clean`, `marketplace create`, evaluation or optimization execution, and artifact
+exports. It refuses a `tools/call` naming one with JSON-RPC
+`-32005 MCP_TOOL_DENIED`; `fastskill server serve` likewise rejects write routes. Pass
 `--enable-write` to either one to allow mutation.
 
 ## Command reference
 
-| Command | What it does |
-|---------|--------------|
-| `fastskill init` | Scaffold `skill-project.toml` in the current project or skill |
-| `fastskill add <source>` | Add a skill and its required closure (`--repository`, `--offline`) |
-| `fastskill install` | Restore the manifest, preferring compatible pins (`--lock`, `--only`, `--without`, `--offline`) |
-| `fastskill update [id]` | Resolve deliberate changes (`--to-version`, `--strategy`, `--repository`, `--check`, `--dry-run`, `--offline`) |
-| `fastskill remove <id>…` | Uninstall skills and update the manifest + lock |
-| `fastskill list` | Compare desired, locked, and installed state (`--check`, `--only`, `--without`, `--json`) |
-| `fastskill read <id>` | Print a skill's `SKILL.md` (`--meta`, `--tree`) |
-| `fastskill search <query>` | Search remote catalogs (default) or installed skills (`--local`) |
-| `fastskill reindex` | Rebuild the local semantic search index |
-| `fastskill repos <cmd>` | Manage repositories & browse catalogs (`list/add/remove/info/update/test/refresh/skills/show/versions`) |
-| `fastskill cache <cmd>` | Inspect and reclaim the on-disk skill content cache (`info/clean`) |
-| `fastskill bundle <cmd>` | Build a self-contained team bundle or declare a permitted personal override |
-| `fastskill marketplace create` | Generate a `marketplace.json` catalog from a folder of skills |
-| `fastskill eval <cmd>` | Skill quality evals (`validate/run/judge/report/score/scorecard`) |
-| `fastskill optimize <cmd>` | Text-gradient skill optimization (`run/resume/status/inspect/export`) |
-| `fastskill analyze <cmd>` | Similarity `matrix`, `cluster`, and `duplicates` across skills |
-| `fastskill serve` | Local HTTP API + web UI (read-only by default; `--enable-write` to mutate) |
-| `fastskill mcp <cmd>` | Run/install the MCP server (`serve/install/list`) for agents (tools are read-only by default; `serve --enable-write` to mutate) |
-| `fastskill doctor` | Diagnose configuration and environment readiness |
+| Namespace | Actions | What it does |
+| --- | --- | --- |
+| `fastskill skill` | `add`, `remove`, `update`, `list`, `read`, `search` | Manage and discover individual skills. |
+| `fastskill bundle` | `build`, `add`, `list`, `update`, `remove`, `override` | Build and manage self-contained team bundles. |
+| `fastskill project` | `init`, `install` | Create and restore a skill project. |
+| `fastskill repo` | `add`, `list`, `info`, `update`, `remove`, `test`, `refresh`, `skills`, `show`, `versions` | Configure repositories and browse catalogs. |
+| `fastskill marketplace` | `create` | Generate a `marketplace.json` catalog. |
+| `fastskill analysis` | `matrix`, `cluster`, `duplicates` | Analyze similarity across installed skills. |
+| `fastskill eval` | `validate`, `run`, `judge`, `report`, `score`, `scorecard` | Run and report skill evaluations. |
+| `fastskill optimization` | `run`, `resume`, `status`, `inspect`, `export` | Optimize a skill document and inspect runs. |
+| `fastskill index` | `rebuild` | Rebuild the local semantic index. |
+| `fastskill cache` | `info`, `clean` | Inspect and reclaim cached content. |
+| `fastskill server` | `serve` | Run the local HTTP API and web UI. |
+| `fastskill mcp` | `serve`, `install`, `list` | Run and configure the MCP server. |
+| `fastskill cli` | `doctor`, `completion`, `spec` | Diagnose FastSkill and export CLI metadata. |
 
-Every command supports `--help`. Run `fastskill <skill-id>` as a shorthand for `fastskill read
-<skill-id>` — like `read`, it needs a project (`fastskill init`), or `--global` to read a
-globally installed skill.
+Every command supports `--help`. Skill IDs must follow an explicit action, such as
+`fastskill skill read <skill-id>`.
 
 ## Configuration
 
@@ -213,7 +207,7 @@ demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable
 [tool.fastskill]
 skills_directory = ".claude/skills"
 
-# Only needed for semantic search (reindex / search --local):
+# Only needed for semantic search (index rebuild / skill search --local):
 [tool.fastskill.embedding]
 openai_base_url = "https://api.openai.com/v1"
 embedding_model = "text-embedding-3-small"
@@ -226,7 +220,7 @@ keys) is still read and upgraded in memory for older manifests, but it is not wr
 slated for removal — write new manifests with `origin`.
 
 Set `OPENAI_API_KEY` in your environment to enable embedding-based search. See the
-[init command guide](webdocs/configuration/init-command.mdx) for `[metadata]`, `[tool.fastskill]`,
+[project init guide](webdocs/configuration/init-command.mdx) for `[metadata]`, `[tool.fastskill]`,
 embedding settings and schema migration, and [eval setup](webdocs/evals-quality/setup.mdx) for the
 `[tool.fastskill.eval]` schema.
 

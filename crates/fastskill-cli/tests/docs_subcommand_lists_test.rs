@@ -1,12 +1,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-//! Deterministic "documented subcommand list vs `fastskill spec`" parity test.
+//! Deterministic documented-list parity against `fastskill cli spec`.
 //! No LLM, no network.
 //!
 //! ## Why this is separate from `spec_docs_parity_test`
 //!
-//! That test reads ```bash fences under `webdocs/cli-reference/` and asks "does
-//! every invocation shown resolve to a real command?". It structurally cannot
+//! That test reads current command examples and asks "does every invocation
+//! shown resolve to a real command?". It structurally cannot
 //! see the drift this one catches, which lives in prose and tables and takes
 //! the form of an *enumeration*:
 //!
@@ -15,10 +15,8 @@
 //! ```
 //!
 //! Every one of those four names resolves. The defect is the two that are
-//! absent: `eval` had gained `judge` and `scorecard`. `mcp` had likewise gained
-//! `register`. Five separate documents advertised the older sets. This drift
-//! recurs on every command added, and had already recurred twice by the time
-//! this test was written -- hence a gate rather than another one-off fix.
+//! absent: `eval` had gained `judge` and `scorecard`. This drift recurs when
+//! commands are added, so it needs a gate rather than another one-off fix.
 //!
 //! ## What counts as a subcommand list
 //!
@@ -36,7 +34,7 @@
 //!
 //! ## Sources of truth
 //!
-//! CLI: `fastskill spec --format json`, shelled out to via
+//! CLI: `fastskill cli spec --format json`, shelled out to via
 //! `CARGO_BIN_EXE_fastskill` -- `fastskill-cli` is bin-only, so the command
 //! tree cannot be built in-process. Docs: `README.md` plus every `.md`/`.mdx`
 //! under `webdocs/`.
@@ -64,31 +62,31 @@ struct Group {
     mention: Regex,
 }
 
-/// `group -> {subcommand}` for every group in `fastskill spec --format json`.
+/// `group -> {subcommand}` for every group in `fastskill cli spec --format json`.
 fn cli_groups() -> BTreeMap<String, BTreeSet<String>> {
     let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(["spec", "--format", "json"])
+        .args(["cli", "spec", "--format", "json"])
         .output()
-        .expect("spawn `fastskill spec --format json`");
+        .expect("spawn `fastskill cli spec --format json`");
 
     assert!(
         output.status.success(),
-        "`fastskill spec --format json` exited with {}\nstderr:\n{}",
+        "`fastskill cli spec --format json` exited with {}\nstderr:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
 
     let doc: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .expect("parse `fastskill spec --format json` stdout as JSON");
+        .expect("parse `fastskill cli spec --format json` stdout as JSON");
 
     let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for command in doc["commands"]
         .as_array()
-        .expect("`commands` array in `fastskill spec` JSON output")
+        .expect("`commands` array in `fastskill cli spec` JSON output")
     {
         let path = command["path"]
             .as_str()
-            .expect("command `path` string in `fastskill spec` JSON output");
+            .expect("command `path` string in `fastskill cli spec` JSON output");
         // Only nested paths ("eval/judge") name a group and a subcommand. A
         // deeper path, should one ever appear, keys on its immediate parent.
         if let Some((group, sub)) = path.rsplit_once('/') {
@@ -100,7 +98,7 @@ fn cli_groups() -> BTreeMap<String, BTreeSet<String>> {
     }
     assert!(
         !groups.is_empty(),
-        "`fastskill spec` reported no command groups at all -- did the JSON shape change?"
+        "`fastskill cli spec` reported no command groups at all -- did the JSON shape change?"
     );
     groups
 }
@@ -196,11 +194,17 @@ fn claimed_lists_in_line(
 ) -> Vec<ClaimedList> {
     let mut out = Vec::new();
     for group in groups {
-        if !group.mention.is_match(line) {
+        let Some(mention) = group.mention.find(line) else {
             continue;
-        }
+        };
+        // Only the text after `fastskill <group>` can enumerate that group's
+        // actions. This keeps a preceding prose phrase such as
+        // `install/update/remove flow (... fastskill skill add ...)` from
+        // becoming a false command-list claim, and keeps the table's namespace
+        // cell (`fastskill skill`) out of the actions cell.
+        let actions = &line[mention.end()..];
         let mut claimed: BTreeSet<String> = BTreeSet::new();
-        for caps in run_re.captures_iter(line) {
+        for caps in run_re.captures_iter(actions) {
             let tokens = split_run(&caps[1], sep_re);
             if tokens.iter().filter(|t| group.subs.contains(*t)).count() >= 2 {
                 claimed.extend(tokens);
@@ -305,7 +309,7 @@ struct Allowlist {
 
 #[derive(Debug, serde::Deserialize)]
 struct AllowedEntry {
-    /// "<group> <subcommand>", e.g. `mcp register`.
+    /// "<group> <subcommand>", e.g. `eval judge`.
     command: String,
     /// Documentation-only: read by humans reviewing the allowlist.
     #[serde(default)]
@@ -326,7 +330,7 @@ fn allowed(entries: &[AllowedEntry]) -> BTreeSet<&str> {
 // The gate
 // ---------------------------------------------------------------------------
 
-/// One documented list that disagrees with `fastskill spec`.
+/// One documented list that disagrees with `fastskill cli spec`.
 struct Finding {
     list: ClaimedList,
     missing: Vec<String>,
@@ -381,7 +385,7 @@ fn scan_corpus(
 
 fn report(findings: &[Finding]) -> String {
     let mut msg = format!(
-        "\n{} documented subcommand list(s) disagree with `fastskill spec --format json`:\n\n",
+        "\n{} documented subcommand list(s) disagree with `fastskill cli spec --format json`:\n\n",
         findings.len()
     );
     for f in findings {
@@ -431,7 +435,7 @@ fn documented_subcommand_lists_match_the_cli() {
         .filter(|l| l.file == "README.md")
         .map(|l| l.group.as_str())
         .collect();
-    for group in ["analyze", "eval", "mcp", "optimize", "repos"] {
+    for group in ["analysis", "eval", "mcp", "optimization", "repo"] {
         assert!(
             readme_groups.contains(group),
             "no `fastskill {group}` subcommand list was found in README.md; extraction is \
@@ -449,8 +453,9 @@ fn documented_subcommand_lists_match_the_cli() {
 
 /// The four command-table rows this test was written against, copied verbatim
 /// from `README.md` at 2f5df14 -- the tip of the branch before the docs fix.
-/// `eval` had gained `judge` and `scorecard` and `mcp` had gained `register`,
-/// and none of the three appeared in the documented lists.
+/// `eval` had gained `judge` and `scorecard`; neither appeared in its list.
+/// The retired `repos` and `optimize` group names remain here only because this
+/// fixture records the old README verbatim.
 ///
 /// Held as a fixture rather than shelled out to `git show`: the assertion is
 /// about the scanner, and it must hold in a source tarball with no git history.
@@ -465,29 +470,19 @@ const PRE_FIX_README_ROWS: &str = concat!(
 
 #[test]
 fn checker_fires_on_the_pre_fix_readme() {
-    let surface = cli_groups();
-    // `mcp register` is a deprecated alias that upstream cli-framework hides.
-    // Whether the pre-fix README is stale *about it* therefore depends on the
-    // pinned framework revision, not on this scanner. Derive that half of the
-    // expectation from the live surface so a pin bump cannot turn this red;
-    // the judge/scorecard half is pinned and still carries the assertion.
-    let register_visible = surface
-        .get("mcp")
-        .is_some_and(|subs| subs.contains("register"));
-    let groups = compile_groups(&surface);
+    let groups = compile_groups(&cli_groups());
     let corpus = vec![(
         "README.md@2f5df14".to_string(),
         PRE_FIX_README_ROWS.to_string(),
     )];
 
-    // Deliberately no allowlist: this asserts the *detector* fires, separately
-    // from the policy layer that afterwards forgives `mcp register`.
+    // Deliberately no allowlist: this asserts the detector fires.
     let (examined, findings) = scan_corpus(&corpus, &groups, &Allowlist::default());
 
     assert_eq!(
         examined.len(),
-        4,
-        "expected exactly one claimed list per fixture row, found {}",
+        2,
+        "expected the two still-canonical fixture groups to be examined, found {}",
         examined.len()
     );
 
@@ -495,32 +490,24 @@ fn checker_fires_on_the_pre_fix_readme() {
         .iter()
         .flat_map(|f| f.missing.iter().cloned())
         .collect();
-    let mut expected: BTreeSet<String> = ["eval judge", "eval scorecard"]
+    let expected: BTreeSet<String> = ["eval judge", "eval scorecard"]
         .into_iter()
         .map(str::to_string)
         .collect();
-    if register_visible {
-        expected.insert("mcp register".to_string());
-    }
     assert_eq!(
         missing, expected,
-        "the pre-fix README must be reported as missing exactly judge, scorecard \
-         and (while the framework still exposes it) register"
+        "the pre-fix README must be reported as missing exactly judge and scorecard"
     );
 
-    // ...and no collateral noise: the repos and optimize rows were already
-    // complete, and nothing in the fixture names a non-existent subcommand.
+    // The retired group names are ignored, and neither canonical row contains
+    // a non-existent subcommand.
     let unknown: Vec<&String> = findings.iter().flat_map(|f| f.unknown.iter()).collect();
     assert!(unknown.is_empty(), "unexpected unknown tokens: {unknown:?}");
     let flagged: BTreeSet<&str> = findings.iter().map(|f| f.list.group.as_str()).collect();
-    let mut expected_flagged = BTreeSet::from(["eval"]);
-    if register_visible {
-        expected_flagged.insert("mcp");
-    }
+    let expected_flagged = BTreeSet::from(["eval"]);
     assert_eq!(
         flagged, expected_flagged,
-        "only the eval row -- and, while the framework still exposes \
-         `mcp register`, the mcp row -- were stale in the pre-fix README"
+        "only the eval row was stale among still-canonical fixture groups"
     );
 }
 

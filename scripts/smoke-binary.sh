@@ -18,8 +18,8 @@
 # Checks:
 #   1. `<bin> --version` exits 0 and reports the version from the top-level Cargo.toml.
 #   2. `<bin> --help` exits 0 and produces non-empty output.
-#   3. In a fresh temp dir: `<bin> init --yes --skills-dir ./skills` then `<bin> list`,
-#      both exit 0. This is the filesystem-write path, run offline.
+#   3. In a fresh temp dir: `<bin> project init --yes --skills-dir ./skills` then
+#      `<bin> skill list`, both exit 0. This is the filesystem-write path, run offline.
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
@@ -75,8 +75,8 @@ fi
 echo "First lines of --help output:"
 echo "$HELP_OUTPUT" | head -5
 
-echo "--- Check 3: offline 'init' + 'list' in a fresh temp dir ---"
-# `fastskill init` derives a default skill/project identifier from the current
+echo "--- Check 3: offline 'project init' + 'skill list' in a fresh temp dir ---"
+# `fastskill project init` derives a default skill/project identifier from the current
 # directory's basename, which must be alphanumeric/hyphens/underscores only.
 # `mktemp -d` alone produces a basename like `tmp.XXXXXXXXXX` (dot -- invalid), so
 # nest a cleanly-named subdirectory inside it rather than cd-ing straight into the
@@ -86,11 +86,11 @@ SMOKE_DIR="$SMOKE_PARENT/smoke-test"
 mkdir -p "$SMOKE_DIR"
 pushd "$SMOKE_DIR" >/dev/null
 
-echo "Running: fastskill init --yes --skills-dir ./skills"
-"$BIN_ABS" init --yes --skills-dir ./skills
+echo "Running: fastskill project init --yes --skills-dir ./skills"
+"$BIN_ABS" project init --yes --skills-dir ./skills
 
-echo "Running: fastskill list"
-"$BIN_ABS" list
+echo "Running: fastskill skill list"
+"$BIN_ABS" skill list
 
 popd >/dev/null
 rm -rf "$SMOKE_PARENT"

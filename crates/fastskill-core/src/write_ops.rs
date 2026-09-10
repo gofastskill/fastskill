@@ -2,7 +2,7 @@
 //!
 //! Every surface that can mutate state is gated off this one table:
 //!
-//! * `fastskill serve` builds its write-gated Axum router from [`WriteOperation::http_routes`]
+//! * `fastskill server serve` builds its write-gated Axum router from [`WriteOperation::http_routes`]
 //!   (see `crate::http::server`), so a route listed here is automatically behind
 //!   the `--enable-write` middleware.
 //! * `fastskill mcp serve` derives, from [`WriteOperation::command_path`], the MCP
@@ -48,7 +48,7 @@ impl WriteHttpRoute {
 pub struct WriteOperation {
     /// Stable identifier, used in diagnostics.
     pub id: &'static str,
-    /// The CLI command path that performs it (`["repos", "add"]`), when there is
+    /// The CLI command path that performs it (`["repo", "add"]`), when there is
     /// one. `None` for operations reachable only over HTTP.
     pub command_path: Option<&'static [&'static str]>,
     /// The HTTP routes that perform it. Empty for operations with no HTTP surface.
@@ -69,28 +69,29 @@ pub enum CommandEffect {
 /// This is deliberately explicit: the command-spec coverage test fails when a
 /// new command is registered without being added here or to [`WRITE_OPERATIONS`].
 pub static READ_ONLY_COMMAND_PATHS: &[&[&str]] = &[
-    &["analyze", "cluster"],
-    &["analyze", "duplicates"],
-    &["analyze", "matrix"],
+    &["analysis", "cluster"],
+    &["analysis", "duplicates"],
+    &["analysis", "matrix"],
+    &["bundle", "list"],
     &["cache", "info"],
-    &["completion"],
-    &["doctor"],
+    &["cli", "completion"],
+    &["cli", "doctor"],
+    &["cli", "spec"],
     &["eval", "report"],
     &["eval", "score"],
     &["eval", "validate"],
-    &["list"],
     &["mcp", "list"],
-    &["optimize", "inspect"],
-    &["optimize", "status"],
-    &["read"],
-    &["repos", "info"],
-    &["repos", "list"],
-    &["repos", "show"],
-    &["repos", "skills"],
-    &["repos", "test"],
-    &["repos", "versions"],
-    &["search"],
-    &["spec"],
+    &["optimization", "inspect"],
+    &["optimization", "status"],
+    &["repo", "info"],
+    &["repo", "list"],
+    &["repo", "show"],
+    &["repo", "skills"],
+    &["repo", "test"],
+    &["repo", "versions"],
+    &["skill", "list"],
+    &["skill", "read"],
+    &["skill", "search"],
 ];
 
 fn route_delete_skill() -> MethodRouter<AppState> {
@@ -127,13 +128,13 @@ fn route_remove_skill_from_manifest() -> MethodRouter<AppState> {
 /// Every mutating operation FastSkill exposes, on any surface.
 pub static WRITE_OPERATIONS: &[WriteOperation] = &[
     WriteOperation {
-        id: "init",
-        command_path: Some(&["init"]),
+        id: "project-init",
+        command_path: Some(&["project", "init"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "install",
-        command_path: Some(&["install"]),
+        id: "project-install",
+        command_path: Some(&["project", "install"]),
         http_routes: &[WriteHttpRoute {
             method: "POST",
             path: "/skills/install",
@@ -141,8 +142,8 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         }],
     },
     WriteOperation {
-        id: "update",
-        command_path: Some(&["update"]),
+        id: "skill-update",
+        command_path: Some(&["skill", "update"]),
         http_routes: &[
             WriteHttpRoute {
                 method: "POST",
@@ -158,8 +159,8 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         ],
     },
     WriteOperation {
-        id: "add",
-        command_path: Some(&["add"]),
+        id: "skill-add",
+        command_path: Some(&["skill", "add"]),
         http_routes: &[WriteHttpRoute {
             method: "POST",
             path: "/manifest/skills",
@@ -167,8 +168,8 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         }],
     },
     WriteOperation {
-        id: "remove",
-        command_path: Some(&["remove"]),
+        id: "skill-remove",
+        command_path: Some(&["skill", "remove"]),
         http_routes: &[WriteHttpRoute {
             method: "DELETE",
             path: "/skills/{id}",
@@ -176,8 +177,8 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         }],
     },
     WriteOperation {
-        id: "reindex",
-        command_path: Some(&["reindex"]),
+        id: "index-rebuild",
+        command_path: Some(&["index", "rebuild"]),
         http_routes: &[
             WriteHttpRoute {
                 method: "POST",
@@ -192,23 +193,23 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         ],
     },
     WriteOperation {
-        id: "repos-add",
-        command_path: Some(&["repos", "add"]),
+        id: "repo-add",
+        command_path: Some(&["repo", "add"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "repos-remove",
-        command_path: Some(&["repos", "remove"]),
+        id: "repo-remove",
+        command_path: Some(&["repo", "remove"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "repos-update",
-        command_path: Some(&["repos", "update"]),
+        id: "repo-update",
+        command_path: Some(&["repo", "update"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "repos-refresh",
-        command_path: Some(&["repos", "refresh"]),
+        id: "repo-refresh",
+        command_path: Some(&["repo", "refresh"]),
         http_routes: &[WriteHttpRoute {
             method: "POST",
             path: "/registry/refresh",
@@ -223,6 +224,21 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
     WriteOperation {
         id: "bundle-build",
         command_path: Some(&["bundle", "build"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "bundle-add",
+        command_path: Some(&["bundle", "add"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "bundle-update",
+        command_path: Some(&["bundle", "update"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "bundle-remove",
+        command_path: Some(&["bundle", "remove"]),
         http_routes: &[],
     },
     WriteOperation {
@@ -256,18 +272,18 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         http_routes: &[],
     },
     WriteOperation {
-        id: "optimize-run",
-        command_path: Some(&["optimize", "run"]),
+        id: "optimization-run",
+        command_path: Some(&["optimization", "run"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "optimize-resume",
-        command_path: Some(&["optimize", "resume"]),
+        id: "optimization-resume",
+        command_path: Some(&["optimization", "resume"]),
         http_routes: &[],
     },
     WriteOperation {
-        id: "optimize-export",
-        command_path: Some(&["optimize", "export"]),
+        id: "optimization-export",
+        command_path: Some(&["optimization", "export"]),
         http_routes: &[],
     },
     // Manifest editing has no single CLI equivalent (`add` covers creation only).

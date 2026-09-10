@@ -25,7 +25,6 @@ fn typed_arguments_and_origin_labels_cover_all_supported_variants() {
     map.insert("format".to_string(), ArgValue::Str("json".to_string()));
     map.insert("json".to_string(), ArgValue::Bool(true));
     map.insert("details".to_string(), ArgValue::Bool(true));
-    map.insert("bundles".to_string(), ArgValue::Bool(true));
     map.insert("check".to_string(), ArgValue::Bool(true));
     map.insert(
         "only".to_string(),
@@ -36,7 +35,7 @@ fn typed_arguments_and_origin_labels_cover_all_supported_variants() {
     );
     let args = ListArgs::from_arg_value_map(&map);
     assert_eq!(args.format, Some(OutputFormat::Json));
-    assert!(args.json && args.details && args.bundles && args.check);
+    assert!(args.json && args.details && args.check);
     assert_eq!(args.only, Some(vec!["dev".to_string()]));
     assert_eq!(repeated_strings(&ArgValue::Bool(true)), None);
     assert_eq!(repeated_strings(&ArgValue::List(vec![])), None);
@@ -84,7 +83,6 @@ async fn test_execute_list_format_conflict() {
         format: Some(OutputFormat::Table),
         json: true,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -142,7 +140,6 @@ async fn test_execute_list_no_manifest() {
         format: None,
         json: false,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -201,7 +198,6 @@ skills_directory = ".claude/skills"
         format: None,
         json: false,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -279,7 +275,6 @@ source = { path = ".claude/skills/test-skill" }
         format: None,
         json: false,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -331,7 +326,6 @@ skills_directory = ".claude/skills"
         format: None,
         json: false,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -383,7 +377,6 @@ skills_directory = ".claude/skills"
         format: None,
         json: false,
         details: false,
-        bundles: false,
         check: false,
         only: None,
         without: None,
@@ -429,22 +422,11 @@ async fn bundle_listing_and_selector_conflicts_are_validated_consistently() {
         format: None,
         json: false,
         details: false,
-        bundles: true,
         check: false,
         only: None,
         without: None,
         skills_dir: None,
     };
-    execute_list(&service, args.clone(), false).await.unwrap();
-    args.json = true;
-    execute_list(&service, args.clone(), false).await.unwrap();
-    args.json = false;
-    args.check = true;
-    assert!(matches!(
-        execute_list(&service, args.clone(), false).await,
-        Err(CliError::Validation(message)) if message.contains("--bundles cannot")
-    ));
-    args.bundles = false;
     args.only = Some(vec!["dev".to_string()]);
     args.without = Some(vec!["prod".to_string()]);
     assert!(matches!(
@@ -552,7 +534,6 @@ async fn project_reconciliation_classifies_each_managed_state_shape_and_group_se
         format: Some(OutputFormat::Json),
         json: false,
         details: true,
-        bundles: false,
         check: false,
         only: None,
         without: None,

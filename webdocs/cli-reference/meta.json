@@ -1,19 +1,24 @@
 {
   "pages": [
     "overview",
+    "command-migration",
+    "---Skills and projects---",
     "skill-commands",
-    "discovery-commands",
     "init-command",
     "install-command",
     "update-command",
-    "reindex-command",
-    "search-command",
-    "serve-command",
-    "repository-command",
-    "cache-command",
     "bundle-command",
+    "---Sources and distribution---",
+    "discovery-commands",
+    "search-command",
+    "repository-command",
+    "---Quality---",
     "eval-command",
     "optimize-command",
-    "tooling-commands"
+    "tooling-commands",
+    "---Operations---",
+    "reindex-command",
+    "cache-command",
+    "serve-command"
   ]
 }

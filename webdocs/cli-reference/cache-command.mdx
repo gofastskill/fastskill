@@ -5,7 +5,7 @@ description: "Inspect and reclaim the on-disk skill content cache with fastskill
 
 # cache Command
 
-Inspect and reclaim the on-disk cache that `add`, `install`, and `update` use so a skill's
+Inspect and reclaim the on-disk cache that `skill add`, `project install`, and `skill update` use so a skill's
 content is fetched once per machine instead of once per project.
 
 <Callout type="info">
@@ -72,8 +72,8 @@ fastskill cache clean --json
 - `--json`: Print the result as JSON instead of a summary line
 
 **What it removes**: Only cached skill content -- the record of what a repository currently
-advertises (what `repos refresh` writes) is left alone, so `repos refresh` output stays valid
-after a clean. There is nothing to undo: the next `add`/`install`/`update` that needs a removed
+advertises (what `repo refresh` writes) is left alone, so `repo refresh` output stays valid
+after a clean. There is nothing to undo: the next `skill add`/`project install`/`skill update` that needs a removed
 entry re-fetches it from its original source.
 
 **Safe with other fastskill processes running**: `clean` never removes an entry another process
@@ -89,6 +89,6 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 ## See Also
 
-- [repos Command](/cli-reference/repository-command) -- refresh what a repository advertises
-  (`repos refresh`), independent of the content cache `cache` manages
+- [`repo` commands](/cli-reference/repository-command) -- refresh what a repository advertises
+  (`repo refresh`), independent of the content cache `cache` manages
 - [Install Command](/cli-reference/install-command) -- installs that hit this cache

@@ -1,4 +1,4 @@
-//! `fastskill optimize run` subcommand
+//! `fastskill optimization run` subcommand
 
 use super::config::{
     build_run_config, completion_output, count_history_steps, load_suite_with_splits,
@@ -21,7 +21,7 @@ const ARCHIVED_SKILL: &str = "skill.md";
 const ARCHIVED_SUITE: &str = "suite.csv";
 const ARCHIVED_CHECKS: &str = "checks.toml";
 
-/// Arguments for `fastskill optimize run`
+/// Arguments for `fastskill optimization run`
 #[derive(Debug)]
 pub struct RunArgs {
     /// Path to optimize config file
@@ -44,8 +44,9 @@ impl IntoCommandSpec for RunArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Run skill optimization from a config file",
-            syntax: Some("optimize run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
-            examples: vec!["fastskill optimize run --config ./optimize.toml"],
+            help_order: Some(10),
+            syntax: Some("optimization run --config <path> [--out-dir <dir>] [--resume <run-dir>]"),
+            examples: vec!["fastskill optimization run --config ./optimize.toml"],
             args: vec![
                 ArgSpec {
                     name: "config",

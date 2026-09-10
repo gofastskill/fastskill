@@ -40,9 +40,9 @@ export function FastSkillHero() {
           team-skills / terminal
         </div>
         <div className="docs-terminal-body">
-          <p><b>$</b> fastskill init</p>
+          <p><b>$</b> fastskill project init</p>
           <span>✓ Created skill-project.toml</span>
-          <p><b>$</b> fastskill install</p>
+          <p><b>$</b> fastskill project install</p>
           <span>✓ Locked 8 skills for the team</span>
           <p><b>$</b> fastskill bundle build --output dist</p>
           <span className="docs-terminal-bright">✓ Built team-stack-1.0.0.zip</span>

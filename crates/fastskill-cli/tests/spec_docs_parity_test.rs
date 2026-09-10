@@ -2,34 +2,31 @@
 
 //! Deterministic "spec-vs-docs parity" test. No LLM, no network.
 //!
-//! Catches documentation drift between `webdocs/cli-reference/*.mdx` and the
-//! real CLI command surface, in both directions:
+//! Catches command drift between the current documentation corpus and the real
+//! CLI surface, in both directions:
 //!
 //! 1. `documented_commands_exist_in_cli` (hard gate): every `fastskill ...`
 //!    invocation found in a fenced ` ```bash ` block in the docs must resolve
-//!    to a real command in `fastskill spec --format json`.
+//!    to a real command in `fastskill cli spec --format json`.
 //! 2. `cli_commands_are_documented` (separate, independently allowlistable):
-//!    every real CLI command path must appear somewhere in
-//!    `webdocs/cli-reference/*.mdx`.
+//!    every real CLI command path must appear in README, webdocs, or the
+//!    standalone website.
 //!
 //! ## Source of CLI truth
 //!
 //! `fastskill-cli` has no `[lib]` target (it's bin-only), so the command tree
 //! cannot be built in-process from this integration test. Instead this test
 //! shells out to the compiled test binary via `CARGO_BIN_EXE_fastskill` and
-//! parses `fastskill spec --format json` -- the same pattern used by
+//! parses `fastskill cli spec --format json` -- the same pattern used by
 //! `mcp_stdio_protocol_test.rs` in this directory. `spec` is a built-in
 //! cli-framework command that walks the live `CommandRegistry`, so this is as
 //! close to "the real command surface" as we can get without a library target.
 //!
 //! ## Source of docs truth
 //!
-//! Only fenced ` ```bash ` blocks in `webdocs/cli-reference/*.mdx` are
-//! parsed (not prose, not headings, not plain/`json`/`toml` example-output
-//! blocks). Extraction is deliberately conservative: it is far better to miss
-//! a real drift than to invent one, because false positives get this test
-//! disabled. See `extract_documented_commands` for the exact tokenization
-//! rules.
+//! Markdown scanning uses fenced ` ```bash ` blocks. Website scanning uses its
+//! terminal-example lines. See `extract_documented_commands` for the exact
+//! tokenization rules.
 //!
 //! ## Allowlist
 //!
@@ -42,47 +39,47 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Command path separator used by `fastskill spec`'s JSON output (`"repos/add"`).
+/// Command path separator used by `fastskill cli spec` JSON (`"repo/add"`).
 const SPEC_PATH_SEP: char = '/';
 
 // ---------------------------------------------------------------------------
-// CLI truth: `fastskill spec --format json`
+// CLI truth: `fastskill cli spec --format json`
 // ---------------------------------------------------------------------------
 
-/// Run `fastskill spec --format json` against the just-built test binary and
-/// return the set of command paths, space-separated (e.g. `"repos add"`,
+/// Run `fastskill cli spec --format json` against the just-built test binary and
+/// return the set of command paths, space-separated (e.g. `"repo add"`,
 /// `"mcp install"`, `"doctor"`).
 fn cli_command_paths() -> BTreeSet<String> {
     let output = Command::new(env!("CARGO_BIN_EXE_fastskill"))
-        .args(["spec", "--format", "json"])
+        .args(["cli", "spec", "--format", "json"])
         .output()
-        .expect("spawn `fastskill spec --format json`");
+        .expect("spawn `fastskill cli spec --format json`");
 
     assert!(
         output.status.success(),
-        "`fastskill spec --format json` exited with {}\nstderr:\n{}",
+        "`fastskill cli spec --format json` exited with {}\nstderr:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
 
     let doc: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .expect("parse `fastskill spec --format json` stdout as JSON");
+        .expect("parse `fastskill cli spec --format json` stdout as JSON");
 
     doc["commands"]
         .as_array()
-        .expect("`commands` array in `fastskill spec` JSON output")
+        .expect("`commands` array in `fastskill cli spec` JSON output")
         .iter()
         .map(|c| {
             c["path"]
                 .as_str()
-                .expect("command `path` string in `fastskill spec` JSON output")
+                .expect("command `path` string in `fastskill cli spec` JSON output")
                 .replace(SPEC_PATH_SEP, " ")
         })
         .collect()
 }
 
 /// Top-level tokens that prefix at least one multi-word command path (i.e.
-/// real command *groups*, like `repos` or `mcp`).
+/// real command *groups*, like `repo` or `mcp`).
 fn group_prefixes(paths: &BTreeSet<String>) -> BTreeSet<String> {
     paths
         .iter()
@@ -91,24 +88,42 @@ fn group_prefixes(paths: &BTreeSet<String>) -> BTreeSet<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Docs truth: webdocs/cli-reference/*.mdx
+// Docs truth: README, all webdocs, and the standalone website
 // ---------------------------------------------------------------------------
 
-fn webdocs_cli_reference_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../webdocs/cli-reference")
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn documentation_paths() -> Vec<PathBuf> {
+    let root = repo_root();
+    let mut paths = vec![root.join("README.md"), root.join("website/index.html")];
+    paths.extend(
+        walkdir::WalkDir::new(root.join("webdocs"))
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .map(walkdir::DirEntry::into_path)
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "md" || extension == "mdx")
+            }),
+    );
+    paths.sort();
+    paths
 }
 
 /// Second token of a `fastskill <tok1> <tok2> ...` invocation, classified for
 /// how confidently it names a real subcommand.
 #[derive(Debug, Clone)]
 enum Tok2 {
-    /// No second token (`fastskill doctor`).
+    /// No second token (`fastskill skill`, naming only a group).
     None,
     /// A bare lowercase identifier -- looks like a real subcommand name
-    /// (`fastskill repos add`).
+    /// (`fastskill repo add`).
     Ident(String),
     /// A usage-template placeholder (`fastskill eval <SUBCOMMAND>`,
-    /// `fastskill repos <SUBCOMMAND>`) -- the doc is asserting "this is a
+    /// `fastskill repo <SUBCOMMAND>`) -- the doc is asserting "this is a
     /// command group", not naming a specific subcommand.
     Placeholder,
     /// Anything else (a flag, a path, a URL, a quoted arg, ...) -- not
@@ -116,8 +131,7 @@ enum Tok2 {
     Other,
 }
 
-/// One `fastskill ...` invocation candidate extracted from a fenced ` ```bash `
-/// block in a webdocs/cli-reference/*.mdx file.
+/// One `fastskill ...` invocation extracted from the current docs corpus.
 #[derive(Debug, Clone)]
 struct DocCommand {
     file: String,
@@ -145,11 +159,11 @@ impl DocCommand {
         }
         match &self.tok2 {
             Tok2::Ident(tok2) => leaf_paths.contains(&format!("{} {tok2}", self.tok1)),
-            // "fastskill eval <SUBCOMMAND>" / "fastskill repos <SUBCOMMAND>":
+            // "fastskill eval <SUBCOMMAND>" / "fastskill repo <SUBCOMMAND>":
             // the doc names a group, not a specific subcommand, so it's
             // enough for `tok1` to be a real group.
             Tok2::Placeholder => groups.contains(&self.tok1),
-            Tok2::None | Tok2::Other => false,
+            Tok2::None | Tok2::Other => groups.contains(&self.tok1),
         }
     }
 }
@@ -175,7 +189,7 @@ fn is_placeholder(tok: &str) -> bool {
 /// Other fence languages (`toml`, `json`, plain example-output blocks) are
 /// deliberately excluded: they routinely contain the literal word
 /// `fastskill` in prose/output that is not an invocation (e.g.
-/// `Installation: fastskill add acme/web-scraper` inside a plain output
+/// `Installation: fastskill skill add acme/web-scraper` inside a plain output
 /// block), and including them would make extraction noisy.
 fn bash_fences(text: &str) -> Vec<&str> {
     const OPEN: &str = "```bash";
@@ -207,8 +221,8 @@ fn bash_fences(text: &str) -> Vec<&str> {
     out
 }
 
-/// Extract every `fastskill ...` invocation candidate from every
-/// ` ```bash ` fenced block in `webdocs/cli-reference/*.mdx`.
+/// Extract every `fastskill ...` invocation candidate from bash fences in the
+/// Markdown corpus and terminal-example lines in `website/index.html`.
 ///
 /// A line is only considered if, after stripping an optional shell-prompt
 /// `$ ` marker, it begins with the literal token `fastskill` (word-bounded,
@@ -216,17 +230,11 @@ fn bash_fences(text: &str) -> Vec<&str> {
 /// whitespace-separated tokens after `fastskill` are used to form a command
 /// path candidate; see [`Tok2`] for how the second token is classified.
 fn extract_documented_commands() -> Vec<DocCommand> {
-    let dir = webdocs_cli_reference_dir();
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()))
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e == "mdx"))
-        .collect();
-    paths.sort();
+    let paths = documentation_paths();
     assert!(
         !paths.is_empty(),
-        "no .mdx files found under {} -- did webdocs/cli-reference move?",
-        dir.display()
+        "documentation corpus is empty under {}",
+        repo_root().display()
     );
 
     let mut out = Vec::new();
@@ -234,15 +242,34 @@ fn extract_documented_commands() -> Vec<DocCommand> {
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let file = path
-            .file_name()
-            .expect("mdx file has a file name")
+            .strip_prefix(repo_root())
+            .unwrap_or(&path)
             .to_string_lossy()
-            .into_owned();
+            .replace('\\', "/");
+        let blocks = if path
+            .extension()
+            .is_some_and(|extension| extension == "html")
+        {
+            vec![text.as_str()]
+        } else {
+            bash_fences(&text)
+        };
 
-        for block in bash_fences(&text) {
+        for block in blocks {
             for raw_line in block.lines() {
                 let line = raw_line.trim();
                 let line = line.strip_prefix("$ ").unwrap_or(line).trim_start();
+                let line = if path
+                    .extension()
+                    .is_some_and(|extension| extension == "html")
+                {
+                    match line.find("fastskill") {
+                        Some(start) => &line[start..],
+                        None => continue,
+                    }
+                } else {
+                    line
+                };
 
                 let rest = match line.strip_prefix("fastskill") {
                     Some(r) if r.is_empty() || r.starts_with(char::is_whitespace) => r.trim(),
@@ -320,7 +347,7 @@ fn documented_commands_exist_in_cli() {
     let doc_commands = extract_documented_commands();
     assert!(
         !doc_commands.is_empty(),
-        "extracted zero `fastskill ...` invocations from webdocs/cli-reference -- \
+        "extracted zero `fastskill ...` invocations from the documentation corpus -- \
          extraction logic is likely broken (regressed the ```bash fence parser?)"
     );
 
@@ -347,8 +374,8 @@ fn documented_commands_exist_in_cli() {
 
     let mut msg = String::new();
     msg.push_str(&format!(
-        "\n{} command(s) documented in webdocs/cli-reference/*.mdx do not exist \
-         in the CLI surface (`fastskill spec --format json`):\n\n",
+        "\n{} command(s) documented in the current documentation corpus do not exist \
+         in the CLI surface (`fastskill cli spec --format json`):\n\n",
         offenders.len()
     ));
     for (command, occurrences) in &offenders {
@@ -370,10 +397,8 @@ fn documented_commands_exist_in_cli() {
 // Assertion 2 (separately allowlistable): every CLI command is documented.
 //
 // Kept as its own test function per the task brief: this direction is
-// noisier (a command can legitimately be documented outside
-// webdocs/cli-reference, e.g. `mcp *` and `optimize *` live under
-// webdocs/integration/*.mdx and webdocs/optimize/*.mdx respectively) so it
-// should be independently allowlistable/ignorable without weakening
+// noisier (a command can legitimately be referenced in prose without a full
+// invocation) so it remains independently allowlistable without weakening
 // `documented_commands_exist_in_cli`.
 // ---------------------------------------------------------------------------
 
@@ -381,20 +406,14 @@ fn documented_commands_exist_in_cli() {
 fn cli_commands_are_documented() {
     let cli_paths = cli_command_paths();
 
-    let dir = webdocs_cli_reference_dir();
-    let mut mdx_paths: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()))
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e == "mdx"))
-        .collect();
-    mdx_paths.sort();
+    let paths = documentation_paths();
     assert!(
-        !mdx_paths.is_empty(),
-        "no .mdx files found under {}",
-        dir.display()
+        !paths.is_empty(),
+        "documentation corpus is empty under {}",
+        repo_root().display()
     );
 
-    let corpus: String = mdx_paths
+    let corpus: String = paths
         .iter()
         .map(|p| std::fs::read_to_string(p).unwrap_or_else(|e| panic!("read {}: {e}", p.display())))
         .collect::<Vec<_>>()
@@ -427,14 +446,14 @@ fn cli_commands_are_documented() {
 
     let mut msg = String::new();
     msg.push_str(&format!(
-        "\n{} CLI command(s) are not mentioned anywhere in webdocs/cli-reference/*.mdx:\n\n",
+        "\n{} CLI command(s) are not mentioned anywhere in the documentation corpus:\n\n",
         undocumented.len()
     ));
     for command in &undocumented {
         msg.push_str(&format!("  `fastskill {command}`\n"));
     }
     msg.push_str(
-        "\nEither document the command under webdocs/cli-reference/, or, if it's \
+        "\nEither document the command, or, if it's \
          intentionally documented elsewhere (or intentionally undocumented), add an \
          entry to crates/fastskill-cli/tests/spec_docs_parity_allowlist.toml under \
          [[implemented_but_undocumented]] with a `command` and a `reason`.\n",
@@ -453,15 +472,15 @@ fn cli_commands_are_documented() {
 /// logic is likely broken" rather than reporting a real docs drift.
 #[test]
 fn bash_fences_is_line_ending_agnostic() {
-    let lf = "intro\n```bash\nfastskill list\n```\ntail\n";
-    let crlf = "intro\r\n```bash\r\nfastskill list\r\n```\r\ntail\r\n";
+    let lf = "intro\n```bash\nfastskill skill list\n```\ntail\n";
+    let crlf = "intro\r\n```bash\r\nfastskill skill list\r\n```\r\ntail\r\n";
 
-    assert_eq!(bash_fences(lf), vec!["fastskill list\n"]);
-    assert_eq!(bash_fences(crlf), vec!["fastskill list\r\n"]);
+    assert_eq!(bash_fences(lf), vec!["fastskill skill list\n"]);
+    assert_eq!(bash_fences(crlf), vec!["fastskill skill list\r\n"]);
 
     // The tag must still end the line: ```bashful is not a bash fence.
     assert!(bash_fences("```bashful\nnope\n```\n").is_empty());
 
     // And an unterminated fence must not panic or loop forever.
-    assert!(bash_fences("```bash\nfastskill list\n").is_empty());
+    assert!(bash_fences("```bash\nfastskill skill list\n").is_empty());
 }

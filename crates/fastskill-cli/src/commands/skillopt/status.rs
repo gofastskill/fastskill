@@ -1,4 +1,4 @@
-//! `fastskill optimize status` subcommand
+//! `fastskill optimization status` subcommand
 
 use crate::error::{CliError, CliResult};
 use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Arguments for `fastskill optimize status`
+/// Arguments for `fastskill optimization status`
 #[derive(Debug)]
 pub struct StatusArgs {
     /// Path to the run directory
@@ -23,10 +23,11 @@ impl IntoCommandSpec for StatusArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Show the status of a training run",
-            syntax: Some("optimize status <run-dir> [--watch]"),
+            help_order: Some(30),
+            syntax: Some("optimization status <run-dir> [--watch]"),
             examples: vec![
-                "fastskill optimize status ./optimize-runs/run-1",
-                "fastskill optimize status ./optimize-runs/run-1 --watch",
+                "fastskill optimization status ./optimize-runs/run-1",
+                "fastskill optimization status ./optimize-runs/run-1 --watch",
             ],
             args: vec![
                 ArgSpec {

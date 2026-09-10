@@ -83,6 +83,7 @@ impl IntoCommandSpec for RunArgs {
             summary: "Run eval cases against an agent",
             syntax: Some("eval run [OPTIONS]"),
             category: Some("quality"),
+            help_order: Some(20),
             examples: vec![
                 "fastskill eval run --agent claude --output-dir ./eval-runs",
                 "fastskill eval run --all --output-dir ./eval-runs --ci --threshold 0.9",

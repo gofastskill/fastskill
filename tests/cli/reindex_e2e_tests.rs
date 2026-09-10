@@ -31,7 +31,8 @@ embedding_model = "text-embedding-3-small"
 
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
-    let result = run_fastskill_command_with_env(&["reindex"], &env_vars, Some(temp_dir.path()));
+    let result =
+        run_fastskill_command_with_env(&["index", "rebuild"], &env_vars, Some(temp_dir.path()));
 
     assert!(result.success);
     // Should succeed even with empty skills directory
@@ -65,7 +66,8 @@ embedding_model = "text-embedding-3-small"
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
     let result = run_fastskill_command_with_env(
         &[
-            "reindex",
+            "index",
+            "rebuild",
             "--skills-dir",
             custom_skills_dir.to_str().unwrap(),
         ],
@@ -117,8 +119,11 @@ embedding_model = "text-embedding-3-small"
 
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
-    let result =
-        run_fastskill_command_with_env(&["reindex", "--force"], &env_vars, Some(temp_dir.path()));
+    let result = run_fastskill_command_with_env(
+        &["index", "rebuild", "--force"],
+        &env_vars,
+        Some(temp_dir.path()),
+    );
 
     assert!(result.success);
     // Should succeed with force flag
@@ -147,7 +152,7 @@ embedding_model = "text-embedding-3-small"
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
     let result = run_fastskill_command_with_env(
-        &["reindex", "--max-concurrent", "2"],
+        &["index", "rebuild", "--max-concurrent", "2"],
         &env_vars,
         Some(temp_dir.path()),
     );
@@ -182,7 +187,8 @@ embedding_model = "text-embedding-3-small"
 
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
-    let result = run_fastskill_command_with_env(&["reindex"], &env_vars, Some(temp_dir.path()));
+    let result =
+        run_fastskill_command_with_env(&["index", "rebuild"], &env_vars, Some(temp_dir.path()));
 
     assert!(result.success);
     // Should succeed with empty directory
@@ -214,7 +220,12 @@ fn test_reindex_skips_gracefully_without_embedding_provider() {
         std::process::Command::new(&binary)
     };
     let output = cmd
-        .args(["reindex", "--skills-dir", skills_dir.to_str().unwrap()])
+        .args([
+            "index",
+            "rebuild",
+            "--skills-dir",
+            skills_dir.to_str().unwrap(),
+        ])
         .current_dir(temp_dir.path())
         // Explicitly clear so the test is not at the mercy of the developer's
         // real shell environment.
@@ -231,7 +242,7 @@ fn test_reindex_skips_gracefully_without_embedding_provider() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains(
-            "Reindex skipped: no embedding provider configured. Run 'fastskill doctor' for setup guidance."
+            "Reindex skipped: no embedding provider configured. Run 'fastskill cli doctor' for setup guidance."
         ),
         "expected the reindex skip message on stdout, got:\n{stdout}"
     );
@@ -265,7 +276,12 @@ embedding_model = "text-embedding-3-small"
     // Set OPENAI_API_KEY to avoid config requirement
     let env_vars = vec![("OPENAI_API_KEY", "test-key")];
     let result = run_fastskill_command_with_env(
-        &["reindex", "--skills-dir", missing_dir.to_str().unwrap()],
+        &[
+            "index",
+            "rebuild",
+            "--skills-dir",
+            missing_dir.to_str().unwrap(),
+        ],
         &env_vars,
         Some(temp_dir.path()),
     );
@@ -310,7 +326,7 @@ fn test_reindex_progress_conflict() {
     .unwrap();
 
     let result = run_fastskill_command(
-        &["reindex", "--progress", "--no-progress"],
+        &["index", "rebuild", "--progress", "--no-progress"],
         Some(temp_dir.path()),
     );
 
@@ -328,7 +344,7 @@ fn test_reindex_no_embedding_provider_exits_zero() {
     let config_content = "[dependencies]\n\n[tool.fastskill]\nskills_directory = \".skills\"\n";
     fs::write(temp_dir.path().join("skill-project.toml"), config_content).unwrap();
 
-    let result = run_fastskill_command(&["reindex"], Some(temp_dir.path()));
+    let result = run_fastskill_command(&["index", "rebuild"], Some(temp_dir.path()));
 
     assert!(
         result.success,
