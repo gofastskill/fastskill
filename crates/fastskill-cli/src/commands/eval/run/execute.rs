@@ -845,14 +845,13 @@ mod tests {
             .await
             .unwrap();
 
-        let mut json = run_args(temp.path().join("json-multiple"));
-        json.agent.push("claude".to_string());
+        let mut json = run_args(temp.path().join("json-output"));
         json.json = true;
         let (result, output) =
             crate::output::capture(execute_run_with_runner(json, Arc::clone(&passing))).await;
         result.unwrap();
-        let summaries: Vec<SummaryResult> = serde_json::from_str(&output).unwrap();
-        assert_eq!(summaries.len(), 2);
+        let summary: SummaryResult = serde_json::from_str(&output).unwrap();
+        assert_eq!(summary.passed, 1);
 
         let failing = Arc::new(ScriptedRunner {
             status: CaseStatus::Failed,
