@@ -17,7 +17,7 @@ assert.match(data.sourceRevision, /^[a-f0-9]{40}$/);
 assert.match(data.documentationRevision, /^[a-f0-9]{40}$/);
 const pages = new Map(data.pages.map((page) => [page.url, page]));
 const htmlFor = (url) => url === '/' ? 'index.html' : `${url.slice(1)}.html`;
-const decode = (s) => s.replaceAll('&amp;', '&').replaceAll('&#x27;', "'").replaceAll('&quot;', '"');
+const decode = (s) => s.replaceAll('&#x27;', "'").replaceAll('&quot;', '"').replaceAll('&amp;', '&');
 const htmlByUrl = new Map(await Promise.all(data.pages.map(async (page) => [page.url, await read(htmlFor(page.url))])));
 for (const page of data.pages) {
   const html = htmlByUrl.get(page.url);
