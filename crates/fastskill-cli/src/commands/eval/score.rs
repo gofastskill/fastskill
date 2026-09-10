@@ -48,7 +48,6 @@ impl IntoCommandSpec for ScoreArgs {
             summary: "Re-score saved eval artifacts without running the agent again",
             syntax: Some("eval score [OPTIONS]"),
             category: Some("quality"),
-            help_order: Some(50),
             examples: vec![
                 "fastskill eval score --run-dir ./eval-runs/2026-08-14T12-00-00Z/claude",
             ],

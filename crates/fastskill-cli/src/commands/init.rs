@@ -594,229 +594,261 @@ fn prompt_for_field(field_name: &str, default: Option<&str>) -> CliResult<Option
     clippy::unwrap_used,
     clippy::panic,
     clippy::expect_used,
-    clippy::collapsible_if,
     clippy::await_holding_lock
 )]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    #[tokio::test]
-    async fn test_execute_init_with_all_args() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+    struct CwdGuard(PathBuf);
 
-        let args = InitArgs {
-            yes: true,
-            force: false,
-            version: Some("1.0.0".to_string()),
-            description: Some("Test description".to_string()),
-            author: Some("Test Author".to_string()),
-            download_url: Some("https://example.com".to_string()),
-            skills_dir: Some(".claude/skills".to_string()),
-        };
-
-        let result = execute_init(args).await;
-        // May succeed or fail depending on environment, but shouldn't panic
-        if result.is_ok() {
-            // Verify file was created if successful
-            if Path::new("skill-project.toml").exists() {
-                fs::remove_file("skill-project.toml").ok();
-            }
+    impl CwdGuard {
+        fn enter(path: &Path) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self(original)
         }
     }
 
-    #[tokio::test]
-    async fn test_execute_init_with_invalid_version() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = InitArgs {
-            yes: true,
-            force: false,
-            version: Some("invalid-version".to_string()),
-            description: None,
-            author: None,
-            download_url: None,
-            skills_dir: Some(".claude/skills".to_string()),
-        };
-
-        let result = execute_init(args).await;
-        assert!(result.is_err());
-        if let Err(CliError::InvalidSemver(_)) = result {
-            // Correct error type
-        } else {
-            panic!("Expected InvalidSemver error");
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.0).unwrap();
         }
     }
 
-    #[tokio::test]
-    async fn test_execute_init_with_invalid_id() {
-        // Note: This test verifies that skill ID validation works
-        // The ID is derived from directory name, so we can't easily test invalid IDs here
-        // Invalid ID validation happens when the directory name is invalid
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = InitArgs {
-            yes: true,
-            force: false,
-            version: Some("1.0.0".to_string()),
-            description: None,
-            author: None,
-            download_url: None,
-            skills_dir: Some(".claude/skills".to_string()),
-        };
-
-        // This test now just verifies the function doesn't panic
-        // ID validation happens based on directory name, which is harder to test in unit tests
-        let result = execute_init(args).await;
-        // May succeed or fail depending on directory name, but shouldn't panic
-        if result.is_ok() {
-            if Path::new("skill-project.toml").exists() {
-                fs::remove_file("skill-project.toml").ok();
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_init_success() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let args = InitArgs {
+    fn args() -> InitArgs {
+        InitArgs {
             yes: true,
             force: false,
             version: None,
             description: None,
-            author: None,
-            download_url: None,
-            skills_dir: Some(".claude/skills".to_string()),
-        };
-
-        let result = execute_init(args).await;
-        // May succeed or fail depending on various factors, but shouldn't panic
-        if result.is_ok() {
-            assert!(Path::new("skill-project.toml").exists());
-            let content = fs::read_to_string("skill-project.toml").unwrap();
-            assert!(content.contains("[tool.fastskill]"));
-            assert!(content.contains("skills_directory"));
-
-            fs::remove_file("skill-project.toml").ok();
-        }
-    }
-
-    /// Regression test for spec 013 minor #2: `fastskill project init --yes` (no
-    /// `--skills-dir`) at project level must succeed using the same default
-    /// the interactive path uses (`.claude/skills`), not error -- this is the
-    /// exact invocation shown in the command's own `--help` examples
-    /// (`fastskill project init --yes --description "My skill"`) and the README
-    /// quick start. Verified against the real binary: before this fix, this
-    /// reproduces `Error: Configuration error: Project-level init requires
-    /// --skills-dir <path>`, while plain interactive `init` (stdin from
-    /// `/dev/null`, so it takes the empty-input default) succeeds with
-    /// `.claude/skills`.
-    #[tokio::test]
-    async fn test_execute_init_yes_without_skills_dir_defaults_like_interactive() {
-        let _lock = fastskill_core::test_utils::DIR_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().ok();
-        struct DirGuard(Option<std::path::PathBuf>);
-        impl Drop for DirGuard {
-            fn drop(&mut self) {
-                if let Some(dir) = &self.0 {
-                    let _ = std::env::set_current_dir(dir);
-                }
-            }
-        }
-        let _guard = DirGuard(original_dir);
-        // A subdirectory with a valid identifier name: `resolve_skill_id`
-        // derives the skill id from the current directory's name, and
-        // `TempDir`'s own directories start with a `.`, which is not a valid
-        // identifier -- unrelated to what this test checks, so avoid it.
-        let project_dir = temp_dir.path().join("my-project");
-        fs::create_dir_all(&project_dir).unwrap();
-        std::env::set_current_dir(&project_dir).unwrap();
-
-        // No SKILL.md in this directory, so this is project-level context.
-        let args = InitArgs {
-            yes: true,
-            force: false,
-            version: None,
-            description: Some("My skill".to_string()),
             author: None,
             download_url: None,
             skills_dir: None,
-        };
+        }
+    }
 
-        let result = execute_init(args).await;
-        assert!(
-            result.is_ok(),
-            "init --yes at project level must not require --skills-dir: {:?}",
-            result
+    fn valid_dir(temp: &TempDir, name: &str) -> PathBuf {
+        let path = temp.path().join(name);
+        fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn command_contract_and_arg_map_use_project_namespace() {
+        let spec = InitArgs::command_spec();
+        assert_eq!(spec.syntax, Some("project init [OPTIONS]"));
+        assert_eq!(spec.category, Some("project"));
+        assert_eq!(spec.help_order, Some(10));
+        assert!(spec
+            .examples
+            .iter()
+            .all(|e| e.starts_with("fastskill project init")));
+
+        let map = HashMap::from([
+            ("yes".to_string(), ArgValue::Bool(true)),
+            ("force".to_string(), ArgValue::Bool(true)),
+            (
+                "set-version".to_string(),
+                ArgValue::Str("2.3.4".to_string()),
+            ),
+            ("description".to_string(), ArgValue::Str("Demo".to_string())),
+            ("author".to_string(), ArgValue::Str("Ada".to_string())),
+            (
+                "download-url".to_string(),
+                ArgValue::Str("https://example.test/demo".to_string()),
+            ),
+        ]);
+        let parsed = InitArgs::from_arg_value_map(&map).with_skills_dir(Some("skills".to_string()));
+        assert!(parsed.yes && parsed.force);
+        assert_eq!(parsed.version.as_deref(), Some("2.3.4"));
+        assert_eq!(parsed.description.as_deref(), Some("Demo"));
+        assert_eq!(parsed.author.as_deref(), Some("Ada"));
+        assert_eq!(
+            parsed.download_url.as_deref(),
+            Some("https://example.test/demo")
         );
+        assert_eq!(parsed.skills_dir.as_deref(), Some("skills"));
+
+        let wrong_types = HashMap::from([
+            ("yes".to_string(), ArgValue::Str("true".to_string())),
+            ("force".to_string(), ArgValue::Str("true".to_string())),
+            ("set-version".to_string(), ArgValue::Bool(true)),
+            ("description".to_string(), ArgValue::Bool(true)),
+            ("author".to_string(), ArgValue::Bool(true)),
+            ("download-url".to_string(), ArgValue::Bool(true)),
+        ]);
+        let parsed = InitArgs::from_arg_value_map(&wrong_types).with_skills_dir(None);
+        assert!(!parsed.yes && !parsed.force);
+        assert!(parsed.version.is_none() && parsed.description.is_none());
+        assert!(parsed.author.is_none() && parsed.download_url.is_none());
+        assert!(parsed.skills_dir.is_none());
+    }
+
+    #[tokio::test]
+    async fn project_init_writes_defaults_and_force_controls_overwrite() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let project = valid_dir(&temp_dir, "demo-project");
+        let _cwd = CwdGuard::enter(&project);
+
+        execute_init(args()).await.unwrap();
         let content = fs::read_to_string("skill-project.toml").unwrap();
-        assert!(
-            content.contains("skills_directory = \".claude/skills\""),
-            "must default to the same directory the interactive path uses: {content}"
+        assert!(content.contains("schema_version = \"1\""));
+        assert!(content.contains("id = \"demo-project\""));
+        assert!(content.contains("version = \"1.0.0\""));
+        assert!(content.contains("skills_directory = \".claude/skills\""));
+        assert!(content.contains("# Additional configuration options"));
+
+        let error = execute_init(args()).await.unwrap_err();
+        assert!(error.to_string().contains("Use --force to overwrite"));
+        let mut force = args();
+        force.force = true;
+        force.skills_dir = Some(".agents/skills".to_string());
+        execute_init(force).await.unwrap();
+        let content = fs::read_to_string("skill-project.toml").unwrap();
+        assert!(content.contains("skills_directory = \".agents/skills\""));
+    }
+
+    #[tokio::test]
+    async fn skill_init_uses_frontmatter_and_keeps_tool_config_optional() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let project = valid_dir(&temp_dir, "demo-skill");
+        fs::write(
+            project.join("SKILL.md"),
+            "---\nname: demo-skill\ndescription: Demo skill\nversion: 2.3.4\nauthor: Ada\n---\n# Demo\n",
+        )
+        .unwrap();
+        let _cwd = CwdGuard::enter(&project);
+
+        execute_init(args()).await.unwrap();
+        let content = fs::read_to_string("skill-project.toml").unwrap();
+        assert!(content.contains("version = \"2.3.4\""));
+        assert!(content.contains("description = \"Demo skill\""));
+        assert!(content.contains("author = \"Ada\""));
+        assert!(!content.contains("\n[tool.fastskill]\n"));
+        assert!(content.contains("# [tool.fastskill]"));
+    }
+
+    #[test]
+    fn resolvers_prefer_explicit_values_and_validate_versions() {
+        let frontmatter = parse_yaml_frontmatter(
+            "---\nname: demo\ndescription: Frontmatter\nversion: 1.2.3\nauthor: Ada\n---\n",
+        )
+        .unwrap();
+        let mut explicit = args();
+        explicit.version = Some("2.0.0".to_string());
+        explicit.description = Some("Explicit".to_string());
+        explicit.author = Some("Grace".to_string());
+        explicit.download_url = Some("https://example.test".to_string());
+        assert_eq!(
+            resolve_version(&explicit, &frontmatter, None).unwrap(),
+            "2.0.0"
         );
+        assert_eq!(
+            resolve_description(&explicit, &frontmatter)
+                .unwrap()
+                .as_deref(),
+            Some("Explicit")
+        );
+        assert_eq!(
+            resolve_author(&explicit, &frontmatter).unwrap().as_deref(),
+            Some("Grace")
+        );
+        assert_eq!(
+            resolve_download_url(&explicit).unwrap().as_deref(),
+            Some("https://example.test")
+        );
+
+        assert_eq!(
+            resolve_version(&args(), &frontmatter, None).unwrap(),
+            "1.2.3"
+        );
+        assert_eq!(
+            resolve_description(&args(), &frontmatter)
+                .unwrap()
+                .as_deref(),
+            Some("Frontmatter")
+        );
+        assert_eq!(
+            resolve_author(&args(), &frontmatter).unwrap().as_deref(),
+            Some("Ada")
+        );
+        assert_eq!(resolve_skills_directory(true, &args()).unwrap(), None);
+        assert_eq!(
+            resolve_skills_directory(false, &args()).unwrap().as_deref(),
+            Some(DEFAULT_PROJECT_SKILLS_DIRECTORY)
+        );
+
+        let mut invalid = args();
+        invalid.version = Some("not-semver".to_string());
+        assert!(matches!(
+            resolve_version(&invalid, &frontmatter, None),
+            Err(CliError::InvalidSemver(_))
+        ));
+        let invalid_frontmatter =
+            parse_yaml_frontmatter("---\nname: demo\ndescription: Demo\nversion: bad\n---\n")
+                .unwrap();
+        assert!(matches!(
+            resolve_version(&args(), &invalid_frontmatter, None),
+            Err(CliError::InvalidSemver(_))
+        ));
+    }
+
+    #[test]
+    fn version_text_parser_handles_supported_delimiters_and_shapes() {
+        for (content, expected) in [
+            ("---\nversion: 1.2.3\n---\n# Demo", Some("1.2.3")),
+            ("---\r\nversion: '2.0.0'\r\n---\r\n", Some("2.0.0")),
+            ("---version: \"3.4.5\"\n---", Some("3.4.5")),
+            ("---\nname: demo\n---", None),
+            ("---\nversion:\n---", None),
+            ("not frontmatter", None),
+            ("", None),
+            ("---\nversion: 1.0.0", None),
+            ("---\nversion: 1.0.0\n---suffix", None),
+        ] {
+            assert_eq!(try_version_from_content(content).as_deref(), expected);
+        }
+        assert_eq!(extract_version_from_skill_md("", true).unwrap(), "1.0.0");
+        assert!(is_valid_closing("---", 0));
+        assert!(!is_valid_closing("--", 0));
+        assert!(!is_valid_closing("---suffix", 0));
+    }
+
+    #[tokio::test]
+    async fn invalid_directory_and_skill_file_return_typed_errors() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let invalid = valid_dir(&temp_dir, "bad.id");
+        let _cwd = CwdGuard::enter(&invalid);
+        assert!(matches!(
+            execute_init(args()).await,
+            Err(CliError::InvalidIdentifier(_))
+        ));
+        drop(_cwd);
+
+        let malformed = valid_dir(&temp_dir, "malformed-skill");
+        fs::write(malformed.join("SKILL.md"), "---\nname: [\n---\n").unwrap();
+        let _cwd = CwdGuard::enter(&malformed);
+        let error = execute_init(args()).await.unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Failed to parse SKILL.md frontmatter"));
+
+        assert!(append_tool_comment(Path::new("missing.toml"), false)
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to read skill-project.toml"));
+        print_success(true, "1.0.0", None);
+        print_success(false, "1.0.0", Some("skills"));
     }
 }

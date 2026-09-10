@@ -109,7 +109,6 @@ impl IntoCommandSpec for ScorecardArgs {
                  eval scorecard --format html --from <JSON> [--from <JSON>...] -o <FILE>",
             ),
             category: Some("quality"),
-            help_order: Some(60),
             examples: vec![
                 "fastskill eval scorecard --root ./eval-runs --metrics ./evals/metrics.toml",
                 "fastskill eval scorecard --format html --from a.json --from b.json -o report.html",

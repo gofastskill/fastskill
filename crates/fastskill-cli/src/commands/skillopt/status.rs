@@ -166,3 +166,112 @@ fn render_status(run_dir: &Path) -> CliResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_state(run_dir: &Path, state: &str, history: &str) {
+        std::fs::write(run_dir.join("runtime_state.json"), state).unwrap();
+        std::fs::write(run_dir.join("history.json"), history).unwrap();
+    }
+
+    #[test]
+    fn command_spec_and_argument_map_preserve_watch_flag() {
+        let spec = StatusArgs::command_spec();
+        assert_eq!(spec.help_order, Some(30));
+        assert_eq!(spec.args.len(), 2);
+
+        let map = HashMap::from([
+            ("run-dir".to_string(), ArgValue::Str("run-one".to_string())),
+            ("watch".to_string(), ArgValue::Bool(true)),
+        ]);
+        let args = StatusArgs::from_arg_value_map(&map);
+        assert_eq!(args.run_dir, PathBuf::from("run-one"));
+        assert!(args.watch);
+
+        let map = HashMap::from([("run-dir".to_string(), ArgValue::Str("run-two".to_string()))]);
+        assert!(!StatusArgs::from_arg_value_map(&map).watch);
+    }
+
+    #[tokio::test]
+    async fn execute_reports_missing_run_directory() {
+        let temp = TempDir::new().unwrap();
+        let err = execute_status(StatusArgs {
+            run_dir: temp.path().join("missing"),
+            watch: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_RUN_DIR_MISSING"));
+    }
+
+    #[tokio::test]
+    async fn execute_reports_missing_and_malformed_runtime_artifacts() {
+        let temp = TempDir::new().unwrap();
+        let err = execute_status(StatusArgs {
+            run_dir: temp.path().to_path_buf(),
+            watch: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_RUN_DIR_CORRUPT"));
+
+        write_state(temp.path(), "not-json", "[]");
+        let err = execute_status(StatusArgs {
+            run_dir: temp.path().to_path_buf(),
+            watch: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("malformed runtime_state.json"));
+    }
+
+    #[tokio::test]
+    async fn renders_accepted_and_rejected_steps_with_saturating_token_totals() {
+        let temp = TempDir::new().unwrap();
+        write_state(
+            temp.path(),
+            r#"{"best_score":0.75,"epoch":2,"global_step":9}"#,
+            r#"[
+                {"global_step":8,"accepted":true,"score_current":0.5,"score_candidate":0.75,
+                 "input_tokens":12,"output_tokens":8},
+                {"global_step":9,"accepted":false,"score_current":0.75,"score_candidate":0.7,
+                 "input_tokens":null,"output_tokens":null}
+            ]"#,
+        );
+
+        let (result, output) = crate::output::capture(execute_status(StatusArgs {
+            run_dir: temp.path().to_path_buf(),
+            watch: false,
+        }))
+        .await;
+        result.unwrap();
+        assert!(output.contains("epoch: 2  global_step: 9  best_score: 0.7500"));
+        assert!(output.contains("accepted"));
+        assert!(output.contains("rejected"));
+        assert!(output.contains("20"));
+    }
+
+    #[tokio::test]
+    async fn malformed_history_is_rendered_as_an_empty_table() {
+        let temp = TempDir::new().unwrap();
+        write_state(
+            temp.path(),
+            r#"{"best_score":0.0,"epoch":0,"global_step":0}"#,
+            "not-json",
+        );
+
+        let (result, output) = crate::output::capture(execute_status(StatusArgs {
+            run_dir: temp.path().to_path_buf(),
+            watch: false,
+        }))
+        .await;
+        result.unwrap();
+        assert!(output.contains("score(S')"));
+        assert!(!output.contains("accepted"));
+        assert!(!output.contains("rejected"));
+    }
+}

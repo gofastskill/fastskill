@@ -299,6 +299,70 @@ pub fn build_grid_string(matrix: &[SimilarityPair], threshold: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fastskill_core::core::vector_index::IndexedSkill;
+    use std::path::PathBuf;
+
+    fn indexed_skill(id: &str, embedding: Vec<f32>) -> IndexedSkill {
+        IndexedSkill {
+            id: id.to_string(),
+            skill_path: PathBuf::from(id),
+            frontmatter_json: serde_json::json!({"name": id}),
+            embedding,
+            file_hash: "hash".to_string(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn analysis_matrix_argument_defaults_and_namespace_contract() {
+        for (value, expected) in [
+            ("table", Some(OutputFormat::Table)),
+            ("json", Some(OutputFormat::Json)),
+            ("grid", Some(OutputFormat::Grid)),
+            ("xml", Some(OutputFormat::Xml)),
+            ("invalid", None),
+        ] {
+            assert_eq!(parse_output_format(value), expected);
+        }
+
+        let defaults = MatrixArgs::from_arg_value_map(&HashMap::from([
+            ("format".to_string(), ArgValue::Bool(true)),
+            ("threshold".to_string(), ArgValue::Int(1)),
+            ("limit".to_string(), ArgValue::Float(2.0)),
+        ]));
+        assert!(defaults.format.is_none());
+        assert_eq!(defaults.threshold, 0.0);
+        assert_eq!(defaults.limit, 10);
+        assert!(!defaults.json);
+        assert!(!defaults.full);
+
+        let spec = MatrixArgs::command_spec();
+        assert_eq!(spec.syntax, Some("analysis matrix [OPTIONS]"));
+        assert_eq!(spec.category, Some("analysis"));
+        assert_eq!(spec.help_order, Some(10));
+    }
+
+    #[test]
+    fn matrix_summary_respects_limit_while_full_keeps_every_match() {
+        let skills = vec![
+            indexed_skill("alpha", vec![1.0, 0.0]),
+            indexed_skill("beta", vec![0.9, 0.1]),
+            indexed_skill("gamma", vec![0.8, 0.2]),
+        ];
+        let mut args = MatrixArgs {
+            format: Some(OutputFormat::Json),
+            json: false,
+            threshold: 0.0,
+            limit: 1,
+            full: false,
+        };
+        let limited = build_similarity_matrix(&skills, &args);
+        assert!(limited.iter().all(|pair| pair.similar_skills.len() == 1));
+
+        args.full = true;
+        let full = build_similarity_matrix(&skills, &args);
+        assert!(full.iter().all(|pair| pair.similar_skills.len() == 2));
+    }
 
     fn make_pair(id: &str, similar: Vec<(&str, f32)>) -> SimilarityPair {
         SimilarityPair {

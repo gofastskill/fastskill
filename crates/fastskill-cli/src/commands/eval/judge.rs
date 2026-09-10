@@ -70,7 +70,6 @@ impl IntoCommandSpec for JudgeArgs {
             summary: "Judge a completed eval run with the judges its checks file declares",
             syntax: Some("eval judge [OPTIONS]"),
             category: Some("quality"),
-            help_order: Some(30),
             examples: vec![
                 "fastskill eval judge --run-dir ./eval-runs/2026-09-04T12-00-00Z/claude",
                 "fastskill eval judge --run-dir ./eval-runs/latest/claude --judge-model gpt-4.1",

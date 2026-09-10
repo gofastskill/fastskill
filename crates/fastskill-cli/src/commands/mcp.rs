@@ -456,6 +456,13 @@ async fn serve_http(
 mod tests {
     use super::*;
 
+    fn empty_tools() -> Arc<McpToolRegistry> {
+        Arc::new(McpToolRegistry::from_command_registry(
+            &CommandRegistry::new(),
+            "testapp",
+        ))
+    }
+
     #[test]
     fn mutating_tool_names_cover_the_known_writers() {
         let names = mutating_tool_names("fastskill");
@@ -505,5 +512,148 @@ mod tests {
             "the write gate must be closed unless --enable-write is passed"
         );
         assert_eq!(args.transport, DEFAULT_TRANSPORT);
+    }
+
+    #[test]
+    fn metadata_and_command_spec_keep_the_mcp_surface_explicit() {
+        let group = group_metadata();
+        assert_eq!(group.category, Some("Operations"));
+        assert_eq!(group.help_order, Some(40));
+        assert!(!group.hidden);
+
+        let spec = McpServeArgs::command_spec();
+        assert_eq!(spec.help_order, Some(10));
+        assert_eq!(spec.args.len(), 5);
+        assert!(spec.args.iter().any(|arg| arg.name == "enable-write"));
+    }
+
+    #[test]
+    fn argument_map_preserves_http_settings_and_write_gate() {
+        let map = HashMap::from([
+            ("transport".to_string(), ArgValue::Enum("stdio".to_string())),
+            ("host".to_string(), ArgValue::Str("0.0.0.0".to_string())),
+            ("port".to_string(), ArgValue::Str("9000".to_string())),
+            ("path".to_string(), ArgValue::Str("/rpc".to_string())),
+            ("enable-write".to_string(), ArgValue::Bool(true)),
+        ]);
+        let args = McpServeArgs::from_arg_value_map(&map);
+        assert_eq!(args.transport, "stdio");
+        assert_eq!(args.host, "0.0.0.0");
+        assert_eq!(args.port, "9000");
+        assert_eq!(args.path, "/rpc");
+        assert!(args.enable_write);
+
+        let wrong_types = HashMap::from([
+            ("transport".to_string(), ArgValue::Bool(true)),
+            ("host".to_string(), ArgValue::Bool(true)),
+            ("port".to_string(), ArgValue::Bool(true)),
+            ("path".to_string(), ArgValue::Bool(true)),
+        ]);
+        let defaults = McpServeArgs::from_arg_value_map(&wrong_types);
+        assert_eq!(defaults.transport, DEFAULT_TRANSPORT);
+        assert_eq!(defaults.host, DEFAULT_HOST);
+        assert_eq!(defaults.port, DEFAULT_PORT);
+        assert_eq!(defaults.path, DEFAULT_PATH);
+    }
+
+    #[test]
+    fn denial_is_typed_and_names_the_restart_flag() {
+        let handler = WriteGatedHandler {
+            inner: CliFrameworkHandler::new(empty_tools(), McpTransportKind::Http),
+            blocked: Arc::new(HashSet::new()),
+        };
+        let error = handler.denial("fastskill_skill_add");
+        assert_eq!(error.code.0, MCP_TOOL_DENIED);
+        assert!(error.message.contains("fastskill_skill_add"));
+        assert!(error.message.contains("mcp serve --enable-write"));
+        assert_eq!(handler.get_info(), handler.inner.get_info());
+    }
+
+    #[test]
+    fn visible_banner_removes_only_blocked_tools() {
+        let data = BannerData {
+            transport: cli_framework::mcp::banner::BannerTransport::Stdio,
+            tools: vec![
+                cli_framework::mcp::banner::ToolLine {
+                    name: "fastskill_skill_list".to_string(),
+                    description: Some("read".to_string()),
+                },
+                cli_framework::mcp::banner::ToolLine {
+                    name: "fastskill_skill_add".to_string(),
+                    description: Some("write".to_string()),
+                },
+            ],
+        };
+        let blocked = HashSet::from(["fastskill_skill_add".to_string()]);
+        let visible = visible_banner(data, &blocked);
+        assert_eq!(visible.tools.len(), 1);
+        assert_eq!(visible.tools[0].name, "fastskill_skill_list");
+    }
+
+    #[tokio::test]
+    async fn http_server_reports_bind_conflicts() {
+        let occupied = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        let err = serve_http(
+            empty_tools(),
+            Arc::new(ResourceRegistry::new()),
+            Arc::new(HashSet::new()),
+            BannerSettings {
+                quiet: true,
+                json: false,
+            },
+            "127.0.0.1",
+            port,
+            "/mcp",
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("MCP_BIND_FAILED"));
+        assert!(err.to_string().contains(&port.to_string()));
+    }
+
+    #[tokio::test]
+    async fn http_server_binds_and_remains_available_until_cancelled() {
+        let task = tokio::spawn(serve_http(
+            empty_tools(),
+            Arc::new(ResourceRegistry::new()),
+            Arc::new(HashSet::new()),
+            BannerSettings {
+                quiet: true,
+                json: false,
+            },
+            "127.0.0.1",
+            0,
+            "/custom-mcp",
+        ));
+        tokio::time::sleep(tokio::time::Duration::from_millis(25)).await;
+        assert!(
+            !task.is_finished(),
+            "server returned instead of serving requests"
+        );
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn execute_rejects_invalid_http_port_after_registry_publication() {
+        set_command_registry(Arc::new(CommandRegistry::new()));
+        let err = execute_mcp_serve(
+            "testapp",
+            McpServeArgs {
+                transport: "http".to_string(),
+                host: DEFAULT_HOST.to_string(),
+                port: "not-a-port".to_string(),
+                path: DEFAULT_PATH.to_string(),
+                enable_write: true,
+            },
+            BannerSettings {
+                quiet: true,
+                json: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("expected u16"));
     }
 }

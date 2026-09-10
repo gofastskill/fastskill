@@ -336,11 +336,42 @@ fn emit_add_json(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
     use super::*;
-    use std::io::{Cursor, Write};
+    use fastskill_core::ServiceConfig;
+    use std::io::{Cursor, Read, Write};
     use zip::write::SimpleFileOptions;
+
+    fn args(artifact: impl Into<String>) -> AddArgs {
+        AddArgs {
+            artifact: artifact.into(),
+            reindex: false,
+            no_reindex: true,
+            offline: false,
+            dry_run: true,
+            json: false,
+        }
+    }
+
+    fn build_bundle(root: &Path) -> PathBuf {
+        let author = root.join("author");
+        fs::create_dir_all(author.join("skills/demo")).unwrap();
+        fs::write(
+            author.join("skill-project.toml"),
+            "[bundle]\nformat = \"fastskill-bundle-v1\"\nid = \"team\"\nversion = \"1.0.0\"\n[bundle.members.demo]\noverridable = false\n[dependencies]\ndemo = \"1.0.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            author.join("skills/demo/SKILL.md"),
+            "---\nname: demo\nversion: \"1.0.0\"\ndescription: demo\n---\n# demo\n",
+        )
+        .unwrap();
+        BundleService::new(&author, author.join("skills"))
+            .build(&author.join("dist"))
+            .unwrap()
+            .artifact
+    }
 
     fn ordinary_skill_zip() -> Vec<u8> {
         let cursor = Cursor::new(Vec::new());
@@ -382,6 +413,92 @@ mod tests {
         assert!(error.to_string().contains("fastskill skill add"));
     }
 
+    #[tokio::test]
+    async fn bundle_add_preflight_rejects_invalid_scope_and_transport_combinations() {
+        assert!(matches!(
+            preflight_add(&args("team.zip"), true).await,
+            Err(CliError::Validation(message)) if message.contains("do not support --global")
+        ));
+
+        let mut conflicting = args("team.zip");
+        conflicting.reindex = true;
+        conflicting.no_reindex = true;
+        assert!(matches!(
+            preflight_add(&conflicting, false).await,
+            Err(CliError::Validation(message)) if message.contains("--reindex and --no-reindex")
+        ));
+
+        conflicting.no_reindex = false;
+        conflicting.offline = true;
+        assert!(matches!(
+            preflight_add(&conflicting, false).await,
+            Err(CliError::Validation(message)) if message.contains("--offline and --reindex")
+        ));
+
+        let mut offline_remote = args("https://example.com/team.zip");
+        offline_remote.offline = true;
+        assert!(matches!(
+            preflight_add(&offline_remote, false).await,
+            Err(CliError::Validation(message)) if message.contains("local bundle artifact")
+        ));
+
+        assert!(matches!(
+            preflight_add(&args("ftp://example.com/team.zip"), false).await,
+            Err(CliError::Validation(message)) if message.contains("must use HTTPS")
+        ));
+    }
+
+    #[tokio::test]
+    async fn bundle_add_downloads_a_remote_bundle_before_validation() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = fs::read(build_bundle(root.path())).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            assert!(connection.read(&mut request).unwrap() > 0);
+            write!(
+                connection,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                bundle.len()
+            )
+            .unwrap();
+            connection.write_all(&bundle).unwrap();
+        });
+
+        let prepared = preflight_add(&args(format!("http://{address}/team.zip")), false)
+            .await
+            .unwrap();
+        assert!(prepared.path.exists());
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn bundle_add_requires_a_project_after_valid_artifact_preflight() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        let artifact = build_bundle(root.path());
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mut add_args = args(artifact.display().to_string());
+        add_args.offline = true;
+        let error = execute_add(&service, add_args, false).await.unwrap_err();
+        assert!(
+            matches!(error, CliError::Config(message) if message.contains("skill-project.toml"))
+        );
+    }
+
     #[test]
     fn argument_map_uses_explicit_bundle_schema() {
         let args = AddArgs::from_arg_value_map(&HashMap::from([
@@ -394,5 +511,12 @@ mod tests {
         ]));
         assert_eq!(args.artifact, "team.zip");
         assert!(args.offline && args.dry_run);
+
+        let defaults = AddArgs::from_arg_value_map(&HashMap::from([(
+            "artifact".to_string(),
+            ArgValue::Bool(true),
+        )]));
+        assert!(defaults.artifact.is_empty());
+        assert!(!defaults.json);
     }
 }

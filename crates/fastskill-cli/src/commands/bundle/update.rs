@@ -263,8 +263,23 @@ fn validate_args(args: &UpdateArgs, global: bool) -> CliResult<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
     use super::*;
+    use fastskill_core::ServiceConfig;
+
+    fn args() -> UpdateArgs {
+        UpdateArgs {
+            id: "team".to_string(),
+            from: "team.zip".to_string(),
+            check: false,
+            dry_run: false,
+            json: false,
+            reindex: false,
+            no_reindex: true,
+            offline: false,
+        }
+    }
 
     #[test]
     fn argument_map_requires_explicit_id_and_from_fields() {
@@ -276,23 +291,82 @@ mod tests {
         assert_eq!(args.id, "team");
         assert_eq!(args.from, "team.zip");
         assert!(args.check);
+
+        let defaults = UpdateArgs::from_arg_value_map(&HashMap::new());
+        assert!(defaults.id.is_empty());
+        assert!(defaults.from.is_empty());
+        assert!(!defaults.json);
+
+        let spec = UpdateArgs::command_spec();
+        assert_eq!(
+            spec.syntax,
+            Some("bundle update <BUNDLE_ID> --from <ARTIFACT> [OPTIONS]")
+        );
+        assert_eq!(spec.category, Some("skills-projects"));
+        assert_eq!(spec.help_order, Some(40));
     }
 
     #[test]
     fn validation_rejects_global_and_conflicting_preview_flags() {
-        let mut args = UpdateArgs {
-            id: "team".to_string(),
-            from: "team.zip".to_string(),
-            check: false,
-            dry_run: false,
-            json: false,
-            reindex: false,
-            no_reindex: false,
-            offline: false,
-        };
+        let mut args = args();
+        args.no_reindex = false;
         assert!(validate_args(&args, true).is_err());
         args.check = true;
         args.dry_run = true;
         assert!(validate_args(&args, false).is_err());
+
+        args.check = false;
+        args.dry_run = false;
+        args.reindex = true;
+        args.no_reindex = true;
+        assert!(matches!(
+            validate_args(&args, false),
+            Err(CliError::Validation(message)) if message.contains("--reindex and --no-reindex")
+        ));
+
+        args.no_reindex = false;
+        args.offline = true;
+        assert!(matches!(
+            validate_args(&args, false),
+            Err(CliError::Validation(message)) if message.contains("--offline and --reindex")
+        ));
+    }
+
+    #[tokio::test]
+    async fn bundle_update_requires_a_project_and_rejects_unsupported_transports() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            execute_update(&service, args(), false).await,
+            Err(CliError::Config(message)) if message.contains("skill-project.toml")
+        ));
+
+        fs::write(root.path().join("skill-project.toml"), "[dependencies]\n").unwrap();
+        let mut unsupported = args();
+        unsupported.from = "ftp://example.com/team.zip".to_string();
+        assert!(matches!(
+            execute_update(&service, unsupported, false).await,
+            Err(CliError::Validation(message)) if message.contains("must use HTTPS")
+        ));
+
+        let mut offline_remote = args();
+        offline_remote.from = "https://example.com/team.zip".to_string();
+        offline_remote.offline = true;
+        assert!(matches!(
+            execute_update(&service, offline_remote, false).await,
+            Err(CliError::Validation(message)) if message.contains("local bundle artifact")
+        ));
     }
 }

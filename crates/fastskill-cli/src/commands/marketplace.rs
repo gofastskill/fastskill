@@ -83,7 +83,6 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
             summary: "Create skill marketplace artifacts",
             syntax: Some("marketplace create <PATH> [OPTIONS]"),
             category: Some("publishing"),
-            help_order: Some(10),
             examples: vec![
                 "fastskill marketplace create . --name my-skills",
                 "fastskill marketplace create ./skills --name my-skills --output .claude-plugin/marketplace.json",

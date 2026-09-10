@@ -172,8 +172,42 @@ pub async fn execute_remove(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
     use super::*;
+    use fastskill_core::ServiceConfig;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn args(id: &str) -> RemoveArgs {
+        RemoveArgs {
+            id: id.to_string(),
+            force: false,
+            reindex: false,
+            no_reindex: true,
+            dry_run: false,
+            json: false,
+        }
+    }
+
+    fn build_bundle(root: &Path) -> PathBuf {
+        let author = root.join("author");
+        fs::create_dir_all(author.join("skills/demo")).unwrap();
+        fs::write(
+            author.join("skill-project.toml"),
+            "[bundle]\nformat = \"fastskill-bundle-v1\"\nid = \"team\"\nversion = \"1.0.0\"\n[bundle.members.demo]\noverridable = false\n[dependencies]\ndemo = \"1.0.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            author.join("skills/demo/SKILL.md"),
+            "---\nname: demo\nversion: \"1.0.0\"\ndescription: demo\n---\n# demo\n",
+        )
+        .unwrap();
+        BundleService::new(&author, author.join("skills"))
+            .build(&author.join("dist"))
+            .unwrap()
+            .artifact
+    }
 
     #[test]
     fn argument_map_uses_bundle_id_positional() {
@@ -186,5 +220,119 @@ mod tests {
         ]));
         assert_eq!(args.id, "payments-team");
         assert!(args.force);
+
+        let defaults = RemoveArgs::from_arg_value_map(&HashMap::new());
+        assert!(defaults.id.is_empty());
+        assert!(!defaults.force);
+
+        let spec = RemoveArgs::command_spec();
+        assert_eq!(spec.syntax, Some("bundle remove <BUNDLE_ID> [OPTIONS]"));
+        assert_eq!(spec.category, Some("skills-projects"));
+        assert_eq!(spec.help_order, Some(50));
+    }
+
+    #[tokio::test]
+    async fn bundle_remove_rejects_scope_flag_conflicts_and_noninteractive_confirmation() {
+        let root = tempfile::tempdir().unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            execute_remove(&service, args("team"), true).await,
+            Err(CliError::Validation(message)) if message.contains("do not support --global")
+        ));
+
+        let mut conflicting = args("team");
+        conflicting.reindex = true;
+        assert!(matches!(
+            execute_remove(&service, conflicting, false).await,
+            Err(CliError::Validation(message)) if message.contains("--reindex and --no-reindex")
+        ));
+
+        let mut noninteractive = args("team");
+        noninteractive.json = true;
+        assert!(matches!(
+            execute_remove(&service, noninteractive, false).await,
+            Err(CliError::Validation(message)) if message.contains("requires --force")
+        ));
+    }
+
+    #[tokio::test]
+    async fn bundle_remove_requires_a_project_manifest() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        let mut remove = args("team");
+        remove.force = true;
+
+        assert!(matches!(
+            execute_remove(&service, remove, false).await,
+            Err(CliError::Config(message)) if message.contains("skill-project.toml")
+        ));
+    }
+
+    #[tokio::test]
+    async fn bundle_remove_previews_and_applies_human_and_json_lifecycles() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("skill-project.toml"), "[dependencies]\n").unwrap();
+        let artifact = build_bundle(root.path());
+        let bundles = BundleService::new(root.path(), root.path().join("skills"));
+        bundles.install(&artifact).unwrap();
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mut preview = args("team");
+        preview.dry_run = true;
+        preview.json = true;
+        let (result, rendered) =
+            crate::output::capture(execute_remove(&service, preview, false)).await;
+        result.unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&rendered).unwrap()["dry_run"],
+            true
+        );
+
+        let mut human = args("team");
+        human.force = true;
+        let (result, rendered) =
+            crate::output::capture(execute_remove(&service, human, false)).await;
+        result.unwrap();
+        assert!(rendered.contains("Removed bundle: team"));
+
+        bundles.install(&artifact).unwrap();
+        let mut json = args("team");
+        json.force = true;
+        json.json = true;
+        let (result, rendered) =
+            crate::output::capture(execute_remove(&service, json, false)).await;
+        result.unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&rendered).unwrap()["dry_run"],
+            false
+        );
     }
 }

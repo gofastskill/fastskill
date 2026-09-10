@@ -121,8 +121,15 @@ pub async fn execute_list(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
     use super::*;
+    use fastskill_core::ServiceConfig;
+    use std::fs;
+
+    fn args(format: Option<OutputFormat>, json: bool) -> ListArgs {
+        ListArgs { format, json }
+    }
 
     #[test]
     fn argument_map_parses_json_and_format() {
@@ -132,5 +139,78 @@ mod tests {
         ]));
         assert!(matches!(args.format, Some(OutputFormat::Grid)));
         assert!(args.json);
+
+        assert_eq!(parse_format("table"), Some(OutputFormat::Table));
+        assert_eq!(parse_format("json"), Some(OutputFormat::Json));
+        assert_eq!(parse_format("xml"), Some(OutputFormat::Xml));
+        assert_eq!(parse_format("invalid"), None);
+
+        let defaults = ListArgs::from_arg_value_map(&HashMap::from([(
+            "format".to_string(),
+            ArgValue::Bool(true),
+        )]));
+        assert!(defaults.format.is_none());
+        assert!(!defaults.json);
+    }
+
+    #[tokio::test]
+    async fn bundle_list_rejects_global_and_requires_a_project_manifest() {
+        let root = tempfile::tempdir().unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert!(matches!(
+            execute_list(&service, args(None, false), true).await,
+            Err(CliError::Validation(message)) if message.contains("do not support --global")
+        ));
+
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        assert!(matches!(
+            execute_list(&service, args(None, false), false).await,
+            Err(CliError::Config(message)) if message.contains("skill-project.toml")
+        ));
+    }
+
+    #[tokio::test]
+    async fn bundle_list_renders_empty_inventory_in_human_and_json_modes() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("skill-project.toml"), "[dependencies]\n").unwrap();
+        let original = env::current_dir().ok();
+        let _guard = fastskill_core::test_utils::DirGuard(original);
+        env::set_current_dir(root.path()).unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: root.path().join("skills"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let (result, human) =
+            crate::output::capture(execute_list(&service, args(None, false), false)).await;
+        result.unwrap();
+        assert!(human.contains("No bundles installed"));
+
+        let (result, json) = crate::output::capture(execute_list(
+            &service,
+            args(Some(OutputFormat::Json), false),
+            false,
+        ))
+        .await;
+        result.unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+            serde_json::json!([])
+        );
     }
 }

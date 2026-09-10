@@ -91,3 +91,89 @@ pub async fn execute_export(args: ExportArgs) -> CliResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn command_spec_and_argument_map_describe_both_paths() {
+        let spec = ExportArgs::command_spec();
+        assert_eq!(spec.help_order, Some(50));
+        assert_eq!(spec.args.len(), 2);
+
+        let map = HashMap::from([
+            ("run-dir".to_string(), ArgValue::Str("run-one".to_string())),
+            (
+                "out".to_string(),
+                ArgValue::Str("exports/SKILL.md".to_string()),
+            ),
+        ]);
+        let args = ExportArgs::from_arg_value_map(&map);
+        assert_eq!(args.run_dir, PathBuf::from("run-one"));
+        assert_eq!(args.out, PathBuf::from("exports/SKILL.md"));
+    }
+
+    #[tokio::test]
+    async fn reports_missing_run_and_missing_best_artifact() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing");
+        let err = execute_export(ExportArgs {
+            run_dir: missing,
+            out: temp.path().join("out.md"),
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_RUN_DIR_MISSING"));
+
+        let err = execute_export(ExportArgs {
+            run_dir: temp.path().to_path_buf(),
+            out: temp.path().join("out.md"),
+        })
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("OPTIMIZE_EXPORT_BEST_MISSING"));
+    }
+
+    #[tokio::test]
+    async fn exports_to_a_nested_destination_and_overwrites_existing_content() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("best_skill.md"), "# improved\n").unwrap();
+        let out = temp.path().join("release/nested/SKILL.md");
+
+        execute_export(ExportArgs {
+            run_dir: temp.path().to_path_buf(),
+            out: out.clone(),
+        })
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "# improved\n");
+
+        std::fs::write(temp.path().join("best_skill.md"), "# newer\n").unwrap();
+        execute_export(ExportArgs {
+            run_dir: temp.path().to_path_buf(),
+            out: out.clone(),
+        })
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "# newer\n");
+    }
+
+    #[tokio::test]
+    async fn reports_an_io_error_when_destination_parent_is_a_file() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(temp.path().join("best_skill.md"), "skill").unwrap();
+        let parent_file = temp.path().join("blocked");
+        std::fs::write(&parent_file, "not a directory").unwrap();
+
+        let err = execute_export(ExportArgs {
+            run_dir: temp.path().to_path_buf(),
+            out: parent_file.join("SKILL.md"),
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(err, CliError::Io(_)));
+    }
+}

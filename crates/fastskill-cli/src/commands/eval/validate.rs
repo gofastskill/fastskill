@@ -57,7 +57,6 @@ impl IntoCommandSpec for ValidateArgs {
             summary: "Validate eval configuration and files",
             syntax: Some("eval validate [OPTIONS]"),
             category: Some("quality"),
-            help_order: Some(10),
             examples: vec!["fastskill eval validate --all"],
             args: vec![
                 ArgSpec {
@@ -368,4 +367,89 @@ pub async fn execute_validate(args: ValidateArgs) -> CliResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
+
+    struct CwdGuard(PathBuf);
+
+    impl CwdGuard {
+        fn enter(path: &Path) -> Self {
+            let original = env::current_dir().unwrap();
+            env::set_current_dir(path).unwrap();
+            Self(original)
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            env::set_current_dir(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn parses_formats_arguments_and_runtime_selection() {
+        assert_eq!(parse_output_format("table"), Some(OutputFormat::Table));
+        assert_eq!(parse_output_format("json"), Some(OutputFormat::Json));
+        assert_eq!(parse_output_format("grid"), Some(OutputFormat::Grid));
+        assert_eq!(parse_output_format("xml"), Some(OutputFormat::Xml));
+        assert_eq!(parse_output_format("yaml"), None);
+
+        let map = HashMap::from([
+            (
+                "agent".to_string(),
+                ArgValue::List(vec![
+                    ArgValue::Str("aikit".to_string()),
+                    ArgValue::Bool(true),
+                ]),
+            ),
+            ("all".to_string(), ArgValue::Bool(true)),
+            ("model".to_string(), ArgValue::Str("test-model".to_string())),
+            ("format".to_string(), ArgValue::Str("json".to_string())),
+            ("json".to_string(), ArgValue::Bool(true)),
+        ]);
+        let args = ValidateArgs::from_arg_value_map(&map);
+        assert_eq!(args.agent, ["aikit"]);
+        assert!(args.all && args.json);
+        assert_eq!(args.model.as_deref(), Some("test-model"));
+        assert_eq!(args.format, Some(OutputFormat::Json));
+        let runtime = RuntimeSelectionInput::from(&args);
+        assert_eq!(runtime.agents, ["aikit"]);
+        assert!(runtime.all);
+
+        let wrong_types = HashMap::from([
+            ("agent".to_string(), ArgValue::Str("aikit".to_string())),
+            ("model".to_string(), ArgValue::Bool(true)),
+            ("format".to_string(), ArgValue::Bool(true)),
+        ]);
+        let args = ValidateArgs::from_arg_value_map(&wrong_types);
+        assert!(args.agent.is_empty() && args.model.is_none() && args.format.is_none());
+        assert!(!args.all && !args.json);
+    }
+
+    #[tokio::test]
+    async fn missing_project_points_to_canonical_init_command() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+        let _cwd = CwdGuard::enter(temp.path());
+        let error = execute_validate(ValidateArgs {
+            agent: Vec::new(),
+            all: false,
+            model: None,
+            format: None,
+            json: false,
+        })
+        .await
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Run 'fastskill project init' first"));
+    }
 }

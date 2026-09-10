@@ -65,6 +65,13 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     args: RunArgs,
     runner: Arc<R>,
 ) -> CliResult<()> {
+    execute_run_with_shared_runner(args, runner).await
+}
+
+async fn execute_run_with_shared_runner(
+    args: RunArgs,
+    runner: Arc<dyn EvalRunner>,
+) -> CliResult<()> {
     let format = validate_eval_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
@@ -626,9 +633,16 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod test_support;
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::await_holding_lock)]
 mod tests {
+    use super::test_support::{run_args, scaffold_project, CwdGuard, ScriptedRunner};
     use super::*;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     /// A summary as the engine leaves it after judging: one case passed, one
     /// never produced a score, and `suite_pass` is the engine's narrower
@@ -681,5 +695,232 @@ mod tests {
         summary.failed = 0;
         assert!(run_verdict(&summary, false, 0.5));
         assert!(run_verdict(&summary, true, 1.0));
+        assert_eq!(case_rate(0, 0), 0.0);
+    }
+
+    #[tokio::test]
+    async fn early_errors_are_specific_and_use_canonical_init_hint() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+        let empty = temp.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        let cwd = CwdGuard::enter(&empty);
+        let runner = Arc::new(ScriptedRunner {
+            status: CaseStatus::Passed,
+            report_isolation: true,
+            block_artifact_directory: false,
+        });
+
+        let mut no_selection = run_args(temp.path().join("no-selection"));
+        no_selection.agent.clear();
+        assert!(execute_run_with_runner(no_selection, Arc::clone(&runner))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("RUNTIME_NO_SELECTION"));
+        assert!(execute_run_with_runner(
+            run_args(temp.path().join("missing-project")),
+            Arc::clone(&runner),
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("Run 'fastskill project init' first"));
+        drop(cwd);
+
+        let project = temp.path().join("demo-project");
+        std::fs::create_dir(&project).unwrap();
+        scaffold_project(&project);
+        let _cwd = CwdGuard::enter(&project);
+
+        let mut invalid_format = run_args(temp.path().join("invalid-format"));
+        invalid_format.format = Some(OutputFormat::Grid);
+        assert!(execute_run_with_runner(invalid_format, Arc::clone(&runner))
+            .await
+            .is_err());
+
+        let mut invalid_trials = run_args(temp.path().join("invalid-trials"));
+        invalid_trials.trials = Some(0);
+        assert!(execute_run_with_runner(invalid_trials, Arc::clone(&runner))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("EVAL_INVALID_TRIALS_CONFIG"));
+
+        let mut invalid_threshold = run_args(temp.path().join("invalid-threshold"));
+        invalid_threshold.threshold = Some(1.1);
+        assert!(
+            execute_run_with_runner(invalid_threshold, Arc::clone(&runner))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("EVAL_INVALID_THRESHOLD")
+        );
+
+        let mut missing_case = run_args(temp.path().join("missing-case"));
+        missing_case.case = Some("unknown".to_string());
+        assert!(execute_run_with_runner(missing_case, Arc::clone(&runner))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("No case found"));
+
+        let mut missing_tag = run_args(temp.path().join("missing-tag"));
+        missing_tag.tag = Some("unknown".to_string());
+        assert!(execute_run_with_runner(missing_tag, Arc::clone(&runner))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("No cases found"));
+
+        std::fs::write(
+            project.join("evals/prompts.csv"),
+            "id,prompt,should_trigger,tags\n",
+        )
+        .unwrap();
+        assert!(execute_run_with_runner(
+            run_args(temp.path().join("empty-suite")),
+            Arc::clone(&runner),
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("EVAL_EMPTY_SUITE"));
+
+        std::fs::write(
+            project.join("evals/prompts.csv"),
+            "id,prompt,should_trigger,tags\ncase-1,say hello,true,smoke\n",
+        )
+        .unwrap();
+        std::fs::write(project.join("evals/checks.toml"), "[[check]\n").unwrap();
+        assert!(execute_run_with_runner(
+            run_args(temp.path().join("bad-checks")),
+            Arc::clone(&runner),
+        )
+        .await
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn scripted_runs_persist_metrics_and_apply_failure_policy() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+        let project = temp.path().join("demo-project");
+        std::fs::create_dir(&project).unwrap();
+        scaffold_project(&project);
+        let _cwd = CwdGuard::enter(&project);
+        let passing = Arc::new(ScriptedRunner {
+            status: CaseStatus::Passed,
+            report_isolation: true,
+            block_artifact_directory: false,
+        });
+
+        let table_dir = temp.path().join("table-pass");
+        execute_run_with_runner(run_args(table_dir.clone()), Arc::clone(&passing))
+            .await
+            .unwrap();
+        let summary_path = std::fs::read_dir(table_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("aikit/summary.json");
+        let summary: SummaryResult =
+            serde_json::from_str(&std::fs::read_to_string(summary_path).unwrap()).unwrap();
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.cases[0].command_count, Some(2));
+        assert_eq!(summary.cases[0].input_tokens, Some(3));
+        assert_eq!(summary.cases[0].output_tokens, Some(5));
+        assert_eq!(summary.isolation.unwrap().ambient_skills, ["ambient-demo"]);
+
+        let mut ci_pass = run_args(temp.path().join("ci-pass"));
+        ci_pass.ci = true;
+        ci_pass.threshold = Some(1.0);
+        execute_run_with_runner(ci_pass, Arc::clone(&passing))
+            .await
+            .unwrap();
+
+        let mut json = run_args(temp.path().join("json-multiple"));
+        json.agent.push("claude".to_string());
+        json.json = true;
+        let (result, output) =
+            crate::output::capture(execute_run_with_runner(json, Arc::clone(&passing))).await;
+        result.unwrap();
+        let summaries: Vec<SummaryResult> = serde_json::from_str(&output).unwrap();
+        assert_eq!(summaries.len(), 2);
+
+        let failing = Arc::new(ScriptedRunner {
+            status: CaseStatus::Failed,
+            report_isolation: true,
+            block_artifact_directory: false,
+        });
+        let error = execute_run_with_runner(
+            run_args(temp.path().join("table-fail")),
+            Arc::clone(&failing),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("Eval suite failed: 0/1"));
+
+        let mut allowed_failure = run_args(temp.path().join("allowed-fail"));
+        allowed_failure.no_fail = true;
+        execute_run_with_runner(allowed_failure, Arc::clone(&failing))
+            .await
+            .unwrap();
+
+        let mut ci_failure = run_args(temp.path().join("ci-fail"));
+        ci_failure.ci = true;
+        ci_failure.threshold = Some(1.0);
+        assert!(execute_run_with_runner(ci_failure, failing)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("Eval suite failed"));
+
+        let no_report = Arc::new(ScriptedRunner {
+            status: CaseStatus::Passed,
+            report_isolation: false,
+            block_artifact_directory: false,
+        });
+        execute_run_with_runner(run_args(temp.path().join("no-isolation-report")), no_report)
+            .await
+            .unwrap();
+
+        let broken_artifacts = Arc::new(ScriptedRunner {
+            status: CaseStatus::Passed,
+            report_isolation: true,
+            block_artifact_directory: true,
+        });
+        execute_run_with_runner(
+            run_args(temp.path().join("blocked-artifacts")),
+            broken_artifacts,
+        )
+        .await
+        .unwrap();
+
+        let mut judged = run_args(temp.path().join("judged"));
+        judged.judge = true;
+        execute_run_with_runner(judged, Arc::clone(&passing))
+            .await
+            .unwrap();
+
+        let blocked_output = temp.path().join("blocked-output");
+        std::fs::write(&blocked_output, "file").unwrap();
+        assert!(
+            execute_run_with_runner(run_args(blocked_output), Arc::clone(&passing))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to create output directory")
+        );
+
+        let mut many_trials = run_args(temp.path().join("cost-warning"));
+        many_trials.trials = Some(100);
+        execute_run_with_runner(many_trials, passing).await.unwrap();
     }
 }
