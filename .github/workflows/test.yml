@@ -10,10 +10,14 @@ permissions:
 
 on:
   pull_request:
+    paths-ignore:
+      - 'webdocs/**'
+      - 'website/**'
   push:
     branches: [main]
-  merge_group:
-
+    paths-ignore:
+      - 'webdocs/**'
+      - 'website/**'
 jobs:
   format-check:
     name: Format Check
