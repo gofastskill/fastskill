@@ -1,12 +1,12 @@
 # Manifests, locks, and scope
 
-FastSkill 0.9.228
+FastSkill 0.9.229
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+Release revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
 
-Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+Documentation revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
 
 
 
