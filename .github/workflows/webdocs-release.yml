@@ -109,9 +109,9 @@ jobs:
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           DOCUMENTATION_REVISION: ${{ needs.build.outputs.revision }}
         run: |
-          git fetch origin "$PUBLISH_BRANCH" || true
           publish_dir="$(mktemp -d)"
-          if git show-ref --verify --quiet "refs/remotes/origin/$PUBLISH_BRANCH"; then
+          if git ls-remote --exit-code --heads origin "$PUBLISH_BRANCH" > /dev/null; then
+            git fetch origin "$PUBLISH_BRANCH:refs/remotes/origin/$PUBLISH_BRANCH"
             git worktree add "$publish_dir" "origin/$PUBLISH_BRANCH"
             git -C "$publish_dir" switch -C "$PUBLISH_BRANCH" --track "origin/$PUBLISH_BRANCH"
           else
