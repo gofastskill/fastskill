@@ -1,9 +1,9 @@
-# FastSkill 0.9.229
+# FastSkill 0.9.230
 
 Documentation for the current release only.
 
-Release revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
-Documentation revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
+Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
 
 ## Pages
 
@@ -29,12 +29,12 @@ Documentation revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
 - [Marketplace, analysis, and CLI tools](https://docs.gofastskill.com/cli-reference/tooling-commands.md): CLI reference for fastskill marketplace, fastskill analysis, and fastskill cli doctor.
 - [skill update](https://docs.gofastskill.com/cli-reference/update-command.md): 
 - [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
+- [Advanced Patterns](https://docs.gofastskill.com/examples/advanced-patterns.md): Analyze overlap, optimize skills, filter project groups, and manage editable and global skills.
+- [Integration Tutorials](https://docs.gofastskill.com/examples/integration-tutorials.md): Connect FastSkill to agents and pipelines: MCP into Claude Code and Cursor, the serve HTTP API, and locked installs in CI.
 - [Cluster and Portfolio Analysis](https://docs.gofastskill.com/evals-quality/cluster-analysis.md): Analyze skill quality at portfolio level using cluster, matrix, and duplicate detection.
 - [Evals and Quality Overview](https://docs.gofastskill.com/evals-quality/overview.md): How FastSkill quality workflows fit together: validate, run evals, score, and cluster analysis.
 - [Run Evals](https://docs.gofastskill.com/evals-quality/run-evals.md): Operational guide for running, reporting, and scoring FastSkill eval suites.
 - [Eval Setup](https://docs.gofastskill.com/evals-quality/setup.md): Author an eval suite: the [tool.fastskill.eval] manifest table, the prompts CSV, and the checks TOML schema.
-- [Advanced Patterns](https://docs.gofastskill.com/examples/advanced-patterns.md): Analyze overlap, optimize skills, filter project groups, and manage editable and global skills.
-- [Integration Tutorials](https://docs.gofastskill.com/examples/integration-tutorials.md): Connect FastSkill to agents and pipelines: MCP into Claude Code and Cursor, the serve HTTP API, and locked installs in CI.
 - [Documentation and tools for agents](https://docs.gofastskill.com/integration/agents.md): Retrieve current FastSkill documentation as Markdown and use the CLI or MCP safely.
 - [Claude Code Integration](https://docs.gofastskill.com/integration/claude-code-integration.md): Integrate FastSkill with Claude Code for intelligent skill discovery.
 - [Cursor Integration](https://docs.gofastskill.com/integration/cursor-integration.md): Integrate FastSkill with Cursor IDE for intelligent skill discovery and tool recommendations.

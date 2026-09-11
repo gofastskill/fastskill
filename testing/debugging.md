@@ -1,12 +1,12 @@
 # Debugging Guide
 
-FastSkill 0.9.229
+FastSkill 0.9.230
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
+Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
 
-Documentation revision: 68975dfaca15508bc5cf2fb761d6218405c954ea
+Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
 
 
 
