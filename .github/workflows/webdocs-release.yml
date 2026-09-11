@@ -78,21 +78,17 @@ jobs:
         working-directory: webdocs
       - run: pnpm check:export
         working-directory: webdocs
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
+          name: fastskill-static-docs
           path: webdocs/out
 
-  deploy:
+  publish-static-site:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      pages: write
-      id-token: write
-      contents: read
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write
     steps:
       - name: Reject a superseded release
         uses: actions/github-script@v7
@@ -100,11 +96,38 @@ jobs:
           script: |
             const { data } = await github.rest.repos.getLatestRelease(context.repo);
             if (data.tag_name !== '${{ needs.build.outputs.tag }}') throw new Error('A newer release was published');
-      - name: Deploy documentation
-        id: deployment
-        uses: actions/deploy-pages@v4
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.build.outputs.revision }}
-      - name: Verify the public domain
-        run: python3 webdocs/scripts/check-live.py '${{ needs.build.outputs.tag }}' '${{ needs.build.outputs.revision }}'
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: fastskill-static-docs
+          path: /tmp/fastskill-static-docs
+      - name: Publish the static site branch
+        env:
+          PUBLISH_BRANCH: docs-static
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          DOCUMENTATION_REVISION: ${{ needs.build.outputs.revision }}
+        run: |
+          git fetch origin "$PUBLISH_BRANCH" || true
+          publish_dir="$(mktemp -d)"
+          if git show-ref --verify --quiet "refs/remotes/origin/$PUBLISH_BRANCH"; then
+            git worktree add "$publish_dir" "origin/$PUBLISH_BRANCH"
+            git -C "$publish_dir" switch -C "$PUBLISH_BRANCH" --track "origin/$PUBLISH_BRANCH"
+          else
+            git worktree add --detach "$publish_dir"
+            git -C "$publish_dir" switch --orphan "$PUBLISH_BRANCH"
+            git -C "$publish_dir" rm -rf . || true
+          fi
+          find "$publish_dir" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/fastskill-static-docs/. "$publish_dir/"
+          printf 'Release: %s\nDocumentation revision: %s\n' "$RELEASE_TAG" "$DOCUMENTATION_REVISION" > "$publish_dir/PUBLISH.txt"
+          git -C "$publish_dir" add --all
+          if git -C "$publish_dir" diff --cached --quiet; then
+            echo "docs-static already serves $RELEASE_TAG at $DOCUMENTATION_REVISION"
+            exit 0
+          fi
+          git -C "$publish_dir" config user.name 'github-actions[bot]'
+          git -C "$publish_dir" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$publish_dir" commit -m "docs: publish $RELEASE_TAG"
+          git -C "$publish_dir" push origin "HEAD:refs/heads/$PUBLISH_BRANCH"

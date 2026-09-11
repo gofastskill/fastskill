@@ -525,17 +525,21 @@ canonical URL, release label, Markdown export, and discovery file.
 `.github/workflows/webdocs-release.yml` builds the selected release on publication.
 A manual run builds `main` for documentation-only corrections; it refuses publication
 if the product differs from the latest released tag. Both paths compare against
-GitHub's latest published release and recheck it before deployment. The entire
-`webdocs/out/` directory is uploaded as one Pages artifact.
+GitHub's latest published release and recheck it before publication. The complete
+`webdocs/out/` directory is committed to the `docs-static` branch, which is the
+publishable input for the cluster static-site service. It contains no source code,
+Node dependencies, or credentials.
 
-Initial host setup is an operator action after review: enable GitHub Pages with
-GitHub Actions as its source, configure the `github-pages` environment, set the
-custom domain to `docs.gofastskill.com`, point DNS to this repository's Pages host,
-and enable HTTPS. The tracked `public/CNAME` and workflow describe the intended
-host. The former Mintlify site must not remain the domain's content source after
-cutover. This PR does not change DNS or enable Pages settings automatically.
+Initial host setup is an operator action after review. In Sites Admin, register a
+public Site named `fastskill-docs` with repository `gofastskill/fastskill`, branch
+`docs-static`, content directory `.`, and the appropriate read-only GitHub
+credential. It will be available at `https://fastskill-docs.site.faseinfra.net`.
+Then register `docs.gofastskill.com` as its alias, create a proxied Cloudflare CNAME
+from that domain to `fastskill-docs.site.faseinfra.net`, and verify HTTPS. The
+former Mintlify site must not remain the domain's content source after cutover.
+This repository does not change DNS or Sites Admin automatically.
 
-The publishing job verifies the production domain after deployment. To repeat it:
+After the Sites Host refreshes, verify the public domain with:
 
 ```shell
 python3 webdocs/scripts/check-live.py v0.9.225 <documentation-commit-sha>
@@ -543,7 +547,7 @@ python3 webdocs/scripts/check-live.py v0.9.225 <documentation-commit-sha>
 
 Replace the tag and revision with the release and documentation commit being published. The check verifies all HTML and
 Markdown pages, their source revision, the agent index, search, sitemap, and robots.
-A passing build is not proof of publication: a domain or revision mismatch is a
+A passing build or branch publication is not proof of serving: a domain or revision mismatch is a
 failed delivery. Resolve host/DNS/cache issues and rerun verification; do not report
 that the new docs are live until it passes.
 
