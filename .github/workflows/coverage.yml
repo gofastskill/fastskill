@@ -7,8 +7,14 @@ permissions:
 
 on:
   pull_request:
+    paths-ignore:
+      - 'webdocs/**'
+      - 'website/**'
   push:
     branches: [main]
+    paths-ignore:
+      - 'webdocs/**'
+      - 'website/**'
 
 jobs:
   coverage:
