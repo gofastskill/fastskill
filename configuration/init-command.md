@@ -1,0 +1,233 @@
+# Init Command
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/configuration/init-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+`fastskill project init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
+
+`project init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
+
+
+**Context detection**: `project init` detects whether you're in a skill directory or a project root:
+
+* **Skill-level**: run in a directory containing `SKILL.md` — writes a `[metadata]` section for skill authors. `skills_directory` is optional.
+* **Project-level**: run at a project root — writes `[dependencies]` for skill consumers. A skills directory is required (via `--skills-dir`, or the prompt).
+
+
+## What it does
+
+1. **Checks for an existing file**: refuses to overwrite `skill-project.toml` unless `--force` is given.
+2. **Reads `SKILL.md`** (if present): pulls `version`, `description`, and `author` from the frontmatter.
+3. **Resolves missing fields**: from CLI flags, or by prompting (unless `--yes`).
+4. **Writes `skill-project.toml`**: with `[metadata]`, `[dependencies]`, and — when a skills directory is set — `[tool.fastskill]`.
+5. **Validates**: the skill ID (derived from the directory name) and the version (must be valid semver).
+
+## Usage
+
+### Interactive setup
+
+```bash
+fastskill project init
+```
+
+Prompts for each missing field. For example, at a project root:
+
+```
+FastSkill Skill Initialization
+
+Description (optional, press Enter to skip): My project skills
+Author (optional, press Enter to skip): Jane Doe
+Download URL (optional, press Enter to skip):
+Skills directory (default: .claude/skills): .claude/skills
+
+Created skill-project.toml with version: 1.0.0
+Skills directory: .claude/skills
+```
+
+### Non-interactive setup
+
+```bash
+# Skill-level: skip all prompts, take metadata from SKILL.md
+fastskill project init --yes
+
+# Project-level with --yes: a skills directory is required
+fastskill project init --yes --skills-dir .claude/skills
+
+# Provide metadata directly
+fastskill project init --yes --set-version 1.2.0 --description "Team skills" --author "Jane Doe"
+```
+
+At a project root, `--yes` requires `--skills-dir <path>`. Without it, either drop `--yes` to be prompted or pass the flag.
+
+
+## Command options
+
+| Option                 | Description                                 | Default                       |
+| ---------------------- | ------------------------------------------- | ----------------------------- |
+| `--yes`                | Skip interactive prompts and use defaults   | `false`                       |
+| `--force`              | Overwrite an existing `skill-project.toml`  | `false`                       |
+| `--set-version <VER>`  | Set the skill version (validated as semver) | from `SKILL.md`, else `1.0.0` |
+| `--description <TEXT>` | Set the description                         | from `SKILL.md`, else empty   |
+| `--author <NAME>`      | Set the author                              | from `SKILL.md`, else empty   |
+| `--download-url <URL>` | Set the download URL                        | empty                         |
+| `--skills-dir <DIR>`   | Skills directory (global flag)              | `.claude/skills`              |
+
+## The file it creates
+
+At a project root, `project init` produces a `skill-project.toml` like:
+
+```toml skill-project.toml
+[metadata]
+id = "my-project"
+version = "1.0.0"
+description = "Team skills"
+author = "Jane Doe"
+
+[dependencies]
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+# Additional configuration options for [tool.fastskill]:
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
+```
+
+The commented block is written verbatim so you can uncomment and fill in embedding settings or repositories later.
+
+## Skills directory
+
+* **Default**: `.claude/skills`
+* **Custom**: any path you pass via `--skills-dir` or the prompt
+* **Resolution at runtime**: `--skills-dir` flag > `--global` (`~/.config/fastskill/skills`) > `skills_directory` under `[tool.fastskill]` > walk up to an existing `.claude/skills/` > default `.claude/skills/`
+
+## Schema version
+
+`project init` writes the current manifest schema. Use the generated file as the
+starting point and keep project configuration in version control.
+
+## Embedding configuration
+
+Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `project init` — add it when you need it):
+
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+# index_path = ".fastskill/index"
+```
+
+Set the API key via the environment; if it is unset, semantic search is silently skipped:
+
+```bash
+export OPENAI_API_KEY="your-key-here"
+```
+
+### Pointing at a different endpoint
+
+`skill-project.toml` is committed and shared by everyone on the project, so it is
+the wrong place to record that *your* machine — or one CI job — talks to a
+different embedding endpoint. Both non-secret fields can be overridden from the
+environment, and the environment wins:
+
+| Variable                    | Overrides         | Example                       |
+| --------------------------- | ----------------- | ----------------------------- |
+| `OPENAI_BASE_URL`           | `openai_base_url` | `https://gateway.internal/v1` |
+| `FASTSKILL_EMBEDDING_MODEL` | `embedding_model` | `my-embed-model`              |
+
+```bash
+export OPENAI_BASE_URL="https://gateway.internal/v1"
+export FASTSKILL_EMBEDDING_MODEL="my-embed-model"
+export OPENAI_API_KEY="your-gateway-key"
+```
+
+An empty or whitespace-only value counts as unset, so a blank variable in a shell
+profile or CI matrix will not silently blank out a working manifest setting.
+
+Run `fastskill cli doctor` to see which endpoint and model are actually in effect:
+
+```
+[PASS] embedding_config: Embedding configuration found
+       (endpoint: https://gateway.internal/v1, model: my-embed-model).
+```
+
+**Changing the embedding model invalidates your index.** Vectors from different
+models are not comparable — and often not even the same length. After switching
+models, run `fastskill index rebuild` before searching, or results will be meaningless.
+
+
+The API key stays environment-only on purpose: a committed manifest is the wrong
+home for a secret.
+
+## Troubleshooting
+
+### "skill-project.toml already exists. Use --force to overwrite."
+
+**Cause**: a `skill-project.toml` is already present.
+**Solution**: pass `--force` to overwrite it, or remove the file first.
+
+### "Project-level init requires --skills-dir"
+
+**Cause**: `--yes` was used at a project root without a skills directory.
+**Solution**: add `--skills-dir <path>`, or drop `--yes` to be prompted.
+
+### Invalid version
+
+**Cause**: the version (from `--set-version` or `SKILL.md`) is not valid semver.
+**Solution**: use a semver string such as `1.0.0`.
+
+### Permission denied
+
+**Cause**: the current directory is not writable.
+**Solution**: fix permissions or run in a directory where you have write access.
+
+## Integration with CI/CD
+
+```yaml
+# .github/workflows/setup-fastskill.yml
+name: Setup FastSkill
+on: [push]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install FastSkill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+
+      - name: Initialize FastSkill
+        run: fastskill project init --yes --skills-dir .claude/skills
+
+      - name: Install skills from the manifest
+        run: fastskill project install
+
+      - name: Index skills (needs OPENAI_API_KEY for semantic search)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: fastskill index rebuild
+```
+
+## Next steps after init
+
+1. **Add skills**: `fastskill skill add <skill-id>` (registry, Git, or local path).
+2. **Install from the manifest**: `fastskill project install`.
+3. **Index for search**: `fastskill index rebuild` (requires `OPENAI_API_KEY`).
+4. **Search**: `fastskill skill search "your query"`.
+

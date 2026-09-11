@@ -1,0 +1,327 @@
+# CLI Reference Overview
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/overview
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+The FastSkill CLI groups commands by the resource or operational area they control. Every operation
+uses an explicit two-word path, such as `skill add`, `bundle add`, or `server serve`.
+
+The CLI supports both interactive and scripting use cases, with comprehensive help text and validation for all commands.
+
+
+## Installation
+
+Use the same install method as the [Installation](/installation) guide (release binary recommended). After install, confirm the CLI is on your PATH:
+
+```bash
+fastskill -V
+```
+
+Git-based sources require system Git on your PATH.
+
+## Basic Usage
+
+### Get Help
+
+### General help
+
+```bash
+fastskill --help
+```
+
+This shows all available commands and global options.
+
+
+### Command-specific help
+
+```bash
+fastskill server serve --help   # Help for the HTTP server
+fastskill skill add --help      # Help for adding an individual skill
+fastskill bundle add --help     # Help for adding a bundle artifact
+```
+
+
+
+### Global Options
+
+| Option                | Description                                                               | Example                                      |
+| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
+| `-V, --version`       | Print the `fastskill` binary version and exit                             | `fastskill -V`                               |
+| `--verbose`, `-v`     | Enable verbose logging                                                    | `fastskill -v skill list`                    |
+| `--skills-dir <PATH>` | Override the skills directory path                                        | `fastskill --skills-dir ./skills skill list` |
+| `--global`            | Use the user-level global skills directory (`~/.config/fastskill/skills`) | `fastskill --global skill list`              |
+| `--help`, `-h`        | Help                                                                      | `fastskill --help`                           |
+
+## Command tree
+
+| Namespace                | Actions                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `fastskill skill`        | `add`, `remove`, `update`, `list`, `read`, `search`                                        |
+| `fastskill bundle`       | `build`, `add`, `list`, `update`, `remove`, `override`                                     |
+| `fastskill project`      | `init`, `install`                                                                          |
+| `fastskill repo`         | `add`, `list`, `info`, `update`, `remove`, `test`, `refresh`, `skills`, `show`, `versions` |
+| `fastskill marketplace`  | `create`                                                                                   |
+| `fastskill analysis`     | `matrix`, `cluster`, `duplicates`                                                          |
+| `fastskill eval`         | `validate`, `run`, `judge`, `report`, `score`, `scorecard`                                 |
+| `fastskill optimization` | `run`, `resume`, `status`, `inspect`, `export`                                             |
+| `fastskill index`        | `rebuild`                                                                                  |
+| `fastskill cache`        | `info`, `clean`                                                                            |
+| `fastskill server`       | `serve`                                                                                    |
+| `fastskill mcp`          | `serve`, `install`, `list`                                                                 |
+| `fastskill cli`          | `doctor`, `completion`, `spec`                                                             |
+
+The tree contains 49 leaf commands. Root help shows the namespaces as a compact table of contents.
+Run `fastskill <namespace> --help` to discover that namespace, then run
+`fastskill <namespace> <action> --help` for arguments and examples. A bare skill ID is not a
+command; use `fastskill skill read <skill-id>`.
+
+**Skills and projects**
+
+See [skill commands](/cli-reference/skill-commands), [bundle commands](/cli-reference/bundle-command),
+[project init](/cli-reference/init-command), and [project install](/cli-reference/install-command).
+
+
+**Sources and distribution**
+
+See [repository commands](/cli-reference/repository-command) and
+[tooling commands](/cli-reference/tooling-commands#marketplace-create).
+
+
+**Quality**
+
+See [analysis tools](/cli-reference/tooling-commands#fastskill-analysis),
+[eval commands](/cli-reference/eval-command), and
+[optimization commands](/cli-reference/optimize-command).
+
+
+**Operations**
+
+See [index rebuild](/cli-reference/reindex-command), [cache commands](/cli-reference/cache-command),
+[server serve](/cli-reference/serve-command), [MCP tools](/tool-calling/development), and
+[CLI tooling](/cli-reference/tooling-commands#fastskill-cli-doctor).
+
+
+
+## Configuration
+
+### Configuration Files
+
+All configuration lives in `skill-project.toml` at your project root. Skill dependencies go under `[dependencies]`; embedding, skills directory, and repositories go under the `[tool.fastskill]` tables:
+
+```toml skill-project.toml
+[dependencies]
+web-scraper = { origin = { type = "git", url = "https://github.com/org/web-scraper.git" } }
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"
+priority = 0
+```
+
+Host catalog metadata and skill artifacts using your team’s distribution infrastructure;
+FastSkill does not provide a CLI publishing service. Example IDs and URLs here must
+be replaced with sources you can access.
+
+### Environment variables
+
+Run `fastskill --help` for the registered environment settings. The following are
+optional and apply only to the corresponding capability:
+
+| Variable                    | Purpose                                   |
+| --------------------------- | ----------------------------------------- |
+| `FASTSKILL_CACHE_DIR`       | Shared skill cache directory              |
+| `FASTSKILL_EMBEDDING_MODEL` | Embedding model override                  |
+| `FASTSKILL_NO_PROGRESS`     | Disable progress indicators when set      |
+| `OPENAI_API_KEY`            | Semantic search and embedding credentials |
+| `OPENAI_BASE_URL`           | Embedding provider base URL               |
+| `PAT_TOKEN`                 | Default authenticated HTTP registry token |
+| `REGISTRY_INDEX_PATH`       | Local registry index path                 |
+| `RUST_LOG`                  | Logging filter                            |
+| `XDG_CONFIG_HOME`           | Global configuration directory on Unix    |
+| `NO_COLOR` / `FORCE_COLOR`  | ANSI color control where supported        |
+
+## Scripting and automation
+
+Use the CLI in scripts the same way you would run `git` or `uv`: non-interactive flags (`--yes`, `--force`, `--json`) are preferred for automation.
+
+### Batch operations
+
+```bash
+# Add multiple local skills (editable) and install
+for dir in ./skills/*; do
+  fastskill skill add "$dir" -e --group dev
+done
+
+# Alternative: use recursive add for all skills under a directory
+fastskill skill add ./skills -r -e --group dev
+
+fastskill project install
+fastskill index rebuild
+```
+
+### JSON Output
+
+```bash
+# Get machine-readable search results
+fastskill skill search "text processing" --format json > skills.json
+
+# Parse count
+count=$(jq length skills.json)
+echo "Total matches: $count"
+```
+
+Commands that accept `--json` or `--format json` write exactly one JSON value to stdout on both
+success and failure. On failure, inspect the nonzero exit code and the returned `error` or lifecycle
+`diagnostics` field.
+
+### Exit Codes
+
+The CLI returns appropriate exit codes for scripting:
+
+| Code | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| `0`  | Command completed successfully                                                      |
+| `1`  | Command returned an error, including validation, configuration, or service failures |
+
+In JSON mode, a nonzero exit can accompany a structured error or a partial result.
+Inspect diagnostics as well as the process status.
+
+```bash
+#!/bin/bash
+# Minimal install + search smoke test
+
+set -e
+fastskill project install
+fastskill index rebuild
+fastskill skill search "smoke test"
+```
+
+## Examples
+
+### Example: local project
+
+```bash
+# 1. Add a skill you are iterating on (optional group)
+fastskill skill add ./skills/my-skill -e --group dev
+
+# 2. Apply the manifest and refresh the local index
+fastskill project install
+fastskill index rebuild
+
+# 3. Browse with the bundled web UI
+fastskill server serve --port 8080
+
+# 4. Try search (remote catalog by default; add --local for installed skills)
+fastskill skill search "text processing"
+```
+
+### Example: reproducible install
+
+```bash
+fastskill project install --lock
+fastskill index rebuild
+fastskill server serve --port 8080
+```
+
+For running `fastskill` in automation (build machines, sandboxes), install the CLI in the job image, check out your repo, then run the same commands with secrets injected for registry tokens and `OPENAI_API_KEY` when needed.
+
+## Troubleshooting
+
+### Common Issues
+
+**Command Not Found**
+
+**Path issue**: Ensure FastSkill is installed and in your PATH.
+
+```bash
+which fastskill
+fastskill -V
+```
+
+
+
+**Permission Errors**
+
+**File permissions**: Ensure you have read/write permissions for skill directories.
+
+```bash
+# Fix permissions
+chmod 755 ./skills/
+chmod 644 ./skills/*.json
+```
+
+
+**Service permissions**: Run with appropriate privileges for system-wide operations.
+
+
+
+**Network Issues**
+
+**Port conflicts**: Check if the default port (8080) is available.
+
+```bash
+# Check port usage
+netstat -tlnp | grep :8080
+
+# Use different port
+fastskill server serve --port 9000
+```
+
+
+
+
+### More verbose output
+
+```bash
+fastskill -v project install
+```
+
+Some distributions document extra logging variables; check your install notes if you need trace-level diagnostics.
+
+## Best Practices
+
+### Commit manifest and lock
+
+Commit `skill-project.toml` and `skills.lock` together for reproducible installs.
+
+
+### Reindex after changes
+
+Run `fastskill index rebuild` after adding or updating skills so search stays fresh.
+
+
+### Use groups for optional skills
+
+Use groups (for example `--group dev`) and install with `--without dev` when you want a smaller production skill set.
+
+
+### Check the server when you use serve
+
+Confirm `http://<host>:<port>/` responds after upgrades or config changes.
+
+
+### Back up manifests before big changes
+
+Keep copies of `skill-project.toml`, `skills.lock`, and any custom `.fastskill` config before bulk edits.
+
+Commands can change installed skills and manifest files. Try changes on a copy of the project or a branch first if you are unsure.
+
+
+

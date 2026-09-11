@@ -1,0 +1,398 @@
+# skill search
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/search-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+`fastskill skill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
+
+The query is required. Remote results use the catalog's canonical skill ID and include the
+repository, available version, and a copy-pasteable `fastskill skill add ... --repository ...` command.
+
+With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill index rebuild` and embedding configuration when not using keyword-only mode.
+
+Run `fastskill skill search --help` for the authoritative flag list.
+
+
+Remote search distinguishes these outcomes:
+
+* no repositories are configured;
+* the requested repositories succeeded with zero matches;
+* some repositories returned results while others failed (partial, nonzero exit);
+* every requested repository failed (nonzero exit).
+
+JSON mode always writes one valid JSON value, including empty and partial results. Diagnostics are
+fields in that value instead of prose appended to stdout.
+
+## Basic Usage
+
+### Remote catalog (default)
+
+```bash
+fastskill skill search "text processing"
+fastskill skill search "pptx" --repository my-registry --limit 5 --json
+```
+
+### Installed skills (local)
+
+```bash
+# Keyword-style local search (no embeddings)
+fastskill skill search "pdf" --local --embedding false
+
+# Embedding / hybrid behavior (needs index + API key when embedding is true/auto)
+export OPENAI_API_KEY="your-openai-api-key"
+fastskill index rebuild
+fastskill skill search "process documents" --local --embedding auto
+
+# Optional skills directory override (applies to local flows that need the service)
+fastskill skill search "powerpoint" --local --skills-dir ./.claude/skills
+```
+
+## Command Options
+
+### --limit `&lt;NUMBER&gt;`
+
+Maximum number of results to return:
+
+```bash
+# Return top 5 results
+fastskill skill search "powerpoint" --limit 5
+
+# Request a larger page (default: 10)
+fastskill skill search "powerpoint" --limit 50
+```
+
+### --format \[table|json|grid|xml]
+
+Output format for results:
+
+```bash
+# ASCII table (default)
+fastskill skill search "powerpoint" --format table
+
+# JSON output
+fastskill skill search "powerpoint" --format json
+
+# XML output
+fastskill skill search "powerpoint" --format xml
+```
+
+### Scope flags
+
+```bash
+fastskill skill search "query" --local          # installed skills
+fastskill skill search "query" --remote         # explicit remote (default without --local)
+fastskill skill search "query" --repository r   # remote, single repo
+```
+
+### --embedding `&lt;true|false|auto&gt;`
+
+**Only applies when `--local` is set**; ignored for remote search.
+
+```bash
+fastskill skill search --local --embedding false "documents"
+fastskill skill search --local --embedding true "documents"
+fastskill skill search --local "documents"
+```
+
+**Modes:**
+
+* `--embedding true`: Embedding search only (requires API key and index where applicable).
+* `--embedding false`: Keyword-style search without embeddings.
+* `auto` or omitted: Let FastSkill pick a local strategy based on configuration.
+
+## Search Methods
+
+### Semantic Search (Embeddings)
+
+**How it works:**
+
+1. Converts your query to an embedding vector
+2. Calculates similarity with all indexed skill vectors
+3. Returns most semantically relevant skills
+
+**Advantages:**
+
+* Finds skills by meaning, not just keywords
+* Understands synonyms and related concepts
+* Better for natural language queries
+
+**Example:**
+
+```bash
+fastskill skill search "I need to run a meeting and summarize main points visually"
+# Finds: PowerPoint tools, presentation software, chart generators
+```
+
+## Output Formats
+
+### Table Format (Default)
+
+Professional ASCII table with columns:
+
+```
+Found 3 skills matching 'powerpoint':
+
++-----------------+--------------------------------+------------------+
+| ID              | Path                           | Similarity       |
++-----------------+--------------------------------+------------------+
+| pptx            | product-management/pptx        | 0.87            |
+| presentation    | tools/presentation             | 0.82            |
+| charts          | dataops/charts                 | 0.76            |
++-----------------+--------------------------------+------------------+
+```
+
+**Features:**
+
+* Auto-sized columns based on content
+* Truncated long descriptions (50 chars max)
+* Similarity scores for embedding results
+* "N/A" for keyword search results
+
+### JSON Format
+
+Clean JSON without embedding vectors:
+
+```bash
+fastskill skill search "powerpoint" --format json --limit 2
+```
+
+```json
+[
+  {
+    "id": "pptx",
+    "name": "PowerPoint Creator",
+    "description": "Create professional presentations from text content",
+    "version": "1.0.0",
+    "author": null,
+    "tags": ["presentation", "powerpoint", "slides"],
+    "capabilities": ["create_pptx", "text_to_slides"],
+    "enabled": true,
+    "token_estimate": 145,
+    "last_updated": "2025-11-04T18:50:43.036090647Z"
+  },
+  {
+    "skill": {
+      "id": "presentation",
+      "skill_path": "tools/presentation",
+      "frontmatter_json": {
+        "name": "Presentation Tools",
+        "description": "Comprehensive presentation creation and management",
+        "tags": ["presentation", "slides", "charts"]
+      },
+      "file_hash": "a1b2c3...",
+      "updated_at": "2025-11-04T18:50:43.036090647Z"
+    },
+    "similarity": 0.82
+  }
+]
+```
+
+### XML Format
+
+Structured XML output:
+
+```bash
+fastskill skill search "powerpoint" --format xml
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<skills>
+  <skill id="pptx" path="product-management/pptx">
+    <similarity>0.87</similarity>
+    <name>PowerPoint Creator</name>
+    <description>Create professional presentations from text content</description>
+  </skill>
+  <skill id="presentation" path="tools/presentation">
+    <similarity>0.82</similarity>
+    <name>Presentation Tools</name>
+    <description>Comprehensive presentation creation and management</description>
+  </skill>
+</skills>
+```
+
+## Configuration
+
+### Skills directory
+
+Local search uses the same skills directory resolution as other commands (typically `[tool.fastskill].skills_directory` in `skill-project.toml`, or `--global` on the top-level CLI). You can override per invocation with:
+
+```bash
+fastskill skill search "query" --local --skills-dir ./.claude/skills
+```
+
+## Examples
+
+### Basic Queries
+
+```bash
+# Find document processing skills
+fastskill skill search "process documents and extract text"
+
+# Find visualization tools
+fastskill skill search "create charts and graphs"
+
+# Find meeting-related skills
+fastskill skill search "schedule meetings and send invites"
+```
+
+### Advanced Queries
+
+```bash
+# Limit results and use JSON output
+fastskill skill search "powerpoint" --limit 5 --format json
+
+# Force keyword search for debugging
+fastskill skill search "presentation" --embedding false --format table
+
+# XML output for integration
+fastskill skill search "charts" --format xml > charts.xml
+```
+
+### Integration Examples
+
+#### Shell Script
+
+```bash
+#!/bin/bash
+QUERY="$1"
+RESULTS=$(fastskill skill search "$QUERY" --format json --limit 3)
+
+if [ -z "$RESULTS" ]; then
+    echo "No skills found for: $QUERY"
+    exit 1
+fi
+
+echo "Found skills for '$QUERY':"
+echo "$RESULTS" | jq -r '.[].name'
+```
+
+## Performance
+
+### Search Speed
+
+* **Embedding Search**: \< 500ms (local vector similarity)
+* **No Network Calls**: All search happens locally after indexing
+
+### Result Quality
+
+* **Semantic Understanding**: Finds skills by meaning, not just keywords
+* **Intelligent Matching**: Understands synonyms and related concepts
+* **Natural Language**: Better relevance for human queries
+
+### Scalability
+
+* **Vector Search**: Constant time after indexing, scales to 10k+ skills
+* **Local Processing**: No external API calls during search
+
+## Error Handling
+
+### Common Errors
+
+#### "No skills found matching 'query'"
+
+* **Cause**: No skills match the search criteria
+* **Solution**: Try broader terms or different search method
+
+#### "Embedding configuration required but not found"
+
+* **Cause**: No `[tool.fastskill.embedding]` section found in `skill-project.toml` (walked up from the current directory)
+* **Solution**: Run `fastskill project init` to set up your project, or add `[tool.fastskill.embedding]` to `skill-project.toml` manually
+
+#### "Vector index service not available"
+
+* **Cause**: Skills not indexed yet
+* **Solution**: Run `fastskill index rebuild` first
+
+#### "OPENAI\_API\_KEY environment variable not set"
+
+* **Cause**: API key not configured for embedding search
+* **Solution**: Set `OPENAI_API_KEY` environment variable
+
+### Troubleshooting
+
+#### Enable Debug Logging
+
+```bash
+RUST_LOG=fastskill=debug fastskill skill search "query"
+```
+
+#### Check Index Status
+
+```bash
+# Verify index exists
+ls -la .claude/skills/.fastskill/index.db
+
+# Check index contents
+sqlite3 .claude/skills/.fastskill/index.db "SELECT COUNT(*) FROM skills;"
+```
+
+#### Verify Configuration
+
+```bash
+# Check the embedding configuration
+cat skill-project.toml
+
+# Test API key is set
+echo $OPENAI_API_KEY
+
+# Test basic search functionality
+fastskill skill search "test query" --limit 1
+```
+
+## Best Practices
+
+### Query Formulation
+
+* Use natural language descriptions
+* Describe desired outcomes and use cases
+* Include context about what you want to accomplish
+* Semantic search understands synonyms and related concepts
+
+### Performance Optimization
+
+```bash
+# Use appropriate limits
+fastskill skill search "query" --limit 10  # Not too many results
+
+# Choose appropriate output formats
+fastskill skill search "query" --format json  # For programmatic use
+fastskill skill search "query" --format table # For human reading
+```
+
+### Integration Patterns
+
+#### API Integration
+
+```bash
+# For web applications (POST JSON body to the running `fastskill server serve` API)
+curl -X POST "http://localhost:8080/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "powerpoint", "limit": 10, "semantic": true}'
+
+# For command-line tools
+fastskill skill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
+```
+
+## Related Commands
+
+### Reindex Command
+
+Build or update the search index:
+
+```bash
+fastskill index rebuild --skills-dir .claude/skills/
+```
+
+`skill search` discovers skills from catalogs or the installed set, depending on `--local` and
+embedding settings.
+

@@ -1,0 +1,190 @@
+# Running and Monitoring
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/optimize/running
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Running and Monitoring
+
+## Start a run
+
+```bash
+fastskill optimization run --config optimize.toml
+```
+
+FastSkill validates your config, creates a timestamped run directory under `out_dir`, and begins the training loop. When the run finishes, it prints the path to the best skill document:
+
+```
+Run complete. Best skill: .skillopt/runs/2026-06-03T14-22-01Z/best_skill.md
+```
+
+### Zero-step runs
+
+A run that finishes without recording a single training step does **not** print the line
+above. It prints a distinct message on stdout and a warning on stderr:
+
+```
+No training steps were executed. Best skill (unchanged from input): .skillopt/runs/<timestamp>/best_skill.md
+```
+
+```
+OPTIMIZE_ZERO_STEPS_WARN: training completed with zero recorded steps in history.json;
+no optimization occurred. Check that the suite has cases tagged 'train' and that
+n_epochs/batch_size/accumulation produce at least one step.
+```
+
+The usual cause is a suite with no `train` rows, which `optimization run` now rejects up front
+with `OPTIMIZE_NO_TRAIN_CASES` (see [Setup](/optimize/setup)). This warning is the
+backstop for every other way a run can end up doing nothing — for example a loop
+configuration that yields no steps. Treat it as a failed run, not a successful one:
+`best_skill.md` is the seed document, unchanged.
+
+### Override the output directory
+
+```bash
+fastskill optimization run --config optimize.toml --out-dir /tmp/my-runs
+```
+
+This overrides the `out_dir` value in the config without modifying the file.
+
+### Disable scoring isolation
+
+```bash
+fastskill optimization run --config optimize.toml --no-isolation
+```
+
+Scoring passes are isolated by default (see the `isolate` knob in [Configuration](/optimize/configuration)); `--no-isolation` scores in a shared workspace against the machine's ambient agent environment instead. The decision is persisted into the run's provenance `optimize.toml`, so a later `resume` keeps the same behaviour. Baselines recorded before isolation existed were measured against the ambient environment — expect gate and baseline scores to shift on the first isolated run.
+
+### Resume an interrupted run in one step
+
+If you interrupted a run (Ctrl-C, timeout, machine restart), you can resume it directly from the `run` command:
+
+```bash
+fastskill optimization run --config optimize.toml --resume .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+This delegates to the `resume` subcommand — it re-reads the stored config from the run directory and picks up where it left off.
+
+***
+
+## Watch progress with `status`
+
+In a second terminal, run:
+
+```bash
+fastskill optimization status .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+This prints the current best score, epoch/step position, and a per-step table:
+
+```
+Run: .skillopt/runs/2026-06-03T14-22-01Z  |  epoch: 0  global_step: 1  best_score: 0.0000
+
+step    gate        score(S)    score(S')   delta     tokens
+--------------------------------------------------------------
+0       rejected    0.0000      0.0000      +0.0000   0
+```
+
+Column meanings:
+
+| Column      | Description                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `step`      | Global step index, **0-based** across all epochs. This is the value to pass to `optimization inspect --step`. |
+| `gate`      | Whether the patch was accepted or rejected.                                                                   |
+| `score(S)`  | Score before the patch.                                                                                       |
+| `score(S')` | Score after the patch.                                                                                        |
+| `delta`     | `score(S') - score(S)`. Positive means improvement.                                                           |
+| `tokens`    | Tokens consumed in this step (target + optimizer calls); `0` when the underlying run did not report usage.    |
+
+An **empty table** under a finished run means no training steps were recorded — see
+[zero-step runs](#zero-step-runs) below.
+
+### Live watch mode
+
+```bash
+fastskill optimization status .skillopt/runs/2026-06-03T14-22-01Z --watch
+```
+
+Re-reads and re-prints every \~2 seconds until the run completes.
+
+***
+
+## Resume an interrupted run
+
+```bash
+fastskill optimization resume .skillopt/runs/2026-06-03T14-22-01Z
+```
+
+The `resume` subcommand reads the stored `optimize.toml` copy from the run directory (saved at run-start for provenance), re-validates it against the current files, and calls the training loop at the last checkpoint.
+
+**Note:** Resume uses the config stored *inside* the run directory, not your original config file. This ensures the run is reproducible regardless of changes you may have made to the config since starting.
+
+***
+
+## Typical workflow
+
+```bash
+# 1. Start the run
+fastskill optimization run --config optimize.toml
+
+# 2. In a second terminal, watch progress
+fastskill optimization status .skillopt/runs/<timestamp> --watch
+
+# 3. If interrupted, resume
+fastskill optimization resume .skillopt/runs/<timestamp>
+
+# 4. When done, inspect a specific step (optional)
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 7
+
+# 5. Export the best skill
+fastskill optimization export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
+```
+
+***
+
+## Run directory layout
+
+Every run creates a self-contained directory:
+
+```
+.skillopt/runs/2026-06-03T14-22-01Z/
+├── optimize.toml           # stored config (provenance copy)
+├── runtime_state.json      # live state: config, best_score, epoch, global_step
+├── history.json            # array of step records (one per attempted step)
+├── best_skill.md           # best skill document seen so far
+├── skills/
+│   ├── skill_v0000.md      # seed document
+│   └── skill_v0001.md      # one new version per *accepted* step
+├── steps/
+│   ├── step_0000/
+│   │   ├── patch.json      # edits the optimizer proposed
+│   │   ├── gate.json       # accept/reject decision, score, best_score
+│   │   ├── rollouts.json   # per-case scores for this step
+│   │   └── update.json     # edit-budget accounting: budget, chosen, skipped_count
+│   └── step_0001/
+│       └── ...
+└── epoch_00/
+    ├── meta_skill.json     # optimizer strategy for the epoch
+    └── slow_update.json    # epoch-boundary decision
+```
+
+Step directories are `steps/step_{NNNN}` — zero-padded and **0-based**, matching the `step`
+column in `optimization status` and the `--step` argument to `optimization inspect`. Skill versions
+are numbered by *accepted* steps, not by step index, so they diverge from step numbers once
+any step has been rejected.
+
+The run directory is safe to copy, archive, or share. Resume and inspect commands only need this directory.
+
+***
+
+## See also
+
+* [Inspecting and exporting results](/optimize/results)
+* [Configuration reference](/optimize/configuration)
+

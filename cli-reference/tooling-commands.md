@@ -1,0 +1,114 @@
+# Marketplace, analysis, and CLI tools
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/tooling-commands
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+Agents read installed skill directories directly.
+
+
+## fastskill marketplace
+
+### marketplace create
+
+Scans a directory for skills (folders with `SKILL.md`) and writes `marketplace.json`.
+
+```bash
+fastskill marketplace create ./skills --name my-marketplace
+fastskill marketplace create . -o .claude-plugin/marketplace.json --name "My Marketplace"
+```
+
+| Option                                                             | Description                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `<DIR>`                                                            | Root to scan (default: `.`)                                         |
+| `-o, --output <FILE>`                                              | Output path (default under `.claude-plugin/` in the scan directory) |
+| `--base-url <URL>`                                                 | Base URL for download links                                         |
+| `--name <NAME>`                                                    | **Required.** Marketplace name                                      |
+| `--owner-name`, `--owner-email`, `--description`, `--repo-version` | Optional metadata                                                   |
+
+## fastskill analysis
+
+Requires a running service context (installed skills and index) like other service commands.
+
+### analysis matrix
+
+Pairwise similarity between indexed skills.
+
+```bash
+fastskill analysis matrix
+fastskill analysis matrix --threshold 0.8 --limit 5
+fastskill analysis matrix --full --json
+```
+
+| Option               | Description                                |
+| -------------------- | ------------------------------------------ |
+| `--format <FORMAT>`  | `table`, `json`, `grid`, `xml`             |
+| `--json`             | Shorthand for `--format json`              |
+| `--threshold <0..1>` | Minimum similarity to show (default `0.0`) |
+| `-l, --limit <N>`    | Similar skills per skill (default `10`)    |
+| `--full`             | Show all pairs instead of condensed view   |
+
+### analysis cluster
+
+Groups skills by semantic similarity.
+
+```bash
+fastskill analysis cluster
+fastskill analysis cluster -k 8 --min-size 2 --json
+```
+
+| Option                   | Description                         |
+| ------------------------ | ----------------------------------- |
+| `-k, --num-clusters <N>` | Number of clusters (default `5`)    |
+| `--min-size <N>`         | Hide smaller clusters (default `1`) |
+| `--format`, `--json`     | Output selection                    |
+
+### analysis duplicates
+
+Finds near-duplicate skills.
+
+```bash
+fastskill analysis duplicates
+fastskill analysis duplicates --threshold 0.92 --severity critical
+```
+
+| Option               | Description                            |
+| -------------------- | -------------------------------------- |
+| `--threshold <0..1>` | Minimum similarity (default `0.88`)    |
+| `--limit <N>`        | Max pairs to show (default `20`)       |
+| `--severity <LEVEL>` | `all`, `medium`, `high`, or `critical` |
+| `--format`, `--json` | Output selection                       |
+
+## fastskill cli doctor
+
+Check environment readiness for fastskill. Reports the status of the skills directory, `skill-project.toml`, embedding provider, API key, and auth token. Exits 0 when no hard failures are found; exits 1 when the skills directory is inaccessible.
+
+```bash
+fastskill cli doctor
+fastskill cli doctor --json
+```
+
+| Option   | Description                                              |
+| -------- | -------------------------------------------------------- |
+| `--json` | Emit results as JSON array of `{check, status, message}` |
+
+**Example output:**
+
+```
+[PASS] Skills directory accessible
+[PASS] skill-project.toml present
+[WARN] Embedding provider not configured (semantic search unavailable)
+[WARN] No authenticated registry
+```
+
+## See also
+
+* [Discovery commands](/cli-reference/discovery-commands) (`skill search`, `index rebuild`)
+* [Repository commands](/cli-reference/repository-command) (`repo`)
+

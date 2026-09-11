@@ -1,0 +1,341 @@
+# project init
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/init-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# `project init`
+
+Initialize `skill-project.toml` for skill authors. This command creates a project manifest file for managing skill metadata, dependencies, and version information.
+
+## Usage
+
+```bash
+fastskill project init [OPTIONS]
+```
+
+## Options
+
+| Option                    | Description                                              | Default |
+| ------------------------- | -------------------------------------------------------- | ------- |
+| `--yes`                   | Skip interactive prompts and use defaults                | `false` |
+| `--force`                 | Force reinitialization even if skill-project.toml exists | `false` |
+| `--set-version <VERSION>` | Set version directly                                     | None    |
+| `--description <DESC>`    | Set skill description                                    | None    |
+| `--author <AUTHOR>`       | Set skill author                                         | None    |
+| `--download-url <URL>`    | Set download URL                                         | None    |
+
+## Examples
+
+### Interactive Initialization
+
+Run interactively with prompts for all required fields:
+
+```bash
+fastskill project init
+```
+
+The command will prompt for:
+
+* Version (defaults to 1.0.0)
+* Description (optional)
+* Author (optional)
+* Download URL (optional)
+
+### Non-Interactive Initialization
+
+Use `--yes` to skip prompts and use defaults:
+
+```bash
+fastskill project init --yes
+```
+
+### Set All Fields Non-Interactively
+
+Set all fields via command-line options:
+
+```bash
+fastskill project init \
+  --yes --set-version "1.0.0" \
+  --description "My awesome skill" \
+  --author "Your Name" \
+  --download-url "https://github.com/user/my-skill"
+```
+
+### Force Reinitialization
+
+Overwrite existing `skill-project.toml`:
+
+```bash
+fastskill project init --force
+```
+
+Using `--force` will overwrite your existing `skill-project.toml` file. Make sure to backup if you need to preserve any custom configurations.
+
+
+## Behavior
+
+The `project init` command:
+
+1. **Detects Context**: Determines if you're in a skill directory (with SKILL.md) or a project directory
+2. **Extracts Metadata**: If SKILL.md exists, extracts version, description, and author from YAML frontmatter
+3. **Prioritizes Inputs**: Uses values in this priority order:
+   * CLI arguments (highest priority)
+   * SKILL.md frontmatter
+   * Interactive prompts
+   * Default values (lowest priority)
+4. **Generates Skill ID**: Uses the current directory name as the skill ID
+5. **Validates Format**: Validates skill ID format and semantic version format
+6. **Creates File**: Writes `skill-project.toml` with basic structure and commented examples
+
+## Generated File Structure
+
+The `project init` command creates a `skill-project.toml` file with the following structure:
+
+```toml skill-project.toml
+schema_version = "1"
+
+[metadata]
+id = "my-skill"
+version = "1.0.0"
+
+[dependencies]
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+install_depth = 5
+skip_transitive = false
+auto_reindex = true
+
+# Additional configuration options for [tool.fastskill]:
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
+```
+
+Add dependencies by hand or with `fastskill skill add`. Each one names an **origin**:
+
+```toml skill-project.toml
+[dependencies]
+example-skill = { origin = { type = "git", url = "https://github.com/user/example-skill.git" } }
+```
+
+## Skill ID Detection
+
+The skill ID is automatically derived from the current directory name:
+
+```bash
+# In directory: /path/to/my-skill
+# → Skill ID: my-skill
+
+cd my-skill
+fastskill project init
+# Creates: [metadata] id = "my-skill"
+```
+
+If you're in a project directory (no SKILL.md), the `skill-project.toml` can still be used to declare dependencies for installation via `fastskill project install`.
+
+
+## Context Detection
+
+The command automatically detects the project context:
+
+### Skill Context (with SKILL.md)
+
+When `SKILL.md` exists in the current directory:
+
+```bash
+my-skill/
+├── SKILL.md
+└── (skill files)
+
+cd my-skill
+fastskill project init
+# → Creates skill-project.toml for this skill
+```
+
+The `skill-project.toml` includes metadata that augments or overrides SKILL.md frontmatter for publishing.
+
+### Project Context (without SKILL.md)
+
+When no `SKILL.md` exists:
+
+```bash
+my-project/
+├── skill-project.toml
+├── skills/
+│   └── ...
+└── (project files)
+
+cd my-project
+fastskill project init
+# → Creates skill-project.toml for declaring dependencies
+```
+
+Use `fastskill project install` to install skills declared in `[dependencies]` section.
+
+## SKILL.md Frontmatter Integration
+
+When `SKILL.md` exists, the command extracts metadata from YAML frontmatter:
+
+```markdown SKILL.md
+---
+name: My Skill
+description: An awesome skill
+version: "1.0.0"
+author: Your Name
+license: MIT
+---
+
+Skill content here...
+```
+
+If you provide `--version`, `--description`, or `--author` flags, they will override the values from SKILL.md frontmatter.
+
+
+## Version Validation
+
+The command validates semantic version format:
+
+**Valid versions:**
+
+* `1.0.0`
+* `2.1.3`
+* `0.0.1`
+* `10.20.30`
+
+**Invalid versions:**
+
+* `1.0` (missing patch)
+* `1` (missing minor and patch)
+* `v1.0.0` (v prefix not allowed)
+* `1.0.0-beta` (pre-release not supported in init)
+
+## Skill ID Validation
+
+The skill ID (directory name) must meet these requirements:
+
+* Must start with a letter
+* Can contain letters, numbers, hyphens, and underscores
+* Cannot contain spaces or special characters
+* Cannot start or end with hyphen or underscore
+
+**Valid IDs:**
+
+* `my-skill`
+* `data_processor`
+* `web-scraper-v2`
+
+**Invalid IDs:**
+
+* `my skill` (contains space)
+* `-skill` (starts with hyphen)
+* `skill_` (ends with underscore)
+* `123skill` (doesn't start with letter)
+
+## Workflow Examples
+
+### Creating a New Skill
+
+```bash
+# 1. Create skill directory
+mkdir my-new-skill
+cd my-new-skill
+
+# 2. Create SKILL.md
+cat > SKILL.md << 'EOF'
+---
+name: My New Skill
+description: A brief description
+version: "1.0.0"
+author: Your Name
+---
+
+Skill content here...
+EOF
+
+# 3. Initialize project
+fastskill project init --yes
+
+# 4. Add to skill-project.toml dependencies (if needed)
+# Edit skill-project.toml to add dependencies
+```
+
+### Creating a Multi-Skill Project
+
+```bash
+# 1. Create project directory
+mkdir my-project
+cd my-project
+
+# 2. Initialize project manifest
+fastskill project init --yes \
+  --yes --set-version "1.0.0" \
+  --description "My multi-skill project" \
+  --author "Your Name"
+
+# 3. Add skills
+fastskill skill add https://github.com/user/skill-a.git
+fastskill skill add https://github.com/user/skill-b.git
+
+# 4. Install skills
+fastskill project install
+```
+
+### Updating Metadata for Existing Skill
+
+```bash
+cd my-existing-skill
+
+# Update metadata in skill-project.toml
+fastskill project init \
+  --set-version "2.0.0" \
+  --description "Updated description" \
+  --force
+```
+
+## Use Cases
+
+### For Skill Authors
+
+Use `fastskill project init` to:
+
+* Create project metadata for publishing skills
+* Track skill versions independent of SKILL.md
+* Override SKILL.md frontmatter for publishing
+* Add download URLs for distribution
+
+### For Project Maintainers
+
+Use `fastskill project init` to:
+
+* Declare skill dependencies in `[dependencies]` section
+* Configure repositories in `[tool.fastskill.repositories]`
+* Set up reproducible installations via `fastskill project install`
+
+### For CI/CD Pipelines
+
+Use `fastskill project init --yes` to:
+
+* Create manifests without interactive prompts
+* Generate consistent metadata across environments
+* Automate project setup
+
+## See Also
+
+* [Install Command](/cli-reference/install-command) - Install skills from skill-project.toml
+* [Installation Guide](/installation) - Environment setup and prerequisites
+

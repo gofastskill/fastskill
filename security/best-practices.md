@@ -1,0 +1,70 @@
+# Security Best Practices
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/security/best-practices
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+These are the concrete, source-backed practices for operating FastSkill safely. They follow directly
+from the [security model](/security/model): FastSkill is a package manager with no in-app auth, so
+protection comes from *how you run and expose it*.
+
+## Running `fastskill server serve`
+
+* **Expose read-only.** For a browsable UI or REST view over your skills, run `fastskill server serve`
+  **without** `--enable-write`. Every mutation endpoint returns HTTP 403, so an exposed instance
+  cannot install, update, delete, reindex, or refresh anything.
+* **Only pass `--enable-write` when you mean it.** Enable writes for local skill management from the
+  browser/API — ideally on `localhost` only. Do not combine `--enable-write` with an open,
+  unfronted port.
+* **Front an exposed port with an authenticating proxy.** `server serve` enforces no authentication of its
+  own and is *not* a security boundary. If the port is reachable off your machine, put a reverse
+  proxy or sidecar in front that owns authentication, and make sure the app port is not directly
+  reachable. Binding a non-loopback address is fine and expected behind such a proxy.
+* **Use the health probes for orchestration**, not for security: `GET /healthz` (liveness) and
+  `GET /readyz` (readiness).
+
+## Repository credentials
+
+* **Use PAT env-var indirection.** Reference tokens by environment variable in
+  `skill-project.toml`, never inline:
+
+  ```toml
+  [[tool.fastskill.repositories]]
+  name = "team-registry"
+  type = "http-registry"
+  index_url = "https://registry.example.com/index.json"
+  auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
+  ```
+
+* **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
+  manager. Commit `skill-project.toml`; keep the token value out of the repo.
+
+* **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
+  embedding-based features silently skip rather than failing — but do not paste the key into config
+  or version control.
+
+## Reproducible installs in CI
+
+* **Commit `skill-project.toml` and `skills.lock`.**
+* **Use `fastskill project install --lock` in CI** so builds install the exact locked versions rather than
+  re-resolving. This makes installs reproducible and verifiable across environments. See the
+  [cheatsheet](/cheatsheet) for the full manifest workflow.
+
+## Verify configuration
+
+Run `fastskill cli doctor` (add `--json` for machine output) to confirm the skills directory,
+`skill-project.toml`, embedding configuration, `OPENAI_API_KEY`, and auth token are set up as
+expected before deploying. See [Debugging](/testing/debugging).
+
+FastSkill deliberately has **no audit-logging feature** and **no in-app auth** — do not rely on it
+for either. Request logging, authentication, and network policy belong to the proxy and platform
+that front an exposed instance.
+

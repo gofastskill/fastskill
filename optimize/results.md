@@ -1,0 +1,228 @@
+# Inspecting and Exporting Results
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/optimize/results
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Inspecting and Exporting Results
+
+## Inspect a step
+
+After a run completes (or while it's running), use `inspect` to see what happened at a step:
+
+```bash
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0
+```
+
+`--step` is **0-based** — it is the same `global_step` value that
+[`optimization status`](#finding-a-step-to-inspect) prints in its `step` column, and the same
+number used in the on-disk directory name (`steps/step_0000`). Pass the number you read
+off `status`; there is no off-by-one to translate.
+
+With no `--show`, `inspect` prints every artifact for that step (`--show all`).
+
+### Show only what you need
+
+```bash
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show patches
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show gate
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show skips
+fastskill optimization inspect .skillopt/runs/<timestamp> --step 0 --show diffs
+```
+
+| Value           | Output                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `all` (default) | Patch, skill diff, gate decision, skip info, and per-case rollouts                       |
+| `patches`       | The raw JSON patch the optimizer proposed (`patch.json`)                                 |
+| `diffs`         | Unified diff between consecutive skill versions — see [Diffs](#diffs-and-skill-versions) |
+| `gate`          | The accept/reject decision and scores (`gate.json`)                                      |
+| `skips`         | Edit-budget info derived from `update.json` — see [Skips](#skips)                        |
+
+### Patches
+
+`patch.json` is an array of edits the optimizer proposed for this step:
+
+```json
+[
+  {
+    "op": "replace",
+    "target": "3. Produce one greeting line.",
+    "content": "3. Produce one greeting line.\n\n## Output\nReturn ONLY the greeting line itself...",
+    "impact": 0.9
+  }
+]
+```
+
+### Interpreting the gate
+
+`gate.json` records the accept/reject decision for the step:
+
+```json
+{
+  "accepted": false,
+  "best_score": 0.0,
+  "score": 0.0
+}
+```
+
+`score` is the candidate's score for this step; `best_score` is the best seen so far in the
+run. A patch is accepted only if it improves on the incumbent by at least `gate_epsilon`
+(see the [configuration reference](/optimize/configuration)). When a step is rejected the
+skill document is left unchanged and no new version is written.
+
+### Skips
+
+There is **no `skips.json` artifact**. Skip information is derived from `update.json`,
+which records how the step's edit budget was spent:
+
+```
+Skip info (there is no dedicated skips.json artifact; derived from update.json):
+  budget:        1
+  chosen:        [0]
+  skipped_count: 0
+```
+
+`budget` is the number of edits the step was allowed to apply, `chosen` the indices of the
+patches it actually applied, and `skipped_count` how many proposed patches were dropped for
+exceeding that budget. This is about *patches* dropped by the edit budget, not eval cases
+skipped for timeout or error.
+
+### Diffs and skill versions
+
+Versioned skill documents live at `<run>/skills/skill_v{NNNN}.md`, not in the step
+directory.
+
+**A new version is written only when a step is accepted**, so version numbers count
+*accepted steps*, not steps. Once any step has been rejected they no longer line up with
+step indices: if step 0 is rejected and step 1 accepted, step 1's diff is
+`skill_v0000.md → skill_v0001.md`, not `v0001 → v0002`.
+
+`--show diffs` therefore resolves the bracketing versions from `history.json` — counting
+accepted steps before the one you asked for — rather than assuming step N maps to version
+N. For a rejected step it reports that directly:
+
+```
+(no diff: step 0 was rejected, so no new skill version was written — run
+`optimization inspect --step 0 --show gate` for the scores)
+```
+
+If the step isn't recorded in `history.json` at all, `inspect` says that instead of
+guessing.
+
+### Rollouts
+
+`rollouts.json` holds the per-case scores behind the step's aggregate, surfaced under
+`--show all`:
+
+```json
+[
+  { "case_id": "tr-001", "score": 0.0 },
+  { "case_id": "tr-002", "score": 0.0 }
+]
+```
+
+### Finding a step to inspect
+
+Use `status` to read the history table first, then pick the step you care about — the
+largest positive delta, or the last accepted step before a regression:
+
+```bash
+fastskill optimization status .skillopt/runs/<timestamp>
+```
+
+```
+Run: .skillopt/runs/<timestamp>  |  epoch: 0  global_step: 1  best_score: 0.0000
+
+step    gate        score(S)    score(S')   delta     tokens
+--------------------------------------------------------------
+0       rejected    0.0000      0.0000      +0.0000   0
+```
+
+An empty table under a completed run means no training steps were recorded — see the
+zero-step warning in [Running and monitoring](/optimize/running).
+
+***
+
+## Export the best skill
+
+When you're happy with the results, export the best skill document:
+
+```bash
+fastskill optimization export .skillopt/runs/<timestamp> --out skills/my-skill/SKILL.md
+```
+
+This copies `best_skill.md` from the run directory to the destination path. Parent
+directories are created if they don't exist.
+
+**Note:** `best_skill.md` is the highest-scoring skill document seen across all accepted
+steps — not necessarily the final step. If the last few steps were rejected, it reflects the
+best earlier checkpoint. A run where nothing was accepted exports the seed document, with
+the optimizer's protected-region markers added.
+
+***
+
+## Comparing multiple runs
+
+```bash
+fastskill optimization status .skillopt/runs/run-A
+fastskill optimization status .skillopt/runs/run-B
+
+diff \
+  .skillopt/runs/run-A/best_skill.md \
+  .skillopt/runs/run-B/best_skill.md
+```
+
+***
+
+## Artifacts reference
+
+Each step directory (`<run>/steps/step_{NNNN}/`) contains:
+
+| File            | Description                                                                    |
+| --------------- | ------------------------------------------------------------------------------ |
+| `patch.json`    | Array of edits proposed by the optimizer (`op`, `target`, `content`, `impact`) |
+| `gate.json`     | Accept/reject decision plus `score` and `best_score`                           |
+| `rollouts.json` | Per-case scores for this step (`case_id`, `score`)                             |
+| `update.json`   | Edit-budget accounting: `budget`, `chosen`, `skipped_count`                    |
+
+Top-level run files:
+
+| File                      | Description                                                                 |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `optimize.toml`           | Provenance copy of the config used for this run                             |
+| `runtime_state.json`      | Config snapshot, current/best score, epoch, global step, optimizer strategy |
+| `history.json`            | Array of step records — one per attempted step, accepted or not             |
+| `best_skill.md`           | The best skill document seen across the run                                 |
+| `skills/skill_v{NNNN}.md` | Versioned skill documents; a new one is written per accepted step           |
+| `epoch_{NN}/`             | Per-epoch artifacts (`meta_skill.json`, `slow_update.json`)                 |
+
+A `history.json` record looks like:
+
+```json
+{
+  "accepted": false,
+  "epoch": 0,
+  "global_step": 0,
+  "hash_before": "da10b5dd875c7bd3...",
+  "hash_after": "da10b5dd875c7bd3...",
+  "score_current": 0.0,
+  "score_candidate": 0.0,
+  "input_tokens": null,
+  "output_tokens": null
+}
+```
+
+***
+
+## See also
+
+* [Running and monitoring](/optimize/running)
+* [Configuration reference](/optimize/configuration)
+* [Skill Optimization overview](/optimize/overview)
+

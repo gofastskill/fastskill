@@ -1,0 +1,136 @@
+# server serve
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/serve-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# `server serve`
+
+Start the local fastskill HTTP API server and web UI.
+
+## Usage
+
+```bash
+fastskill server serve [OPTIONS]
+```
+
+## Options
+
+| Option           | Description                                                                                                       | Default     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ----------- |
+| `--host <HOST>`  | Host to bind the server to                                                                                        | `localhost` |
+| `--port <PORT>`  | Port to bind the server to                                                                                        | `8080`      |
+| `--enable-write` | Enable state-changing (write) endpoints. Off by default — the server is **read-only** unless this flag is passed. | `false`     |
+
+## Examples
+
+### Basic Server
+
+```bash
+fastskill server serve
+```
+
+### Custom Host and Port
+
+```bash
+fastskill server serve --host 0.0.0.0 --port 3000
+```
+
+### Manage skills from the browser (enable writes)
+
+```bash
+fastskill server serve --enable-write
+```
+
+## Read-only by default
+
+`fastskill server serve` is **read-only by default**. Read endpoints (list/get skills,
+project, search, resolve, status, registry browse, the dashboard) are always available; every
+state-changing endpoint (see the *write* rows in [Core Endpoints](#core-endpoints)) is &#x2A;*disabled
+unless you start the server with `--enable-write`**.
+
+When writes are disabled, a request to a write endpoint returns:
+
+```
+HTTP 403 Forbidden
+{ "error": "write operations disabled; start server with --enable-write" }
+```
+
+Run `fastskill server serve --enable-write` when you want to manage skills (install / update / remove) from
+the web UI or API on your own machine.
+
+## Security model
+
+`fastskill server serve` is **not a security boundary**: it enforces no authentication of its own (no token
+endpoint; API routes require no `Authorization`/`x-api-key` header). It is designed to run
+**local-first** on your machine.
+
+If you expose the server on a shared or untrusted network, put an **authenticating reverse proxy or
+sidecar** in front of it and ensure the app port is not directly reachable — the proxy owns request
+authentication. Combined with the read-only default, this means an exposed instance without
+`--enable-write` cannot be used to mutate state even before the proxy is considered.
+
+## API Base Path
+
+All application routes use the `/api/v1/…` namespace.
+
+## Health Probes
+
+The server exposes two standard health endpoints immediately after startup:
+
+* `GET /healthz` — Liveness probe. Returns HTTP 200 with a JSON body containing the fastskill
+  crate version, e.g. `{"status":"ok","version":"<current-release>"}`.
+* `GET /readyz` — Readiness probe. Returns HTTP 200 when the server is ready to accept traffic.
+  Returns HTTP 503 while graceful shutdown is in progress.
+
+These endpoints are suitable for use with container orchestrators (Kubernetes, ECS, Docker).
+
+## Response Headers
+
+Every `/api/v1/…` response includes:
+
+* `X-API-Version: v1` — Identifies the API version that served the request.
+
+## Graceful Shutdown
+
+Sending `SIGINT` (Ctrl-C) or `SIGTERM` causes the server to:
+
+1. Flip `/readyz` to HTTP 503 so load balancers stop routing new traffic.
+2. Drain in-flight requests to completion.
+3. Exit cleanly with exit code 0.
+
+## Core Endpoints
+
+Write endpoints (marked **write**) require `--enable-write`; without it they return HTTP 403.
+
+| Endpoint                   | Method          | Access    | Description                                                                                                                                                                                                                           |
+| -------------------------- | --------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/v1/status`           | GET             | read      | Service status and uptime, plus capability flags: `writable` (server started with `--enable-write`) and `embeddingProvider` (an embedding provider is configured)                                                                     |
+| `/api/v1/project`          | GET             | read      | Project view from `skill-project.toml`                                                                                                                                                                                                |
+| `/api/v1/skills`           | GET             | read      | List installed skills                                                                                                                                                                                                                 |
+| `/api/v1/skills/{id}`      | GET             | read      | Get a skill                                                                                                                                                                                                                           |
+| `/api/v1/skills/{id}`      | DELETE          | **write** | Remove a skill                                                                                                                                                                                                                        |
+| `/api/v1/skills/install`   | POST            | **write** | Install a skill from an origin (`{ "origin": {...}, "groups"?: [...] }`); `201` on success, `409` if the id is already installed                                                                                                      |
+| `/api/v1/skills/update`    | POST            | **write** | Update one (`{ "skillId": "..." }`) or all skills recorded in the project from their recorded origin as one compatible dependency plan; `{ "check": true }` reports `would_update`, `up_to_date`, or `immutable` without applying it. |
+| `/api/v1/search`           | POST            | read      | Search skills                                                                                                                                                                                                                         |
+| `/api/v1/resolve`          | POST            | read      | Resolve context for a prompt                                                                                                                                                                                                          |
+| `/api/v1/reindex`          | POST            | **write** | Reindex all skills. Returns `200` with `{ reindexed, count, reason }`; when no embedding provider is configured, reindex skips silently (`reindexed: false` + a `reason`), which is still `200`, not an error.                        |
+| `/api/v1/reindex/{id}`     | POST            | **write** | Reindexes the whole index (the core reindex seam has no single-skill mode); same response shape as `/api/v1/reindex`.                                                                                                                 |
+| `/api/v1/registry/sources` | GET             | read      | List registry sources                                                                                                                                                                                                                 |
+| `/api/v1/registry/refresh` | POST            | **write** | Refresh registry sources                                                                                                                                                                                                              |
+| `/api/v1/manifest/skills`  | GET             | read      | List manifest skills                                                                                                                                                                                                                  |
+| `/api/v1/manifest/skills`  | POST/PUT/DELETE | **write** | Manifest skill management                                                                                                                                                                                                             |
+| `/index/{*skill_id}`       | GET             | read      | Raw skill index (unchanged)                                                                                                                                                                                                           |
+| `/healthz`                 | GET             | read      | Liveness probe                                                                                                                                                                                                                        |
+| `/readyz`                  | GET             | read      | Readiness probe                                                                                                                                                                                                                       |
+
+## See Also
+
+* [CLI Reference Overview](/cli-reference/overview)
+

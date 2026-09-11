@@ -1,0 +1,62 @@
+# Evals and Quality Overview
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/evals-quality/overview
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Evals and Quality Overview
+
+FastSkill quality work has two complementary tracks:
+
+* **Case-based evals** with `fastskill eval` to test expected behavior against prompts and rubrics
+* **Portfolio analysis** with `fastskill analysis` to inspect coverage, overlap, clusters, and duplicates across installed skills
+
+Use both. Evals tell you if skills behave correctly. Analysis tells you if your skill set is healthy.
+
+New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — the `[tool.fastskill.eval]` table, the prompts CSV schema, and the checks TOML schema — before you touch `eval run`.
+
+
+## Recommended quality flow
+
+1. Author a suite: `[tool.fastskill.eval]`, a prompts CSV, and (usually) a checks TOML — see [Eval setup](/evals-quality/setup)
+2. Validate config and skill structure
+3. Run eval suites and inspect failures
+4. Score and report results for release decisions
+5. Analyze cluster and duplicates to improve skill portfolio quality
+6. Gate CI on thresholds
+
+## Quality commands map
+
+| Goal                              | Command                                                  |
+| --------------------------------- | -------------------------------------------------------- |
+| Validate eval definitions         | `fastskill eval validate`                                |
+| Execute suite                     | `fastskill eval run --agent <agent> --output-dir <dir>`  |
+| Judge a run with an LLM rubric    | `fastskill eval judge --run-dir <dir>`                   |
+| Summarize results                 | `fastskill eval report --run-dir <dir>`                  |
+| Re-score prior run                | `fastskill eval score --run-dir <dir>`                   |
+| Fold many runs into gated metrics | `fastskill eval scorecard --root <dir> --metrics <file>` |
+| Inspect clusters                  | `fastskill analysis cluster`                             |
+| Find near-duplicates              | `fastskill analysis duplicates`                          |
+| Similarity matrix                 | `fastskill analysis matrix`                              |
+
+## What to track over time
+
+* Eval pass rate by suite and tag
+* Failure hotspots by case id
+* Duplicate pair count above your threshold
+* Cluster balance (very sparse or huge clusters usually signal taxonomy issues)
+
+## See also
+
+* [Eval setup](/evals-quality/setup)
+* [Run evals](/evals-quality/run-evals)
+* [Cluster analysis](/evals-quality/cluster-analysis)
+* [eval command](/cli-reference/eval-command)
+* [Marketplace, analysis, and CLI tools](/cli-reference/tooling-commands)
+

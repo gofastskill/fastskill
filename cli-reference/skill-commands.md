@@ -1,0 +1,441 @@
+# Skill and project commands
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/skill-commands
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+Use `fastskill skill` to manage individual skills. Use `fastskill project` to create a manifest and
+restore all declared skills and bundles.
+
+For detailed documentation on specific commands, see the dedicated command pages linked below.
+
+
+## Command Reference
+
+### fastskill project init
+
+Initialize `skill-project.toml` for skill authors in current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
+
+See [`project init`](/cli-reference/init-command) for complete flags and examples.
+
+
+```bash
+# Create skill-project.toml interactively
+fastskill project init
+
+# Set version directly
+fastskill project init --set-version 1.2.3
+
+# Skip prompts, use defaults
+fastskill project init --yes
+
+# Force overwrite existing skill-project.toml
+fastskill project init --force
+```
+
+**What it does**:
+
+* Derives skill ID from current directory name (required)
+* Extracts available fields from `SKILL.md` frontmatter (name, description, version, author, tags, capabilities)
+* Prompts interactively for missing fields (when not using `--yes`)
+* Creates `skill-project.toml` with all metadata fields including required `id` and `version`
+
+**Options**:
+
+* `--yes`: Skip interactive prompts and use defaults
+* `--force`: Force reinitialization even if skill-project.toml exists
+* `--set-version <VERSION>`: Set version directly
+* `--description <DESC>`: Set skill description
+* `--author <AUTHOR>`: Set skill author
+* `--download-url <URL>`: Set download URL
+
+### fastskill skill read
+
+Retrieve skill documentation and base directory path in an agent-optimized format. This command is designed for programmatic consumption by AI agents and automation tools.
+
+```bash
+# Read a skill by ID
+fastskill skill read <skill-id>
+
+# Examples
+fastskill skill read pptx
+fastskill skill read data-analyzer
+fastskill skill read web-scraper
+```
+
+**Output Format**:
+The command outputs structured text with:
+
+* Skill identifier
+* Base directory (absolute path)
+* Complete SKILL.md content
+
+**Example Output**:
+
+```
+Reading: pptx
+Base directory: /home/user/.claude/skills/pptx
+
+---
+description: "Presentation creation and editing"
+author: "FastSkill Team"
+version: "1.2.3"
+tags: ["presentation", "powerpoint", "office"]
+capabilities: ["create_slides", "edit_content", "export_formats"]
+---
+
+# PowerPoint Skill
+
+This skill provides tools for creating and editing PowerPoint presentations programmatically.
+
+## Tools Available
+
+### create_presentation
+Creates a new PowerPoint presentation with specified parameters.
+
+**Parameters:**
+- `title` (string): Presentation title
+- `template` (string, optional): Template to use
+- `slides` (array): Array of slide definitions
+
+**Returns:** Presentation file path
+
+### add_slide
+Adds a new slide to an existing presentation.
+
+**Parameters:**
+- `presentation_path` (string): Path to presentation file
+- `slide_type` (string): Type of slide (title, content, etc.)
+- `content` (object): Slide content definition
+
+**Returns:** Updated presentation file path
+```
+
+**Use Cases**:
+
+* **Agent Integration**: Load skill documentation into agent context
+* **Tool Discovery**: Explore available functions and parameters
+* **Documentation Access**: Get complete skill information programmatically
+* **Debugging**: Verify skill content and structure
+
+**Error Handling**:
+
+* Exit code 0: Success
+* Exit code 1: Skill not found or invalid identifier
+* Exit code 1: System error (file access, size limit exceeded)
+
+**Limitations**:
+
+* Maximum file size: 500KB for SKILL.md files
+* Single skill per invocation
+* Read-only operation (does not execute scripts or modify data)
+* Only works with already-installed skills
+
+A skill ID must follow the explicit `skill read` path. Bare skill IDs are rejected.
+
+### fastskill project install
+
+Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
+
+See [`project install`](/cli-reference/install-command) for groups, lockfile, and reconciliation.
+
+
+```bash
+# Install all skills from skill-project.toml
+fastskill project install
+
+# Install without dev group skills
+fastskill project install --without dev
+
+# Install only production group skills
+fastskill project install --only prod
+
+# Install and verify the exact lock without network access
+fastskill project install --lock --offline
+```
+
+**Options**:
+
+* `--without <GROUPS...>`: Exclude skills from these groups
+* `--only <GROUPS...>`: Only install skills from these groups
+* `--lock`: Install from skills.lock (exact versions) instead of resolving from skill-project.toml
+* `--offline`: Use verified local and cached inputs without network, refresh, or automatic indexing
+
+### fastskill skill update
+
+Update skills in skills storage directory to their latest versions from source. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
+
+See [`skill update`](/cli-reference/update-command) for complete flag documentation.
+
+
+```bash
+# Update all skills
+fastskill skill update
+
+# Update specific skill
+fastskill skill update my-skill-id
+
+# Check for updates without installing
+fastskill skill update --check
+
+# Show what would be updated
+fastskill skill update --dry-run
+
+# Move one repository skill to an exact version
+fastskill skill update my-skill-id --to-version 2.1.0
+```
+
+**Options**:
+
+* `<SKILL_ID>`: Skill ID to update (if not specified, updates all)
+* `--check`: Check for updates without installing
+* `--dry-run`: Show what would be updated without actually updating
+* `--to-version <VERSION>`: Change one named repository skill to an exact version
+* `--strategy <patch|minor|latest|major>`: Choose a compatible update strategy
+* `--repository <NAME>`: Select a configured repository for one named repository skill
+* `--offline`: Use verified cached/local inputs only
+* `--reindex` / `--no-reindex`: Control whether the vector index is rebuilt after updating
+
+### fastskill skill read (metadata and tree)
+
+Display skill metadata or dependency tree. Use `--meta` for structured metadata and `--tree` for the dependency tree.
+
+```bash
+# Read full SKILL.md content (default)
+fastskill skill read my-skill-id
+
+# Show structured metadata
+fastskill skill read my-skill-id --meta
+
+# Show dependency tree
+fastskill skill read my-skill-id --tree
+
+# Metadata and tree together
+fastskill skill read my-skill-id --meta --tree
+
+# Metadata as JSON
+fastskill skill read my-skill-id --meta --json
+
+# List all installed skills
+fastskill skill list
+```
+
+
+
+
+### fastskill skill add
+
+Add a skill from a source (git URL, local folder, or zip file) and install it to the skills storage directory. Updates both `skill-project.toml` and `skills.lock`.
+
+**Storage Location**: Skills are installed to the directory configured in `skill-project.toml` via the `skills_directory` setting under `[tool.fastskill]` (default: `.claude/skills/`). Repository configuration is stored in the `[[tool.fastskill.repositories]]` section of `skill-project.toml`.
+
+**Installing from a subdirectory**: Declare a Git origin with a clean clone URL and `subdir` in your manifest; see [Git sources](/registry/sources).
+
+```bash
+# Add skill from git URL
+fastskill skill add https://github.com/org/skill.git
+
+# Add skill in editable mode (for local development)
+fastskill skill add ./local-skill -e
+
+# Add skill to a group
+fastskill skill add https://github.com/org/skill.git --group dev
+
+# Add editable skill to dev group
+fastskill skill add ./local-skill -e --group dev
+
+# Add all skills under a directory recursively
+fastskill skill add ./skills -r
+
+# Add all skills recursively with editable mode and group
+fastskill skill add ./skills -r -e --group dev
+
+# Add the newest stable release from a selected repository
+fastskill skill add scope/reviewer@latest --repository team
+
+# Add an exact cached release without network access
+fastskill skill add scope/reviewer@1.2.0 --repository team --offline
+```
+
+**Git URL formats:**
+
+* Standard: `https://github.com/user/repo.git`
+* Subdirectory: use the manifest origin’s `subdir` field with a clean clone URL.
+
+**Options:**
+
+* `-e, --editable`: Install skill in editable mode (symlink/reference for local development)
+* `-r, --recursive`: Add all skills found under the directory (discovers directories containing SKILL.md). Only valid when source is a local directory
+* `--group <GROUP>`: Add skill to a specific group (e.g., "dev", "prod")
+* `--repository <NAME>`: Select the configured repository for a skill ID reference
+* `--offline`: Use verified local and cached inputs without network or automatic indexing
+* `--branch <BRANCH>`: Git branch to checkout (for git URLs)
+* `--tag <TAG>`: Git tag to checkout (for git URLs)
+* `--force`: Force registration even if skill already exists
+
+### fastskill skill remove
+
+Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
+
+```bash
+# Remove skill (with confirmation)
+fastskill skill remove my-skill-id
+
+# Force removal without confirmation
+fastskill skill remove my-skill-id --force
+
+# Remove multiple skills
+fastskill skill remove skill1 skill2 skill3
+```
+
+**Options**:
+
+* `--force`, `-f`: Skip confirmation
+* `--skills-dir <PATH>`: Override skills directory
+
+Removing a direct root detaches that declaration and retains content still required by another
+root or bundle. Removing an ID that is only transitive fails and names its owners. `--force`
+skips confirmation; it does not bypass ownership, integrity, or local-edit protection.
+
+### fastskill repo
+
+Manage skill repositories and browse remote skill catalog for discovering and installing skills.
+
+```bash
+# Add a repository
+fastskill repo add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
+
+# List all repositories
+fastskill repo list
+
+# Remove a repository
+fastskill repo remove team-tools
+
+# Update repository metadata
+fastskill repo update team-tools --branch develop
+
+# List skills from a repository
+fastskill repo skills
+
+# Show skill details
+fastskill repo show skill-id
+```
+
+### fastskill skill list
+
+List locally installed skills with reconciliation against project and lock files. Similar to `pip list` or `uv list`.
+
+```bash
+# List all installed skills (table format, default)
+fastskill skill list
+
+# List in JSON format
+fastskill skill list --json
+
+# Explicitly request grid format
+fastskill skill list --format grid
+
+# XML output for agent consumption
+fastskill skill list --format xml
+```
+
+**Output Format**:
+
+* **Table (default)**: Human-readable table with columns: id, name, description, flags
+* **Grid**: Simple list format for commands with many columns
+* **JSON**: Machine-readable array with same fields plus reconciliation status
+* **XML**: Structured XML for agent consumption
+
+**Reconciliation Status**:
+
+* `ok`: Skill is installed and matches project/lock files
+* `missing`: Skill is in `skill-project.toml` but not installed
+* `extraneous`: Skill is installed but not in `skill-project.toml`
+* `mismatch`: Installed version differs from `skills.lock`
+
+**Options**:
+
+* `--format <table|json|grid|xml>`: Output format (default: table)
+* `--json`: Shorthand for --format json (mutually exclusive with --format)
+* `--details`: Extra columns (version, paths, reconciliation detail)
+* `--skills-dir <PATH>`: Override skills directory for this invocation
+
+**Example JSON Output**:
+
+```json
+[
+  {
+    "id": "pptx",
+    "version": "1.2.3",
+    "description": "Presentation creation and editing",
+    "source": "registry",
+    "installed_path": "/home/user/.claude/skills/pptx",
+    "installed_at": "2025-01-15T10:30:00Z",
+    "status": "ok"
+  }
+]
+```
+
+**Note**: This command reads installed skill manifests from the skills directory as the source of truth and cross-references `skill-project.toml` (desired) and `skills.lock` (pinned) to report reconciliation status.
+
+## Examples
+
+### Skill Development Workflow
+
+```bash
+# 1. Add skill from Git repository
+fastskill skill add https://github.com/org/my-skill.git
+
+# 2. List skills to verify installation
+fastskill skill list
+
+# 3. Show skill metadata
+fastskill skill read my-skill --meta
+
+# 4. Update to latest version
+fastskill skill update my-skill
+
+# 5. Remove skill when no longer needed
+fastskill skill remove my-skill --force
+```
+
+### Batch Operations
+
+```bash
+# Install multiple local skills (editable) and install
+for dir in ./skills/*; do
+  fastskill skill add "$dir" -e --group dev
+done
+
+fastskill project install
+fastskill index rebuild
+```
+
+### CI/CD Integration
+
+```bash
+# Install with locked versions for reproducible builds
+fastskill project install --lock --without dev
+
+# Reindex for search (auto-triggered after add/install/update/remove when embedding is configured)
+fastskill index rebuild
+
+# Check environment readiness
+fastskill cli doctor
+
+# Verify installation
+fastskill skill list
+```
+
+Skill commands support interactive use and automation. Index rebuilding runs automatically after
+`skill add`, `project install`, `skill update`, and `skill remove` when an embedding provider is
+configured. Use `--no-reindex` to suppress it or `fastskill cli doctor` to check readiness.
+

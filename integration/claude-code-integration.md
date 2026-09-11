@@ -1,0 +1,108 @@
+# Claude Code Integration
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/integration/claude-code-integration
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+Claude Code reads skills **directly** from the skills directory (`.claude/skills/` by
+default). FastSkill's job is to get the right skills onto disk and keep them reconciled with
+your manifest — once a skill is installed, Claude Code discovers it natively. There is no
+metadata file to generate or keep in sync.
+
+## Quick start
+
+```bash
+# Install the skills declared in skill-project.toml
+fastskill project install
+
+# ...or add one directly
+fastskill skill add scope/pptx@1.0.0
+
+# Verify what Claude Code will see
+fastskill skill list
+```
+
+That's it — the next time Claude Code runs in this project, the installed skills are available.
+
+## How it works
+
+1. `fastskill project install` / `fastskill skill add` materializes skills into the configured
+   `skills_directory` (default `.claude/skills/`).
+2. Each skill is a folder containing `SKILL.md` plus its resources.
+3. Claude Code scans that directory and loads skills by their `SKILL.md` frontmatter — no
+   export or sync step is involved.
+4. Use `fastskill skill read <skill-id>` to see exactly what an agent loads, or
+   `fastskill skill read <skill-id> --meta` for just the metadata.
+
+## GitHub Actions
+
+Keep the skills directory reconciled in CI so commits always carry the resolved skill set:
+
+```yaml
+name: Reconcile skills
+on:
+  push:
+    paths:
+      - 'skill-project.toml'
+      - 'skills.lock'
+
+jobs:
+  install-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FastSkill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+      - name: Install skills from lock
+        run: fastskill project install --lock
+      - name: Verify
+        run: fastskill skill list
+```
+
+## Troubleshooting
+
+**Claude Code doesn't see a skill:** Confirm it is installed with `fastskill skill list`, and that
+the skills directory contains a valid `SKILL.md` for it. `fastskill skill read <skill-id>` should
+print its content.
+
+**Wrong skills directory:** Claude Code and FastSkill must agree on the location. The default
+is `.claude/skills/`; override it via `skills_directory` under `[tool.fastskill]` in
+`skill-project.toml` or the `--skills-dir` flag.
+
+## MCP Registration
+
+Register `fastskill` as an MCP server inside Claude Code with a single command:
+
+```bash
+# Register for the current project (stdio transport, recommended)
+fastskill mcp install --agent claude --stdio --scope project --overwrite
+
+# Register globally (writes to ~/.claude.json)
+fastskill mcp install --agent claude --stdio --scope global --overwrite
+
+# Preview the config change without writing any files
+fastskill mcp install --agent claude --stdio --dry-run
+```
+
+After running the command, reload Claude Code. The tools exposed by
+`fastskill mcp serve --transport stdio` will be callable from the agent — the read-only ones only.
+Mutating tools (`fastskill_project_install`, `fastskill_skill_add`,
+`fastskill_skill_remove`, …) require `mcp serve --enable-write`; see
+[Write access](/tool-calling/development#write-access).
+
+## HTTP API
+
+`fastskill server serve` exposes FastSkill's versioned application API under `/api/v1/…`, for example `GET /api/v1/status` and `GET /api/v1/skills`.
+
+The old Claude-compatible `/v1/skills…` HTTP surface is no longer part of the public server. Use the MCP integration above for Claude Code and use `/api/v1/…` for HTTP clients.
+
+See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) for native discovery behavior.
+

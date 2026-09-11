@@ -1,0 +1,551 @@
+# repo commands
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/repository-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# `repo` commands
+
+Manage skill repositories and browse remote skill catalogs.
+
+The `repo` namespace manages repository configuration and catalog browsing. Use
+`fastskill skill search` for semantic search of installed skills.
+
+
+## Usage
+
+```bash
+fastskill repo <SUBCOMMAND>
+```
+
+## Subcommands
+
+### list
+
+List all configured repositories.
+
+```bash
+# List repositories in table format
+fastskill repo list
+
+# List in JSON format
+fastskill repo list --json
+```
+
+**Output Format**:
+
+* Default: Human-readable table with name, type, URL/path, priority
+* JSON: Machine-readable array with full repository details
+
+**Example Output**:
+
+```
+Name             Type              URL/Path                     Priority
+---------------- ---------------- ---------------------------- ---------
+public-registry  http-registry    https://api.fastskill.io    0
+team-skills      git-marketplace  https://github.com/team/skills.git 1
+local-dev        local             ./skills                    2
+```
+
+### add
+
+Add a new repository to your skill sources.
+
+```bash
+# Add HTTP registry
+fastskill repo add public --repo-type http-registry https://api.fastskill.io --priority 0
+
+# Add Git marketplace
+fastskill repo add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
+
+# Pin catalog discovery to a Git tag
+fastskill repo add stable-skills --repo-type git-marketplace https://github.com/team/skills.git --tag v1.2.0
+
+# Add ZIP URL source
+fastskill repo add custom --repo-type zip-url https://cdn.example.com/skills/ --priority 2
+
+# Add local directory
+fastskill repo add local-dev --repo-type local ./skills --priority 3
+
+# Add a private HTTP registry with a PAT read from the environment
+fastskill repo add registry --repo-type http-registry https://api.example.com \
+  --auth-type pat --auth-env REGISTRY_TOKEN
+```
+
+**Options**:
+
+| Flag          | Short | Type   | Default  | Description                                                                |
+| ------------- | ----- | ------ | -------- | -------------------------------------------------------------------------- |
+| `--repo-type` | -     | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local` |
+| `--priority`  | -     | number | 0        | Lower number = higher priority (used for conflict resolution)              |
+| `--branch`    | -     | string | none     | Git branch to checkout (for git-marketplace)                               |
+| `--tag`       | -     | string | none     | Git tag to checkout (for git-marketplace)                                  |
+| `--auth-type` | -     | string | none     | Authentication type: `pat` (HTTP registry only)                            |
+| `--auth-env`  | -     | string | none     | Environment variable containing the HTTP registry PAT                      |
+
+**Repository Types**:
+
+For Git marketplaces, `--branch` and `--tag` are mutually exclusive. The selected reference is
+stored in `skill-project.toml` and reused after FastSkill restarts.
+
+1. **git-marketplace**: Git repository with `marketplace.json` for skill discovery
+   * Uses the system Git credential helper or an SSH remote and loaded SSH agent
+   * Can specify branch or tag
+   * Scans for skills across repository structure
+
+2. **http-registry**: HTTP-based registry with flat skill index
+   * Supports PAT authentication through environment-variable indirection
+   * Fast skill lookup via API
+   * Best for production registries
+
+3. **zip-url**: Base URL for ZIP file downloads
+   * Uses pre-signed URLs for private artifacts; FastSkill sends no auth header
+   * Downloads skills from `{base_url}/{skill-id}-{version}.zip`
+
+4. **local**: Local filesystem path
+   * No authentication needed
+   * Best for development workflows
+
+**Priority-Based Conflict Resolution**:
+
+* When multiple sources provide the same skill ID, the source with lower priority number wins
+* Priority 0 is highest
+* Example: If `public-registry` (priority 0) and `team-skills` (priority 1) both have `pptx`, `public-registry`'s version is used
+
+### remove
+
+Remove a repository from your sources.
+
+```bash
+# Remove a repository
+fastskill repo remove team-skills
+
+# Remove multiple repositories
+fastskill repo remove team-skills local-dev
+```
+
+**Behavior**:
+
+* Removes repository from configuration file
+* Does not uninstall skills that were installed from this repository
+* Skills remain in skills directory until explicitly removed
+
+### info
+
+Display detailed information about a specific repository.
+
+```bash
+# Show repository details
+fastskill repo info public-registry
+
+# Show in JSON format
+fastskill repo info team-skills --json
+```
+
+**Example Output**:
+
+```
+Name: team-skills
+Type: git-marketplace
+URL: https://github.com/team/skills.git
+Branch: main
+Priority: 1
+Auth: pat (GITHUB_TOKEN)
+```
+
+### update
+
+Update repository metadata.
+
+For Git marketplaces, `--branch` replaces any configured tag; other repository types reject `--branch`.
+
+```bash
+# Update branch
+fastskill repo update team-skills --branch develop
+
+# Update priority
+fastskill repo update public-registry --priority 0
+
+# Update both
+fastskill repo update team-skills --branch main --priority 2
+```
+
+**Options**:
+
+| Flag         | Short | Type   | Default | Description                                 |
+| ------------ | ----- | ------ | ------- | ------------------------------------------- |
+| `--branch`   | -     | string | none    | New branch for git-marketplace repositories |
+| `--priority` | -     | number | none    | New priority value                          |
+
+### test
+
+Test repository connectivity and accessibility.
+
+```bash
+# Test a repository
+fastskill repo test public-registry
+
+# Test git marketplace
+fastskill repo test team-skills
+```
+
+**What it tests**:
+
+* HTTP registries: Connectivity to API endpoint
+* Git marketplaces: Clone/access to repository
+* ZIP URLs: Accessibility of base URL
+* Local: Directory exists and is readable
+
+**Exit codes**:
+
+* 0: Repository is accessible
+* 1: Cannot connect or access repository
+* 2: Invalid configuration
+
+### refresh
+
+Refresh what a repository currently advertises: its skills and their versions for a registry or
+git marketplace, or the resolved commit for a git repository's branch or tag.
+
+```bash
+# Refresh a specific repository
+fastskill repo refresh team-skills
+
+# Refresh all configured repositories
+fastskill repo refresh
+```
+
+**When to use**:
+
+* After a repository has been updated with new skills or versions
+* To refresh catalogs independently before inspecting or scripting against them. Online add,
+  install, and update refresh floating/ranged selections once per repository per operation
+* If a repository's advertised skills seem stale
+
+**What it does**:
+
+* Contacts each targeted repository and records what it currently advertises
+* For a git repository, resolves its configured branch or tag to the current commit
+* Prints what was refreshed, by name and skill/entry count, for example:
+  ```
+  [OK] Refreshed team-skills: 12 skills
+  ```
+* Refreshing an unknown repository name fails rather than reporting fake success
+* With no name given, every configured repository is attempted; one repository's failure does
+  not stop the rest, and each failure is reported individually
+* Exits non-zero if any repository failed to refresh
+
+`refresh` is a real network operation: it can fail if a repository is unreachable. Scripts
+calling `fastskill repo refresh` should check its exit code.
+
+
+`refresh` only updates what a repository advertises -- it never downloads skill content. To see
+or reclaim previously downloaded skill content, use
+[`fastskill cache`](/cli-reference/cache-command).
+
+
+### skills
+
+List skills in repository catalog.
+
+Catalog browsing uses the configured adapter for `http-registry`, `git-marketplace`, `zip-url`,
+and `local` repositories. A catalog result carries its canonical ID and can be installed through
+the same named repository. Options that require HTTP index metadata are rejected specifically on
+adapters that do not provide it.
+
+```bash
+# List all skills from default repository (table format, default)
+fastskill repo skills
+
+# Filter by scope
+fastskill repo skills --scope acme
+
+# List all versions
+fastskill repo skills --all-versions
+
+# Include pre-release versions
+fastskill repo skills --include-pre-release
+
+# JSON output
+fastskill repo skills --json
+
+# Grid format
+fastskill repo skills --format grid
+
+# Combined options
+fastskill repo skills --scope acme --all-versions --json
+```
+
+**Options**:
+
+* `--scope <SCOPE>`: Filter skills by scope (exact match)
+* `--all-versions`: Include all versions for each skill (default: latest only)
+* `--include-pre-release`: Include pre-release versions (default: exclude)
+* `--format <table|json|grid|xml>`: Output format (default: table)
+* `--json`: Shorthand for --format json (mutually exclusive with --format)
+* `--repository <NAME>`: Repository name to list skills from (defaults to default repository if not specified)
+
+**Output Format**:
+
+* **Table (default)**: Human-readable table with columns: scope, name, description (truncated to 50 chars), latest version (or "version" when `--all-versions` is used), published date
+* **Grid**: Human-readable columnar layout with the same fields as table
+* **JSON**: Machine-readable array with fields: id, scope, name, description, latest\_version, published\_at, and optionally versions array
+* **XML**: Structured XML for agent consumption
+
+### show
+
+Display detailed information about a specific skill from the catalog.
+
+```bash
+# Show skill details by ID
+fastskill repo show <skill-id>
+
+# Show skill from specific repository
+fastskill repo show <skill-id> --repository my-repo
+```
+
+**Parameters**:
+
+* `<skill-id>`: Full skill identifier (e.g., `acme/web-scraper`)
+* `--repository <NAME>`: Repository to search (defaults to default repository)
+
+**Output Format**:
+Displays comprehensive skill information including:
+
+* Skill metadata (name, description, author, version)
+* Capabilities and tags
+* Installation instructions
+* Dependencies and requirements
+* Documentation links
+* Change log and release notes
+
+**Example Output**:
+
+```
+Skill: acme/web-scraper
+Version: 2.0.0
+Description: A web scraping skill for extracting data from websites
+Author: ACME Corp
+Tags: web, scraping, data-extraction
+Capabilities: scrape_website, extract_data, handle_cookies
+
+Repository: my-registry
+Published: 2025-01-15T10:30:00Z
+Updated: 2025-01-20T14:00:00Z
+
+Installation: fastskill skill add acme/web-scraper@latest --repository my-registry
+Homepage: https://github.com/acme/web-scraper
+Documentation: https://docs.acme.com/web-scraper
+
+Requirements:
+- Node.js 16+
+- Internet access
+- User agent headers configured
+```
+
+### versions
+
+List all available versions for a specific skill.
+
+```bash
+# List versions for a skill
+fastskill repo versions <skill-id>
+
+# List versions from specific repository
+fastskill repo versions <skill-id> --repository my-repo
+```
+
+**Parameters**:
+
+* `<skill-id>`: Full skill identifier (e.g., `acme/web-scraper`)
+* `--repository <NAME>`: Repository to query (defaults to default repository)
+
+**Output Format**:
+Displays a table of versions with:
+
+* Version number
+* Release date
+* Release notes (if available)
+* Pre-release status
+* Compatibility information
+
+**Example Output**:
+
+```
+Versions for skill: acme/web-scraper
+
++---------+---------------------+-------------+-------------+
+| Version | Published At        | Pre-release | Notes      |
++---------+---------------------+-------------+-------------+
+| 2.0.0   | 2025-01-15T10:30:00Z | false       | Major update |
+| 1.5.2   | 2025-01-10T08:15:00Z | false       | Bug fixes   |
+| 1.5.1   | 2025-01-05T16:45:00Z | false       | Performance |
+| 1.5.0   | 2024-12-20T12:00:00Z | false       | New features|
+| 1.4.0   | 2024-11-15T09:30:00Z | false       | API changes |
++---------+---------------------+-------------+-------------+
+```
+
+## Configuration File Location
+
+Repositories are stored in `skill-project.toml` at project root:
+
+```toml skill-project.toml
+
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://api.fastskill.io/index"
+priority = 0
+
+[[tool.fastskill.repositories]]
+name = "team-skills"
+type = "git-marketplace"
+url = "https://github.com/team/skills.git"
+branch = "main"
+priority = 1
+
+# Authentication is usually configured via CLI flags (--auth-type, --auth-env)
+# or your registry provider docs; avoid duplicating secrets in committed files.
+```
+
+## Authentication Types
+
+### PAT (Personal Access Token)
+
+For a private HTTP registry, reference an existing token variable:
+
+```bash
+fastskill repo add private-registry --repo-type http-registry https://example.com/index.json --auth-type pat --auth-env PAT_TOKEN
+```
+
+Set `PAT_TOKEN` through your shell or CI secret manager before accessing the registry.
+The URL is a placeholder for your registry.
+
+Git sources use system Git credentials. The project manifest supports `pat`
+authentication for HTTP catalogs; other authentication type labels are not
+supported by this release's manifest. See [sources](/registry/sources).
+
+## Multi-Source Skill Resolution
+
+FastSkill supports multiple sources with priority-based resolution:
+
+```bash
+# Add multiple sources
+fastskill repo add public-registry --repo-type http-registry https://api.fastskill.io --priority 0
+fastskill repo add team-skills --repo-type git-marketplace https://github.com/team/skills.git --priority 1
+fastskill repo add local-dev --repo-type local ./skills --priority 2
+```
+
+**Resolution process**:
+
+1. Repositories are consulted in ascending priority order (0 before 1 before 2).
+2. The first repository that satisfies the lookup wins for that skill id.
+3. Lower numeric priority means earlier in that order (0 is tried before 10).
+
+**Example**:
+
+* `public-registry` (priority 0): `pptx v1.0.0`
+* `team-skills` (priority 1): `pptx v1.2.0`
+* Result: `pptx v1.0.0` from `public-registry` is used because priority 0 is consulted first.
+
+## Examples
+
+### Setting up a development environment
+
+```bash
+# Add public registry
+fastskill repo add public --repo-type http-registry https://api.fastskill.io --priority 0
+
+# Add team repository
+fastskill repo add team --repo-type git-marketplace https://github.com/team/skills.git \
+  --auth-type pat --auth-env GITHUB_TOKEN --priority 1
+
+# Add local development directory
+fastskill repo add local-dev --repo-type local ./skills --priority 2
+```
+
+### Creating a Git marketplace
+
+```bash
+# 1. Create a directory for your marketplace
+mkdir my-marketplace
+cd my-marketplace
+
+# 2. Add skills (each in its own subdirectory)
+git clone https://github.com/org/pptx.git skills/pptx
+git clone https://github.com/org/web-scraper.git skills/web-scraper
+
+# 3. Create marketplace.json
+fastskill marketplace create \
+  --name "My Marketplace" \
+  --owner-name "Your Name" \
+  --description "Collection of skills" \
+  --base-url https://cdn.example.com/marketplace/
+
+# 4. Commit and push
+git init
+git add .
+git commit -m "Initial marketplace"
+git remote add origin https://github.com/username/marketplace.git
+git push -u origin main
+```
+
+### Troubleshooting
+
+**Repository not found**
+
+**Check name**: Ensure the repository name matches what you added.
+
+```bash
+fastskill repo list
+```
+
+
+
+**Authentication failed**
+
+**Verify credentials**:
+
+```bash
+# Check environment variable
+echo $GITHUB_TOKEN
+
+# Test SSH key
+ssh -T git@github.com
+
+# Test configured HTTP registry credentials
+curl -u username:password https://api.example.com/health
+```
+
+
+
+**Priority not working**
+
+**Verify priority values**: Lower numbers have higher priority.
+
+```bash
+fastskill repo list
+```
+
+Priority 0 is highest, priority 10 is lower.
+
+
+
+
+Repositories configuration is stored in `skill-project.toml` and should be committed to version control. Authentication credentials (environment variables) should never be committed.
+
+
+## See Also
+
+* [Search Command](/cli-reference/search-command) - Semantic search for installed skills
+* [Install Command](/cli-reference/skill-commands#fastskill-project-install) - Installing skills from repositories
+* [Init Command](/cli-reference/skill-commands#fastskill-project-init) - Creating skill-project.toml
+* [cache Command](/cli-reference/cache-command) - Inspect or reclaim previously downloaded
+  skill content
+

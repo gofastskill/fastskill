@@ -1,0 +1,78 @@
+# Loading Strategies
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/progressive-loading/strategies
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+Context resolution ([the resolve API](/progressive-loading/performance)) lets an agent load only the
+skills relevant to a prompt. This page covers the practical setup and habits that keep resolution
+fast and accurate. These are real knobs and commands — FastSkill has no configurable cache or
+eviction policy to tune.
+
+## Enable semantic ranking
+
+Semantic ranking is what makes resolution useful. To turn it on:
+
+1. Configure an embedding provider in `skill-project.toml`:
+
+   ```toml
+   [tool.fastskill.embedding]
+   embedding_model = "text-embedding-3-small"
+   index_path = ".fastskill/index"
+   # openai_base_url = "https://api.openai.com/v1"  # override if using a proxy
+   ```
+
+2. Set `OPENAI_API_KEY` in the environment (via a secret, never in config).
+
+If no provider is configured, `resolve` and `skill search` still work but fall back to keyword matching.
+Verify the setup with `fastskill cli doctor`.
+
+## When to rebuild the index
+
+FastSkill **auto-reindexes** after `skill add`, `project install`, `skill update`, and `skill remove` (unless
+`auto_reindex = false` in `[tool.fastskill]` or you pass `--no-reindex`), so day to day you rarely
+reindex by hand. Reindex explicitly when:
+
+* you edited a skill's `SKILL.md` in place (for example an editable `skill add -e` skill) without going
+  through install/update,
+* you set `auto_reindex = false` and manage indexing yourself,
+* you first configure embeddings for a skills directory that already has content.
+
+```bash
+fastskill index rebuild
+```
+
+Reindex needs an embedding provider; without `OPENAI_API_KEY` it skips silently. A change-detection
+cache (`.fastskill/build-cache.json`) lets reindex re-embed only what changed.
+
+## Search locally without the server
+
+For a quick, offline relevance check over skills already on disk, use `skill search --local` instead of the
+HTTP resolve endpoint:
+
+```bash
+# Rank installed skills for a query
+fastskill skill search "convert pdf to markdown" --local
+
+# Emit canonical skill paths (agent-friendly)
+fastskill skill search "convert pdf to markdown" --local --paths
+
+# Include SKILL.md content in JSON output
+fastskill skill search "convert pdf to markdown" --local --paths --content full
+```
+
+`resolve` (server) is for agents pulling context at runtime; `skill search --local` (CLI) is for
+interactive and scripted lookups over the local index. Both use the same embedding index when one is
+configured.
+
+Keep the embedding index fresh (auto-reindex or an explicit `fastskill index rebuild`) — that single habit
+covers essentially all resolution performance and quality concerns.
+

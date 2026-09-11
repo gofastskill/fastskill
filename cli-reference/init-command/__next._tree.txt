@@ -1,0 +1,2 @@
+:HL["/_next/static/css/5d3f5c9e4d680ca3.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"(docs)","param":null,"prefetchHints":4128,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"cli-reference/init-command","siblings":["_not-found","_global-error","api","documentation.json","llms-full.txt","llms.txt","robots.txt","sitemap.xml"]},"prefetchHints":4160,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}}}},"staleTime":300,"buildId":"bAVrRdkjv_Yz0EOJkvsWu"}

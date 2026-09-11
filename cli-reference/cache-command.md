@@ -1,0 +1,104 @@
+# cache Command
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/cache-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# cache Command
+
+Inspect and reclaim the on-disk cache that `skill add`, `project install`, and `skill update` use so a skill's
+content is fetched once per machine instead of once per project.
+
+Every git, registry, or local skill fetch is checked against this cache before touching the
+network again. `fastskill cache` is how to see what has accumulated there and reclaim disk
+space -- fastskill never evicts cache entries on its own.
+
+
+## Usage
+
+```bash
+fastskill cache <SUBCOMMAND>
+```
+
+## Subcommands
+
+### info
+
+Show the cache location plus entry counts and disk usage, broken down by source kind (git,
+registry, or local).
+
+```bash
+# Human-readable summary
+fastskill cache info
+
+# JSON output
+fastskill cache info --json
+```
+
+**Example output**:
+
+```
+Cache location: /home/user/.cache/fastskill
+
+  • git      3 entries, 12.4 MB
+  • registry 5 entries, 3.1 MB
+  • local    1 entry, 45.6 KB
+
+Total: 9 entries, 15.6 MB
+```
+
+**Options**:
+
+* `--format <table|json>`: Output format (default: table)
+* `--json`: Shorthand for `--format json` (mutually exclusive with `--format`)
+
+### clean
+
+Remove cached skill content and print how many bytes were reclaimed.
+
+```bash
+# Remove every cached entry
+fastskill cache clean
+
+# Remove only one source kind
+fastskill cache clean --source git
+fastskill cache clean --source registry
+fastskill cache clean --source local
+
+# Machine-readable result
+fastskill cache clean --json
+```
+
+**Options**:
+
+* `--source <git|registry|local>`: Limit cleaning to one source kind (default: all)
+* `--json`: Print the result as JSON instead of a summary line
+
+**What it removes**: Only cached skill content -- the record of what a repository currently
+advertises (what `repo refresh` writes) is left alone, so `repo refresh` output stays valid
+after a clean. There is nothing to undo: the next `skill add`/`project install`/`skill update` that needs a removed
+entry re-fetches it from its original source.
+
+**Safe with other fastskill processes running**: `clean` never removes an entry another process
+is mid-write on, and every write elsewhere is atomic. In the worst case, a fetch running at the
+exact moment of a clean simply re-fetches -- it never sees partial or corrupted content.
+
+## When to run it
+
+* **`cache info`**: Before a `clean`, to see what is actually taking up space, or when disk
+  usage seems higher than expected.
+* **`cache clean`**: To reclaim disk space after finishing with skills from a source no longer
+  in use, or as routine cleanup on a machine used for many short-lived projects.
+
+## See Also
+
+* [`repo` commands](/cli-reference/repository-command) -- refresh what a repository advertises
+  (`repo refresh`), independent of the content cache `cache` manages
+* [Install Command](/cli-reference/install-command) -- installs that hit this cache
+

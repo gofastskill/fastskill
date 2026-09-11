@@ -1,0 +1,484 @@
+# project install
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/install-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# `project install`
+
+Restore skills and their complete dependency closures from `skill-project.toml`. Compatible locked
+selections are reused; roots without coverage are resolved and added to `skills.lock`.
+
+## Usage
+
+```bash
+fastskill project install [OPTIONS]
+```
+
+## Options
+
+| Option                       | Description                                                                                | Default          |
+| ---------------------------- | ------------------------------------------------------------------------------------------ | ---------------- |
+| `--without <GROUPS...>`      | Exclude skills from these groups (like poetry --without dev)                               | None             |
+| `--only <GROUPS...>`         | Only install skills from these groups                                                      | None             |
+| `--lock`                     | Install from `skills.lock` (exact versions) instead of resolving from `skill-project.toml` | `false`          |
+| `--offline`                  | Use verified local and cached inputs without network, refresh, or automatic indexing       | `false`          |
+| `--dry-run`                  | Validate and show the installation plan without changing managed state                     | `false`          |
+| `--json`                     | Emit one machine-readable plan or result object                                            | `false`          |
+| `--depth <N>`                | Permit at most N dependency levels, including roots at level 1                             | configured limit |
+| `--reindex` / `--no-reindex` | Override configured post-install indexing                                                  | config           |
+
+## Examples
+
+### Install All Dependencies
+
+Install all skills declared in `skill-project.toml`:
+
+```bash
+fastskill project install
+```
+
+This:
+
+* Reads dependencies from `skill-project.toml` at project root
+* Resolves skills from configured repositories
+* Installs skills into `.claude/skills/`
+* Creates or updates `skills.lock` with exact versions
+
+### Install Without Dev Skills
+
+Install production skills only, excluding dev group:
+
+```bash
+fastskill project install --without dev
+```
+
+This is useful for CI/CD pipelines where you want lean production deployments without development dependencies.
+
+
+### Install Only Specific Groups
+
+Install only skills from specific groups:
+
+```bash
+# Install only production skills
+fastskill project install --only prod
+
+# Install only development tools
+fastskill project install --only dev
+
+# Install multiple groups
+fastskill project install --only prod test
+```
+
+### Reproducible Installation
+
+Install exact versions from `skills.lock`:
+
+```bash
+fastskill project install --lock --offline
+```
+
+Use `--lock` for production deployments. It verifies locked identity, revision, and content and
+leaves lock bytes unchanged. `--offline` also prevents network and provider calls.
+
+
+Project lock restoration still requires `skill-project.toml`; the Manifest defines selected roots,
+groups, bundles, and the install destination. To restore `global-skills.lock` without a project
+Manifest, run `fastskill project install --global --lock`.
+
+### Combined Example: Production Deployment
+
+Install production skills with exact versions:
+
+```bash
+# 1. Commit both skill-project.toml and skills.lock
+git add skill-project.toml skills.lock
+git commit -m "Lock dependency versions"
+
+# 2. Deploy with locked versions
+fastskill project install --lock --offline --without dev
+```
+
+## Behavior
+
+The `project install` command:
+
+1. **Locates Project File**: Finds `skill-project.toml` at project root or walks up directory tree
+2. **Loads Dependencies**: Reads `[dependencies]` section from `skill-project.toml`
+3. **Selects Roots**: Applies `--without` or `--only` to roots, then includes every required child
+4. **Resolves Skills**: For each dependency:
+   * If `--lock` is set: verifies complete locked coverage and exact resolved facts
+   * Otherwise: reuses compatible pins and resolves only missing coverage
+5. **Validates a Plan**: Checks IDs, cycles, depth, digests, ownership, and destination safety
+6. **Installs Skills**: Stages and commits each overlapping dependency closure as one recovery unit
+7. **Updates Lockfile**: Records exact facts without moving unrelated compatible pins
+
+## Dependency Groups
+
+Skills can be organized into groups for selective installation. Specify groups in `skill-project.toml`:
+
+```toml skill-project.toml
+[dependencies]
+# Production skills
+web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" }, groups = ["prod"] }
+data-processor = { origin = { type = "repository", repo = "default", skill = "data-processor" }, groups = ["prod"] }
+
+# Development tools
+demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable = true }, groups = ["dev"] }
+test-helper = { origin = { type = "git", url = "https://github.com/user/test-helper.git" }, groups = ["dev", "test"] }
+
+# Testing utilities
+mock-skill = { origin = { type = "repository", repo = "default", skill = "mock-skill" }, groups = ["test"] }
+```
+
+If no `groups` are specified, the root belongs to the implicit `default` group. Plain install
+selects every group. `--only` and `--without` cannot be combined, and unknown groups fail before
+mutation.
+
+
+### Default Group Behavior
+
+```toml
+# Without groups - member of the implicit default group
+web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" } }
+
+# With groups - filtered by --without/--only
+dev-tool = { origin = { type = "git", url = "https://github.com/user/dev-tool.git" }, groups = ["dev"] }
+```
+
+## Skills Lock File
+
+The `skills.lock` file ensures reproducible installations across environments.
+
+### Lock contents
+
+FastSkill generates `skills.lock` with selected origins, resolved versions and Git
+commits, content integrity evidence, dependency edges, groups, covered roots, and
+ownership. Do not hand-write a partial lock. See
+[manifests and locks](/skill-management/manifest-system) for the restoration contract.
+
+### Lock File Usage
+
+**Development Mode** (with `skill-project.toml`):
+
+```bash
+# Reuse compatible pins and resolve uncovered roots
+fastskill project install
+
+# This updates skills.lock with resolved versions
+```
+
+**Production Mode** (with `skills.lock`):
+
+```bash
+# Install exact versions from skills.lock
+fastskill project install --lock
+
+# skill-project.toml still defines selected roots and must remain compatible with the lock
+```
+
+### Lock File Workflow
+
+```bash
+# 1. Development: Install with latest versions
+fastskill project install
+
+# 2. Lock file is created/updated automatically
+cat skills.lock
+
+# 3. Commit lock file for reproducibility
+git add skill-project.toml skills.lock
+git commit -m "Update dependencies"
+
+# 4. Production: Install with locked versions
+fastskill project install --lock
+
+# Output shows locked versions:
+# ✓ Installing web-scraper v1.2.3 (locked)
+# ✓ Installing data-processor v2.1.0 (locked)
+```
+
+## Dependency Resolution
+
+`project install` resolves dependencies from multiple origins:
+
+### Origin Types
+
+```toml skill-project.toml
+[dependencies]
+# Git repository (add `ref = { branch | tag | commit = "…" }` to pin)
+web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" }, groups = ["prod"] }
+
+# A skill in a configured repository
+data-processor = { origin = { type = "repository", repo = "default", skill = "data-processor" }, groups = ["prod"] }
+
+# Local folder (editable)
+demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable = true }, groups = ["dev"] }
+
+# ZIP archive over HTTP(S)
+archive-skill = { origin = { type = "zip-url", url = "https://example.com/archive-skill.zip" }, groups = ["prod"] }
+```
+
+### Repository Priority
+
+Skills are resolved from repositories configured in `[tool.fastskill.repositories]`:
+
+```toml skill-project.toml
+
+[[tool.fastskill.repositories]]
+name = "public-registry"
+type = "http-registry"
+index_url = "https://registry.fastskill.dev"
+priority = 0
+
+[[tool.fastskill.repositories]]
+name = "team-registry"
+type = "git-marketplace"
+url = "https://github.com/team/skills.git"
+priority = 1
+```
+
+Lower priority numbers take precedence. In this example, `public-registry` (priority 0) is checked before `team-registry` (priority 1).
+
+## Output Examples
+
+### Successful Installation
+
+```bash
+$ fastskill project install
+Installing skills...
+
+Resolving dependencies from skill-project.toml...
+Found 3 skills to install
+
+Installing web-scraper...
+✓ Installed web-scraper v1.2.3 from git
+  Source: https://github.com/user/web-scraper.git
+
+Installing data-processor...
+✓ Installed data-processor v2.1.0 from registry
+  Source: public-registry
+
+Installing demo-skill...
+✓ Installed demo-skill v0.1.0 from local (editable)
+  Source: ./skills/demo-skill
+
+Updated skills.lock with 3 skill(s)
+
+✓ Installation complete
+Run 'fastskill index rebuild' to update search index
+```
+
+### With Group Filters
+
+```bash
+$ fastskill project install --without dev
+Installing skills...
+
+Resolving dependencies from skill-project.toml...
+Filtering by groups: excluding ['dev']
+Found 2 skills to install
+
+Installing web-scraper...
+✓ Installed web-scraper v1.2.3 from git
+
+Installing data-processor...
+✓ Installed data-processor v2.1.0 from registry
+
+Skipping demo-skill (in 'dev' group)
+
+Updated skills.lock with 2 skill(s)
+
+✓ Installation complete
+```
+
+### Reproducible Installation
+
+```bash
+$ fastskill project install --lock
+Installing skills...
+
+Installing from skills.lock (reproducible)...
+Found 3 skills in lockfile
+
+Installing web-scraper...
+✓ Installed web-scraper v1.2.3 (locked)
+
+Installing data-processor...
+✓ Installed data-processor v2.1.0 (locked)
+
+Installing demo-skill...
+✓ Installed demo-skill v0.1.0 (locked)
+
+✓ Installation complete (reproducible)
+```
+
+## Error Handling
+
+### Missing Lock File
+
+```bash
+$ fastskill project install --lock
+error: skills.lock not found. Run 'fastskill project install' first to create it.
+```
+
+**Solution**: Run `fastskill project install` without `--lock` to create the lockfile first.
+
+### Missing skill-project.toml
+
+```bash
+$ fastskill project install
+error: skill-project.toml not found. Create it or use 'fastskill skill add' to add skills.
+```
+
+**Solution**: Run `fastskill project init` to create `skill-project.toml` or use `fastskill skill add` to add individual skills.
+
+### Unresolved Dependencies
+
+```bash
+$ fastskill project install
+Installing skills...
+
+Resolving dependencies from skill-project.toml...
+error: Failed to resolve skill 'unknown-skill': not found in any configured repository
+```
+
+**Solution**: Check the skill ID and ensure repositories are configured correctly with `fastskill repo`.
+
+### Conflicting Group Flags
+
+```bash
+$ fastskill project install --without dev --only prod
+error: Cannot use --without and --only together
+```
+
+**Solution**: Use either `--without` or `--only`, but not both at the same time.
+
+## Workflow Examples
+
+### Initial Project Setup
+
+```bash
+# 1. Initialize project
+fastskill project init --yes
+
+# 2. Add dependencies to skill-project.toml
+# Edit skill-project.toml:
+# [dependencies]
+# web-scraper = { origin = { type = "git", url = "https://github.com/user/web-scraper.git" }, groups = ["prod"] }
+
+# 3. Install dependencies
+fastskill project install
+
+# 4. Reindex for search
+fastskill index rebuild
+```
+
+### Development Workflow
+
+```bash
+# Install all skills including dev tools
+fastskill project install
+
+# Reindex for search
+fastskill index rebuild
+
+# Test development skills
+fastskill skill search "test utility"
+
+# Commit lockfile
+git add skill-project.toml skills.lock
+git commit -m "Install dependencies"
+```
+
+### Production Deployment
+
+```bash
+# Install production skills only (no dev dependencies)
+fastskill project install --without dev --lock
+
+# Reindex
+fastskill index rebuild
+
+# Verify installation
+fastskill skill list
+```
+
+### CI/CD Pipeline
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy Skills
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install FastSkill
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+
+      - name: Install dependencies
+        run: |
+          # Install production skills with locked versions
+          fastskill project install --lock --without dev
+
+      - name: Reindex skills
+        run: |
+          fastskill index rebuild
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Verify installation
+        run: |
+          fastskill skill list
+```
+
+## Best Practices
+
+### Commit both skill-project.toml and skills.lock
+
+Always commit both files to version control. This ensures all team members install the same versions.
+
+
+### Use groups for environment-specific dependencies
+
+Separate dev, test, and production dependencies into groups. Use `--without dev` for production builds.
+
+
+### Run `fastskill project install` before committing
+
+Run `fastskill project install` after modifying `skill-project.toml` to update `skills.lock` with new versions.
+
+
+### Use --lock for production deployments
+
+Always use `--lock` flag in production to ensure exact version matches.
+
+
+### Index only when using semantic search
+
+If an embedding provider is configured, use `fastskill index rebuild` when needed.
+Keyword search with `--local --embedding false` works without an index.
+
+
+
+## See Also
+
+* [Update Command](/cli-reference/update-command) - Update skills to latest versions
+* [Add Command](/cli-reference/skill-commands#fastskill-skill-add) - Add individual skills to project
+* [`repo` commands](/cli-reference/repository-command) - Manage skill repositories
+* [Manifest System](/skill-management/manifest-system) - Understanding skill-project.toml
+

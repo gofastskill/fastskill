@@ -1,0 +1,133 @@
+# Bundle commands
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/bundle-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# `bundle` commands
+
+Bundles turn a selected team setup into one versioned ZIP. The artifact contains the selected
+skills, their installed dependency closure, resource files, and content digests. A recipient can
+install it without access to the original repositories.
+
+## Build a bundle
+
+Complete the [quickstart](/quickstart), then add this declaration to that project's
+existing `skill-project.toml`. Keep its `[dependencies]` and `[tool.fastskill]` sections.
+
+```toml
+[bundle]
+format = "fastskill-bundle-v1"
+id = "notes-team"
+version = "1.0.0"
+
+[bundle.members.review-notes]
+overridable = true
+```
+
+Every bundle member must also appear in `[dependencies]`. The installed member version must
+satisfy that declaration. FastSkill stops before writing an artifact when a declared member is
+missing, has invalid frontmatter, or has a different version.
+
+Build the release:
+
+```bash
+fastskill project install
+fastskill bundle build --output dist
+```
+
+The result is `dist/notes-team-1.0.0.zip`. Its embedded identity, version, membership, and
+digests are authoritative, so renaming the download does not change the release.
+
+## Install and inspect
+
+In a second project initialized with `project init --yes --skills-dir .claude/skills`,
+install the artifact with `bundle add`. Replace the local path with the artifact you
+built. The HTTPS URL below is an example for an artifact hosted by your team:
+
+```bash
+fastskill bundle add ./notes-team-1.0.0.zip
+fastskill bundle add https://releases.example.com/notes-team-1.0.0.zip
+fastskill bundle list
+```
+
+Installation copies the artifact into `.fastskill/bundles/`, adds its declaration to
+`skill-project.toml`, and records the exact release and members in `skills.lock`.
+
+Commit these files when teammates and CI need the same setup:
+
+```bash
+git add skill-project.toml skills.lock .fastskill/bundles/
+```
+
+Then restore the exact locked release:
+
+```bash
+fastskill project install --lock --offline
+```
+
+`--lock` uses the bundle artifact, version, digest, and membership recorded in `skills.lock`.
+It does not switch to a different release if the manifest has drifted. `--offline` additionally
+guarantees that restore does not contact a repository or embedding provider.
+
+## Update a bundle
+
+Bundle updates are explicit. After building version `1.1.0` of your bundle, preview
+and apply that replacement:
+
+```bash
+fastskill bundle update notes-team --from ./notes-team-1.1.0.zip --dry-run
+fastskill bundle update notes-team --from ./notes-team-1.1.0.zip
+```
+
+FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
+before it changes installed members. The preview runs the same validation as apply and reports
+policy-only changes, such as a member becoming non-overridable, even when its bytes are unchanged.
+
+## Remove a bundle
+
+Remove the bundle identity and the members that have no other owner:
+
+```bash
+fastskill bundle remove notes-team
+fastskill bundle remove notes-team --force
+```
+
+Removing a direct declaration detaches that owner. FastSkill retains the installed member while a
+bundle or another dependency root still requires it. An ID that is only a transitive requirement
+cannot be removed directly; the error names the roots that require it. A member is deleted only
+after its final direct, transitive, bundle, and override owner is gone.
+
+## Personal overrides
+
+An edited installed file is not an approved override. Put the customized skill in a separate
+directory and declare it explicitly. Every installed bundle that owns the skill must mark the
+member as `overridable = true`.
+
+```bash
+fastskill bundle override review-notes --from ./my-review-notes
+```
+
+`fastskill project install` and `fastskill project install --lock` restore valid personal overrides after
+bundle members. Updates stop when a new bundle policy no longer permits an existing override.
+
+Return to the packaged member and clear the override records in one operation:
+
+```bash
+fastskill bundle override review-notes --reset
+```
+
+Reset is blocked if retained bundles disagree on the packaged bytes or if the installed member has
+untracked edits. Removing the last bundle owner of a personal replacement keeps that replacement
+as an individual requirement instead of deleting it. FastSkill validates the replacement's complete
+dependency closure first; bundle removal is blocked if that closure cannot be retained.
+
+Every bundle action except `bundle list` changes files. The MCP server hides and refuses these
+tools unless it starts with `fastskill mcp serve --enable-write`.
+

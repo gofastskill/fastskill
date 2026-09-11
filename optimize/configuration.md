@@ -1,0 +1,204 @@
+# Configuration Reference
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/optimize/configuration
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Configuration Reference
+
+Optimization runs are driven by a TOML config file. By convention this file is named `optimize.toml` (you can name it anything — pass the path with `--config`).
+
+## Minimal example
+
+`SkillOptToml` has no `#[serde(default)]` on most fields, so serde requires them to be
+present in the file — only `checks`, `target_model`, `optimizer_agent`, `optimizer_model`,
+`mixed_hard_weight`, and `parallel` are truly optional. This example is the smallest config
+that actually parses (verified against the binary — a shorter version that omits any of
+these fields fails with `OPTIMIZE_INVALID_TOML: ... missing field '<name>'`, one field at a
+time):
+
+```toml
+skill                    = "SKILL.md"
+skill_name               = "my-skill"
+suite                    = "evals/suite.csv"
+out_dir                  = ".skillopt/runs"
+target_agent             = "claude"
+
+n_epochs                 = 5
+batch_size               = 4
+accumulation             = 1
+aggregate_group_size     = 4
+lr_0                     = 1
+pass_threshold           = 0.7
+
+gate_metric              = "hard"
+gate_trials              = 3
+gate_epsilon             = 0.0
+
+slow_update_mode         = "gated"
+protected_soft_cap_chars = 3000
+timeout_seconds          = 120
+```
+
+## Full reference
+
+### Artifacts and data
+
+| Field        | Type   | Required           | Description                                                                                                                                                                                                                                                     |
+| ------------ | ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skill`      | path   | Yes                | Path to the seed skill document (usually `SKILL.md`). This is the starting point — the optimizer modifies copies of this.                                                                                                                                       |
+| `skill_name` | string | Yes                | Name used when deploying or referencing the optimized skill.                                                                                                                                                                                                    |
+| `suite`      | path   | Yes                | Path to the suite CSV. Must have `id`, `prompt`, `should_trigger` columns, and resolve to at least one `train` case and at least one `selection` case — see [Setup](/optimize/setup).                                                                           |
+| `checks`     | path   | No (default: none) | Path to the checks TOML file. **Omitting it means there is no grading signal at all** — with zero checks, every case scores `1.0` vacuously (see [Setup](/optimize/setup#should_trigger-is-not-the-grading-signal)). There is no "trigger-match only" fallback. |
+| `out_dir`    | path   | **Yes**            | Parent directory for run output folders. There is no default — omitting it fails TOML parsing. Each run creates a timestamped subdirectory here.                                                                                                                |
+
+***
+
+### Agents
+
+| Field             | Type   | Required | Description                                                                                                                                                    |
+| ----------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `target_agent`    | string | Yes      | The agent that runs the skill against eval cases. Usually `"claude"`.                                                                                          |
+| `target_model`    | string | No       | Override the model used by the target agent.                                                                                                                   |
+| `optimizer_agent` | string | No       | The agent that proposes patches. Defaults to `target_agent` (a warning is printed: `OPTIMIZE_OPTIMIZER_DEFAULT_WARN`). Set this explicitly in production runs. |
+| `optimizer_model` | string | No       | Override the model used by the optimizer agent.                                                                                                                |
+
+**Tip:** Use a faster/cheaper model for `target_agent` (it runs many times per epoch) and a more capable model for `optimizer_agent` (it needs to reason about patch quality).
+
+***
+
+### Training loop
+
+| Field                  | Type  | Required                | Enforced range                                                                                          | Description                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----- | ----------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `n_epochs`             | int   | Yes, no default         | ≥ 1                                                                                                     | Number of passes over the training split.                                                                                                                                                                                                                                                                                                                                                       |
+| `batch_size`           | int   | Yes, no default         | ≥ 1                                                                                                     | Cases evaluated per step (B). Larger batches give the optimizer more signal per patch proposal.                                                                                                                                                                                                                                                                                                 |
+| `accumulation`         | int   | Yes, no default         | ≥ 1                                                                                                     | Steps to accumulate before applying a patch (A). Gradient accumulation analogue.                                                                                                                                                                                                                                                                                                                |
+| `aggregate_group_size` | int   | Yes, no default         | ≥ 1 (enforced deeper in the training loop, not by `fastskill`'s own config validation — see note below) | Cases grouped together when aggregating optimizer feedback (K).                                                                                                                                                                                                                                                                                                                                 |
+| `lr_0`                 | int   | Yes, no default         | ≥ 1                                                                                                     | Initial learning rate (controls initial patch aggressiveness).                                                                                                                                                                                                                                                                                                                                  |
+| `pass_threshold`       | float | Yes, no default         | \[0.0, 1.0]                                                                                             | Fraction of cases that must pass for the gate to accept a step.                                                                                                                                                                                                                                                                                                                                 |
+| `parallel`             | int   | No                      | none enforced                                                                                           | Number of eval cases to run in parallel. Omit to use the runner's default (number of CPUs).                                                                                                                                                                                                                                                                                                     |
+| `timeout_seconds`      | int   | Yes, no default         | none enforced                                                                                           | Per-case timeout in seconds.                                                                                                                                                                                                                                                                                                                                                                    |
+| `isolate`              | bool  | No (defaults to `true`) | —                                                                                                       | Per-case scoring isolation: every scoring pass (rollouts, gate, baseline, final) runs each case in a scratch workspace containing only the candidate skill, with user-level skill discovery suppressed where the target agent supports it. Set `false` (or pass `--no-isolation`) to use shared-workspace scoring — scores are then influenced by whatever skills are installed on the machine. |
+
+**Note on `aggregate_group_size` and `gate_trials`:** unlike the other numeric fields, these two
+are not checked by `fastskill`'s own config validation. A `0` value parses fine and passes
+`fastskill optimization run`'s validation step, then fails once the training loop starts, as
+`OPTIMIZE_TRAINING_FAILED: TEXTGRAD_INVALID_CONFIG: gate_trials must be > 0` (or the
+equivalent for `aggregate_group_size`) — confirmed by running the binary with `gate_trials = 0`.
+
+***
+
+### Gate
+
+The gate decides whether to accept a patch by comparing scores before and after.
+
+| Field               | Type   | Required                                                             | Description                                                                                                                                                   |
+| ------------------- | ------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gate_metric`       | string | Yes, no default                                                      | How to measure pass rate: `hard`, `soft`, or `mixed`.                                                                                                         |
+| `mixed_hard_weight` | float  | Required only when `gate_metric = "mixed"`; must be absent otherwise | Weight of the hard score component (0.0–1.0). Setting it while `gate_metric` isn't `"mixed"` is itself an error (`SKILLOPT_MIXED_WEIGHT_SPURIOUS`).           |
+| `gate_trials`       | int    | Yes, no default                                                      | Number of times to re-run the gate before deciding (majority vote per check). Higher values reduce noise at the cost of tokens. Must be ≥ 1 — see note above. |
+| `gate_epsilon`      | float  | Yes, no default                                                      | Minimum improvement required to accept a patch, range \[0.0, 1.0]. `0.0` means any non-regression is accepted.                                                |
+
+**Gate metric options** (per case, then averaged across the split — see
+[Setup](/optimize/setup#how-checks-become-a-score)):
+
+| Value   | Behaviour                                                                                                                                                        |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hard`  | 1.0 if every configured check passed for that case, else 0.0. Most strict. This is based on `checks.toml` results, **not** on the CSV's `should_trigger` column. |
+| `soft`  | Fraction of that case's checks that passed, allowing partial credit.                                                                                             |
+| `mixed` | `mixed_hard_weight * hard + (1 - mixed_hard_weight) * soft`.                                                                                                     |
+
+All three metrics reduce over **required** checks only; `required = false` checks are reported
+but never scored.
+
+A case with zero configured checks — or one where every check is `required = false` — scores
+`1.0` under all three metrics (vacuously). This is the same "no signal without `checks`" gap
+described in [Setup](/optimize/setup).
+
+***
+
+### Epoch boundary
+
+| Field                      | Type   | Required        | Description                                                                                                                                        |
+| -------------------------- | ------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slow_update_mode`         | string | Yes, no default | What to do at the epoch boundary when the patch doesn't improve: `gated` (skip) or `force_accept` (apply anyway). Use `gated` for production runs. |
+| `protected_soft_cap_chars` | int    | Yes, no default | Soft character cap hinted to the optimizer for the protected region. No range is enforced.                                                         |
+
+***
+
+## Worked example: a focused deployment skill
+
+```toml
+# Seed skill and identity
+skill       = "skills/deploy/SKILL.md"
+skill_name  = "deploy-ops"
+out_dir     = ".skillopt/runs"
+
+# Eval data
+suite  = "skills/deploy/evals/suite.csv"
+checks = "skills/deploy/evals/checks.toml"
+
+# Agents — fast target, strong optimizer
+target_agent    = "claude"
+target_model    = "claude-haiku-4-5-20251001"
+optimizer_agent = "claude"
+optimizer_model = "claude-opus-4-8"
+
+# Training loop
+n_epochs             = 6
+batch_size           = 8
+accumulation         = 1
+aggregate_group_size = 4
+lr_0                 = 3
+pass_threshold       = 0.75
+parallel             = 4
+timeout_seconds      = 90
+
+# Gate — strict, no noise, require measurable improvement
+gate_metric   = "hard"
+gate_trials   = 3
+gate_epsilon  = 0.02
+
+# Epoch boundary
+slow_update_mode        = "gated"
+protected_soft_cap_chars = 3000
+```
+
+***
+
+## Validation errors
+
+If the config is invalid, `fastskill optimization run` exits with a structured error code. The
+error prefix is inconsistent in the current implementation — some codes are `OPTIMIZE_*`
+(from `run.rs` itself) and some are `SKILLOPT_*` (from the older shared `validate_config`
+helper it calls) — match on the full string, not the prefix. All of the following were
+confirmed by running the binary against deliberately broken configs:
+
+| Code                             | Cause                                                                                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OPTIMIZE_CONFIG_MISSING`        | The `--config` path doesn't exist, or can't be read.                                                                                                                     |
+| `OPTIMIZE_INVALID_TOML`          | File couldn't be parsed as TOML — including a required field being absent (serde reports one missing field at a time).                                                   |
+| `SKILLOPT_MIXED_WEIGHT_MISSING`  | `gate_metric = "mixed"` set but `mixed_hard_weight` not provided.                                                                                                        |
+| `SKILLOPT_MIXED_WEIGHT_SPURIOUS` | `mixed_hard_weight` set but `gate_metric` is not `"mixed"`.                                                                                                              |
+| `SKILLOPT_FIELD_OUT_OF_RANGE`    | `pass_threshold`, `gate_epsilon`, or `mixed_hard_weight` outside \[0.0, 1.0], or `batch_size`/`accumulation`/`lr_0`/`n_epochs` below 1.                                  |
+| `SKILLOPT_SKILL_NOT_FOUND`       | The `skill` path doesn't exist.                                                                                                                                          |
+| `SKILLOPT_SUITE_NOT_FOUND`       | The `suite` path doesn't exist.                                                                                                                                          |
+| `OPTIMIZE_NO_SELECTION_CASES`    | The suite CSV has zero cases tagged `selection`. Exact message: `OPTIMIZE_NO_SELECTION_CASES: suite has zero cases tagged 'selection'`.                                  |
+| `OPTIMIZE_NO_TRAIN_CASES`        | The suite CSV has zero cases tagged `train` (e.g. every row is `selection`/`test`). See [Setup](/optimize/setup) for the exact message and the full split model.         |
+| `OPTIMIZE_CHECKS_PARSE_ERROR`    | The `checks` file exists but failed to parse as TOML (a *missing* checks file is instead reported by `SKILLOPT_CHECKS_PARSE_ERROR` from the earlier validation pass).    |
+| `OPTIMIZE_TRAINING_FAILED`       | Wraps errors from the training loop itself, including `TEXTGRAD_INVALID_CONFIG: gate_trials must be > 0` / `aggregate_group_size must be > 0` when those fields are `0`. |
+
+***
+
+## See also
+
+* [Setup: eval data and grading](/optimize/setup)
+* [Running and monitoring](/optimize/running)
+

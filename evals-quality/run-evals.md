@@ -1,0 +1,71 @@
+# Run Evals
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/evals-quality/run-evals
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Run Evals
+
+This workflow is the day-to-day path for quality checks. If you haven't authored a suite yet — the `[tool.fastskill.eval]` table, prompts CSV, and checks TOML — start with [Eval setup](/evals-quality/setup) first; pass/fail behavior (especially the inert `should_trigger` column, choosing between `skill_invoked` and `trigger_expectation`, and what `required = false` does) is documented there.
+
+`--output-dir` is required on every `eval run` invocation — there is no default output location. All examples below include it. Each run lands under `<output-dir>/<timestamp>/<agent>/` (a numeric suffix is appended if that timestamp directory already exists) — that per-agent directory, not `<output-dir>` itself, is what `--run-dir` expects below.
+
+
+## Run the suite
+
+```bash
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
+```
+
+**Runs are isolated by default.** Each case executes in a per-case scratch workspace containing only the skill under test (`SKILL.md` beside `skill-project.toml`, named by `[metadata].id`), with user-level skill discovery suppressed where the backend supports it. The `isolation:` line in the output (and the `isolation` object in `summary.json`) reports what each run actually got; a failed case's workspace survives under `<run-dir>/workspaces/` for debugging. Pass `--no-isolation` to run in the project root against your machine's ambient environment — and expect trigger rates measured before isolation existed to re-baseline on the first isolated run.
+
+
+Common focused runs:
+
+```bash
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --tag smoke
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs --case login-happy-path
+```
+
+## Summarize the run
+
+```bash
+fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex
+```
+
+Use this for release notes and quick stakeholder review.
+
+## Re-score without re-running agent
+
+```bash
+fastskill eval score --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex
+```
+
+Use this when scoring logic changed and you want consistency across previous runs.
+
+## CI usage pattern
+
+```bash
+fastskill eval validate --agent codex
+fastskill eval run --agent codex --output-dir ./.fastskill/eval-runs
+fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/codex --json
+```
+
+## Practical gating policy
+
+* Block merge if smoke tag fails
+* Block release if full suite fails
+* Keep per-tag pass-rate trends to detect slow quality drift
+
+## See also
+
+* [Eval setup](/evals-quality/setup)
+* [Cluster analysis](/evals-quality/cluster-analysis)
+* [eval command](/cli-reference/eval-command)
+

@@ -1,0 +1,166 @@
+# Registry Index System
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/registry/index-system
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+# Registry Index System
+
+FastSkill uses a simple organization/package directory structure for skill distribution. Each skill's published versions are stored as newline-delimited JSON in a single file.
+
+## Overview
+
+The registry index is an on-disk NDJSON catalog read by `fastskill server serve` and the registry search endpoints. It is populated externally (for example, by the platform operator that hosts the registry) rather than by a self-hosted CLI write path.
+
+## Registry Structure
+
+The registry index uses a simple org/package directory structure:
+
+```
+registry-index/
+├── acme/
+│   ├── web-scraper/
+│   └── data-processor/
+├── myorg/
+│   ├── analytics-tool/
+│   └── api-client/
+└── john/
+    └── personal-helper/
+```
+
+### Directory Naming
+
+The directory structure is derived from the skill ID (scope/id format):
+
+* **Scope** → First directory level (the publishing organization, e.g., "acme")
+* **ID** → Second directory level (the package name, must not contain slashes, e.g., "web-scraper")
+
+Examples:
+
+* `acme/web-scraper` → `acme/web-scraper/` (scope: "acme", id: "web-scraper")
+* `myorg/analytics-tool` → `myorg/analytics-tool/` (scope: "myorg", id: "analytics-tool")
+* `john/personal-helper` → `john/personal-helper/` (scope: "john", id: "personal-helper")
+
+This structure:
+
+* Groups skills by organization
+* Provides intuitive navigation
+* Scales well for most use cases
+* Simplifies directory management
+
+## Version Metadata Format
+
+Each skill has a single file at `{scope}/{id}` containing newline-delimited JSON entries for all versions. The path is constructed from:
+
+* `scope`: The publishing organization (e.g., "acme")
+* `id`: The package name from `skill-project.toml` (must not contain slashes, e.g., "web-scraper")
+
+Each line is a compact `VersionEntry` JSON object:
+
+```json
+{"name":"web-scraper","vers":"1.2.3","deps":[],"cksum":"sha256:abc123def456...","features":{},"yanked":false,"links":null,"download_url":"https://blob.example.com/skills/web-scraper-1.2.3.zip","published_at":"2024-01-01T12:00:00Z"}
+{"name":"web-scraper","vers":"1.2.2","deps":[],"cksum":"sha256:def456ghi789...","features":{},"yanked":false,"links":null,"download_url":"https://blob.example.com/skills/web-scraper-1.2.2.zip","published_at":"2024-01-01T10:00:00Z"}
+```
+
+### Field Descriptions
+
+* **name**: Skill identifier
+* **vers**: Semantic version (e.g., "1.2.3")
+* **deps**: Dependencies (currently empty, reserved for future use)
+* **cksum**: SHA256 checksum of the ZIP artifact
+* **features**: Feature flags (currently empty, reserved for future use)
+* **yanked**: Whether this version is yanked (removed from distribution)
+* **links**: Reserved for future use
+* **download\_url**: URL to download the ZIP artifact
+* **published\_at**: ISO 8601 timestamp of publication
+
+## Accessing the Registry
+
+### Hosted registry server (external)
+
+On the external registry server that hosts the index, each skill's NDJSON index
+file is served at its own flat path:
+
+```
+GET /index/{skill_id}
+```
+
+Where `skill_id` follows the format `{scope}/{skill-name}` (e.g., `dev-user/web-scraper`).
+
+**Example:**
+
+```bash
+curl https://api.fastskill.io/index/dev-user/web-scraper
+```
+
+This returns the newline-delimited JSON entries for all versions of that skill.
+These `/index/...` NDJSON paths are the hosted registry server's own convention,
+not part of the `fastskill server serve` versioned API.
+
+### From `fastskill server serve`
+
+When you run `fastskill server serve` locally, the registry browse/search surface is
+exposed under the versioned API:
+
+```
+GET /api/v1/registry/index/skills
+```
+
+Unversioned `/api/...` requests are 308-redirected to their `/api/v1/...`
+equivalents.
+
+### From FastSkill CLI
+
+Skills in a registry can be installed using the standard FastSkill commands:
+
+```bash
+# Install a skill by its scope/package name
+fastskill skill add dev-user/web-scraper
+
+# Install a specific version
+fastskill skill add dev-user/web-scraper@1.2.3
+```
+
+## Version Management
+
+### Version History
+
+All versions are preserved in the registry index. This provides:
+
+* Complete version history
+* Ability to download any previous version
+* Audit trail of skill evolution
+
+### Skill Organization
+
+Skills are always stored with an organization prefix:
+
+* Format: `{org}/{package}`
+* Organization: The publishing organization (lowercase, filesystem-safe)
+* Package: Skill package name
+* Example: `john/my-tool`, `acme/web-scraper`
+
+## Best Practices
+
+### Registry Management
+
+1. **Version History**: All versions are preserved for audit and rollback
+2. **Organization Structure**: Skills are organized by publishing organization
+3. **Blob Storage**: Artifacts are stored securely with checksum verification
+
+### Security
+
+1. **Checksum Verification**: All downloads include SHA256 checksums
+2. **Access Control**: Registry access is controlled by authentication
+3. **Audit Trail**: Publishing history is maintained automatically
+
+## See Also
+
+* [Registry Overview](/registry/overview)
+

@@ -1,0 +1,477 @@
+# index rebuild
+
+FastSkill 0.9.228
+
+Source: https://docs.gofastskill.com/cli-reference/reindex-command
+
+Release revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+Documentation revision: 0e67bc11940a7ab7c7362b16d7fd132aff169c9d
+
+
+
+## Overview
+
+`fastskill index rebuild` scans skill directories, extracts metadata from `SKILL.md`, generates
+embeddings when configured, and builds the local semantic-search index.
+
+This command requires OpenAI API configuration and will create a local SQLite database to store embeddings.
+
+
+## Basic Usage
+
+```bash
+fastskill index rebuild --skills-dir /path/to/skills/
+```
+
+## Command Options
+
+### --skills-dir `&lt;DIRECTORY&gt;`
+
+Optional override for the skills root (otherwise the CLI uses the same discovery as other commands, typically from `skill-project.toml`).
+
+```bash
+# Index skills from a explicit directory
+fastskill index rebuild --skills-dir .claude/skills/
+
+# Index from custom location
+fastskill index rebuild --skills-dir ./my-skills/
+```
+
+### --force
+
+Force re-indexing of all skills, even if they haven't changed.
+
+```bash
+# Rebuild entire index
+fastskill index rebuild --skills-dir .claude/skills/ --force
+```
+
+**Use Cases:**
+
+* After significant content changes
+* When embeddings seem outdated
+* To rebuild corrupted index
+
+### --max-concurrent `&lt;NUMBER&gt;`
+
+This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
+`index rebuild` embeds skills **sequentially**, one at a time. Passing a value does not change
+indexing speed or the number of concurrent API requests.
+
+
+## Configuration Requirements
+
+### Embedding Configuration
+
+Add embedding settings to `skill-project.toml` under `[tool.fastskill.embedding]`:
+
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+```
+
+
+### OpenAI API Key
+
+Set the environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-your-actual-api-key"
+```
+
+
+
+## What Happens During Reindex
+
+### Directory Scanning
+
+The command recursively searches for `SKILL.md` files:
+
+```
+.claude/skills/
+├── dataops/
+│   ├── airflow-ops/
+│   │   └── SKILL.md
+│   └── dag-development/
+│       └── SKILL.md
+├── infra/
+│   ├── k8s-monitoring/
+│   │   └── SKILL.md
+│   └── k8s-ops/
+│       └── SKILL.md
+└── product-management/
+    └── backlog/
+        └── SKILL.md
+```
+
+
+### Content Extraction
+
+For each SKILL.md file:
+
+* Parses YAML frontmatter
+* Extracts metadata (name, description, tags, capabilities)
+* Calculates file hash for change detection
+
+
+### Embedding Generation
+
+* Sends content to OpenAI embedding API
+* Stores resulting vectors locally
+* Handles API rate limits and errors gracefully
+
+
+### Index Building
+
+* Creates/updates the SQLite vector index (`.fastskill/index.db`)
+* Stores metadata and embeddings for fast semantic search
+* Records file hashes in the change-detection cache (`.fastskill/build-cache.json`)
+
+
+### Cleanup
+
+* Removes index entries for skills no longer on disk
+* Compares indexed skill IDs with current skill directories
+* Logs removal of stale entries (does not fail reindex)
+
+
+
+## Progress Monitoring
+
+### Output Levels
+
+`index rebuild` has these output controls:
+
+* **Default**: Shows a live progress bar with completion percentage (when stdout is a TTY)
+* **Verbose (`-v, --verbose`)**: Shows per-skill processing details
+* **`--progress` / `--no-progress`**: Force the progress bar on, or suppress it and show only the final summary
+
+### Progress Bar
+
+By default, `index rebuild` displays a live progress bar:
+
+```
+Progress: [12/50] (24%) | Pending: 38 | Skipped: 0 | Failed: 0 | Elapsed: 15s
+```
+
+The progress bar shows:
+
+* Number of completed skills
+* Completion percentage
+* Remaining skills to process
+* Skills skipped (unchanged)
+* Skills that failed
+* Total elapsed time
+
+### Verbose Mode
+
+Use `-v` or `--verbose` to see detailed output:
+
+```bash
+fastskill index rebuild --verbose
+
+Processing: pptx
+Processing: skill-creator
+  ⊘ Skipped: fastskill (unchanged hash)
+Processing: pptx
+  ✗ Failed: bad-skill - Failed to parse frontmatter
+  ✓ Indexed: data-ops
+...
+Reindex completed
+  Total skills: 50
+  Successfully indexed: 42
+  Skipped (unchanged): 5
+  Failed: 3
+  Total time: 45.23s
+```
+
+### No-Progress Mode
+
+Use `--no-progress` to suppress the progress bar and show only the final summary:
+
+```bash
+fastskill index rebuild --no-progress
+
+Reindex completed
+  Total skills: 50
+  Successfully indexed: 42
+  Skipped (unchanged): 5
+  Failed: 3
+  Total time: 45.23s
+```
+
+### Environment Variables
+
+`index rebuild` respects the following environment variables:
+
+#### `FASTSKILL_NO_PROGRESS`
+
+Disable progress bars and spinners:
+
+```bash
+FASTSKILL_NO_PROGRESS=1 fastskill index rebuild
+```
+
+This is useful in scripts or scheduled jobs that refresh embeddings without a TTY.
+
+#### `NO_COLOR`
+
+Disable colored output:
+
+```bash
+NO_COLOR=1 fastskill index rebuild
+```
+
+Useful for environments that don't support ANSI color codes.
+
+### TTY Detection
+
+The progress bar automatically detects if stdout is a TTY:
+
+* **TTY terminal**: Shows progress bar (unless `FASTSKILL_NO_PROGRESS` is set)
+* **Piped output**: No progress bar (falls back to simple text)
+* **Redirected output**: No progress bar
+
+Examples:
+
+```bash
+# Shows progress bar (TTY)
+fastskill index rebuild --skills-dir .claude/skills/
+
+# No progress bar (piped to grep)
+fastskill index rebuild --skills-dir .claude/skills/ | grep "error"
+
+# No progress bar (redirected to file)
+fastskill index rebuild --skills-dir .claude/skills/ > output.log
+
+# Suppress the progress bar explicitly
+fastskill index rebuild --no-progress
+```
+
+## Output and Progress
+
+### Legacy Output (Logging)
+
+In addition to the progress monitoring, the command uses structured logging:
+
+```
+INFO Processing skill: airflow-ops
+INFO Processing skill: dag-development
+INFO Processing skill: k8s-monitoring
+```
+
+This logging is separate from the user-facing progress output and can be controlled via the `RUST_LOG` environment variable for debugging purposes.
+
+### Success Output
+
+When using default or verbose mode, you'll see detailed progress information followed by a summary:
+
+### Error Handling
+
+In verbose mode, errors are shown with detailed information:
+
+```
+  ✗ Failed: airflow-ops - Failed to generate embedding: OpenAI API error 401 Unauthorized
+  ✗ Failed: dag-development - Failed to parse frontmatter: Invalid YAML
+...
+Reindex completed
+  Total skills: 15
+  Successfully indexed: 13
+  Skipped (unchanged): 0
+  Failed: 2
+  Total time: 23.45s
+
+error: Reindex completed with 2 errors
+```
+
+In default or `--no-progress` mode, only the summary and error count are shown.
+
+Common errors:
+
+* **API Key Issues**: Check `OPENAI_API_KEY` environment variable
+* **Rate Limits**: Wait before retrying (reindex already runs sequentially)
+* **Network Issues**: Check internet connectivity
+* **Permission Issues**: Ensure write access to skills directory
+
+## On-Disk Layout
+
+Reindex maintains two files inside the skills directory's `.fastskill/` folder:
+
+```
+.claude/skills/
+└── .fastskill/
+    ├── index.db           # vector index (embeddings)
+    └── build-cache.json   # change-detection cache (file hashes)
+```
+
+**`index.db`** — the vector index:
+
+* **Format**: SQLite database
+* **Size**: \~1-10MB depending on number of skills
+* **Content**: Metadata and embeddings used by semantic search
+
+**`build-cache.json`** — the change-detection cache:
+
+* **Format**: JSON
+* **Content**: Per-skill file hashes used to decide which skills changed since the last run
+* Used to skip re-embedding unchanged skills (bypassed with `--force`)
+
+## Performance Considerations
+
+### Indexing Time
+
+* **Small repositories**: \< 1 minute
+* **Medium repositories** (100 skills): 2-5 minutes
+* **Large repositories** (1000+ skills): 10-30 minutes
+
+### Cost Estimation
+
+* **text-embedding-3-small**: \~$0.02 per 1M tokens
+* **Average skill**: \~500 tokens
+* **100 skills**: \~$0.001 (less than 1 cent)
+
+### Optimization Tips
+
+```bash
+# Index only changed skills (default behavior)
+fastskill index rebuild --skills-dir .claude/skills/
+
+# Force full rebuild only when necessary
+fastskill index rebuild --force
+```
+
+## Incremental Updates
+
+`index rebuild` skips unchanged content:
+
+### Change Detection
+
+* Calculates SHA256 hash of each SKILL.md file
+* Only re-embeds files that have changed
+* Preserves existing embeddings for unchanged files
+
+### Example Workflow
+
+```bash
+# Initial indexing
+fastskill index rebuild --skills-dir .claude/skills/
+# Indexes all 15 skills
+
+# Add one new skill
+# Only the new skill gets indexed
+fastskill index rebuild --skills-dir .claude/skills/
+# Indexes 1 skill (the new one)
+```
+
+## Integration Features
+
+### Agent discovery
+
+Reindexing only populates the local vector index used by `fastskill skill search --local`. Agents
+(Claude Code, Cursor, …) discover installed skills directly from the skills directory — there is
+no separate metadata file to generate or sync.
+
+## Troubleshooting
+
+### Common Issues
+
+#### Reindex skipped: no embedding provider configured
+
+`index rebuild` requires an embedding provider. When none is configured it is skipped (not an error) —
+run `fastskill cli doctor` to confirm, then configure one in `skill-project.toml`:
+
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+```
+
+#### "OPENAI\_API\_KEY environment variable not set"
+
+```bash
+# Solution: Set API key
+export OPENAI_API_KEY="sk-your-key-here"
+```
+
+#### "Permission denied" on database
+
+```bash
+# Solution: Check directory permissions
+chmod 755 .claude/skills/
+```
+
+#### Rate limit exceeded
+
+```bash
+# Solution: reindex already runs sequentially; wait and retry
+fastskill index rebuild --skills-dir .claude/skills/
+```
+
+### Debug Mode
+
+Enable detailed logging:
+
+```bash
+RUST_LOG=fastskill=debug fastskill index rebuild --skills-dir .claude/skills/
+```
+
+### Verification
+
+Check if indexing succeeded:
+
+```bash
+# Check database exists
+ls -la .claude/skills/.fastskill/index.db
+
+# Test search
+fastskill skill search "test" --local --embedding false --skills-dir .claude/skills
+```
+
+## Advanced Usage
+
+### Custom Embedding Models
+
+Use different OpenAI models:
+
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-large"  # Higher accuracy, higher cost
+```
+
+### Multiple Directories
+
+Index skills from multiple locations:
+
+```bash
+# Index primary skills
+fastskill index rebuild --skills-dir .claude/skills/
+
+# Index additional skills
+fastskill index rebuild --skills-dir ./custom-skills/
+```
+
+### Automatic index rebuilding
+
+After installs in automation, run `fastskill index rebuild` with the same environment variables you use locally (`OPENAI_API_KEY`, optional `--skills-dir`).
+
+## Related Commands
+
+### Search Command
+
+Use indexed skills for semantic search:
+
+```bash
+fastskill skill search "process documents" --local --skills-dir .claude/skills/
+```
+
+### List skills
+
+```bash
+fastskill skill list --skills-dir .claude/skills/
+```
+
+`index rebuild` transforms installed skill definitions into the local semantic-search index.
+
