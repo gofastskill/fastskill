@@ -4,22 +4,20 @@ Status: implementation evidence in progress. Updated: 2026-09-13.
 
 ## Current evidence (supersedes historical status tables below)
 
-- Pinned FastSkill 0.9.230 built successfully. Six documented contract tests, four CLI asset tests, six documentation parity tests, and formatting passed before the latest example metadata assertion; that assertion still requires execution.
-- Both authoring tools ran: Codex CLI 0.153.4 with `gpt-5.6-luna`, and Claude Code 2.1.269 with `claude-sonnet-4-5`. Generated suites validated against the pinned binary. Initial Claude attempts required trigger-scope, judge-path, schema, and template repairs.
-- Claude continued the Codex-authored suite using files, repaired extra CSV columns and answer leakage, validated four cases/four checks, and recorded why changed prompts require new target evidence. Handoff cost reported by Claude: USD 0.2934362. Raw local record: `work/claude-handoff.json` beside this checkout.
-- A real Claude Sonnet 4.5 defect pilot consulted the target, returned `15.00`, and failed the independent `17.00` expectation with exit code zero and no execution error. Changing only the target to include the final item produced a passing rerun with the same criterion. Both runs and the failed workspace are retained locally under `work/pilot-defect-claude-runs/2026-09-12T20-23-38Z/claude` and `work/pilot-corrected-claude-runs/2026-09-12T20-24-46Z/claude`.
-- The conversion pilot passed the numeric outcome check, failed mandatory consultation, and failed the scratch-file check without gating because it was advisory. This demonstrates distinct outcome/adherence results, not a fully passing conversion suite. Evidence: `work/pilot-conversion-claude-runs/2026-09-12T20-23-45Z/claude`.
-- Runtime prerequisite checks exposed `EVAL_ISOLATION_NO_SKILL` for missing metadata and `RUNTIME_UNKNOWN_ID` for codex in the current registry (available: aikit, claude). Standalone authoring-tool availability does not establish FastSkill target-runtime availability. The shipped example now includes metadata required for isolation.
-- Strict clippy failed on a recursion-depth diagnostic in unchanged `crates/fastskill-cli/src/main.rs`. A new test panic lint was repaired. Full workspace regression was restarted with two compilation jobs after the unconstrained build impaired responsiveness; completion remains pending.
-- No production Rust files changed. Numeric production line/branch coverage is not claimed; changed tests require execution, and skill/fixture behavior requires the inventory below.
+- The imported Linux worktree was verified on `server02` at branch `feat/eval-authoring-skill`, checkpoint `11e673c24c1dc5233f4d5162788f18886d2ca168`. Fetching origin showed the local branch and `origin/feat/eval-authoring-skill` at the same commit with a clean worktree.
+- Both authoring tools ran: Codex CLI 0.153.4 with `gpt-5.6-luna`, and Claude Code 2.1.269 with `claude-sonnet-4-5`. Generated suites validated against pinned FastSkill 0.9.230. Initial Claude attempts required trigger-scope, judge-path, schema, and template repairs.
+- Claude continued the Codex-authored suite using files, repaired extra CSV columns and answer leakage, validated four cases/four checks, and recorded why changed prompts require new target evidence. Handoff cost reported by Claude: USD 0.2934362. Raw record: `work/claude-handoff.json` beside this checkout.
+- A real Claude Sonnet 4.5 defect pilot consulted the target, returned `15.00`, and failed the independent `17.00` expectation with exit code zero and no execution error. Changing only the target to include the final item produced a passing rerun with the same criterion. Rescoring the corrected pilot's saved artifacts also passed without another model call.
+- The conversion pilot passed the numeric outcome check, failed mandatory consultation, and failed the scratch-file check without gating because it was advisory. This demonstrates distinct outcome/adherence results, not a fully passing conversion suite.
+- On `server02`, pinned FastSkill now reports `aikit`, `claude`, and `codex` available for the shipped example. This supersedes the earlier Windows `RUNTIME_UNKNOWN_ID` result for Codex while preserving it as historical prerequisite evidence.
+- The six documented contract tests and four CLI asset tests pass on Linux. The four asset tests exercise the shipped suite, references and links, every purpose-built fixture branch, and the controlled contradiction failure.
+- Repository-recommended process-isolated regression passed all 1,872 tests with one configured skip before the Clippy fix. After the one-line fix, 1,871 of 1,872 passed in one run; the sole failure read a stale shared `market-success` cache and passed when rerun with a fresh documented `FASTSKILL_CACHE_DIR`. The ordinary in-process Cargo runner produced current-directory cascades, while the same first failure passed alone; nextest is the valid repository runner.
+- Strict workspace Clippy initially failed because current nightly promotes the recursion-depth diagnostic in unchanged `crates/fastskill-cli/src/main.rs` under `-D warnings`. Adding the compiler-recommended crate recursion limit fixed the gate. `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`, `cargo fmt --all -- --check`, `bash scripts/check-source-size.sh`, and `git diff --check` now pass.
+- Instrumented FastSkill CLI coverage ran 897 tests with one configured skip and no failures. The changed production entrypoint has 686/752 covered lines (91.22%) and 48/50 covered branches (96.00%), satisfying the PRD's 90% line and 80% branch thresholds. Raw summary: `work/coverage-fastskill-cli.json`.
+- Server02 uses Python 3.10 while the docs checker imports Python 3.11's `tomllib`. A `tomli` compatibility package was supplied only through `work/python310-compat`; the previously blocked documentation parity test then passed without repository-source changes.
+- No relevant native-judge credential variable is present in the server process. No repository or user configuration file establishing an approved judge endpoint/model was found. The shipped endpoint/model remain placeholders, so native judge contrast calibration is the only mandatory external prerequisite still unavailable.
 
-Final local checks on 2026-09-13: the latest four asset tests passed, including the metadata assertion; formatting passed; source-size checking passed after removing CR characters from the script input stream (the checkout uses CRLF). The workspace command stopped at the CLI test binary with 457 passed and seven failed. Two isolation tests failed with missing project configuration during parallel execution and both passed when rerun with `--test-threads=1`. Two other failures report Windows privilege error 1314 during symlink operations; remaining add/update failures concern project state and require separate diagnosis. These are failures in unchanged files, not established regressions from this change, but the full gate is not green.
-
-Rescoring the corrected pilot's saved artifacts passed without another model call. No relevant native-judge API key was present in this process, and the example endpoint/model remain placeholders; live calibration is unverified.
-
-`cargo clippy -p fastskill-evals --tests --locked -- -D warnings` passed after the test lint repair. `git diff --check` passed. These focused results do not replace the failing workspace-wide gate.
-
-Remaining release gaps: full workspace regression, strict clippy resolution/baseline evidence, remaining fixture and prerequisite branches, judge calibration/credential availability, and final per-file evidence inventory. No PR has been created. Historical environment blockers below are retained as attempt history, not current claims.
+No PR has been created. Historical environment blockers below are retained as attempt history, not current claims.
 
 This record keeps deterministic checks, live authoring exercises, and release gaps distinct. It must not be read as a release attestation while any mandatory row is incomplete.
 
@@ -34,46 +32,85 @@ This record keeps deterministic checks, live authoring exercises, and release ga
 
 | Requirements | Evidence | Status |
 | --- | --- | --- |
-| WF1, A1, AT1, ST4, ST6 | `invoice-no-evals`; skill compatibility/help instructions; package validator | deterministic assets complete; live workflow incomplete |
-| WF2, A2, AT3 | scripted workflow and unnecessary-step author decisions | fixture assertions complete; live workflow incomplete |
-| WF3-WF4, A3-A5, AT4-AT5, ST1-ST5 | shipped example; semantics/examples references; documented contract tests | authored; Rust execution blocked by environment |
-| WF5, A6-A7, AT6 | judge contrast examples, real `eval validate`, invalid contradiction test | parse evidence present; executed judge calibration unavailable |
-| WF6, A8, AT9-AT10, ST8 | explicit pilot-scope instructions and scripted authorized/unauthorized branches | instructions/fixtures present; live exercise incomplete |
-| WF7, A9, AT7-AT8, ST7 | defective target, environment variants, evidence categories | fixtures present; live target run incomplete |
-| WF8, A10, AT11 | existing suite/user note, rescore/rejudge/rerun guidance, handoff template | fixture assertion authored; live agent switch incomplete |
-| ST2-ST3 | shipped suite validation and `documented_check_contract.rs` trigger/selector/contradiction tests | local 0.9.208 parse passed; pinned Rust test not yet executed |
+| WF1, A1, AT1, ST4, ST6 | `invoice-no-evals`; compatibility/help inspection; generated Claude and Codex suites; pinned validator | passed |
+| WF2, A2, AT3 | scripted outline/clarification record and unnecessary-step author decision; asset assertions | passed |
+| WF3-WF4, A3-A5, AT4-AT5, ST1-ST5 | shipped example; suite-level review notes; semantics/examples references; six executed contract tests | passed |
+| WF5, A6-A7, AT6 | pinned `eval validate`, malformed-suite repair, controlled contradiction, qualitative judge contrasts | blocked only on native judge endpoint/model/credential; no fabricated calibration |
+| WF6, A8, AT9-AT10, ST8 | explicit pilot scope; saved authorized pilot; scripted unauthorized branch | passed |
+| WF7, A9, AT7-AT8, ST7 | real defective and corrected target runs; prerequisite variants; separate outcome/adherence/missing evidence | passed |
+| WF8, A10, AT11 | Claude continued and repaired Codex-authored files; corrected rerun and saved-evidence rescore; handoff record | passed |
+| ST2-ST3 | pinned suite validation; six contract tests; four asset tests including intended contradiction failure | passed |
 
-## Changed-file coverage classes
+## Changed-file coverage inventory
 
-- `skills/eval-authoring/SKILL.md`: every normative workflow section maps to WF1-WF8 and AT1-AT11 above; structural validation passed with `quick_validate.py`.
-- `skills/eval-authoring/references/*.md`: linked from the entrypoint and exercised by the asset integration test; command and semantic claims map to the maintained docs and pinned contract tests.
-- `skills/eval-authoring/examples/invoice-extraction/**`: every config/prompt/fixture/note is parsed or asserted by `eval_authoring_assets_test`; the suite also passed file validation under local FastSkill 0.9.208, with the compatibility limitation above.
-- `tests/fixtures/eval-authoring/**`: the asset integration test checks discovery and independent ground truth; the existing suite itself is parseable; live behavioral use remains mandatory.
-- `crates/fastskill-evals/tests/documented_check_contract.rs`: focused assertions cover positive/negative implicit checks, exact selectors, explicit precedence, contradiction, required/advisory behavior, and trace-only matching.
-- `tests/cli/eval_authoring_assets_test.rs` and `tests/cli/mod.rs`: Cargo discovery is wired, meaningful assertions and a controlled contradiction failure are present; execution is currently blocked before compilation.
-- `webdocs/evals-quality/setup.mdx`: repaired claims map to the documented contract test and shipped example; link/parity regressions remain to run.
-- `.gitignore`: controlled check is that only `skills/eval-authoring/**` is unignored while another `skills/*` path remains ignored.
-- `CONTEXT.md`, ADR-0011 through ADR-0013, and the three authoring requirement documents: accepted design handoff transferred unchanged; their requirements map through this record.
+Every path below is relative to the repository root. `assets` means the four executed `eval_authoring_assets_test` tests; `contracts` means the six executed `documented_check_contract` tests; `parity` means the executed documentation command/config/link checks; `workflow` means the saved Codex/Claude authoring, continuation, defect/correction, pilot, and rescore evidence summarized above.
 
-No production executable Rust file is modified, so the 90% line and 80% branch thresholds do not apply to production source in this change. Test-source execution and meaningful assertion evidence are still mandatory.
+| Changed file | Coverage evidence | Result or gap |
+| --- | --- | --- |
+| `.gitignore` | assets verify the eval-authoring tree is unignored while an unrelated `skills/*` path remains ignored | passed |
+| `CONTEXT.md` | parity plus requirement mapping | passed |
+| `crates/fastskill-cli/src/main.rs` | 897 instrumented CLI tests; 91.22% lines and 96.00% branches; strict Clippy | passed |
+| `crates/fastskill-evals/tests/documented_check_contract.rs` | Cargo/nextest discovery; six meaningful positive and negative contract tests | passed |
+| `docs/adr/0011-skill-first-eval-authoring.md` | WF1/AT1 workflow evidence and local-link parity | passed |
+| `docs/adr/0012-separate-outcomes-from-adherence.md` | conversion pilot and contract evidence distinguish outcome/adherence | passed |
+| `docs/adr/0013-skill-driven-eval-authoring.md` | two-tool authoring/continuation and CLI runtime evidence | passed |
+| `docs/qa/eval-authoring-verification.md` | reconciled against saved raw evidence and server02 commands | passed, native judge gap retained |
+| `docs/requirements/eval-authoring-proposal.md` | WF/AT mapping and parity | passed |
+| `docs/requirements/eval-authoring-skill-prd.md` | WF1-WF8 and AT1-AT11 mapping above | native judge portion of WF5/AT6 blocked |
+| `docs/requirements/eval-authoring-support-prd.md` | ST1-ST8 mapping; assets, contracts, parity | passed except shared native judge prerequisite |
+| `skills/eval-authoring/SKILL.md` | structural validation, assets, workflow and prerequisite/preservation branches | passed except native judge calibration |
+| `skills/eval-authoring/references/examples.md` | assets, pinned suite validation, saved defect/correction contrasts | passed; example contrast remains honestly qualitative |
+| `skills/eval-authoring/references/handoff.md` | assets and Claude-from-Codex continuation record | passed |
+| `skills/eval-authoring/references/semantics.md` | assets, six contracts, pinned validation/runtime probe | passed |
+| `skills/eval-authoring/examples/invoice-extraction/SKILL.md` | assets and pinned suite validation | passed |
+| `skills/eval-authoring/examples/invoice-extraction/skill-project.toml` | assets assert isolation metadata; pinned validation accepts all three runtimes | passed |
+| `skills/eval-authoring/examples/invoice-extraction/evals/checks.toml` | assets and pinned parser; judge path/schema assertions | parse passed; live native judge blocked |
+| `skills/eval-authoring/examples/invoice-extraction/evals/judge-prompt.md` | assets assert output contract and expected-fact rendering | passed; live native judge blocked |
+| `skills/eval-authoring/examples/invoice-extraction/evals/prompts.csv` | assets exercise all three rows and referenced fixtures | passed |
+| `skills/eval-authoring/examples/invoice-extraction/evals/review-notes.md` | assets plus workflow evidence | passed |
+| `skills/eval-authoring/examples/invoice-extraction/fixtures/basic.txt` | assets parse/reference it and pinned suite validates it | passed |
+| `skills/eval-authoring/examples/invoice-extraction/fixtures/missing-number.txt` | assets parse/reference it and assert the independent null expectation | passed |
+| `tests/cli/eval_authoring_assets_test.rs` | Cargo/nextest discovery; four tests pass; controlled invalid case fails for intended contradiction | passed |
+| `tests/cli/mod.rs` | nextest discovers and runs all four asset tests | passed |
+| `tests/fixtures/eval-authoring/defective-total/SKILL.md` | assets plus real 15.00-vs-17.00 failure and corrected rerun | passed |
+| `tests/fixtures/eval-authoring/defective-total/ground-truth.md` | assets assert independent ground truth; real failure/passing correction | passed |
+| `tests/fixtures/eval-authoring/environment-variants.md` | assets assert CLI/runtime/judge prerequisite branches; server02 runtime probe | passed; native judge unavailable branch observed |
+| `tests/fixtures/eval-authoring/existing-suite/SKILL.md` | assets and cross-agent continuation | passed |
+| `tests/fixtures/eval-authoring/existing-suite/skill-project.toml` | assets and pinned validation | passed |
+| `tests/fixtures/eval-authoring/existing-suite/evals/checks.toml` | assets and cross-agent repair/validation | passed |
+| `tests/fixtures/eval-authoring/existing-suite/evals/prompts.csv` | assets and cross-agent repair/validation | passed |
+| `tests/fixtures/eval-authoring/existing-suite/evals/user-note.md` | assets assert unrelated user note preservation | passed |
+| `tests/fixtures/eval-authoring/existing-suite/fixtures/release.md` | assets and cross-agent suite validation | passed |
+| `tests/fixtures/eval-authoring/invoice-no-evals/SKILL.md` | assets and two-tool from-scratch authoring | passed |
+| `tests/fixtures/eval-authoring/invoice-no-evals/fixtures/ambiguous-date.txt` | assets and workflow coverage outline | passed |
+| `tests/fixtures/eval-authoring/invoice-no-evals/fixtures/basic.txt` | assets and workflow generated suite | passed |
+| `tests/fixtures/eval-authoring/invoice-no-evals/fixtures/missing-number.txt` | assets assert clarified null behavior | passed |
+| `tests/fixtures/eval-authoring/invoice-no-evals/fixtures/multiple-currencies.txt` | assets and workflow coverage outline | passed |
+| `tests/fixtures/eval-authoring/scripted-workflow.md` | assets assert inspect/outline/review/authorization/preservation branches | passed |
+| `tests/fixtures/eval-authoring/unnecessary-step/SKILL.md` | assets assert outcome/adherence conflict fixture | passed |
+| `tests/fixtures/eval-authoring/unnecessary-step/scripted-answers.md` | assets retain author decision | passed |
+| `tests/fixtures/eval-authoring/unsupported-order/SKILL.md` | assets assert unsupported expectation is reported rather than weakened | passed |
+| `webdocs/evals-quality/setup.mdx` | parity, six contracts, shipped example | passed |
 
 ## Commands and observed results
 
 | Command or exercise | Result |
 | --- | --- |
 | `quick_validate.py skills/eval-authoring` | passed (`Skill is valid!`) |
-| `cargo fmt --all -- --check` | initially reported formatting-only diffs; `cargo fmt --all` applied them |
-| local FastSkill 0.9.208 `eval validate --json` in shipped example | passed; three cases, one explicit check; version is outside declared compatibility |
-| pinned Cargo test invocation | blocked before compilation: sandboxed Windows Cargo cannot read the installed Git system config; local path patches bypassed Git dependencies, then crates.io TLS failed with `SEC_E_NO_CREDENTIALS`; offline cache lacks `ammonia` |
-| Codex CLI 0.153.4, `gpt-5.6-luna`, isolated authoring exercise | attempted twice; first rejected incompatible CLI flags, second stopped before model invocation because the sandbox account has no resolvable Codex home |
-| second authoring tool | unavailable: `pi` and `claude` not installed; Cursor 3.17.8 exposes the editor launcher, not a headless authoring-agent/model interface |
+| pinned FastSkill 0.9.230 `eval validate --all --json` in shipped example | passed; three cases, one check, and `aikit`, `claude`, `codex` available |
+| `cargo test -p fastskill-evals --test documented_check_contract --locked` | six passed |
+| `cargo test -p fastskill-cli --test cli_tests eval_authoring --locked -- --test-threads=1` | four passed |
+| `cargo nextest run --workspace --all-features --locked --no-fail-fast` | pre-fix: 1,872 passed, one configured skip; post-fix: 1,871 passed and one stale-cache failure |
+| isolated stale-cache failure with a fresh `FASTSKILL_CACHE_DIR` | passed; confirms shared cache contamination rather than branch behavior |
+| `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` | passed after crate recursion-limit fix |
+| `cargo fmt --all -- --check`; `bash scripts/check-source-size.sh`; `git diff --check` | passed |
+| `cargo llvm-cov nextest -p fastskill-cli --all-features --locked --branch ...` | 897 passed, one configured skip; `main.rs` 91.22% lines and 96.00% branches |
+| Codex CLI 0.153.4 `gpt-5.6-luna` and Claude Code 2.1.269 `claude-sonnet-4-5` authoring/continuation | completed; generated and repaired suites validated; sanitized records retained |
+| defect, corrected-target, conversion, and saved-evidence rescore pilots | expected defect failure preserved; corrected and rescore passed; outcome/adherence split observed |
 
 ## Release gaps
 
-- Execute the focused tests, full relevant regression suite, command/document parity checks, source-size check, clippy, and coverage instrumentation in a Rust environment with usable registry access.
-- Complete WF1-WF8, AT1-AT11, and ST1-ST8 behavioral exercises with at least two distinct capable authoring tools, including preservation and handoff.
-- Verify actual selected model IDs and authentication for both tools; record all attempts and sanitized artifacts.
-- Exercise a real target pilot and, where supported, judge contrasts. Missing standalone calibration remains an explicit product limitation.
-- Produce final changed-file coverage results. Branch coverage is unavailable until instrumentation runs.
+- Native judge calibration still needs an owner-approved endpoint, model, and credential environment variable. Claude CLI authentication is not accepted as native-judge authentication. No live contrast may be claimed until this prerequisite is supplied and an artifact is retained.
+- The unrelated `manifest_add_records_repository_intent_after_catalog_match` test can consume stale shared cache state when the test process inherits the default cache root. It passes with a fresh supported `FASTSKILL_CACHE_DIR`; this isolation defect is recorded but does not justify widening the eval-authoring implementation.
 
-Until these gaps close or the owner explicitly waives a gate, no pull request may be created.
+Until native judge calibration succeeds or the owner explicitly waives that mandatory gate, no pull request may be created.

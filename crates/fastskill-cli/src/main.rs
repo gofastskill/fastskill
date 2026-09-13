@@ -8,6 +8,7 @@
 //! `Arc<FsState>` is captured at registration time by each command closure —
 //! no `Any`-downcasting of `AppContext` is needed.
 
+#![recursion_limit = "256"]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod arg_helpers;
