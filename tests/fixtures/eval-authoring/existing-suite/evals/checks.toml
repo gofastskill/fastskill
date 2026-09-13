@@ -1,0 +1,4 @@
+[[check]]
+name = "command_contains"
+pattern = "BREAKING"
+cases = ["release-basic"]

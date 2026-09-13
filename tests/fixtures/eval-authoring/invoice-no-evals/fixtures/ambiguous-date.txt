@@ -1,0 +1,4 @@
+Invoice: INV-8
+Date: 03/04/2026
+Currency: GBP
+Total: 90.00

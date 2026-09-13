@@ -1,0 +1,4 @@
+id,prompt,should_trigger,tags,workspace_subdir,expected
+invoice-basic,"Extract the invoice in fixtures/basic.txt as JSON.",true,"outcome,positive",,"{""invoice_number"":""INV-1042"",""date"":""2026-09-01"",""currency"":""USD"",""total"":123.45}"
+invoice-missing-number,"Extract the invoice in fixtures/missing-number.txt as JSON. Use null for missing fields.",true,"outcome,boundary",,"{""invoice_number"":null,""date"":""2026-09-02"",""currency"":""EUR"",""total"":78.90}"
+invoice-unrelated,"Explain the difference between a receipt and an invoice.",false,"trigger,negative",,

@@ -8,6 +8,7 @@ pub mod analyze_cluster_tests;
 pub mod analyze_provider_gate_tests;
 pub mod config_tests;
 pub mod doctor_tests;
+pub mod eval_authoring_assets_test;
 pub mod eval_tests;
 pub mod example_tests;
 pub mod help_tests;

@@ -1,0 +1,4 @@
+Invoice number: INV-1042
+Date: 2026-09-01
+Currency: USD
+Total: 123.45
