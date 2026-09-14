@@ -60,8 +60,8 @@ pub struct SearchArgs {
 impl IntoCommandSpec for SearchArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
-            summary: "Search skills by query with explicit scope flags",
-            syntax: Some("skill search <QUERY> [--local|--remote] [OPTIONS]"),
+            summary: "Search skills by query (defaults to remote catalogs)",
+            syntax: Some("skill search <QUERY> [OPTIONS]"),
             category: Some("discovery"),
             help_order: Some(60),
             examples: vec![
@@ -95,7 +95,7 @@ impl IntoCommandSpec for SearchArgs {
                     name: "remote",
                     long: Some("remote"),
                     short: None,
-                    help: "Search remote skill catalogs",
+                    help: "Search remote skill catalogs (default; use --local for installed skills)",
                     kind: ArgKind::Flag,
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
@@ -122,6 +122,7 @@ impl IntoCommandSpec for SearchArgs {
                     value_type: ArgValueType::Int,
                     cardinality: Cardinality::Optional,
                     default: Some(ArgValue::Int(10)),
+                    min: Some(1),
                     ..Default::default()
                 },
                 ArgSpec {
@@ -151,17 +152,6 @@ impl IntoCommandSpec for SearchArgs {
                     long: Some("embedding"),
                     short: None,
                     help: "Use embedding search: true, false, or auto",
-                    kind: ArgKind::Option,
-                    value_type: ArgValueType::String,
-                    cardinality: Cardinality::Optional,
-                    default: None,
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "skills-dir",
-                    long: Some("skills-dir"),
-                    short: None,
-                    help: "Skills directory path (overrides default discovery)",
                     kind: ArgKind::Option,
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
@@ -275,10 +265,18 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     let embedding_mode = determine_embedding_mode(&args);
     if args.local
         && service.config().embedding.is_none()
-        && args.embedding.as_deref() != Some("false")
+        && args.embedding.as_deref() == Some("true")
+    {
+        return Err(CliError::MissingEmbeddingProvider(
+            "skill search --local --embedding true",
+        ));
+    }
+    if args.local
+        && service.config().embedding.is_none()
+        && args.embedding.as_deref() == Some("auto")
     {
         eprintln!(
-            "Warning: semantic search requires an embedding provider. Falling back to text search."
+            "[WARNING] Semantic search requires an embedding provider; falling back to text search"
         );
     }
 
@@ -312,7 +310,7 @@ pub async fn execute_search(service: &FastSkillService, args: SearchArgs) -> Cli
     }
 
     // Format and output results
-    if results.is_empty() && !matches!(format, OutputFormat::Json) {
+    if results.is_empty() && matches!(format, OutputFormat::Table) {
         crate::outln!("No skills found matching '{}'", args.query);
     } else {
         let show_install_commands = matches!(format, OutputFormat::Table | OutputFormat::Grid);
@@ -384,40 +382,39 @@ fn parse_content_mode(s: &str) -> CliResult<ContentMode> {
 fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
     if args.query.trim().is_empty() {
         return Err(CliError::Config(
-            "Error: search query must not be empty.".to_string(),
+            "Search query must not be empty".to_string(),
         ));
     }
 
     if !(1..=1000).contains(&args.limit) {
         return Err(CliError::Config(
-            "Error: --limit must be between 1 and 1000.".to_string(),
+            "--limit must be between 1 and 1000".to_string(),
         ));
     }
 
     if args.local && args.remote {
         return Err(CliError::Config(
-            "Error: --local and --remote cannot be used together.".to_string(),
+            "--local and --remote cannot be used together".to_string(),
         ));
     }
 
     // Validate --repository flag only works with remote search
     if args.repository.is_some() && args.local {
         return Err(CliError::Config(
-            "Error: --repository is only valid for remote search. Omit --local or --repository."
+            "--repository is only valid for remote search; omit --local or --repository"
                 .to_string(),
         ));
     }
 
     if args.json && args.format.is_some() {
         return Err(CliError::Config(
-            "Error: --json and --format cannot be used together. Use one output selector."
-                .to_string(),
+            "--json and --format cannot be used together; use one output selector".to_string(),
         ));
     }
 
     if args.paths && !args.local {
         return Err(CliError::Config(
-            "Error: --paths requires --local. Use 'fastskill skill search --local --paths <query>'."
+            "--paths requires --local; use 'fastskill skill search --local --paths <query>'"
                 .to_string(),
         ));
     }

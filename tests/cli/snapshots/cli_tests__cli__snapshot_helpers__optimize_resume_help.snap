@@ -11,7 +11,7 @@ Arguments:
   <run-dir>  Path to the run directory to resume
 
 Options:
-      --skills-dir <skills-dir>  Override the skills directory path
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --global                   Use global skills directory (~/.config/fastskill/skills)
   -v, --verbose                  Enable verbose output
   -h, --help                     Print help

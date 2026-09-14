@@ -1,4 +1,4 @@
-use super::{format_source_info, origin_location_label, origin_type_label, ListArgs};
+use super::{format_source_info, origin_location_label, ListArgs};
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::lock::{global_lock_path, GlobalSkillsLock};
 use fastskill_core::core::project_removal::managed_tree_digest;
@@ -79,17 +79,12 @@ pub(super) async fn execute_global_list(
         } else {
             reconcile(service, &id, locked, actual, mutable)
         };
-        if args.check && selected && !matches!(reconciliation, "ok" | "extraneous") {
+        if args.check && !matches!(reconciliation, "ok" | "excluded") {
             failures.push(format!("{id}: {reconciliation}"));
         }
-        let (source_path, source_type) = actual
-            .map(|skill| {
-                (
-                    Some(skill.skill_file.display().to_string()),
-                    Some(origin_type_label(&skill.origin).to_string()),
-                )
-            })
-            .or_else(|| locked.map(|entry| format_source_info(&entry.origin)))
+        let (source_path, source_type) = locked
+            .map(|entry| format_source_info(&entry.origin))
+            .or_else(|| actual.map(|skill| format_source_info(&skill.origin)))
             .unwrap_or((None, None));
         rows.push(ListRow {
             id: id.clone(),

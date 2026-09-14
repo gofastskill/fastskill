@@ -16,8 +16,9 @@ metadata file to generate or keep in sync.
 # Install the skills declared in skill-project.toml
 fastskill project install
 
-# ...or add one directly
-fastskill skill add scope/pptx@1.0.0
+# ...or configure a catalog and add one directly
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add scope/pptx@1.0.0 --repository team
 
 # Verify what Claude Code will see
 fastskill skill list

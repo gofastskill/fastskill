@@ -25,8 +25,8 @@ review-notes = { origin = { type = "git", url = "https://github.com/your-org/ski
 fastskill project install --no-reindex
 ```
 
-Use this manifest form for subdirectories: GitHub browser `/tree/…` URLs fail ref
-resolution in the current release.
+Use this manifest form as the portable source of truth for subdirectories. It keeps the clone URL,
+branch, and subdirectory explicit in committed project state.
 FastSkill uses system Git; install Git and ensure it can access the repository before
 adding private sources. Git credentials come from your Git configuration.
 

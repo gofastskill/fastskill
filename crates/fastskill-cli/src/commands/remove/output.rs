@@ -105,7 +105,9 @@ pub(super) fn emit_global_removal_plan(
     dry_run: bool,
     json: bool,
 ) -> CliResult<()> {
-    let changed = !plan.remove_roots.is_empty() || !plan.remove_lock_entries.is_empty();
+    let changed = !plan.remove_roots.is_empty()
+        || !plan.remove_lock_entries.is_empty()
+        || !plan.delete_files.is_empty();
     let outcome = if changed { "changed" } else { "unchanged" };
     if json {
         let targets = requested

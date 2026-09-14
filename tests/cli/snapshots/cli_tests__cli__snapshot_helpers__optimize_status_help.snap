@@ -11,7 +11,7 @@ Arguments:
   <run-dir>  Path to the run directory
 
 Options:
-      --skills-dir <skills-dir>  Override the skills directory path
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --watch                    Poll and re-render every ~2 seconds
       --global                   Use global skills directory (~/.config/fastskill/skills)
   -v, --verbose                  Enable verbose output

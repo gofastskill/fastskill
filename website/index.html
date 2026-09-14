@@ -252,7 +252,7 @@ fastskill --version</code></pre>
             <p>Start with the <a href="https://github.com/gofastskill/skill">official FastSkill skill</a>: instructions that teach your agent to manage skills with the CLI. This example uses Claude Code’s skills directory.</p>
             <ol class="steps">
               <li><span>1</span><div><strong>Create a demo project</strong><p>Keep the walkthrough in its own folder.</p></div></li>
-              <li><span>2</span><div><strong>Add the official skill</strong><p>FastSkill installs it and records the source.</p></div></li>
+              <li><span>2</span><div><strong>Clone and add the official skill</strong><p>The repository contains the skill below its root, so add that explicit local path.</p></div></li>
               <li><span>3</span><div><strong>Try it in Claude Code</strong><p>Open the demo folder and ask: “Use FastSkill to list my installed skills.”</p></div></li>
             </ol>
             <p class="small-note">You’ll need Git for this example, plus your configured agent to use the skill. Agent usage may require its own account or subscription.</p>
@@ -261,7 +261,8 @@ fastskill --version</code></pre>
             <div class="terminal-demo">
               <div class="code-toolbar"><span>fastskill-demo — simulated terminal</span><button class="copy-button" type="button" id="replay-demo">Play demo</button></div>
               <pre id="demo-screen" tabindex="0" aria-label="Example terminal session"><code>$ fastskill project init --yes
-$ fastskill skill add https://github.com/gofastskill/skill.git
+$ git clone --depth 1 https://github.com/gofastskill/skill.git fastskill-skill
+$ fastskill skill add ./fastskill-skill/fastskill
 $ fastskill skill list</code></pre>
               <p class="demo-caption">Initialize → install → list. Illustrative progress; no commands run in your browser.</p>
             </div>
@@ -271,7 +272,8 @@ $ fastskill skill list</code></pre>
               <pre tabindex="0" aria-label="First-skill walkthrough"><code id="quickstart-command">mkdir fastskill-demo
 cd fastskill-demo
 fastskill project init --yes
-fastskill skill add https://github.com/gofastskill/skill.git
+git clone --depth 1 https://github.com/gofastskill/skill.git fastskill-skill
+fastskill skill add ./fastskill-skill/fastskill
 fastskill skill list</code></pre>
             </div>
             </details>
@@ -463,7 +465,8 @@ document.querySelectorAll("[data-copy]").forEach((button) => {
 const demoFrames = [
   { text: "$ fastskill project init --yes", type: true },
   { text: "✓ Project ready · using defaults", delay: 1100 },
-  { text: "$ fastskill skill add https://github.com/gofastskill/skill.git", type: true },
+  { text: "$ git clone --depth 1 https://github.com/gofastskill/skill.git fastskill-skill", type: true },
+  { text: "$ fastskill skill add ./fastskill-skill/fastskill", type: true },
   { text: "  Downloading skill  [··········]", delay: 750 },
   { text: "  Downloading skill  [██········]", replace: true, delay: 750 },
   { text: "  Downloading skill  [█████·····]", replace: true, delay: 850 },

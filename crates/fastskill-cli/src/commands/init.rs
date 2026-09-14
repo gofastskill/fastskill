@@ -21,6 +21,7 @@ use fastskill_core::core::validation::{
 };
 use std::collections::HashMap;
 use std::fs;
+use std::io::IsTerminal;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -168,14 +169,20 @@ impl InitArgs {
     }
 }
 
-pub async fn execute_init(args: InitArgs) -> CliResult<()> {
-    crate::outln!("FastSkill Skill Initialization");
-    crate::outln!();
-
+pub async fn execute_init(mut args: InitArgs) -> CliResult<()> {
     let skill_project_path = Path::new("skill-project.toml");
     ensure_can_init(skill_project_path, args.force)?;
 
     let is_skill_level = Path::new("SKILL.md").exists();
+    crate::outln!(
+        "fastskill {} initialization",
+        if is_skill_level { "skill" } else { "project" }
+    );
+    crate::outln!();
+    if !io::stdin().is_terminal() && !args.yes {
+        eprintln!("[INFO] Non-interactive input detected; using defaults (equivalent to --yes)");
+        args.yes = true;
+    }
     let (skill_md_content, frontmatter) = load_skill_md_and_frontmatter(is_skill_level)?;
 
     let version = resolve_version(&args, &frontmatter, skill_md_content.as_deref())?;
@@ -239,6 +246,7 @@ fn load_skill_md_and_frontmatter(
                 author: None,
                 license: None,
                 compatibility: None,
+                dependencies: None,
                 metadata: None,
                 allowed_tools: None,
                 extra: HashMap::new(),
@@ -463,7 +471,7 @@ fn print_success(is_skill_level: bool, version: &str, skills_directory: Option<&
         "{}",
         messages::info("This file configures your project's skill dependencies.")
     );
-    crate::outln!("   Add skills with: fastskill skill add <skill-id>");
+    crate::outln!("   Add skills with: fastskill skill add <source>");
 }
 
 fn extract_version_from_skill_md(content: &str, skip_prompts: bool) -> CliResult<String> {
@@ -550,7 +558,7 @@ fn version_from_frontmatter_text(frontmatter: &str) -> Option<String> {
 
 fn prompt_for_version() -> CliResult<String> {
     crate::outln!("Version");
-    crate::outln!("No version found in SKILL.md frontmatter.");
+    crate::outln!("No version was provided");
     print!("Enter version (or press Enter for 1.0.0): ");
     io::stdout().flush()?;
 

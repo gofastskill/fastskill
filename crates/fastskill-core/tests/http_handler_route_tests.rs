@@ -61,6 +61,9 @@ async fn make_service(
     registry_index_path: Option<PathBuf>,
 ) -> Arc<FastSkillService> {
     let config = ServiceConfig {
+        // Each fixture must have its own catalog cache: repository names
+        // are reused by tests with different mock-server responses.
+        skill_cache_root: Some(storage.join(".test-cache")),
         skill_storage_path: storage,
         registry_index_path,
         ..Default::default()

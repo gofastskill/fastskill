@@ -1,6 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
-Error: Configuration error: Failed to remove repository: Custom error: Repository 'nonexistent-repo' not found
+Error: Configuration error: Failed to remove repository: Repository 'nonexistent-repo' not found

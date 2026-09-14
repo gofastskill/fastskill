@@ -74,13 +74,15 @@ impl ProjectRemovalService {
             Some(&self.skills_directory),
             "remove skills",
         )?;
-        let (manifest, lock, plan) = match load_and_plan(&manifest_path, &lock_path, requested) {
+        let (manifest, lock, mut plan) = match load_and_plan(&manifest_path, &lock_path, requested)
+        {
             Ok(state) => state,
             Err(error) => {
                 state_guard.recovered()?;
                 return Err(error);
             }
         };
+        self.include_extraneous_installs(&mut plan)?;
         if plan != preview {
             state_guard.recovered()?;
             return Err(ServiceError::InvalidOperation(
@@ -102,9 +104,39 @@ impl ProjectRemovalService {
         }
         let manifest_path = self.project_root.join("skill-project.toml");
         let lock_path = self.project_root.join("skills.lock");
-        let (_, lock, plan) = load_and_plan(&manifest_path, &lock_path, requested)?;
+        let (_, lock, mut plan) = load_and_plan(&manifest_path, &lock_path, requested)?;
+        self.include_extraneous_installs(&mut plan)?;
         self.ensure_unmodified(&lock, &plan.delete_files)?;
         Ok(plan)
+    }
+
+    /// Treat an explicitly requested on-disk install as removable even when
+    /// older or damaged state omitted it from both Manifest and Lock.
+    fn include_extraneous_installs(
+        &self,
+        plan: &mut ProjectRemovalPlan,
+    ) -> Result<(), ServiceError> {
+        let mut extraneous = Vec::new();
+        for id in &plan.unchanged {
+            let path = self.skills_directory.join(id);
+            match fs::symlink_metadata(&path) {
+                Ok(metadata)
+                    if metadata.file_type().is_symlink()
+                        || metadata.is_dir()
+                        || metadata.is_file() =>
+                {
+                    extraneous.push(id.clone());
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(ServiceError::Io(error)),
+            }
+        }
+        plan.unchanged.retain(|id| !extraneous.contains(id));
+        plan.delete_files.extend(extraneous);
+        plan.delete_files.sort();
+        plan.delete_files.dedup();
+        Ok(())
     }
 
     fn apply_plan(
@@ -381,6 +413,31 @@ mod tests {
         );
         assert_eq!(fs::read(root.path().join("skills.lock")).unwrap(), lock);
         assert!(!root.path().join(".fastskill/recovery-required").exists());
+    }
+
+    #[test]
+    fn explicitly_requested_extraneous_install_is_removed() {
+        let _serial = serial();
+        let root = TempDir::new().unwrap();
+        SkillProjectToml {
+            schema_version: None,
+            metadata: None,
+            dependencies: Some(DependenciesSection {
+                dependencies: HashMap::new(),
+            }),
+            tool: None,
+        }
+        .save_to_file(&root.path().join("skill-project.toml"))
+        .unwrap();
+        fs::create_dir_all(root.path().join("skills/extra")).unwrap();
+        fs::write(root.path().join("skills/extra/SKILL.md"), "extra").unwrap();
+        let service = ProjectRemovalService::new(root.path(), root.path().join("skills"));
+
+        let preview = service.preview(&["extra".to_string()]).unwrap();
+        assert_eq!(preview.delete_files, vec!["extra"]);
+        assert!(preview.unchanged.is_empty());
+        service.remove(&["extra".to_string()]).unwrap();
+        assert!(!root.path().join("skills/extra").exists());
     }
 
     #[test]

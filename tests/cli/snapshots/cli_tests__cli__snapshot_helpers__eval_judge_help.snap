@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Judge a completed eval run with the judges its checks file declares
@@ -10,7 +11,7 @@ Options:
       --run-dir <run-dir>
           Path to the run directory to judge
       --skills-dir <skills-dir>
-          Override the skills directory path
+          Override the installation directory for this invocation
       --checks <checks>
           Checks file to read judges from, instead of the one the run recorded
       --global

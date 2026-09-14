@@ -109,8 +109,9 @@ fn format_search_results_as_table(
     let mut output = String::new();
 
     output.push_str(&format!(
-        "Found {} skills matching '{}':\n\n",
+        "Found {} skill{} matching '{}':\n\n",
         results.len(),
+        if results.len() == 1 { "" } else { "s" },
         query
     ));
 
@@ -119,7 +120,7 @@ fn format_search_results_as_table(
     let mut max_name_width = 4; // "Name"
     let mut max_desc_width = 11; // "Description"
     let mut max_source_width = 6; // "Source"
-    let mut max_sim_width = 9; // "Similarity"
+    let mut max_sim_width = 10; // "Similarity"
 
     for item in results {
         max_id_width = max_id_width.max(item.id.len());
@@ -263,13 +264,14 @@ fn format_search_results_as_grid(
     query: &str,
 ) -> Result<String, String> {
     if results.is_empty() {
-        return Ok(format!("No skills found matching '{}'", query));
+        return Ok(String::new());
     }
 
     let mut output = String::new();
     output.push_str(&format!(
-        "Found {} skills matching '{}':\n\n",
+        "Found {} skill{} matching '{}':\n\n",
         results.len(),
+        if results.len() == 1 { "" } else { "s" },
         query
     ));
 

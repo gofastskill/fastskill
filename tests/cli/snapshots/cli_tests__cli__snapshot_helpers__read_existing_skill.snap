@@ -3,9 +3,6 @@ source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 assertion_line: 341
 expression: normalized
 ---
-Reading: web-scraper
-Base directory: [TEMP_DIR]
-
 ---
 name: web-scraper
 description: A web scraping skill
@@ -34,5 +31,3 @@ fastskill skill read web-scraper
 ```
 
 This skill provides comprehensive web scraping functionality.
-
-Skill read: web-scraper

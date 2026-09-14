@@ -6,7 +6,10 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python 3.10: install the standard parser's backport.
 
 ROOT = Path(__file__).resolve().parents[1]
 

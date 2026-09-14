@@ -1,11 +1,8 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
-Reading: body-skill
-Base directory: [TEMP_DIR]
-
 ---
 name: body-skill
 description: Skill for testing body content display
@@ -35,5 +32,3 @@ Install this skill to test body content rendering.
 ## Examples
 
 Example usage showing that the skill body should be displayed correctly.
-
-Skill read: body-skill

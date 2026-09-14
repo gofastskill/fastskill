@@ -101,8 +101,12 @@ pub(super) async fn add_global_origins(
     }
     for (root_id, origin) in root_ids.iter().zip(&origins) {
         if let Some(existing) = lock.skills.iter().find(|entry| entry.id == *root_id) {
-            if !args.force && (!lock.covered_roots.contains(root_id) || existing.origin != *origin)
-            {
+            if !args.force {
+                if lock.covered_roots.contains(root_id) && existing.origin == *origin {
+                    return Err(CliError::Config(format!(
+                        "Global skill '{root_id}' is already declared; use --force to replace it"
+                    )));
+                }
                 return Err(CliError::Validation(format!(
                     "Global skill '{root_id}' already has a different owner or origin; use --force to replace direct intent"
                 )));
@@ -159,14 +163,7 @@ pub(super) async fn add_global_origins(
     )?;
     if args.dry_run {
         if args.json {
-            let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
-                service,
-                "add",
-                args.reindex,
-                true,
-                crate::config_file::load_auto_reindex_config(),
-            )
-            .await;
+            let indexing = crate::utils::reindex_utils::lifecycle_preview_index_result();
             emit_global_add(&plans, true, &refreshed_repositories, Some(&indexing))?;
         } else if plans.iter().all(|plan| plan.changes.is_empty()) {
             crate::outln!("Selected global skills are already satisfied; no changes were applied");
@@ -447,6 +444,9 @@ pub(super) async fn build_origin(
     if args.source_type.is_some() {
         return build_explicit_origin(source, args);
     }
+    if args.repository.is_some() && matches!(source, SkillSource::SkillId(_)) {
+        return build_explicit_origin(source, args);
+    }
     let mut origin = service.infer_origin(&args.source).await?;
     if let Some(repository) = &args.repository {
         match &mut origin {
@@ -515,7 +515,7 @@ fn build_explicit_origin(source: &SkillSource, args: &AddArgs) -> CliResult<Orig
                 (None, None) => GitRef::Default,
             };
             Ok(Origin::Git {
-                url: url.clone(),
+                url: parsed.repo_url,
                 r#ref,
                 subdir: parsed.subdir,
             })
@@ -784,9 +784,10 @@ mod tests {
             .await
             .unwrap();
         assert!(storage.join("demo/SKILL.md").exists());
-        add_global_origins(&service, vec![origin], &preview)
-            .await
-            .unwrap();
+        assert!(matches!(
+            add_global_origins(&service, vec![origin], &preview).await,
+            Err(CliError::Config(message)) if message.contains("--force")
+        ));
 
         let replacement = root.path().join("replacement");
         write_skill(&replacement, "demo", "2.0.0", "second");

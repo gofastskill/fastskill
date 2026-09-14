@@ -67,7 +67,7 @@ impl IntoCommandSpec for ReadArgs {
                     kind: ArgKind::Positional,
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Required,
-                    help: "Exact installed skill identifier (for example 'pptx' or 'scope/pptx')",
+                    help: "Installed skill ID (for example 'pptx' or 'scope/pptx')",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -92,7 +92,7 @@ impl IntoCommandSpec for ReadArgs {
                     name: "format",
                     kind: ArgKind::Option,
                     long: Some("format"),
-                    value_type: ArgValueType::String,
+                    value_type: ArgValueType::Enum(vec!["table", "json", "grid", "xml"]),
                     cardinality: Cardinality::Optional,
                     help: "Output format for --meta mode: table, json, grid, xml (default: table)",
                     ..Default::default()
@@ -139,12 +139,9 @@ impl FromArgValueMap for ReadArgs {
             tree: matches!(map.get("tree"), Some(ArgValue::Bool(true))),
             format: map
                 .get("format")
-                .and_then(|v| {
-                    if let ArgValue::Str(s) = v {
-                        Some(s.as_str())
-                    } else {
-                        None
-                    }
+                .and_then(|v| match v {
+                    ArgValue::Str(s) | ArgValue::Enum(s) => Some(s.as_str()),
+                    _ => None,
                 })
                 .and_then(parse_output_format),
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
@@ -159,11 +156,6 @@ async fn resolve_skill(
     skill_id_str: &str,
     global: bool,
 ) -> CliResult<SkillDefinition> {
-    if skill_id_str.contains('@') {
-        return Err(CliError::Validation(format!(
-            "Installed read accepts an exact canonical ID without a version, got '{skill_id_str}'. Use 'fastskill repo versions <ID>' to discover repository versions."
-        )));
-    }
     let skill_id = fastskill_core::SkillId::new(skill_id_str.to_string()).map_err(|error| {
         CliError::Validation(format!(
             "Invalid skill ID '{skill_id_str}': {error}. Expected 'name' or 'scope/name'."
@@ -175,13 +167,10 @@ async fn resolve_skill(
         .await
         .map_err(CliError::Service)?
         .ok_or_else(|| {
-            let searched_paths = crate::config::get_skill_search_locations_for_display(global)
-                .unwrap_or_else(|_| {
-                    vec![(
-                        service.config().skill_storage_path.clone(),
-                        if global { "global" } else { "project" }.to_string(),
-                    )]
-                });
+            let searched_paths = vec![(
+                service.config().skill_storage_path.clone(),
+                if global { "global" } else { "project" }.to_string(),
+            )];
             CliError::SkillNotFound(SkillNotFoundMessage::new(
                 skill_id_str.to_string(),
                 searched_paths,
@@ -189,7 +178,11 @@ async fn resolve_skill(
         })
 }
 
-fn locked_skill(skill_id: &str, global: bool) -> CliResult<SkillDefinition> {
+fn locked_skill(
+    skill_id: &str,
+    global: bool,
+    mut installed: SkillDefinition,
+) -> CliResult<SkillDefinition> {
     fastskill_core::SkillId::new(skill_id.to_string())
         .map_err(|error| CliError::Validation(format!("Invalid skill ID format: {error}")))?;
     if global {
@@ -204,16 +197,10 @@ fn locked_skill(skill_id: &str, global: bool) -> CliResult<SkillDefinition> {
             .ok_or_else(|| {
                 CliError::Validation(format!("Skill '{skill_id}' not found in global lock"))
             })?;
-        let id = fastskill_core::SkillId::new(entry.id.clone()).map_err(CliError::Service)?;
-        let mut skill = SkillDefinition::new(
-            id,
-            entry.name.clone(),
-            String::new(),
-            entry.resolved.version.clone(),
-            entry.origin.clone(),
-        );
-        skill.dependencies = Some(entry.dependencies.clone());
-        return Ok(skill);
+        installed.version.clone_from(&entry.resolved.version);
+        installed.origin.clone_from(&entry.origin);
+        installed.dependencies = Some(entry.dependencies.clone());
+        return Ok(installed);
     }
     let current = std::env::current_dir().map_err(CliError::Io)?;
     let project = resolve_project_file(&current);
@@ -236,16 +223,10 @@ fn locked_skill(skill_id: &str, global: bool) -> CliResult<SkillDefinition> {
         .ok_or_else(|| {
             CliError::Validation(format!("Skill '{skill_id}' not found in skills.lock"))
         })?;
-    let id = fastskill_core::SkillId::new(entry.id.clone()).map_err(CliError::Service)?;
-    let mut skill = SkillDefinition::new(
-        id,
-        entry.name.clone(),
-        String::new(),
-        entry.resolved.version.clone(),
-        entry.origin.clone(),
-    );
-    skill.dependencies = Some(entry.dependencies.clone());
-    Ok(skill)
+    installed.version.clone_from(&entry.resolved.version);
+    installed.origin.clone_from(&entry.origin);
+    installed.dependencies = Some(entry.dependencies.clone());
+    Ok(installed)
 }
 
 /// Execute the read command
@@ -285,10 +266,11 @@ pub async fn execute_read(
     if args.meta {
         let format = validate_format_args(&args.format, args.json)?;
 
+        let installed = resolve_skill(&service, &args.skill_id, global).await?;
         let skill = if args.locked {
-            locked_skill(&args.skill_id, global)?
+            locked_skill(&args.skill_id, global, installed)?
         } else {
-            resolve_skill(&service, &args.skill_id, global).await?
+            installed
         };
 
         if args.tree && args.json {
@@ -309,9 +291,14 @@ pub async fn execute_read(
             return Ok(());
         }
 
-        let output = format_show_results(&[skill], format)
-            .map_err(|e| CliError::Config(format!("Failed to format output: {}", e)))?;
-        crate::outln!("{}", output);
+        let output = if matches!(format, OutputFormat::Json) {
+            serde_json::to_string_pretty(&skill)
+                .map_err(|e| CliError::Config(format!("Failed to format output: {e}")))?
+        } else {
+            format_show_results(&[skill], format)
+                .map_err(|e| CliError::Config(format!("Failed to format output: {}", e)))?
+        };
+        crate::outln!("{}", output.trim_end());
 
         // If --tree is also set, fall through to print tree after meta
         if args.tree {
@@ -332,36 +319,20 @@ pub async fn execute_read(
     // Default: stream the selected installed SKILL.md.
     let skill = resolve_skill(&service, &args.skill_id, global).await?;
 
-    // T012: Implement base directory extraction from skill_file.parent()
-    let base_dir = skill
-        .skill_file
-        .parent()
-        .ok_or_else(|| CliError::Config("Failed to determine skill base directory".to_string()))?;
-
-    // T015: Implement absolute path resolution using canonicalize()
-    let base_dir_absolute = base_dir
-        .canonicalize()
-        .map_err(|e| CliError::Config(format!("Failed to resolve absolute path: {}", e)))?;
-
     // T044: Implement file size check (500KB limit) before reading
     let metadata = std::fs::metadata(&skill.skill_file).map_err(|e| {
-        eprintln!("Error: Failed to load skill '{}': {}", args.skill_id, e);
-        CliError::Io(e)
+        CliError::Config(format!(
+            "Failed to inspect SKILL.md for '{}': {}: {e}",
+            args.skill_id,
+            skill.skill_file.display()
+        ))
     })?;
 
     const MAX_FILE_SIZE: u64 = 512_000; // 500KB = 512,000 bytes
     if metadata.len() > MAX_FILE_SIZE {
-        eprintln!(
-            "Error: Skill '{}' documentation exceeds size limit",
-            args.skill_id
-        );
-        eprintln!();
-        eprintln!("File size: {} bytes", metadata.len());
-        eprintln!("Maximum size: 500KB ({} bytes)", MAX_FILE_SIZE);
-        eprintln!();
-        eprintln!("Please reduce the size of SKILL.md or split content into reference files.");
         return Err(CliError::Validation(format!(
-            "File size {} exceeds maximum of {} bytes",
+            "Skill '{}' documentation is {} bytes and exceeds maximum SKILL.md size of {} bytes",
+            args.skill_id,
             metadata.len(),
             MAX_FILE_SIZE
         )));
@@ -369,33 +340,16 @@ pub async fn execute_read(
 
     // T013, T045: Implement file reading with error handling for corrupted/unreadable files
     let content = std::fs::read_to_string(&skill.skill_file).map_err(|e| {
-        eprintln!("Error: Failed to load skill '{}': {}", args.skill_id, e);
-        eprintln!();
-        match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                eprintln!("Permission denied: {}", skill.skill_file.display());
-            }
-            std::io::ErrorKind::NotFound => {
-                eprintln!("File not readable: {}", skill.skill_file.display());
-            }
-            _ => {
-                eprintln!("I/O error: {}", e);
-            }
-        }
-        CliError::Io(e)
+        CliError::Config(format!(
+            "Failed to read SKILL.md for '{}': {}: {e}",
+            args.skill_id,
+            skill.skill_file.display()
+        ))
     })?;
 
-    // T014: Implement structured output format (header, base directory, content, footer)
-    // T016: Ensure plain text output with no ANSI colors or formatting codes
-    crate::outln!("Reading: {}", args.skill_id);
-    crate::outln!("Base directory: {}", base_dir_absolute.display());
-    crate::outln!();
+    // Default output is a faithful copy so redirection produces a valid
+    // SKILL.md without command banners or trailing status text.
     print!("{}", content);
-    if !content.ends_with('\n') {
-        crate::outln!();
-    }
-    crate::outln!();
-    crate::outln!("Skill read: {}", args.skill_id);
 
     Ok(())
 }
@@ -555,16 +509,10 @@ mod tests {
             required_by: Vec::new(),
         });
         lock.save_to_file(&temp.path().join("skills.lock")).unwrap();
-        let mut service = FastSkillService::new(ServiceConfig {
-            skill_storage_path: temp.path().join("skills"),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-        service.initialize().await.unwrap();
+        let service = service_with_skill(&temp, "# Demo\n").await;
 
         assert!(execute_read(
-            Arc::new(service),
+            Arc::clone(&service),
             ReadArgs {
                 locked: true,
                 ..args(true, false, false)
@@ -573,8 +521,18 @@ mod tests {
         )
         .await
         .is_ok());
+        let installed = SkillDefinition::new(
+            fastskill_core::SkillId::new("absent".to_string()).unwrap(),
+            "absent".to_string(),
+            String::new(),
+            "1.0.0".to_string(),
+            fastskill_core::core::origin::Origin::Local {
+                path: temp.path().join("skills/absent"),
+                editable: false,
+            },
+        );
         assert!(matches!(
-            locked_skill("absent", false),
+            locked_skill("absent", false, installed),
             Err(CliError::Validation(message)) if message.contains("not found")
         ));
     }

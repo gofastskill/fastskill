@@ -81,7 +81,8 @@ Most commands default to the current project. Use `--global` to operate on the s
 skills directory (`~/.config/fastskill/skills`, tracked by `global-skills.lock`):
 
 ```bash
-fastskill skill add pptx --global
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add pptx --repository team --global
 fastskill skill list --global
 fastskill project install --global --lock
 ```

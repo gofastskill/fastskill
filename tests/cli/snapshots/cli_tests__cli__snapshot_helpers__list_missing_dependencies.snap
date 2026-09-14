@@ -1,10 +1,10 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
 
-ID           Name         Description  Flags                                 
+ID           Name         Description  Flags
 -----------------------------------------------------------------------------
 dev-tools    dev-tools    -            missing from folder; missing from lock
 web-scraper  web-scraper  -            missing from folder; missing from lock

@@ -1,8 +1,9 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 331
+assertion_line: 341
 expression: normalized
 ---
+[WARNING] --skills-dir overrides the project installation directory for this invocation; use the same override for later project commands
 Error: Configuration error: Skills directory does not exist: [TEMP_DIR]
 
 --skills-dir must point to an existing directory. Create it first, or omit --skills-dir to use the default location.

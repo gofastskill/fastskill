@@ -104,21 +104,16 @@ pub fn convert_repository_definition(
     }
 }
 
-/// Return the list of paths (and labels) used when resolving skills, for display in "skill not found" errors.
-///
-/// If global is true, returns global directory path. Otherwise, returns the skills directory from
-/// skill-project.toml [tool.fastskill].skills_directory.
+/// Return the paths used when resolving installed skills for diagnostics.
+#[cfg(test)]
 pub fn get_skill_search_locations_for_display(global: bool) -> CliResult<Vec<(PathBuf, String)>> {
     if global {
         Ok(vec![(global_skills_directory()?, "global".to_string())])
     } else {
         let current_dir = env::current_dir()
-            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-
-        // Use the single loader
+            .map_err(|e| CliError::Config(format!("Failed to get current directory: {e}")))?;
         let config =
             fastskill_core::core::load_project_config(&current_dir).map_err(CliError::Config)?;
-
         Ok(vec![(config.skills_directory, "project".to_string())])
     }
 }
@@ -171,13 +166,18 @@ pub fn create_service_config(
     // 2. global flag
     // 3. project config
     let resolved_dir = if let Some(override_dir) = skills_dir_override {
+        if !global {
+            eprintln!(
+                "[WARNING] --skills-dir overrides the project installation directory for this invocation; use the same override for later project commands"
+            );
+        }
         // Warn if both --skills-dir and --global are provided
         if global {
             let warning_msg = format!(
                 "Both --skills-dir and --global provided; using --skills-dir: {}",
                 override_dir.display()
             );
-            eprintln!("warning: {}", warning_msg);
+            eprintln!("[WARNING] {warning_msg}");
             tracing::warn!("{}", warning_msg);
         }
 

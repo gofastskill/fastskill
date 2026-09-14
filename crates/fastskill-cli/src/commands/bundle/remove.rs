@@ -143,10 +143,7 @@ pub async fn execute_remove(
     if args.dry_run {
         return emit_bundle_removal(&preview, true, args.json);
     }
-    if !confirm_removal(&[format!("bundle {}", args.id)], args.force)? {
-        crate::outln!("Removal cancelled.");
-        return Ok(());
-    }
+    confirm_removal(&[format!("bundle {}", args.id)], args.force)?;
 
     bundles.remove(&args.id).map_err(CliError::Service)?;
     if !args.json {

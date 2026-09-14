@@ -32,7 +32,17 @@ pub fn parse_skill_id(input: &str) -> (String, Option<String>) {
 
 /// Detect the type of skill source (zip, folder, git URL, remote zip URL, or skill ID)
 pub fn detect_skill_source(path: &str) -> SkillSource {
-    // Check if it's a skill ID first
+    // Existing paths always win over the skill-ID shorthand. This lets a
+    // directory such as `demo` work without forcing users to spell it `./demo`.
+    let path_buf = PathBuf::from(path);
+    if path_buf.exists() {
+        if path_buf.extension().and_then(|s| s.to_str()) == Some("zip") {
+            return SkillSource::ZipFile(path_buf);
+        }
+        return SkillSource::Folder(path_buf);
+    }
+
+    // Check if it's a skill ID after checking the filesystem.
     if is_skill_id(path) {
         return SkillSource::SkillId(path.to_string());
     }
@@ -51,8 +61,6 @@ pub fn detect_skill_source(path: &str) -> SkillSource {
             return SkillSource::GitUrl(path.to_string());
         }
     }
-
-    let path_buf = PathBuf::from(path);
 
     // Check if it's a zip file
     if path_buf.extension().and_then(|s| s.to_str()) == Some("zip") {
@@ -133,18 +141,13 @@ pub fn validate_skill_structure(skill_path: &Path) -> CliResult<()> {
                     })
                     .collect();
 
-                let warning_messages: Vec<String> =
-                    warnings.iter().map(|w| format!("⚠ {}", w)).collect();
-
-                let mut all_messages = error_messages;
-                all_messages.extend(warning_messages);
-
-                return Err(CliError::Validation(all_messages.join("\n")));
+                return Err(CliError::Validation(error_messages.join("\n")));
             }
 
-            // Log warnings even if validation passes
+            // Advisory metadata omissions belong in verbose diagnostics, not
+            // in every successful add invocation.
             for warning in warnings {
-                eprintln!("⚠ {}", warning);
+                tracing::debug!("Skill validation advisory: {}", warning);
             }
 
             Ok(())

@@ -9,7 +9,7 @@
 //! no `Any`-downcasting of `AppContext` is needed.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
+#![recursion_limit = "256"]
 mod arg_helpers;
 mod commands;
 mod config;
@@ -53,6 +53,58 @@ fn is_mcp_serve(args: &[String]) -> bool {
     matches!(positionals.first(), Some(&"mcp")) && positionals.contains(&"serve")
 }
 
+fn legacy_skill_verb(args: &[String]) -> Option<&str> {
+    let mut index = 1;
+    while let Some(arg) = args.get(index).map(String::as_str) {
+        match arg {
+            "--global" | "--verbose" | "-v" => index += 1,
+            "--skills-dir" => index += 2,
+            value if value.starts_with("--skills-dir=") => index += 1,
+            _ => break,
+        }
+    }
+    args.get(index).map(String::as_str).filter(|verb| {
+        matches!(
+            *verb,
+            "add" | "remove" | "update" | "list" | "read" | "search"
+        )
+    })
+}
+
+fn reject_legacy_skill_verb(args: &[String]) {
+    if let Some(verb) = legacy_skill_verb(args) {
+        eprintln!(
+            "Error: skill commands moved to 'fastskill skill {verb}'; run 'fastskill skill {verb} --help' for usage"
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Clap otherwise interprets a separate negative integer as another option.
+/// Join this one value so the typed range validator can report the real error.
+fn normalize_negative_search_limit(args: &mut Vec<String>) {
+    let is_search = args.iter().any(|arg| arg == "skill") && args.iter().any(|arg| arg == "search");
+    if !is_search {
+        return;
+    }
+    let mut index = 1;
+    while index + 1 < args.len() {
+        if matches!(args[index].as_str(), "--limit" | "-l")
+            && args[index + 1].parse::<i64>().is_ok_and(|value| value < 0)
+        {
+            let value = args.remove(index + 1);
+            args[index] = format!("{}={value}", args[index]);
+        }
+        index += 1;
+    }
+}
+
+fn app_error_exit_code(error: &anyhow::Error) -> i32 {
+    error
+        .downcast_ref::<crate::error::CliError>()
+        .map_or(1, crate::error::CliError::exit_code)
+}
+
 use commands::{
     add, analyze, bundle, cache, doctor, eval, init, install, list, marketplace, mcp, read,
     reindex, remove, repos, search, serve, skillopt, update,
@@ -64,7 +116,9 @@ const APP_NAME: &str = "fastskill";
 
 #[tokio::main]
 async fn main() {
-    let raw: Vec<String> = std::env::args().collect();
+    let mut raw: Vec<String> = std::env::args().collect();
+    reject_legacy_skill_verb(&raw);
+    normalize_negative_search_limit(&mut raw);
     let verbose = raw.iter().any(|a| a == "--verbose" || a == "-v");
     fastskill_core::init_logging_with_verbose(verbose);
 
@@ -120,6 +174,7 @@ async fn main() {
             std::process::exit(0)
         }
         Err(e) => {
+            let exit_code = app_error_exit_code(&e);
             if json_output {
                 if serde_json::from_str::<serde_json::Value>(captured.trim()).is_ok() {
                     output::emit(captured.trim_end());
@@ -131,7 +186,7 @@ async fn main() {
                 if !lifecycle_json {
                     eprintln!("Error: {e}");
                 }
-                std::process::exit(1);
+                std::process::exit(exit_code);
             }
             // `run_with_args` already writes a structured diagnostic to stderr
             // (via `DiagnosticReporter`) for usage errors — parse failures,
@@ -142,7 +197,7 @@ async fn main() {
             if e.downcast_ref::<cli_framework::app::UsageError>().is_none() {
                 eprintln!("Error: {}", e);
             }
-            std::process::exit(1);
+            std::process::exit(exit_code);
         }
     }
 }
@@ -861,5 +916,34 @@ mod tests {
     fn test_fsctx_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<FsCtx>();
+    }
+
+    #[test]
+    fn negative_search_limit_is_left_for_range_validation() {
+        let mut args = vec![
+            "fastskill".to_string(),
+            "skill".to_string(),
+            "search".to_string(),
+            "demo".to_string(),
+            "--limit".to_string(),
+            "-1".to_string(),
+        ];
+        normalize_negative_search_limit(&mut args);
+        assert_eq!(args.last().map(String::as_str), Some("--limit=-1"));
+    }
+
+    #[test]
+    fn legacy_verb_detection_skips_global_options() {
+        for (args, expected) in [
+            vec!["fastskill", "--verbose", "add"],
+            vec!["fastskill", "--skills-dir=skills", "list"],
+            vec!["fastskill", "--skills-dir", "skills", "search"],
+        ]
+        .into_iter()
+        .zip(["add", "list", "search"])
+        {
+            let owned = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert_eq!(legacy_skill_verb(&owned), Some(expected));
+        }
     }
 }

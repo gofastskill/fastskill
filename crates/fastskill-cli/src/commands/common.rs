@@ -30,8 +30,7 @@ pub fn runtime_selection_error_to_cli(e: RuntimeSelectionError) -> CliError {
 pub fn validate_format_args(format: &Option<OutputFormat>, json: bool) -> CliResult<OutputFormat> {
     match (format, json) {
         (Some(_), true) => Err(CliError::Config(
-            "Error: --json and --format cannot be used together. Use one output selector."
-                .to_string(),
+            "--json and --format cannot be used together; use one output selector".to_string(),
         )),
         (Some(f), false) => Ok(f.clone()),
         (None, true) => Ok(OutputFormat::Json),
@@ -52,7 +51,7 @@ pub fn validate_eval_format_args(
     let resolved = validate_format_args(format, json)?;
     match resolved {
         OutputFormat::Grid | OutputFormat::Xml => Err(CliError::Config(
-            "Error: eval commands support only --format table or json (grid/xml are not \
+            "Eval commands support only --format table or json (grid/xml are not \
              implemented for eval output). Use --format json for machine-readable output."
                 .to_string(),
         )),

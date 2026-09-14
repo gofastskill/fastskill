@@ -15,9 +15,9 @@ skills_directory = ".cursor/skills"
 "#
 }
 
-/// Add from local folder without --verbose: compatibility warning is still shown.
+/// Add from local folder without --verbose: compatibility advice stays quiet.
 #[test]
-fn test_add_from_folder_no_verbose_shows_compatibility_warning() {
+fn test_add_from_folder_no_verbose_hides_compatibility_warning() {
     let temp_dir = TempDir::new().unwrap();
     fs::create_dir_all(temp_dir.path().join(".cursor/skills")).unwrap();
     fs::write(
@@ -35,8 +35,8 @@ fn test_add_from_folder_no_verbose_shows_compatibility_warning() {
 
     assert!(result.success, "add should succeed: {}", result.stderr);
     assert!(
-        result.stderr.contains("No compatibility") || result.stderr.contains("compatibility"),
-        "stderr must contain compatibility warning when not verbose: stderr={}",
+        !result.stderr.contains("compatibility"),
+        "stderr must not contain compatibility advice when not verbose: stderr={}",
         result.stderr
     );
 }

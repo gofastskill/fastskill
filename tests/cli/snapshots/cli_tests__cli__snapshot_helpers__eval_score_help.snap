@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Re-score saved eval artifacts without running the agent again
@@ -8,7 +9,7 @@ Usage: fastskill eval score [OPTIONS] --run-dir <run-dir>
 
 Options:
       --run-dir <run-dir>        Path to the run directory to re-score
-      --skills-dir <skills-dir>  Override the skills directory path
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --format <format>          Output format: table, json
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --json                     Shorthand for --format json

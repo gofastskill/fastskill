@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Fold many eval runs into named, gated metrics
@@ -9,7 +10,7 @@ Usage: fastskill eval scorecard [OPTIONS]
 Options:
       --root <root>              Directory searched recursively for run directories (required unless
                                  --from)
-      --skills-dir <skills-dir>  Override the skills directory path
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --metrics <metrics>        TOML file declaring the metrics and their thresholds (required
                                  unless --from)

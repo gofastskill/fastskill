@@ -83,10 +83,12 @@ fastskill skill search "text processing" --local  # find installed skills by mea
 fastskill skill add ./skills/pptx-helper -e             # local folder, editable (symlink)
 fastskill skill add ./skills -r --group dev             # every SKILL.md under a folder
 fastskill skill add https://github.com/org/skill.git --branch main
-fastskill skill add "https://github.com/org/repo/tree/main/path/to/skill"   # git subdirectory
 fastskill skill add scope/pptx@1.0.0 --repository team  # exact repository version
 fastskill skill add scope/pptx@latest --repository team # newest stable version
 ```
+
+For a skill stored below a Git repository root, declare the clean clone URL and `subdir` as
+described in the [Git sources guide](https://docs.gofastskill.com/registry/sources).
 
 For repository skills, an omitted version and `@latest` both mean the newest stable release.
 `@1.2.0` is an exact selection; prereleases require an explicit prerelease selector. Use

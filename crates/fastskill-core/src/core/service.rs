@@ -281,7 +281,7 @@ pub enum ServiceError {
     #[error("Skill already indexed: {0}")]
     AlreadyIndexed(String),
 
-    #[error("Custom error: {0}")]
+    #[error("{0}")]
     Custom(String),
 }
 
@@ -576,13 +576,11 @@ impl FastSkillService {
                         Ok(_) => {
                             indexed_count += 1;
                         }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to index skill at {}: {}",
-                                skill_file.display(),
-                                e
-                            );
-                        }
+                        Err(e) => eprintln!(
+                            "[WARNING] Skipping invalid skill at {}: {}",
+                            skill_file.display(),
+                            e
+                        ),
                     }
                 }
             }
@@ -639,11 +637,19 @@ impl FastSkillService {
 
         // Set additional fields
         skill.author = frontmatter.author;
+        skill.dependencies = frontmatter.dependencies;
         skill.skill_file = skill_file.to_path_buf();
 
-        // Set timestamps
-        skill.created_at = chrono::Utc::now();
-        skill.updated_at = chrono::Utc::now();
+        // Use filesystem timestamps instead of making every read look newly created.
+        if let Ok(metadata) = tokio::fs::metadata(skill_file).await {
+            if let Ok(modified) = metadata.modified() {
+                skill.updated_at = chrono::DateTime::<chrono::Utc>::from(modified);
+                skill.created_at = metadata
+                    .created()
+                    .map(chrono::DateTime::<chrono::Utc>::from)
+                    .unwrap_or(skill.updated_at);
+            }
+        }
 
         // Try to register the skill (ignore if it is already indexed)
         match self.skill_manager.register_skill(skill).await {

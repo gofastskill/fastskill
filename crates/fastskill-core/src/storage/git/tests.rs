@@ -188,6 +188,18 @@ async fn public_git_operations_report_auth_clone_checkout_and_structure_errors()
     std::fs::write(nested_skill.join("SKILL.md"), "nested").unwrap();
     assert_eq!(validate_cloned_skill(&nested_repo).unwrap(), nested_skill);
 
+    let ambiguous_repo = temp.path().join("ambiguous-repo");
+    for name in ["alpha", "beta"] {
+        let path = ambiguous_repo.join(name);
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("SKILL.md"), name).unwrap();
+    }
+    let error = validate_cloned_skill(&ambiguous_repo)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("multiple skills"));
+    assert!(error.contains("alpha, beta"));
+
     let empty = temp.path().join("empty");
     std::fs::create_dir(&empty).unwrap();
     assert!(validate_cloned_skill(&empty)

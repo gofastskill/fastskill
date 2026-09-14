@@ -41,13 +41,19 @@ See [bundle command](/cli-reference/bundle-command) for the manifest shape and o
 
 ## Add skills
 
+Repository-ID examples below assume a configured catalog:
+
+```bash
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+```
+
 | Operation | Command | What It Does |
 |-----------|---------|--------------|
 | Latest stable | `fastskill skill add pptx@latest --repository team` | Selects the newest stable release from the named repository |
 | Pinned version | `fastskill skill add pptx@1.2.3 --repository team` | Selects that exact version and records the repository identity |
 | From Git | `fastskill skill add https://github.com/org/skill.git` | Clones, validates layout, registers and installs |
 | Editable local path | `fastskill skill add ./dev-skill -e` | Symlink or reference; edits apply without reinstall |
-| Private registry | `fastskill skill add team-skill` | Uses auth from `skill-project.toml` / environment |
+| Private registry | `fastskill skill add team-skill --repository team` | Uses auth from `skill-project.toml` / environment |
 | Folder of skills | `fastskill skill add ./skills -r` | Adds each subdirectory that contains `SKILL.md` (local trees only) |
 | Network share (Windows) | `fastskill skill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory |
 | Offline add | `fastskill skill add pptx@1.2.3 --repository team --offline` | Uses a verified cached artifact without refresh, network, or automatic indexing |
@@ -60,6 +66,9 @@ See [bundle command](/cli-reference/bundle-command) for the manifest shape and o
 | Installed only | `fastskill skill search "query" --local` | Searches skills already on disk |
 | Resolve paths (agents) | `fastskill skill search "query" --local --paths` | Emits canonical skill paths instead of result rows |
 | Paths with content | `fastskill skill search "query" --local --paths --content full` | Includes `SKILL.md` content (`none`, `preview`, or `full`) in JSON |
+
+`--paths` always emits JSON. Editable installs resolve through their managed symlink to the source
+directory, so their path fields are populated like copied installs.
 
 ## Diagnostics
 

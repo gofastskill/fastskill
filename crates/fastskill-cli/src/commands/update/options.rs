@@ -60,6 +60,11 @@ pub(super) fn validate_update_args(args: &UpdateArgs) -> CliResult<()> {
             "--repository requires one SKILL_ID".to_string(),
         ));
     }
+    if args.strategy_explicit && args.skill_id.is_none() {
+        return Err(CliError::Validation(
+            "--strategy requires one SKILL_ID".to_string(),
+        ));
+    }
     Ok(())
 }
 

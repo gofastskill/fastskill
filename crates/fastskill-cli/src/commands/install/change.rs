@@ -92,8 +92,6 @@ pub(crate) async fn prepare_changes(
             })
         })
         .collect();
-    let closure_changed = candidate_unchanged.iter().any(|unchanged| !unchanged);
-
     for (root, id) in roots.iter().zip(&resolution.root_ids) {
         let locked_entry = existing
             .as_ref()
@@ -123,7 +121,9 @@ pub(crate) async fn prepare_changes(
         if groups_changed {
             changes.push("groups changed".to_string());
         }
-        if dependencies_changed || (closure_changed && changes.is_empty()) {
+        let root_closure_changed =
+            closure_has_changes(id, &resolution.candidates, &candidate_unchanged);
+        if dependencies_changed || (root_closure_changed && changes.is_empty()) {
             changes.push("dependency ownership changed".to_string());
         }
         previews.push(ChangePreview {
@@ -228,6 +228,32 @@ pub(crate) async fn prepare_changes(
         },
         previews,
     ))
+}
+
+fn closure_has_changes(
+    root_id: &str,
+    candidates: &[fastskill_core::core::resolution::ResolutionCandidate],
+    unchanged: &[bool],
+) -> bool {
+    let mut pending = vec![root_id.to_string()];
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id.clone()) {
+            continue;
+        }
+        let Some((index, candidate)) = candidates
+            .iter()
+            .enumerate()
+            .find(|(_, candidate)| candidate.prepared.id() == id)
+        else {
+            continue;
+        };
+        if !unchanged.get(index).copied().unwrap_or(false) {
+            return true;
+        }
+        pending.extend(candidate.dependencies.iter().cloned());
+    }
+    false
 }
 
 fn candidate_matches_lock_and_install(

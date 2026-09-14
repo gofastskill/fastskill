@@ -29,7 +29,7 @@ Operations:
 Options:
   --help, -h      Print this help message.
   --version, -V   Print version (fastskill [VERSION]).
-  --skills-dir <skills-dir> Override the skills directory path
+  --skills-dir <skills-dir> Override the installation directory for this invocation
   --global        Use global skills directory (~/.config/fastskill/skills)
   --verbose, -v   Enable verbose output
 
