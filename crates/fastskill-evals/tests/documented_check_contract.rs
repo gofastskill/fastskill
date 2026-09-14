@@ -7,7 +7,9 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use fastskill_evals::{run_checks, suite_passes, ChecksToml};
+use fastskill_evals::{
+    effective_checks, run_checks, suite_passes, validate_case_checks, CheckDefinition, ChecksToml,
+};
 use std::path::Path;
 
 /// `max_command_count` is a legacy alias; results report the canonical
@@ -174,4 +176,68 @@ required = true
         trace,
         Path::new("/tmp")
     )));
+}
+
+/// The setup guide's central authoring contract: `should_trigger` creates a
+/// required per-case expectation even when checks.toml contributes nothing.
+#[test]
+fn should_trigger_generates_positive_and_negative_required_checks() {
+    for expected in [true, false] {
+        let checks = effective_checks(&[], "case-1", expected);
+        assert_eq!(checks.len(), 1);
+        assert!(matches!(checks[0], CheckDefinition::SkillInvoked { .. }));
+        if let CheckDefinition::SkillInvoked {
+            expected: actual,
+            required,
+            cases,
+            ..
+        } = &checks[0]
+        {
+            assert_eq!(*actual, expected);
+            assert!(*required);
+            assert_eq!(cases.as_deref(), Some(["case-1".to_string()].as_slice()));
+        }
+    }
+}
+
+/// Exact case selectors control applicability, and an explicit trigger check
+/// replaces the implicit one only on the selected case. A contradictory
+/// replacement is rejected rather than silently changing CSV intent.
+#[test]
+fn case_scoping_and_explicit_trigger_precedence_match_the_docs() {
+    let parsed: ChecksToml = toml::from_str(
+        r#"
+[[check]]
+name = "skill_invoked"
+expected = true
+cases = ["positive"]
+
+[[check]]
+name = "command_contains"
+pattern = "invoice_number"
+cases = ["positive"]
+"#,
+    )
+    .unwrap();
+
+    let positive = effective_checks(&parsed.checks, "positive", true);
+    assert_eq!(
+        positive.len(),
+        2,
+        "explicit trigger plus scoped outcome check"
+    );
+    let negative = effective_checks(&parsed.checks, "negative", false);
+    assert_eq!(negative.len(), 1, "other-case checks must be excluded");
+    assert!(matches!(
+        negative[0],
+        CheckDefinition::SkillInvoked {
+            expected: false,
+            ..
+        }
+    ));
+
+    assert!(validate_case_checks(&parsed.checks, "positive", true).is_ok());
+    let error = validate_case_checks(&parsed.checks, "positive", false).unwrap_err();
+    assert!(error.to_string().contains("EVAL_CHECKS_INVALID"));
+    assert!(error.to_string().contains("positive"));
 }

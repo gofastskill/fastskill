@@ -206,6 +206,23 @@ _Avoid_: Sweep, report (a rendering), summary (one run directory's, upstream), r
 A rendering of measurements already made — one run directory's summary, or one or more scorecards — as a table, JSON, or one self-contained HTML file with every asset embedded. Producing a report never runs an agent and never re-scores; it reads scorecard files, not run directories, so it can be made anywhere the files are.
 _Avoid_: Dashboard, page, export, scorecard (the measurement it renders)
 
+### Eval authoring
+
+**Eval-authoring skill**:
+A skill that guides an authoring agent through designing evaluation suites according to FastSkill's layouts and standards. It is distinct from the target skill being evaluated.
+
+**Authoring agent**:
+The user-chosen agentic tool that helps design and edit an evaluation suite. It need not be the agent evaluated by that suite.
+
+**Outcome correctness**:
+Whether the result of a skill-assisted task satisfies its intended acceptance criteria, independently of the prescribed method.
+
+**Skill adherence**:
+Whether the agent follows the skill's prescribed method. It is distinct from outcome correctness and is mandatory only where the author identifies the method as a requirement.
+
+**Coverage outline**:
+A proposed selection of behaviors and boundaries to evaluate for a skill, before detailed cases and graders are authored. It is not a Benchmark, which identifies an executable measurement definition.
+
 ## Resolved decisions
 
 - **Historical `sync` is removed.** Modern targets read skills directly. Propagation has exactly two
