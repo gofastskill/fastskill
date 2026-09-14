@@ -1,2 +1,0 @@
-id,prompt,should_trigger,tags
-release-basic,Summarize fixtures/release.md,true,smoke

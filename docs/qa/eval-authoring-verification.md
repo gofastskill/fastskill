@@ -1,6 +1,56 @@
 # Eval-authoring verification record
 
-Status: mandatory implementation evidence complete; draft PR pending. Updated: 2026-09-15.
+Status: implementation and repository-consolidation local gates verified; draft PR CI tracked separately. Updated: 2026-09-15.
+
+## Repository consolidation
+
+The installable authoring workflow belongs to `gofastskill/skill`, inside its existing
+`fastskill/` package. The CLI PR #333 removes the former `skills/eval-authoring/` tree,
+authoring fixtures, and Rust asset-test module after moving them to the skills repository.
+There, `fastskill/SKILL.md` routes to `fastskill/references/eval-authoring.md`; references
+and the invoice example are packaged with it. Scenario fixtures are under
+`evals/authoring/fixtures/`, and executable asset checks are under `scripts/`.
+
+The existing skills-repository `evals/` content measures the FastSkill skill itself.
+Its useful suites, generator, metrics, fixtures, and historical baseline are preserved.
+The companion assessment records obsolete claims and harness defects separately from
+verified behavior. No historical baseline is relabeled as a measurement of this new package.
+
+Companion [skills PR #30](https://github.com/gofastskill/skill/pull/30) contains the
+relocated package and its exact 42-file coverage inventory. On server02, 12 Python tests,
+namespace checks, regenerated-suite parity, and the payload vacuity guard passed.
+A real ZIP installed as version 2.1.0; its copied invoice example and all three existing
+v2 suites validated. Claude Sonnet 4.5 extended a suite through the explicitly supplied
+installed entrypoint; caller validation passed and original files/positive row were preserved.
+All relocated fixture bytes and the installed payload were checked unchanged. This scoped
+exercise is not a new full live baseline or proof of automatic skill discovery.
+
+The repaired Bash runner measured 93.1% line coverage; staging measured 100% Bash lines
+and its exact embedded Python measured 100% statements. Bash branch instrumentation is
+unavailable, not represented as passing. Six engine contract tests and 13 CLI
+documentation/related tests passed again after relocation, as did formatting, source-size,
+and diff checks. Earlier full regression, CLI coverage, two-tool authoring, and native
+judge evidence remain applicable to unchanged implementation and assets. Raw relocation
+evidence is retained beside this checkout under `work/`, including
+`relocation-authoring-result.json`, `package-smoke-hHkVYA/`, `shell-coverage-v2/`, and
+`embedded-coverage-6f4x9rtk/`.
+
+The inventory below records the original implementation paths and evidence. Moved-file
+coverage now belongs to the skills repository's consolidation record. This CLI PR retains:
+
+| Current changed file | Verification |
+| --- | --- |
+| `CONTEXT.md` | existing authoring vocabulary and requirement mapping |
+| `crates/fastskill-cli/src/main.rs` | recorded 91.22% line / 96.00% branch coverage; recursion-limit-only change |
+| `crates/fastskill-evals/tests/documented_check_contract.rs` | six engine contract tests remain in the owning repository |
+| `docs/adr/0011-skill-first-eval-authoring.md` | original skill-first workflow evidence |
+| `docs/adr/0012-separate-outcomes-from-adherence.md` | original conversion/defect contrasts |
+| `docs/adr/0013-skill-driven-eval-authoring.md` | original two-agent authoring and file handoff |
+| `docs/requirements/eval-authoring-proposal.md` | original requirement mapping |
+| `docs/requirements/eval-authoring-skill-prd.md` | original workflow evidence; package integration checked in companion repository |
+| `docs/requirements/eval-authoring-support-prd.md` | ownership clarified; link and documentation checks |
+| `docs/qa/eval-authoring-verification.md` | historical evidence retained; current ownership and limitations explicit |
+| `webdocs/evals-quality/setup.mdx` | corrected semantics, credential boundary, and distribution links |
 
 ## Current evidence (supersedes historical status tables below)
 
@@ -18,7 +68,7 @@ Status: mandatory implementation evidence complete; draft PR pending. Updated: 2
 - Native judge calibration used the owner-approved OpenAI-compatible gateway at `https://llm-gateway.tailb1f947.ts.net/v1`, credential variable `OPENAI_API_KEY`, and the gateway's sole advertised model, `tools-advanced`. With the same criterion and a 4,096-token response allowance, the preserved `15.00` defect scored 0.0 and failed, while the corrected `17.00` result scored 1.0 and passed; both completed with zero judge errors. Evidence is retained under `work/native-judge/` beside this checkout.
 - The saved summaries recorded an absolute Windows skill-project path. Direct Linux judging failed with `EVAL_CONFIG_MISSING`; the global `--skills-dir` option does not relocate the recorded project root. Calibration therefore used untouched originals plus copied run artifacts whose `skill_project_root` alone was repaired to the preserved Linux project. The initial 1,024-token corrected attempt was retained as a judge-error example (`finish_reason` `length`) and was not counted as passing evidence.
 
-No PR has been created. Historical environment blockers below are retained as attempt history, not current claims.
+Draft PR #333 contains the CLI work. Historical environment blockers below are retained as attempt history, not current claims.
 
 This record keeps deterministic checks, live authoring exercises, and release gaps distinct. It must not be read as a release attestation while any mandatory row is incomplete.
 
@@ -42,7 +92,7 @@ This record keeps deterministic checks, live authoring exercises, and release ga
 | WF8, A10, AT11 | Claude continued and repaired Codex-authored files; corrected rerun and saved-evidence rescore; handoff record | passed |
 | ST2-ST3 | pinned suite validation; six contract tests; four asset tests including intended contradiction failure | passed |
 
-## Changed-file coverage inventory
+## Original changed-file coverage inventory (before consolidation)
 
 Every path below is relative to the repository root. `assets` means the four executed `eval_authoring_assets_test` tests; `contracts` means the six executed `documented_check_contract` tests; `parity` means the executed documentation command/config/link checks; `workflow` means the saved Codex/Claude authoring, continuation, defect/correction, pilot, and rescore evidence summarized above.
 
@@ -119,4 +169,6 @@ Every path below is relative to the repository root. `assets` means the four exe
 - The unrelated `manifest_add_records_repository_intent_after_catalog_match` test can consume stale shared cache state when the test process inherits the default cache root. It passes with a fresh supported `FASTSKILL_CACHE_DIR`; this isolation defect is recorded but does not justify widening the eval-authoring implementation.
 - Saved eval runs currently retain an absolute originating `skill_project_root`; judging a copied run on another operating system requires an evidence-copy path repair. The original artifacts were preserved, and this limitation does not invalidate the executed contrast.
 
-Mandatory gates are complete. Create a draft pull request only; do not enable auto-merge or merge it.
+The original calibration and local consolidation gates are complete. GitHub CI is a
+separate check on the pushed revisions. Both PRs remain drafts; do not enable auto-merge
+or merge them. The companion report explicitly records retained harness limitations.

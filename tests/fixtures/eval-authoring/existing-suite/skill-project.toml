@@ -1,3 +1,0 @@
-[tool.fastskill.eval]
-prompts = "evals/prompts.csv"
-checks = "evals/checks.toml"

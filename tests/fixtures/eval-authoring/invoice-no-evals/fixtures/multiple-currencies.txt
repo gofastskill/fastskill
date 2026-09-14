@@ -1,5 +1,0 @@
-Invoice: INV-9
-Date: 2026-09-09
-Line item: USD 10.00
-Tax: EUR 2.00
-Total: USD 12.00

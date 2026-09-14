@@ -67,6 +67,13 @@ Correct any guidance that confuses scratch-workspace skill isolation with OS-lev
 
 ## Delivery and ownership
 
+The installable workflow is part of `gofastskill/skill` under `fastskill/`:
+`SKILL.md` routes to `references/eval-authoring.md` and its supporting references/example.
+Authoring fixtures and asset tests belong in that repository's `evals/authoring/` and
+`scripts/` directories. This CLI repository owns the engine contract tests, public command
+reference, requirements, and verification record. See the
+[consolidation assessment](https://github.com/gofastskill/skill/blob/main/specs/002-eval-authoring-consolidation.md).
+
 ### Workflow and coverage obligations
 
 Use the primary PRD's [reference workflow](eval-authoring-skill-prd.md#reference-user-workflow-for-implementation-and-testing), test skills, live-tool choices, and [changed-file coverage requirements](eval-authoring-skill-prd.md#high-coverage-for-every-touched-file) as mandatory implementation and testing references. They apply equally to files changed under this support PRD and to any associated upstream fixes.

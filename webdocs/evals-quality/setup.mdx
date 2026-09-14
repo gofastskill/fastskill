@@ -7,14 +7,19 @@ description: "Author an eval suite: the [tool.fastskill.eval] manifest table, th
 
 This page is the reference for **authoring** an eval suite: the config table in `skill-project.toml`, the prompts CSV a suite is made of, and the optional checks TOML that actually decides pass/fail. Work through it top to bottom once, then use [Run evals](/evals-quality/run-evals) for the day-to-day commands.
 
+For guided suite design, use the [FastSkill skill](https://github.com/gofastskill/skill/tree/main/fastskill).
+Its [eval-authoring workflow](https://github.com/gofastskill/skill/blob/main/fastskill/references/eval-authoring.md)
+and copyable invoice example are maintained and packaged in the skills repository.
+
 ## Prerequisites
 
 - `skill-project.toml` exists (project root or skill directory — `fastskill` walks up the tree to find it).
 - `SKILL.md` exists alongside it if you're authoring a single skill's suite.
 - For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk: `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine; a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`. `fastskill eval validate --all` reports which keys are detected in *your* environment.
 
-Evals do not require embedding or `OPENAI_API_KEY`; those are used by `index rebuild` and
-`skill search --local`.
+Deterministic validation and scoring need no model credential. Target execution needs the
+selected runtime's authentication; native judges separately need their configured endpoint,
+model, and credential environment variable. Embedding configuration is unrelated.
 
 ## 1. The `[tool.fastskill.eval]` table
 

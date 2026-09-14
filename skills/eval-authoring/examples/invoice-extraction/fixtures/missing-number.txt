@@ -1,3 +1,0 @@
-Date: 2026-09-02
-Currency: EUR
-Total: 78.90

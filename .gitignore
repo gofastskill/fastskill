@@ -218,12 +218,6 @@ tmp/
 
 # Specific to this project
 skills/
-# This repository ships the maintained eval-authoring skill; keep other local
-# skill workspaces ignored.
-!skills/
-skills/*
-!skills/eval-authoring/
-!skills/eval-authoring/**
 *.skill
 *.zip
 temp_skills/
@@ -344,8 +338,6 @@ repomix-output.xml
 coverage-after
 coverage-before
 skill-project.toml
-!skills/eval-authoring/examples/invoice-extraction/skill-project.toml
-!tests/fixtures/eval-authoring/existing-suite/skill-project.toml
 # Local opencode runtime state
 .opencode/opencode.json
 /webdocs/lib/generated/
