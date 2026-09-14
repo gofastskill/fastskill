@@ -324,32 +324,8 @@ impl ContextResolver {
                 // Editable installs are represented by a top-level symlink in
                 // the managed skills directory. Resolve paths through that
                 // explicit link while continuing to reject arbitrary escapes.
-                let editable_entry = (|| {
-                    // Normalize the parent, not the link: following the link
-                    // here would lose the distinction between an editable
-                    // install and an arbitrary path outside the skills root.
-                    let root = self.skills_root.canonicalize().ok()?;
-                    let relative = path.strip_prefix(&self.skills_root).ok()?;
-                    let std::path::Component::Normal(name) = relative.components().next()? else {
-                        return None;
-                    };
-                    let name = validate_path_component(name.to_str()?).ok()?;
-                    let entry = root.join(name);
-                    // Check the normalized, single-component entry before any
-                    // metadata access. Only this direct child may be a link.
-                    if !entry.starts_with(&root) {
-                        return None;
-                    }
-                    Some(entry)
-                })();
-                if let Some(entry) = editable_entry.filter(|entry| {
-                    std::fs::symlink_metadata(entry).is_ok_and(|m| m.file_type().is_symlink())
-                }) {
-                    // The editable target is the boundary, not an exemption
-                    // from containment checks for paths beneath that target.
-                    if let Ok(canonical) = validate_path_within_root(path, &entry) {
-                        return Ok(Some(canonical.to_string_lossy().to_string()));
-                    }
+                if let Some(canonical) = self.canonicalize_editable_path(path) {
+                    return Ok(Some(canonical.to_string_lossy().to_string()));
                 }
                 tracing::warn!(
                     "RESOLVE_PATH_ESCAPE: path '{}' validation failed: {}",
@@ -359,6 +335,29 @@ impl ContextResolver {
                 Ok(None)
             }
         }
+    }
+
+    fn canonicalize_editable_path(&self, path: &Path) -> Option<PathBuf> {
+        // Normalize the parent, not the link: following the link here would
+        // lose the distinction between an editable install and an escape.
+        let root = self.skills_root.canonicalize().ok()?;
+        let relative = path.strip_prefix(&self.skills_root).ok()?;
+        let std::path::Component::Normal(name) = relative.components().next()? else {
+            return None;
+        };
+        let name = validate_path_component(name.to_str()?).ok()?;
+        let entry = root.join(name);
+        // Keep the containment guard and the filesystem access in the same
+        // control-flow scope. Only a normalized direct child may be a link.
+        if !entry.starts_with(&root) {
+            return None;
+        }
+        let metadata = std::fs::symlink_metadata(&entry).ok()?;
+        if !metadata.file_type().is_symlink() {
+            return None;
+        }
+        // The editable target remains the boundary for all descendants.
+        validate_path_within_root(path, &entry).ok()
     }
 
     async fn read_content(
