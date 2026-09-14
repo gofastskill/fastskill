@@ -92,7 +92,7 @@ pub enum SearchError {
     Config(String),
     #[error("Validation error: {0}")]
     Validation(String),
-    #[error("Service error: {0}")]
+    #[error("{0}")]
     Service(#[from] crate::ServiceError),
     #[error("Repository error: {0}")]
     Repository(String),

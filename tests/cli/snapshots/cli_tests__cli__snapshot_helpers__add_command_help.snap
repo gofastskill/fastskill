@@ -11,7 +11,7 @@ Arguments:
   <source>  Source: path to zip file, folder, git URL, or skill ID (e.g., pptx@[VERSION])
 
 Options:
-      --skills-dir <skills-dir>    Override the skills directory path
+      --skills-dir <skills-dir>    Override the installation directory for this invocation
       --source-type <source-type>  Override source type (registry, github/git, local) [possible:
                                    registry|github|git|local]
       --global                     Use global skills directory (~/.config/fastskill/skills)
@@ -26,7 +26,7 @@ Options:
       --reindex                    Trigger reindex after adding (overrides config)
       --no-reindex                 Skip reindex after adding
       --offline                    Use verified local sources and cached artifacts only
-      --dry-run                    Validate and preview without changing project state
+      --dry-run                    Validate and preview without changing managed state
       --json                       Emit one machine-readable lifecycle result
   -h, --help                       Print help
   -V, --version                    Print version

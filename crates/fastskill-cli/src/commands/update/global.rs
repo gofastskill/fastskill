@@ -218,6 +218,18 @@ fn emit_global_result(
             })
         })
         .collect::<Vec<_>>();
+    let indexing = match indexing {
+        Some(indexing) => serde_json::to_value(indexing).map_err(|error| {
+            CliError::Config(format!(
+                "Failed to serialize global update indexing: {error}"
+            ))
+        })?,
+        None => serde_json::json!({
+            "outcome": "skipped",
+            "count": 0,
+            "diagnostic": "update did not reach indexing"
+        }),
+    };
     crate::outln!(
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
@@ -226,6 +238,10 @@ fn emit_global_result(
             "dry_run": dry_run,
             "targets": targets,
             "diagnostics": failures,
+            "resolution": {
+                "source": "cached",
+                "refreshed_repositories": Vec::<String>::new()
+            },
             "indexing": indexing
         }))
         .map_err(|error| CliError::Config(format!(
@@ -471,11 +487,6 @@ pub(super) async fn execute_update_global(
     args: UpdateArgs,
     skills_dir_override: Option<PathBuf>,
 ) -> CliResult<()> {
-    if !args.json {
-        crate::outln!("Updating global skills...");
-        crate::outln!();
-    }
-
     let lock_path = global_lock_path().map_err(|error| {
         CliError::Config(format!("Failed to resolve global lock path: {error}"))
     })?;
@@ -683,28 +694,26 @@ pub(super) async fn execute_update_global(
                 plan.current_revision.as_deref().unwrap_or("not installed"),
                 plan.target_revision,
                 if plan.changes.is_empty() {
-                    "unchanged"
+                    "unchanged".to_string()
                 } else {
-                    "change"
+                    plan.changes.join(", ")
                 }
             );
         }
     }
     if args.check || args.dry_run {
         if args.json {
-            let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
-                &service,
-                "update",
-                args.reindex,
-                true,
-                crate::config_file::load_auto_reindex_config(),
-            )
-            .await;
+            let indexing = crate::utils::reindex_utils::lifecycle_preview_index_result();
             emit_global_result(&prepared, true, &[], Some(&indexing))?;
         } else {
             crate::outln!("{}", messages::info("No changes were applied"));
         }
         return Ok(());
+    }
+
+    if !args.json {
+        crate::outln!("Updating global skills...");
+        crate::outln!();
     }
 
     let state_root = lock_path

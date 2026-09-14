@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
 Run eval cases against an agent
@@ -8,7 +9,7 @@ Usage: fastskill eval run [OPTIONS] --output-dir <output-dir>
 
 Options:
   -a, --agent <agent>              Target runtime(s); repeatable (mutually exclusive with --all)
-      --skills-dir <skills-dir>    Override the skills directory path
+      --skills-dir <skills-dir>    Override the installation directory for this invocation
       --all                        Target all runtimes (mutually exclusive with --agent)
       --global                     Use global skills directory (~/.config/fastskill/skills)
       --output-dir <output-dir>    Output directory for artifacts (required)

@@ -9,7 +9,7 @@ Usage: fastskill optimization run [OPTIONS] --config <config>
 
 Options:
       --config <config>          Path to optimize config file
-      --skills-dir <skills-dir>  Override the skills directory path
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --global                   Use global skills directory (~/.config/fastskill/skills)
       --out-dir <out-dir>        Override the out_dir from the config file
       --resume <resume>          Resume from this run directory instead of starting fresh

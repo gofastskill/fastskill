@@ -109,9 +109,15 @@ pub(super) fn render_update_previews(previews: &[crate::commands::install::chang
             preview.resolved_version,
             direction
         );
-        for warning in &preview.warnings {
-            eprintln!("  {}", crate::utils::messages::warning(warning));
-        }
+    }
+    let mut warnings = previews
+        .iter()
+        .flat_map(|preview| preview.warnings.iter())
+        .collect::<Vec<_>>();
+    warnings.sort();
+    warnings.dedup();
+    for warning in warnings {
+        eprintln!("  {}", crate::utils::messages::warning(warning));
     }
 }
 

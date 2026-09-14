@@ -239,8 +239,39 @@ fastskill supports several feature flags that affect available functionality:
 | Test Type              | Command                                   | Description                                         |
 | ---------------------- | ----------------------------------------- | --------------------------------------------------- |
 | **Fast local checks**  | `cargo nextest run`                       | Unit tests, integration tests with default features |
-| **Full CI equivalent** | `cargo nextest run --all-features`        | All tests with optional features enabled            |
+| **Local PR validation** | `bash scripts/run-tests.sh --base origin/main` | Linux PR gates, including coverage and web docs |
 | **Feature-specific**   | `cargo nextest run --features hot-reload` | Tests requiring specific optional features          |
+
+Before opening a PR, fetch its target branch (for example `git fetch origin main`), commit
+Rust changes, and run `bash scripts/run-tests.sh --base origin/main`. For another PR target,
+pass that target ref or SHA with `--base`. The script does not fetch or install tools automatically.
+It rejects uncommitted Rust changes because the coverage checker compares committed changes.
+
+Prerequisites: the repository Rust toolchain, `cargo-nextest`, `cargo-llvm-cov`,
+`rustup component add llvm-tools-preview`, Python 3, Node 22 and pnpm 10.21.0.
+The runner prefers `corepack pnpm` when Corepack is on PATH, using the version pinned
+in `webdocs/package.json`; otherwise it uses `pnpm` from that directory. You do not
+need to downgrade your global pnpm. Corepack may download the pinned version on first use.
+The runner checks formatting, source size, Clippy, build/binary smoke, default-feature tests,
+instrumented all-feature tests and the coverage threshold, web docs install/content/lint/types/build/export,
+then the uninstrumented all-feature suite. It uses CI's install-E2E exclusion and retries;
+dependency audit findings remain advisory, just as in CI. Coverage reports are retained in a
+printed temporary directory. A missing prerequisite or failed mandatory gate exits nonzero;
+early gate failures are on stderr and do not emit a success JSON report. Report test counts
+describe the final uninstrumented all-feature suite, not the sum of all test runs.
+
+This is **not a guarantee of remote CI success**: Windows execution, CodeQL analysis and
+GitHub-side setup/upload permissions are not reproduced. Release/nightly jobs are also outside
+this PR runner. Check remote results before merging. The existing optional Git hook installer
+does not automatically install or invoke this full runner.
+
+CodeQL uses GitHub's default setup for Actions, JavaScript/TypeScript, Python and Rust.
+Do not add an advanced CodeQL workflow while default setup is enabled: GitHub rejects
+its uploads. The default setup continues to run PR security analysis independently.
+
+Runner regression tests: `python3 -m unittest discover -s scripts/tests -p 'test_local_ci.py'`.
+Keep `scripts/check-local-ci.sh` and `scripts/run-tests.sh` aligned when changing
+`.github/workflows/test.yml`, `coverage.yml`, or `webdocs.yml`.
 
 Pull requests must keep every modified production Rust file above 90% line coverage. Run the same
 gate as CI after generating the coverage report:

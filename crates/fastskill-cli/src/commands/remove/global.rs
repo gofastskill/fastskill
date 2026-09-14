@@ -25,7 +25,8 @@ pub(super) fn preview(
 ) -> CliResult<GlobalRemovalPlan> {
     let (path, bytes) = load_lock()?;
     let lock = lock_from_bytes(&bytes, &path)?;
-    let plan = plan_removal(&lock, requested).map_err(CliError::Service)?;
+    let mut plan = plan_removal(&lock, requested).map_err(CliError::Service)?;
+    include_extraneous_installs(service, &mut plan)?;
     validate_unmodified(service, &lock, &plan.delete_files)?;
     Ok(plan)
 }
@@ -35,7 +36,10 @@ pub(super) async fn remove(
     requested: &[String],
 ) -> CliResult<GlobalRemovalPlan> {
     let preview = preview(service, requested)?;
-    if preview.remove_roots.is_empty() && preview.remove_lock_entries.is_empty() {
+    if preview.remove_roots.is_empty()
+        && preview.remove_lock_entries.is_empty()
+        && preview.delete_files.is_empty()
+    {
         return Ok(preview);
     }
     let (lock_path, original_lock) = load_lock()?;
@@ -52,9 +56,14 @@ pub(super) async fn remove(
     let guard = StateMutationGuard::acquire_for(state_root, Some(storage), "remove global skills")
         .map_err(CliError::Service)?;
     let refreshed = (|| {
-        let current_bytes = fs::read(&lock_path).map_err(CliError::Io)?;
+        let current_bytes = match fs::read(&lock_path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => return Err(CliError::Io(error)),
+        };
         let lock = lock_from_bytes(&current_bytes, &lock_path)?;
-        let current = plan_removal(&lock, requested).map_err(CliError::Service)?;
+        let mut current = plan_removal(&lock, requested).map_err(CliError::Service)?;
+        include_extraneous_installs(service, &mut current)?;
         Ok::<_, CliError>((current_bytes, lock, current))
     })();
     let (current_bytes, mut lock, current) = match refreshed {
@@ -114,6 +123,31 @@ pub(super) async fn remove(
     lifecycle.commit();
     guard.commit().map_err(CliError::Service)?;
     Ok(current)
+}
+
+fn include_extraneous_installs(
+    service: &FastSkillService,
+    plan: &mut GlobalRemovalPlan,
+) -> CliResult<()> {
+    let mut extraneous = Vec::new();
+    for id in &plan.unchanged {
+        let path = service.config().skill_storage_path.join(id);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata)
+                if metadata.file_type().is_symlink() || metadata.is_dir() || metadata.is_file() =>
+            {
+                extraneous.push(id.clone());
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(CliError::Io(error)),
+        }
+    }
+    plan.unchanged.retain(|id| !extraneous.contains(id));
+    plan.delete_files.extend(extraneous);
+    plan.delete_files.sort();
+    plan.delete_files.dedup();
+    Ok(())
 }
 
 fn load_lock() -> CliResult<(PathBuf, Vec<u8>)> {
@@ -493,6 +527,29 @@ mod tests {
             .unwrap()
             .is_none());
         assert_no_recovery_markers(root.path());
+    }
+
+    #[tokio::test]
+    async fn explicitly_requested_extraneous_install_is_removed() {
+        let _mutex = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let root = TempDir::new().unwrap();
+        let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &root.path().join("config"));
+        let storage = root.path().join("config/fastskill/skills");
+        fs::create_dir_all(storage.join("extra")).unwrap();
+        fs::write(storage.join("extra/SKILL.md"), "extra").unwrap();
+        let service = FastSkillService::new(ServiceConfig {
+            skill_storage_path: storage.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let plan = remove(&service, &["extra".to_string()]).await.unwrap();
+
+        assert_eq!(plan.delete_files, vec!["extra"]);
+        assert!(!storage.join("extra").exists());
     }
 
     #[cfg(unix)]

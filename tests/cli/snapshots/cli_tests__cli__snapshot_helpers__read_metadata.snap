@@ -1,11 +1,8 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 262
+assertion_line: 341
 expression: normalized
 ---
-Reading: test-skill
-Base directory: [TEMP_DIR]
-
 ---
 name: test-skill
 description: A test skill for metadata display
@@ -20,5 +17,3 @@ This skill tests metadata display functionality.
 ## Usage
 
 Used for testing metadata display.
-
-Skill read: test-skill

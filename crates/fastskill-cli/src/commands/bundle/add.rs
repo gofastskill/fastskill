@@ -143,7 +143,15 @@ async fn download_artifact(url: &str) -> CliResult<TempDir> {
 pub(crate) async fn reject_skill_source(source: &SkillSource, offline: bool) -> CliResult<()> {
     let mut downloaded = None;
     let artifact = match source {
-        SkillSource::ZipFile(path) => Some(path.clone()),
+        SkillSource::ZipFile(path) => {
+            if !path.exists() {
+                return Err(CliError::InvalidSource(format!(
+                    "ZIP source does not exist: {}",
+                    path.display()
+                )));
+            }
+            Some(path.clone())
+        }
         SkillSource::RemoteZipUrl(url) if !offline && is_remote_artifact(url) => {
             let temporary = download_artifact(url).await?;
             let path = temporary.path().join("bundle.zip");

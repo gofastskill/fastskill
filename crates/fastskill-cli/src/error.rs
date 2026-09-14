@@ -39,7 +39,7 @@ impl std::fmt::Display for SkillNotFoundMessage {
         writeln!(f)?;
         writeln!(f, "Searched locations:")?;
         for (path, label) in &self.searched_paths {
-            writeln!(f, "  \u{2713} {} ({})", path.display(), label)?;
+            writeln!(f, "  - {} ({})", path.display(), label)?;
         }
         writeln!(f)?;
         writeln!(f, "Try:")?;
@@ -66,7 +66,7 @@ impl SkillNotFoundMessage {
 /// Standard "Try" lines shown when a skill is not found.
 pub fn skill_not_found_try_suggestions() -> Vec<String> {
     vec![
-        "fastskill skill add owner/repo".to_string(),
+        "fastskill skill add <skill-id> --repository <name>".to_string(),
         "fastskill skill list                    # See available skills".to_string(),
     ]
 }
@@ -82,10 +82,10 @@ pub enum CliError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Service error: {0}")]
+    #[error("{0}")]
     Service(#[from] fastskill_core::ServiceError),
 
-    #[error("Search error: {0}")]
+    #[error("{0}")]
     Search(#[from] fastskill_core::SearchError),
 
     #[error("Validation error: {0}")]
@@ -134,7 +134,6 @@ pub fn manifest_required_message() -> &'static str {
 }
 
 impl CliError {
-    #[allow(dead_code)]
     /// Get the exit code for this error
     /// Returns: 0 = success, 1 = not found/invalid, 2 = system error
     pub fn exit_code(&self) -> i32 {

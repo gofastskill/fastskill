@@ -3,5 +3,5 @@ source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 assertion_line: 341
 expression: normalized
 ---
-{"error":{"message":"Configuration error: Error: --json and --format cannot be used together. Use one output selector."},"success":false}
-Error: Configuration error: Error: --json and --format cannot be used together. Use one output selector.
+{"error":{"message":"Configuration error: --json and --format cannot be used together; use one output selector"},"success":false}
+Error: Configuration error: --json and --format cannot be used together; use one output selector

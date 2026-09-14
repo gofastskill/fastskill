@@ -23,7 +23,7 @@ pub fn configure(builder: AppBuilder) -> anyhow::Result<AppBuilder> {
             long: Some("skills-dir"),
             value_type: ArgValueType::String,
             cardinality: Cardinality::Optional,
-            help: "Override the skills directory path",
+            help: "Override the installation directory for this invocation",
             ..Default::default()
         })
         .global_flag(ArgSpec {

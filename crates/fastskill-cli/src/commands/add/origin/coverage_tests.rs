@@ -82,8 +82,11 @@ async fn repository_selectors_preserve_constraints_and_require_configured_names(
         .to_string()
         .contains("Repository 'missing' is not configured"));
     selected.repository = Some("private".to_string());
+    let exact_reference = SkillSource::SkillId(selected.source.clone());
     assert_eq!(
-        build_origin(&service, &reference, &selected).await.unwrap(),
+        build_origin(&service, &exact_reference, &selected)
+            .await
+            .unwrap(),
         Origin::Repository {
             repo: "private".to_string(),
             skill: "team/demo".to_string(),
@@ -138,10 +141,15 @@ async fn inferred_git_selectors_have_explicit_precedence_without_fetching() {
             .await
             .unwrap();
         let subdir = url.contains("/tree/").then(|| PathBuf::from("skills/demo"));
+        let clone_url = if url.contains("/tree/") {
+            "https://github.com/team/demo.git"
+        } else {
+            url
+        };
         assert_eq!(
             origin,
             Origin::Git {
-                url: url.to_string(),
+                url: clone_url.to_string(),
                 r#ref: expected,
                 subdir
             }
@@ -157,7 +165,7 @@ async fn inferred_git_selectors_have_explicit_precedence_without_fetching() {
 }
 
 #[tokio::test]
-async fn global_replacement_updates_one_lock_entry_and_repeat_is_unchanged() {
+async fn global_replacement_requires_force_and_updates_one_lock_entry() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -182,6 +190,14 @@ async fn global_replacement_updates_one_lock_entry_and_repeat_is_unchanged() {
     let initial_install = lock.skills[0].installed_at;
 
     write_skill(&source, "demo", "2.0.0", "second");
+    assert!(
+        add_global_skill(&service, &SkillSource::Folder(source.clone()), &selected,)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("--force")
+    );
+    selected.force = true;
     add_global_skill(&service, &SkillSource::Folder(source.clone()), &selected)
         .await
         .unwrap();
@@ -194,19 +210,14 @@ async fn global_replacement_updates_one_lock_entry_and_repeat_is_unchanged() {
         .unwrap()
         .contains("second"));
     let previous_lock = fs::read(&lock_path).unwrap();
-    let (result, output) = crate::output::capture(add_global_skill(
-        &service,
-        &SkillSource::Folder(source.clone()),
-        &selected,
-    ))
-    .await;
-    result.unwrap();
-    let output: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(output["outcome"], "unchanged");
+    selected.force = false;
+    let result = add_global_skill(&service, &SkillSource::Folder(source.clone()), &selected).await;
+    assert!(result.unwrap_err().to_string().contains("--force"));
     assert_eq!(fs::read(&lock_path).unwrap(), previous_lock);
 
     let installed_before = fs::read(storage.join("demo/SKILL.md")).unwrap();
     selected.group = Some("production".to_string());
+    selected.force = true;
     let (result, output) = crate::output::capture(add_global_skill(
         &service,
         &SkillSource::Folder(source),

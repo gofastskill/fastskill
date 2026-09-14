@@ -93,7 +93,7 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("check"),
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
-                    help: "Check for updates without installing",
+                    help: "Check for updates without installing (cannot be combined with --dry-run)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -102,7 +102,7 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("dry-run"),
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
-                    help: "Show what would be updated without actually updating",
+                    help: "Validate and preview without changing managed state (cannot be combined with --check)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -111,7 +111,7 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("to-version"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Update to specific version",
+                    help: "Update one repository-origin skill to an exact version; requires SKILL_ID",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -129,7 +129,7 @@ impl IntoCommandSpec for UpdateArgs {
                     long: Some("repository"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Use this configured repository for one repository-backed skill",
+                    help: "Use this configured repository for one repository-origin skill; requires SKILL_ID",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -139,7 +139,7 @@ impl IntoCommandSpec for UpdateArgs {
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     default: None,
-                    help: "Update strategy: latest, patch, minor, major",
+                    help: "Update strategy for one repository-origin skill: latest, patch, minor, major; requires SKILL_ID",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -220,14 +220,14 @@ pub async fn execute_update(
     global: bool,
     skills_dir_override: Option<PathBuf>,
 ) -> CliResult<()> {
+    if args.source.is_some() {
+        eprintln!("[WARNING] --source is deprecated; use --repository");
+    }
     validate_update_args(&args)?;
     if global && skills_dir_override.is_some() {
         return Err(CliError::Validation(
             "--global and --skills-dir cannot be combined".to_string(),
         ));
-    }
-    if args.source.is_some() {
-        eprintln!("warning: --source is deprecated; use --repository");
     }
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
@@ -250,11 +250,6 @@ async fn execute_update_project(
     args: UpdateArgs,
     skills_dir_override: Option<PathBuf>,
 ) -> CliResult<()> {
-    if !args.json {
-        crate::outln!("Updating skills...");
-        crate::outln!();
-    }
-
     // T034: Resolve skill-project.toml from project root
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -331,7 +326,12 @@ async fn execute_update_project(
             })?;
         entry.origin =
             controlled_origin(&entry.origin, &locked.resolved.version, &args).map_err(|error| {
-                CliError::Validation(format!("Cannot update '{}': {error}", entry.id))
+                match error {
+                    CliError::Validation(message) | CliError::Config(message) => {
+                        CliError::Validation(format!("Cannot update '{}': {message}", entry.id))
+                    }
+                    other => other,
+                }
             })?;
         change_roots.push(crate::commands::install::change::ChangeRoot {
             origin: entry.origin.clone(),
@@ -377,14 +377,7 @@ async fn execute_update_project(
             output::render_update_previews(&previews);
         }
         if args.json {
-            let indexing = crate::utils::reindex_utils::lifecycle_reindex_result(
-                &service,
-                "update",
-                args.reindex,
-                true,
-                crate::config_file::load_auto_reindex_config(),
-            )
-            .await;
+            let indexing = crate::utils::reindex_utils::lifecycle_preview_index_result();
             print_update_json(&previews, true, &planned_refreshes, &indexing)?;
             return Ok(());
         }
@@ -393,6 +386,8 @@ async fn execute_update_project(
     }
 
     if !args.json {
+        crate::outln!("Updating skills...");
+        crate::outln!();
         output::render_update_previews(&previews);
     }
 

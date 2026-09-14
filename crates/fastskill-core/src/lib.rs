@@ -96,7 +96,7 @@ pub fn init_logging_with_verbose(verbose: bool) {
         use tracing_subscriber::EnvFilter;
 
         let default_level = if verbose {
-            "fastskill=info"
+            "fastskill=debug"
         } else {
             "fastskill=warn"
         };

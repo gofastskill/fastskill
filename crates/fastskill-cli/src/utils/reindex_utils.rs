@@ -11,6 +11,14 @@ pub struct LifecycleIndexResult {
     pub diagnostic: Option<String>,
 }
 
+pub fn lifecycle_preview_index_result() -> LifecycleIndexResult {
+    LifecycleIndexResult {
+        outcome: "skipped",
+        count: 0,
+        diagnostic: Some("preview only; indexing was not attempted".to_string()),
+    }
+}
+
 /// Run derived indexing without writing progress to structured stdout.
 /// Package state stays committed when indexing fails, and the caller embeds
 /// the failure in its lifecycle result.
@@ -62,7 +70,7 @@ pub fn report_lifecycle_index_result(result: &LifecycleIndexResult) {
     match result.outcome {
         "succeeded" => crate::outln!("   Indexed {} skill(s)", result.count),
         "failed" => eprintln!(
-            "Warning: {}",
+            "[WARNING] {}",
             result
                 .diagnostic
                 .as_deref()
@@ -112,10 +120,7 @@ pub async fn maybe_auto_reindex(
     };
 
     if let Err(e) = crate::commands::reindex::execute_reindex(service, args).await {
-        eprintln!(
-            "Warning: auto-reindex after '{}' failed: {}",
-            command_name, e
-        );
+        eprintln!("[WARNING] Auto-reindex after '{command_name}' failed: {e}");
     }
 
     Ok(())

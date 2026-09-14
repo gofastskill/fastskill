@@ -514,9 +514,10 @@ mod tests {
             .await,
             Err(HttpError::NotFound(_))
         ));
-        assert!(matches!(
-            remove_project_skill(&state, "demo".to_string()).await,
-            Err(HttpError::NotFound(_))
-        ));
+        let removal = remove_project_skill(&state, "demo".to_string())
+            .await
+            .expect("an explicitly requested untracked install should be removable");
+        assert_eq!(removal["deleted"], serde_json::json!(["demo"]));
+        assert!(!state.skills_directory.join("demo").exists());
     }
 }

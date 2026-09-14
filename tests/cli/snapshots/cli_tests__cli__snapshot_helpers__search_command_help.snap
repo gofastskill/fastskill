@@ -3,7 +3,7 @@ source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
 assertion_line: 341
 expression: normalized
 ---
-Search skills by query with explicit scope flags
+Search skills by query (defaults to remote catalogs)
 
 Usage: fastskill skill search [OPTIONS] <query>
 
@@ -12,22 +12,23 @@ Arguments:
 
 Options:
       --local                    Search local/installed skills only
+      --skills-dir <skills-dir>  Override the installation directory for this invocation
       --global                   Use global skills directory (~/.config/fastskill/skills)
-      --remote                   Search remote skill catalogs
+      --remote                   Search remote skill catalogs (default; use --local for installed
+                                 skills)
       --repository <repository>  Limit remote search to specific repository
   -v, --verbose                  Enable verbose output
   -l, --limit <limit>            Maximum number of results [default: 10]
   -f, --format <format>          Output format: table, json, grid, xml
       --json                     Shorthand for --format json
       --embedding <embedding>    Use embedding search: true, false, or auto
-      --skills-dir <skills-dir>  Skills directory path (overrides default discovery)
       --paths                    Output resolved file paths instead of search results (--local only)
       --content <content>        Content to include in JSON output: none, preview, full (--local
                                  --paths only)
   -h, --help                     Print help
   -V, --version                  Print version
 
-Syntax: skill search <QUERY> [--local|--remote] [OPTIONS]
+Syntax: skill search <QUERY> [OPTIONS]
 
 Examples:
   fastskill skill search "pdf generation" --local

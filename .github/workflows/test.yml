@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo fmt --all -- --check
       - run: bash scripts/check-source-size.sh
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_local_ci.py'
 
   webdocs:
     name: Web docs

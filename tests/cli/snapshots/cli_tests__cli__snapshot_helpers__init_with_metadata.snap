@@ -1,9 +1,9 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
-assertion_line: 277
+assertion_line: 341
 expression: normalized
 ---
-FastSkill Skill Initialization
+fastskill skill initialization
 
 [OK] Created skill-project.toml with version: [VERSION]
 

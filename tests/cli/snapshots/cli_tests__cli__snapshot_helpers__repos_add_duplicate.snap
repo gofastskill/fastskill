@@ -1,5 +1,6 @@
 ---
 source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
-Error: Configuration error: Failed to add repository: Custom error: Repository 'duplicate-repo' already exists
+Error: Configuration error: Failed to add repository: Repository 'duplicate-repo' already exists

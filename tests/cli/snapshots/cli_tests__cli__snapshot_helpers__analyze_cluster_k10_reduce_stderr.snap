@@ -1,5 +1,12 @@
 ---
-source: tests/cli/snapshot_helpers.rs
+source: crates/fastskill-cli/../../tests/cli/snapshot_helpers.rs
+assertion_line: 341
 expression: normalized
 ---
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
+[WARNING] Skipping invalid skill at [TEMP_DIR] No YAML frontmatter found in SKILL.md
 Warning: only 6 skills available, reducing k to 6

@@ -215,7 +215,7 @@ impl IntoCommandSpec for AddArgs {
                     long: Some("dry-run"),
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
-                    help: "Validate and preview without changing project state",
+                    help: "Validate and preview without changing managed state",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -246,12 +246,9 @@ impl FromArgValueMap for AddArgs {
                     }
                 })
                 .unwrap_or_default(),
-            source_type: map.get("source-type").and_then(|v| {
-                if let ArgValue::Str(s) = v {
-                    Some(s.clone())
-                } else {
-                    None
-                }
+            source_type: map.get("source-type").and_then(|v| match v {
+                ArgValue::Str(s) | ArgValue::Enum(s) => Some(s.clone()),
+                _ => None,
             }),
             repository: map.get("repository").and_then(|v| {
                 if let ArgValue::Str(s) = v {
@@ -338,7 +335,10 @@ fn validate_source_options(args: &AddArgs, source: &SkillSource) -> CliResult<()
     Ok(())
 }
 
-pub(crate) fn validate_add_args(args: &AddArgs, global: bool) -> CliResult<()> {
+pub(crate) fn validate_add_args(args: &AddArgs, _global: bool) -> CliResult<()> {
+    if args.source.trim().is_empty() {
+        return Err(CliError::Validation("SOURCE cannot be empty".to_string()));
+    }
     if args.reindex && args.no_reindex {
         return Err(CliError::Validation(
             "--reindex and --no-reindex cannot be used together".to_string(),
@@ -362,7 +362,7 @@ pub(crate) fn validate_add_args(args: &AddArgs, global: bool) -> CliResult<()> {
                 .to_string(),
         ));
     }
-    if global && args.group.as_deref().is_some_and(str::is_empty) {
+    if args.group.as_deref().is_some_and(str::is_empty) {
         return Err(CliError::Validation("--group cannot be empty".to_string()));
     }
     Ok(())
@@ -379,6 +379,18 @@ fn ensure_manifest() -> CliResult<()> {
 }
 
 fn validate_folder_has_skill(path: &Path) -> CliResult<()> {
+    if !path.exists() {
+        return Err(CliError::InvalidSource(format!(
+            "Local source does not exist: {}",
+            path.display()
+        )));
+    }
+    if !path.is_dir() {
+        return Err(CliError::InvalidSource(format!(
+            "Local source is not a directory or ZIP archive: {}",
+            path.display()
+        )));
+    }
     if path.join("SKILL.md").exists() {
         return Ok(());
     }
@@ -435,7 +447,10 @@ pub(crate) async fn execute_add_preflighted(
                 "Recursive add is only valid when source is a local directory".to_string(),
             ));
         };
-        let directories = install::get_skill_dirs_recursive(path)?;
+        let mut directories = install::get_skill_dirs_recursive(path)?;
+        if directories.is_empty() && path.join("SKILL.md").is_file() {
+            directories.push(path.clone());
+        }
         if directories.is_empty() {
             return Err(CliError::Validation(format!(
                 "No skill directories found under {}",
@@ -475,16 +490,18 @@ pub(crate) async fn execute_add_preflighted(
         )
         .await?;
         let indexing = if args.json {
-            Some(
+            Some(if args.dry_run {
+                crate::utils::reindex_utils::lifecycle_preview_index_result()
+            } else {
                 crate::utils::reindex_utils::lifecycle_reindex_result(
                     service,
                     "add",
                     reindex,
-                    no_reindex || args.dry_run,
+                    no_reindex,
                     crate::config_file::load_auto_reindex_config(),
                 )
-                .await,
-            )
+                .await
+            })
         } else {
             None
         };
@@ -525,16 +542,18 @@ pub(crate) async fn execute_add_preflighted(
     .await?;
 
     let indexing = if args.json {
-        Some(
+        Some(if args.dry_run {
+            crate::utils::reindex_utils::lifecycle_preview_index_result()
+        } else {
             crate::utils::reindex_utils::lifecycle_reindex_result(
                 service,
                 "add",
                 reindex,
-                no_reindex || args.dry_run,
+                no_reindex,
                 crate::config_file::load_auto_reindex_config(),
             )
-            .await,
-        )
+            .await
+        })
     } else {
         None
     };
@@ -597,6 +616,39 @@ mod tests {
         assert!(args.branch.is_none());
         assert!(args.tag.is_none());
         assert!(args.group.is_none());
+
+        let args = AddArgs::from_arg_value_map(&HashMap::from([
+            ("source".to_string(), ArgValue::Str("demo".to_string())),
+            (
+                "source-type".to_string(),
+                ArgValue::Enum("registry".to_string()),
+            ),
+        ]));
+        assert_eq!(args.source_type.as_deref(), Some("registry"));
+    }
+
+    #[test]
+    fn empty_source_and_group_are_rejected_in_project_mode() {
+        let mut args = AddArgs {
+            source: String::new(),
+            source_type: None,
+            repository: None,
+            branch: None,
+            tag: None,
+            force: false,
+            editable: false,
+            group: None,
+            recursive: false,
+            reindex: false,
+            no_reindex: false,
+            offline: false,
+            dry_run: false,
+            json: false,
+        };
+        assert!(validate_add_args(&args, false).is_err());
+        args.source = "demo".to_string();
+        args.group = Some(String::new());
+        assert!(validate_add_args(&args, false).is_err());
     }
 
     async fn run_add_expect_err(source: &str, source_type: Option<&str>, force: bool) {

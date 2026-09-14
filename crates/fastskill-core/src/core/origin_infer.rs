@@ -130,7 +130,10 @@ impl FastSkillService {
             ));
         }
 
-        if is_skill_id(trimmed) {
+        // Prefer an existing filesystem path over the deliberately permissive
+        // skill-ID shorthand. Without this check, `fastskill skill add demo`
+        // tries a repository lookup even when ./demo exists.
+        if !PathBuf::from(trimmed).exists() && is_skill_id(trimmed) {
             return self.infer_repository_origin(trimmed).await;
         }
 
@@ -146,12 +149,8 @@ impl FastSkillService {
                     Some(b) => GitRef::Branch(b.clone()),
                     None => GitRef::Default,
                 };
-                // The recorded URL is the ref exactly as given (not the
-                // `.git`-normalized `repo_url`) — `parse_git_url` is consulted
-                // only for the branch/subdir it can extract, mirroring the
-                // pre-seam CLI's `build_origin`.
                 return Ok(Origin::Git {
-                    url: trimmed.to_string(),
+                    url: git_info.repo_url,
                     r#ref,
                     subdir: git_info.subdir,
                 });
@@ -269,7 +268,7 @@ mod tests {
         assert_eq!(
             origin,
             Origin::Git {
-                url: "https://github.com/org/repo?branch=dev".to_string(),
+                url: "https://github.com/org/repo.git".to_string(),
                 r#ref: GitRef::Branch("dev".to_string()),
                 subdir: None,
             }
@@ -287,7 +286,7 @@ mod tests {
         assert_eq!(
             origin,
             Origin::Git {
-                url: "https://github.com/org/repo/tree/main/skills/inner".to_string(),
+                url: "https://github.com/org/repo.git".to_string(),
                 r#ref: GitRef::Branch("main".to_string()),
                 subdir: Some(PathBuf::from("skills/inner")),
             }
@@ -357,6 +356,34 @@ mod tests {
                 path: PathBuf::from("./some/folder"),
                 editable: false,
             }
+        );
+    }
+
+    #[test]
+    fn infer_existing_bare_path_before_skill_id() {
+        let _lock = crate::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let bare = tmp.path().join("demo");
+        std::fs::create_dir(&bare).unwrap();
+        let previous = std::env::current_dir().unwrap();
+        struct Restore(std::path::PathBuf);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+        let _restore = Restore(previous);
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let origin = runtime.block_on(async {
+            let service =
+                with_default_repo(make_service(&tmp.path().join("storage")).await, "main");
+            service.infer_origin("demo").await.unwrap()
+        });
+        assert!(
+            matches!(origin, Origin::Local { path, .. } if path == std::path::Path::new("demo"))
         );
     }
 

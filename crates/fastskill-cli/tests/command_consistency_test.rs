@@ -361,7 +361,13 @@ fn read_locked_uses_global_scope_without_ambient_project_lock() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
     write_project(root, "");
-    write_skill(root, "global-demo", "2.0.0");
+    let config = root.join("config/fastskill");
+    write_skill_directory(
+        &config.join("skills/global-demo"),
+        "global-demo",
+        "2.0.0",
+        "# global-demo",
+    );
     let mut lock = GlobalSkillsLock::new_empty();
     lock.skills.push(GlobalLockedSkillEntry {
         id: "global-demo".to_string(),
@@ -381,7 +387,6 @@ fn read_locked_uses_global_scope_without_ambient_project_lock() {
         last_checked_at: None,
         last_updated_at: None,
     });
-    let config = root.join("config/fastskill");
     std::fs::create_dir_all(&config).unwrap();
     lock.save_to_file(&config.join("global-skills.lock"))
         .unwrap();
@@ -405,7 +410,8 @@ fn read_locked_uses_global_scope_without_ambient_project_lock() {
         String::from_utf8_lossy(&result.stderr)
     );
     let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(value[0]["version"], "1.0.0");
+    assert_eq!(value["version"], "1.0.0");
+    assert_eq!(value["description"], "fixture");
 }
 
 #[test]

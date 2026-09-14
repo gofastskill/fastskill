@@ -1,6 +1,80 @@
 use super::*;
 use crate::storage::git_commit::clone_repository_at_commit;
 
+#[cfg(unix)]
+#[tokio::test]
+async fn git_process_errors_are_reported_without_modifying_parent_environment() {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(mode) = std::env::var("FASTSKILL_GIT_ERROR_CHILD") {
+        let error = check_git_version().await.unwrap_err().to_string();
+        let expected = match mode.as_str() {
+            "missing" => "Git binary not found",
+            "denied" => "Failed to execute git --version",
+            "status" => "git --version failed",
+            "old" => "too old",
+            _ => panic!("unexpected test mode"),
+        };
+        assert!(error.contains(expected), "{error}");
+        if mode == "missing" || mode == "denied" {
+            let error = execute_git_command(&["status"], Duration::from_secs(1), None)
+                .await
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(
+                error.contains(if mode == "missing" {
+                    "Git binary not found"
+                } else {
+                    "Failed to execute git command"
+                }),
+                "{error}"
+            );
+        }
+        return;
+    }
+    for mode in ["missing", "denied", "status", "old"] {
+        let temp = tempfile::tempdir().unwrap();
+        if mode != "missing" {
+            let git = temp.path().join("git");
+            std::fs::write(
+                &git,
+                if mode == "old" {
+                    "#!/bin/sh\necho 'git version 1.0.0'\n"
+                } else {
+                    "#!/bin/sh\necho broken >&2\nexit 1\n"
+                },
+            )
+            .unwrap();
+            std::fs::set_permissions(
+                git,
+                std::fs::Permissions::from_mode(if mode == "denied" { 0o644 } else { 0o755 }),
+            )
+            .unwrap();
+        }
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "storage::git::tests::git_process_errors_are_reported_without_modifying_parent_environment", "--nocapture"])
+            .env("FASTSKILL_GIT_ERROR_CHILD", mode).env("PATH", temp.path())
+            .status().unwrap();
+        assert!(status.success(), "{mode}");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn retry_handles_timed_out_processes_and_stops_at_attempt_limit() {
+    let error = execute_git_command_with_retry(
+        &["-c", "alias.network=!sleep 1", "network"],
+        Duration::from_millis(1),
+        None,
+        2,
+    )
+    .await
+    .err()
+    .unwrap()
+    .to_string();
+    assert!(error.contains("timed out"), "{error}");
+}
+
 #[test]
 fn test_build_clone_args_disables_line_ending_translation() {
     // Git for Windows defaults core.autocrlf=true, which would rewrite LF
@@ -187,6 +261,18 @@ async fn public_git_operations_report_auth_clone_checkout_and_structure_errors()
     std::fs::create_dir_all(&nested_skill).unwrap();
     std::fs::write(nested_skill.join("SKILL.md"), "nested").unwrap();
     assert_eq!(validate_cloned_skill(&nested_repo).unwrap(), nested_skill);
+
+    let ambiguous_repo = temp.path().join("ambiguous-repo");
+    for name in ["alpha", "beta"] {
+        let path = ambiguous_repo.join(name);
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("SKILL.md"), name).unwrap();
+    }
+    let error = validate_cloned_skill(&ambiguous_repo)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("multiple skills"));
+    assert!(error.contains("alpha, beta"));
 
     let empty = temp.path().join("empty");
     std::fs::create_dir(&empty).unwrap();

@@ -10,7 +10,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::process::Command;
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Git operation error types
 #[derive(Debug, thiserror::Error)]
@@ -420,7 +420,7 @@ pub(crate) async fn execute_git_command_with_retry(
 
                 // Check if it's a network error and we should retry
                 if attempt < max_attempts && is_network_error(&output.stderr) {
-                    warn!(
+                    debug!(
                         "Git operation failed with network error (attempt {}/{}): {}",
                         attempt, max_attempts, output.stderr
                     );
@@ -443,7 +443,7 @@ pub(crate) async fn execute_git_command_with_retry(
                 if attempt < max_attempts
                     && (error_msg.contains("timeout") || error_msg.contains("network"))
                 {
-                    warn!(
+                    debug!(
                         "Git operation failed (attempt {}/{}): {}",
                         attempt, max_attempts, error_msg
                     );
@@ -779,10 +779,13 @@ pub fn validate_cloned_skill(cloned_path: &Path) -> Result<PathBuf, ServiceError
         return Ok(cloned_path.to_path_buf());
     }
 
-    // Check subdirectories for SKILL.md
+    // Check immediate subdirectories for SKILL.md. A single nested skill is
+    // unambiguous; multiple skills require an explicit subdirectory so the
+    // result never depends on filesystem iteration order.
     let entries = std::fs::read_dir(cloned_path)
         .map_err(|e| ServiceError::Custom(format!("Failed to read cloned directory: {}", e)))?;
 
+    let mut candidates = Vec::new();
     for entry in entries {
         let entry = entry
             .map_err(|e| ServiceError::Custom(format!("Failed to read directory entry: {}", e)))?;
@@ -790,8 +793,25 @@ pub fn validate_cloned_skill(cloned_path: &Path) -> Result<PathBuf, ServiceError
         if path.is_dir() {
             let skill_file = path.join("SKILL.md");
             if skill_file.exists() {
-                return Ok(path);
+                candidates.push(path);
             }
+        }
+    }
+
+    candidates.sort();
+    match candidates.as_slice() {
+        [path] => return Ok(path.clone()),
+        [] => {}
+        paths => {
+            let choices = paths
+                .iter()
+                .filter_map(|path| path.file_name())
+                .map(|name| name.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(ServiceError::Validation(format!(
+                "Cloned repository contains multiple skills ({choices}); specify the skill subdirectory in the source configuration"
+            )));
         }
     }
 

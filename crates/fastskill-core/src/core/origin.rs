@@ -69,7 +69,7 @@ impl UnportableLocalPath {
     pub fn warning(&self, skill_id: &str) -> String {
         format!(
             "dependencies.{skill_id}.origin.path is outside the project ({}), so it is \
-             recorded as the absolute path {} — this Manifest will not resolve on another \
+             recorded as the absolute path {} — this manifest will not resolve on another \
              machine or in CI. Move the skill inside the project to make it portable.",
             self.manifest_dir.display(),
             self.path.display()

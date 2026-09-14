@@ -84,7 +84,7 @@ impl IntoCommandSpec for ListArgs {
                     name: "format",
                     kind: ArgKind::Option,
                     long: Some("format"),
-                    value_type: ArgValueType::String,
+                    value_type: ArgValueType::Enum(vec!["table", "json", "grid", "xml"]),
                     cardinality: Cardinality::Optional,
                     help: "Output format: table, json, grid, xml (default: table)",
                     ..Default::default()
@@ -122,7 +122,7 @@ impl IntoCommandSpec for ListArgs {
                     long: Some("only"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Repeated,
-                    help: "Check only roots in these groups",
+                    help: "List and check only roots in these groups",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -131,7 +131,7 @@ impl IntoCommandSpec for ListArgs {
                     long: Some("without"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Repeated,
-                    help: "Exclude roots in these groups from the check",
+                    help: "Exclude roots in these groups from the list and check",
                     ..Default::default()
                 },
             ],
@@ -145,12 +145,9 @@ impl FromArgValueMap for ListArgs {
         Self {
             format: map
                 .get("format")
-                .and_then(|v| {
-                    if let ArgValue::Str(s) = v {
-                        Some(s.as_str())
-                    } else {
-                        None
-                    }
+                .and_then(|v| match v {
+                    ArgValue::Str(s) | ArgValue::Enum(s) => Some(s.as_str()),
+                    _ => None,
                 })
                 .and_then(parse_output_format),
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
@@ -275,11 +272,12 @@ pub async fn execute_list(
             (entry.id.clone(), groups)
         })
         .collect::<HashMap<_, _>>();
-    let known_groups = root_groups
+    let mut known_groups = root_groups
         .values()
         .flatten()
         .cloned()
         .collect::<HashSet<_>>();
+    known_groups.insert("default".to_string());
     for requested in args.only.iter().chain(args.without.iter()).flatten() {
         if !known_groups.contains(requested) {
             return Err(CliError::Validation(format!("Unknown group '{requested}'")));
@@ -381,15 +379,13 @@ pub async fn execute_list(
                 lock_map.get(&id).map(|(v, _, _)| v.clone())
             };
 
-            // Get source path and type
-            let (source_path, source_type) = if let Some(skill) = installed_map.get(&id) {
-                // For installed skills, use skill_file path and the origin's type label.
-                let path = Some(skill.skill_file.display().to_string());
-                let stype = Some(origin_type_label(&skill.origin).to_string());
-                (path, stype)
-            } else if let Some((_, _, origin)) = lock_map.get(&id) {
-                // For lock-only skills, extract from Origin
+            let locked_entry = lock.skills.iter().find(|entry| entry.id == id);
+
+            // Managed rows show their recorded source, not the installation target.
+            let (source_path, source_type) = if let Some((_, _, origin)) = lock_map.get(&id) {
                 format_source_info(origin)
+            } else if let Some(skill) = installed_map.get(&id) {
+                format_source_info(&skill.origin)
             } else {
                 (None, None)
             };
@@ -416,7 +412,6 @@ pub async fn execute_list(
             });
             let extraneous = owners.is_empty() && installed;
             let missing_from_manifest = !in_manifest && owners.is_empty() && (in_lock || installed);
-            let locked_entry = lock.skills.iter().find(|entry| entry.id == id);
             let desired_entry = desired_entries.get(&id);
             let mutable = locked_entry
                 .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));

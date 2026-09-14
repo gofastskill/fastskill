@@ -6,8 +6,8 @@ expression: normalized
 Error: Skill 'nonexistent-skill' not found
 
 Searched locations:
-  ✓ [TEMP_DIR] (project)
+  - [TEMP_DIR] (project)
 
 Try:
-  fastskill skill add owner/repo
+  fastskill skill add <skill-id> --repository <name>
   fastskill skill list                    # See available skills

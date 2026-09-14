@@ -177,13 +177,23 @@ fn retired_roots_plural_repo_and_skill_shorthand_fail_without_mutation() {
             args.join(" ")
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("unknown")
-                || stderr.contains("unrecognized")
-                || stderr.contains("not found"),
-            "retired invocation did not fail as unknown: fastskill {}\n{stderr}",
-            args.join(" ")
-        );
+        if matches!(
+            args[0],
+            "add" | "remove" | "update" | "list" | "read" | "search"
+        ) {
+            assert!(stderr.contains(&format!(
+                "skill commands moved to 'fastskill skill {}'",
+                args[0]
+            )));
+        } else {
+            assert!(
+                stderr.contains("unknown")
+                    || stderr.contains("unrecognized")
+                    || stderr.contains("not found"),
+                "retired invocation did not fail as unknown: fastskill {}\n{stderr}",
+                args.join(" ")
+            );
+        }
         assert_eq!(
             std::fs::read_to_string(project.path().join("sentinel")).unwrap(),
             "unchanged"

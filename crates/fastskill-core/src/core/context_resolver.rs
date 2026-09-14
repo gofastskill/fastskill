@@ -3,13 +3,17 @@ use crate::core::metadata::MetadataService;
 use crate::core::service::{EmbeddingConfig, ServiceError, SkillId};
 use crate::core::skill_manager::SkillManagementService;
 use crate::core::vector_index::VectorIndexService;
-use crate::security::path::validate_path_within_root;
+use crate::security::path::{validate_path_component, validate_path_within_root};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MAX_CONTENT_SIZE: u64 = 512_000;
 const PREVIEW_BODY_LINES: usize = 20;
+
+#[cfg(test)]
+#[path = "context_resolver_coverage_tests.rs"]
+mod coverage_tests;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -161,7 +165,15 @@ impl ContextResolver {
             }
         }
 
-        let allowed_roots = vec![self.skills_root.to_string_lossy().to_string()];
+        let mut allowed_roots = vec![self.skills_root.to_string_lossy().to_string()];
+        for result in &resolved {
+            let Some(root) = result.skill_root_path.as_ref() else {
+                continue;
+            };
+            if !allowed_roots.contains(root) {
+                allowed_roots.push(root.clone());
+            }
+        }
 
         Ok(ResolveContextResponse {
             query: request.prompt,
@@ -309,6 +321,12 @@ impl ContextResolver {
         match validate_path_within_root(path, &self.skills_root) {
             Ok(canonical) => Ok(Some(canonical.to_string_lossy().to_string())),
             Err(e) => {
+                // Editable installs are represented by a top-level symlink in
+                // the managed skills directory. Resolve paths through that
+                // explicit link while continuing to reject arbitrary escapes.
+                if let Some(canonical) = self.canonicalize_editable_path(path) {
+                    return Ok(Some(canonical.to_string_lossy().to_string()));
+                }
                 tracing::warn!(
                     "RESOLVE_PATH_ESCAPE: path '{}' validation failed: {}",
                     path.display(),
@@ -317,6 +335,29 @@ impl ContextResolver {
                 Ok(None)
             }
         }
+    }
+
+    fn canonicalize_editable_path(&self, path: &Path) -> Option<PathBuf> {
+        // Normalize the parent, not the link: following the link here would
+        // lose the distinction between an editable install and an escape.
+        let root = self.skills_root.canonicalize().ok()?;
+        let relative = path.strip_prefix(&self.skills_root).ok()?;
+        let std::path::Component::Normal(name) = relative.components().next()? else {
+            return None;
+        };
+        let name = validate_path_component(name.to_str()?).ok()?;
+        let entry = root.join(name);
+        // Keep the containment guard and the filesystem access in the same
+        // control-flow scope. Only a normalized direct child may be a link.
+        if !entry.starts_with(&root) {
+            return None;
+        }
+        let metadata = std::fs::symlink_metadata(&entry).ok()?;
+        if !metadata.file_type().is_symlink() {
+            return None;
+        }
+        // The editable target remains the boundary for all descendants.
+        validate_path_within_root(path, &entry).ok()
     }
 
     async fn read_content(
@@ -609,5 +650,65 @@ mod tests {
         assert!(root_path.is_some());
         assert!(refs.is_none());
         assert!(assets.is_none());
+    }
+
+    #[test]
+    fn test_resolve_paths_through_editable_top_level_link() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        let source_dir = temp_dir.path().join("source/my-skill");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(source_dir.join("SKILL.md"), "body").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&source_dir, skills_dir.join("my-skill")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&source_dir, skills_dir.join("my-skill")).unwrap();
+
+        let resolver = ContextResolver::new(
+            Arc::new(crate::core::skill_manager::SkillManager::new()),
+            Arc::new(crate::core::metadata::MetadataServiceImpl::new(Arc::new(
+                crate::core::skill_manager::SkillManager::new(),
+            ))),
+            None,
+            None,
+            skills_dir.clone(),
+        );
+        let installed_file = skills_dir.join("my-skill/SKILL.md");
+        let (md, root, _, _) = resolver.resolve_paths(&installed_file).unwrap();
+        assert_eq!(
+            md,
+            Some(
+                source_dir
+                    .join("SKILL.md")
+                    .canonicalize()
+                    .unwrap()
+                    .display()
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            root,
+            Some(source_dir.canonicalize().unwrap().display().to_string())
+        );
+
+        let outside = temp_dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, source_dir.join("references")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&outside, source_dir.join("references")).unwrap();
+        let (_, _, references, _) = resolver.resolve_paths(&installed_file).unwrap();
+        assert!(
+            references.is_none(),
+            "nested links must stay inside the editable target"
+        );
+        assert!(
+            resolver
+                .canonicalize_within_root(&skills_dir.join("my-skill/../../outside"))
+                .unwrap()
+                .is_none(),
+            "parent traversal must not escape the editable target"
+        );
     }
 }

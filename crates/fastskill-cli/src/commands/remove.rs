@@ -9,6 +9,7 @@ use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::FastSkillService;
 use std::collections::HashMap;
 use std::env;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 #[path = "remove/confirmation.rs"]
@@ -57,7 +58,7 @@ pub struct RemoveArgs {
 impl IntoCommandSpec for RemoveArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
-            summary: "Uninstall skills (removes from manifest and local installation)",
+            summary: "Remove installed skills and their managed ownership",
             syntax: Some("skill remove <SKILL_ID>... [OPTIONS]"),
             category: Some("skills-projects"),
             help_order: Some(20),
@@ -84,17 +85,6 @@ impl IntoCommandSpec for RemoveArgs {
                     help: "Force removal without confirmation",
                     kind: ArgKind::Flag,
                     value_type: ArgValueType::Bool,
-                    cardinality: Cardinality::Optional,
-                    default: None,
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "skills-dir",
-                    long: Some("skills-dir"),
-                    short: None,
-                    help: "Skills directory path (overrides default discovery)",
-                    kind: ArgKind::Option,
-                    value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
                     default: None,
                     ..Default::default()
@@ -217,28 +207,37 @@ pub async fn execute_remove(
             "--reindex and --no-reindex cannot be used together".to_string(),
         ));
     }
+    let reindex = args.reindex;
+    let no_reindex = args.no_reindex;
+
+    // Validate inputs
+    if args.skill_ids.is_empty() {
+        return Err(CliError::Validation("No skill IDs provided".to_string()));
+    }
+    let mut seen = std::collections::HashSet::new();
+    let skill_ids = args
+        .skill_ids
+        .iter()
+        .filter(|id| seen.insert((*id).clone()))
+        .cloned()
+        .collect::<Vec<_>>();
+    for raw_id in &skill_ids {
+        fastskill_core::SkillId::new(raw_id.clone())
+            .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {raw_id}")))?;
+    }
     if !args.dry_run
         && !args.force
-        && (args.json || crate::output::mode() == crate::output::Mode::Capture)
+        && (args.json
+            || crate::output::mode() == crate::output::Mode::Capture
+            || !std::io::stdin().is_terminal())
     {
         return Err(CliError::Validation(
             "Non-interactive removal requires --force; use --dry-run to preview changes"
                 .to_string(),
         ));
     }
-    let reindex = args.reindex;
-    let no_reindex = args.no_reindex;
-
-    // Validate inputs
-    if args.skill_ids.is_empty() {
-        return Err(CliError::Config("No skill IDs provided".to_string()));
-    }
 
     if !global {
-        for raw_id in &args.skill_ids {
-            fastskill_core::SkillId::new(raw_id.clone())
-                .map_err(|_| CliError::Validation(format!("Invalid skill ID format: {raw_id}")))?;
-        }
         let current = env::current_dir().map_err(|error| {
             CliError::Config(format!("Failed to determine current directory: {error}"))
         })?;
@@ -253,17 +252,26 @@ pub async fn execute_remove(
             root,
             service.config().skill_storage_path.clone(),
         );
-        let preview = removal
-            .preview(&args.skill_ids)
-            .map_err(CliError::Service)?;
+        let preview = removal.preview(&skill_ids).map_err(CliError::Service)?;
         if args.dry_run {
-            return output::emit_project_removal(&args.skill_ids, &preview, true, args.json);
+            return output::emit_project_removal(&skill_ids, &preview, true, args.json);
         }
-        if !confirm_removal(&args.skill_ids, args.force)? {
-            crate::outln!("Removal cancelled.");
+        let prompt_ids = skill_ids
+            .iter()
+            .filter(|id| !preview.unchanged.contains(id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if prompt_ids.is_empty() {
+            if args.json {
+                return output::emit_project_removal(&skill_ids, &preview, false, true);
+            }
+            for id in &preview.unchanged {
+                crate::outln!("Skill '{id}' was already absent; no changes made");
+            }
             return Ok(());
         }
-        let plan = removal.remove(&args.skill_ids).map_err(CliError::Service)?;
+        confirm_removal(&prompt_ids, args.force)?;
+        let plan = removal.remove(&skill_ids).map_err(CliError::Service)?;
         for id in &plan.delete_files {
             if let Ok(skill_id) = fastskill_core::SkillId::new(id.clone()) {
                 if let Err(error) = unregister_skill_from_service(service, skill_id).await {
@@ -309,23 +317,34 @@ pub async fn execute_remove(
         )
         .await?;
         if args.json {
-            output::emit_project_removal(&args.skill_ids, &plan, false, true)?;
+            output::emit_project_removal(&skill_ids, &plan, false, true)?;
         }
         return Ok(());
     }
 
     if args.dry_run {
-        let plan = global_remove::preview(service, &args.skill_ids)?;
-        return output::emit_global_removal_plan(&args.skill_ids, &plan, true, args.json);
+        let plan = global_remove::preview(service, &skill_ids)?;
+        return output::emit_global_removal_plan(&skill_ids, &plan, true, args.json);
     }
 
-    // Get user confirmation
-    if !confirm_removal(&args.skill_ids, args.force)? {
-        crate::outln!("Removal cancelled.");
+    let preview = global_remove::preview(service, &skill_ids)?;
+    let prompt_ids = skill_ids
+        .iter()
+        .filter(|id| !preview.unchanged.contains(id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if prompt_ids.is_empty() {
+        if args.json {
+            return output::emit_global_removal_plan(&skill_ids, &preview, false, true);
+        }
+        for id in &preview.unchanged {
+            crate::outln!("Global skill '{id}' was already absent; no changes made");
+        }
         return Ok(());
     }
+    confirm_removal(&prompt_ids, args.force)?;
 
-    let plan = global_remove::remove(service, &args.skill_ids).await?;
+    let plan = global_remove::remove(service, &skill_ids).await?;
     let removed_count = plan.remove_lock_entries.len();
     if !args.json {
         for id in &plan.remove_roots {
@@ -359,7 +378,7 @@ pub async fn execute_remove(
     )
     .await?;
     if args.json {
-        output::emit_global_removal_plan(&args.skill_ids, &plan, false, true)?;
+        output::emit_global_removal_plan(&skill_ids, &plan, false, true)?;
     }
     Ok(())
 }
@@ -501,6 +520,7 @@ mod tests {
 
         let mut apply = args(&["absent"]);
         apply.json = true;
+        apply.force = true;
         let (apply_result, apply_output) =
             crate::output::capture(async { execute_remove(&service, apply, true).await }).await;
         apply_result.unwrap();
@@ -604,10 +624,10 @@ mod tests {
 
         let result = execute_remove(&service, args, false).await;
         assert!(result.is_err());
-        if let Err(CliError::Config(msg)) = result {
+        if let Err(CliError::Validation(msg)) = result {
             assert!(msg.contains("No skill IDs provided"));
         } else {
-            panic!("Expected Config error");
+            panic!("Expected Validation error");
         }
     }
 

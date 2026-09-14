@@ -1,11 +1,13 @@
 #!/bin/bash
 
-# Newton Test Runner Script
-# Runs format check, then tests with cargo-nextest; captures results and emits report to stdout (text or JSON).
+# Fastskill local PR validation runner
+# Runs local Linux PR gates, then emits the final all-feature test report.
+# Windows, CodeQL and GitHub configuration still require remote validation.
 #
 # Usage: ./run-tests.sh [OPTIONS]
 #
 # Options:
+#   --base REF          Coverage target ref (default: origin/main).
 #   -f, --format FORMAT  Output format: text (default) or json. Report goes to stdout.
 #   -o, --output FILE   Optional: write markdown report to FILE.
 #   -j, --json FILE     Optional: write JSON results to FILE.
@@ -19,6 +21,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 OUTPUT_FORMAT="text"
 OUTPUT_FILE=""
 JSON_FILE=""
+BASE_REF="origin/main"
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,6 +35,7 @@ error_exit() {
     echo "Usage: $0 [OPTIONS]" >&2
     echo "" >&2
     echo "Options:" >&2
+    echo "  --base REF           PR target ref for coverage (default: origin/main)." >&2
     echo "  -f, --format FORMAT   Output format: text (default) or json. Report to stdout." >&2
     echo "  -o, --output FILE     Optional: write markdown report to FILE." >&2
     echo "  -j, --json FILE       Optional: write JSON results to FILE." >&2
@@ -51,6 +55,15 @@ check_command() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -f|--format|-o|--output|-j|--json|--base)
+            [[ $# -ge 2 && -n $2 ]] || error_exit "Missing value for $1"
+            ;;
+    esac
+    case $1 in
+        --base)
+            BASE_REF="$2"
+            shift 2
+            ;;
         -f|--format)
             if [[ "$2" != "text" && "$2" != "json" ]]; then
                 error_exit "Format must be 'text' or 'json', got: $2"
@@ -67,13 +80,15 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Newton Test Runner Script"
+            echo "Fastskill local PR validation runner"
             echo ""
-            echo "Runs format check, then tests with cargo-nextest; captures results and emits report to stdout (text or JSON)."
+            echo "Runs Linux PR gates: format, source size, Clippy, build/smoke, default/all-feature tests, coverage and web docs."
+            echo "Windows, CodeQL and GitHub-side configuration still require remote validation."
             echo ""
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
+            echo "  --base REF           PR target ref for coverage (default: origin/main)."
             echo "  -f, --format FORMAT   Output format: text (default) or json. Report goes to stdout."
             echo "  -o, --output FILE     Optional: write markdown report to FILE."
             echo "  -j, --json FILE       Optional: write JSON results to FILE."
@@ -82,7 +97,8 @@ while [[ $# -gt 0 ]]; do
             echo "Default: text report to stdout only. -o and -j are optional and only write when a path is given."
             echo ""
             echo "Requirements:"
-            echo "  - cargo-nextest: Fast test runner for Rust"
+            echo "  - cargo-nextest, cargo-llvm-cov, llvm-tools-preview, Python 3, Node 22, pnpm 10.21.0"
+            echo "  - Fetched PR target ref and committed Rust changes; see CONTRIBUTING.md"
             echo ""
             echo "Install requirements:"
             echo "  cargo install cargo-nextest"
@@ -110,6 +126,11 @@ NEWTON_DIR="$(dirname "$SCRIPT_DIR")"
 echo -e "${YELLOW}Running tests in: $NEWTON_DIR${NC}" >&2
 cd "$NEWTON_DIR"
 
+# Gate output goes to stderr so --format json keeps stdout machine-readable.
+# A failed prerequisite/gate exits nonzero before a success report is emitted.
+bash scripts/check-local-ci.sh "$BASE_REF" >&2
+export INSTA_UPDATE=no
+
 # Format check (same as CI: check only, no fix)
 echo -e "${YELLOW}Running format check (cargo fmt --all -- --check)...${NC}" >&2
 cargo fmt --all -- --check
@@ -125,7 +146,7 @@ echo -e "${YELLOW}Checking for ZIP slip security tests...${NC}" >&2
 
 # Run just the security tests by running all tests and filtering (allow non-zero so we can report)
 set +e
-FULL_TEST_OUTPUT=$(cargo nextest run --all-features 2>&1)
+FULL_TEST_OUTPUT=$(cargo nextest run --all-features --retries 3 --fail-fast -E 'not test(install_e2e_tests)' 2>&1)
 FULL_EXIT_CODE=$?
 set -e
 
@@ -299,6 +320,8 @@ if [ "$COMPILATION_FAILED" = true ]; then
     JSON_CONTENT=$(cat << EOF
 {
   "status": "compilation_failed",
+  "validation_scope": "local_linux",
+  "remote_checks_not_run": ["windows", "codeql", "github_configuration"],
   "timestamp": "$TIMESTAMP",
   "command": "$0",
   "exit_code": $EXIT_CODE,
@@ -322,6 +345,8 @@ else
     JSON_CONTENT=$(cat << EOF
 {
   "status": "completed",
+  "validation_scope": "local_linux",
+  "remote_checks_not_run": ["windows", "codeql", "github_configuration"],
   "timestamp": "$TIMESTAMP",
   "command": "$0",
   "exit_code": $EXIT_CODE,
@@ -362,7 +387,8 @@ if [ "$OUTPUT_FORMAT" = "json" ]; then
 else
     # Text report (TTY variant: no Files section)
     print_text_report() {
-        echo "# Newton Test Results Report"
+        echo "# Fastskill Local PR Validation Report"
+        echo "Scope: Linux checks only; Windows, CodeQL and GitHub settings remain unverified."
         echo "Generated: $TIMESTAMP"
         echo "Command: $0"
         echo ""

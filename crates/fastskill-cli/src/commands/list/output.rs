@@ -35,8 +35,8 @@ pub(super) fn format_list_results(
     match format {
         OutputFormat::Table => Ok(format_table(rows, details)),
         OutputFormat::Json => serde_json::to_string_pretty(rows).map_err(|error| error.to_string()),
-        OutputFormat::Grid => Ok(format_grid(rows)),
-        OutputFormat::Xml => Ok(format_xml(rows)),
+        OutputFormat::Grid => Ok(format_grid(rows, details)),
+        OutputFormat::Xml => Ok(format_xml(rows, details)),
     }
 }
 
@@ -112,7 +112,7 @@ fn format_table(rows: &[ListRow], details: bool) -> String {
             .map(|value| (*value).to_string())
             .collect::<Vec<_>>(),
     );
-    let mut output = format!("\n{header}\n{}\n", "-".repeat(header.len()));
+    let mut output = format!("\n{}\n{}\n", header.trim_end(), "-".repeat(header.len()));
     for row in values {
         output.push_str(&render(&row));
         output.push('\n');
@@ -125,7 +125,7 @@ fn presence(value: bool) -> String {
     if value { "Y" } else { "-" }.to_string()
 }
 
-fn format_grid(rows: &[ListRow]) -> String {
+fn format_grid(rows: &[ListRow], details: bool) -> String {
     if rows.is_empty() {
         return "No skills found.".to_string();
     }
@@ -136,17 +136,30 @@ fn format_grid(rows: &[ListRow]) -> String {
             } else {
                 String::new()
             };
+            let detail = if details {
+                format!(
+                    " [{}; manifest={}; lock={}; installed={}; source={}]",
+                    row.reconciliation,
+                    row.in_manifest,
+                    row.in_lock,
+                    row.installed,
+                    row.source_path.as_deref().unwrap_or("-")
+                )
+            } else {
+                String::new()
+            };
             format!(
-                "  - {} (v{}){}\n",
+                "  - {} (v{}){}{}\n",
                 row.name,
                 row.version.as_deref().unwrap_or("unknown"),
-                source
+                source,
+                detail
             )
         })
         .collect()
 }
 
-fn format_xml(rows: &[ListRow]) -> String {
+fn format_xml(rows: &[ListRow], details: bool) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<skills>\n");
     for row in rows {
         xml.push_str(&format!(
@@ -155,6 +168,12 @@ fn format_xml(rows: &[ListRow]) -> String {
             fastskill_core::output::escape_xml(&row.name),
             fastskill_core::output::escape_xml(&row.description)
         ));
+        if details {
+            xml.push_str(&format!(
+                "    <reconciliation>{}</reconciliation>\n",
+                fastskill_core::output::escape_xml(&row.reconciliation)
+            ));
+        }
         for (tag, value) in [
             ("version", row.version.as_deref()),
             ("source_path", row.source_path.as_deref()),
@@ -206,7 +225,7 @@ fn flags(row: &ListRow) -> String {
         parts.push(row.reconciliation.as_str());
     }
     if row.mutable {
-        parts.push("mutable");
+        parts.push("editable");
     }
     if row.override_active {
         parts.push("override");
@@ -295,9 +314,9 @@ mod tests {
         let table = format_table(std::slice::from_ref(&row), true);
         assert!(table.contains("missing from folder"));
         assert!(table.contains("constraint-mismatch"));
-        assert!(table.contains("mutable; override; extraneous"));
-        assert!(format_grid(std::slice::from_ref(&row)).contains("vunknown) [unknown]"));
-        let xml = format_xml(&[row]);
+        assert!(table.contains("editable; override; extraneous"));
+        assert!(format_grid(std::slice::from_ref(&row), false).contains("vunknown) [unknown]"));
+        let xml = format_xml(&[row], false);
         assert!(!xml.contains("<version>") && xml.contains("<flags>"));
     }
 

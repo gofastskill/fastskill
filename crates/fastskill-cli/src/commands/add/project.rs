@@ -61,7 +61,7 @@ pub(super) async fn add_project_skills(
                 if declared.is_some_and(|dependencies| {
                     dependencies.contains_key(skill) || dependencies.contains_key(unscoped)
                 }) {
-                    return Err(CliError::Config(format!(
+                    return Err(CliError::Validation(format!(
                         "Skill '{skill}' is already declared. Use --force to replace it."
                     )));
                 }
@@ -107,7 +107,7 @@ pub(super) async fn add_project_skills(
             .as_ref()
             .is_some_and(|dependencies| dependencies.dependencies.contains_key(&selected.id));
         if already_declared && !force {
-            return Err(CliError::Config(format!(
+            return Err(CliError::Validation(format!(
                 "Skill '{}' is already declared. Use --force to replace it.",
                 selected.id
             )));
@@ -301,6 +301,15 @@ pub(super) fn emit_project_adds(
                 outcome.version
             );
         }
+    }
+    let mut warnings = outcomes
+        .iter()
+        .flat_map(|outcome| outcome.warnings.iter())
+        .collect::<Vec<_>>();
+    warnings.sort();
+    warnings.dedup();
+    for warning in warnings {
+        eprintln!("{}", crate::utils::messages::warning(warning));
     }
     if dry_run {
         crate::outln!("No changes were applied");
