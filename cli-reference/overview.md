@@ -1,12 +1,12 @@
 # CLI Reference Overview
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -228,8 +228,8 @@ fastskill index rebuild
 # 3. Browse with the bundled web UI
 fastskill server serve --port 8080
 
-# 4. Try search (remote catalog by default; add --local for installed skills)
-fastskill skill search "text processing"
+# 4. Search the installed skills
+fastskill skill search "text processing" --local
 ```
 
 ### Example: reproducible install

@@ -1,12 +1,12 @@
 # Configure skill sources
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -32,8 +32,8 @@ review-notes = { origin = { type = "git", url = "https://github.com/your-org/ski
 fastskill project install --no-reindex
 ```
 
-Use this manifest form for subdirectories: GitHub browser `/tree/…` URLs fail ref
-resolution in the current release.
+Use this manifest form as the portable source of truth for subdirectories. It keeps the clone URL,
+branch, and subdirectory explicit in committed project state.
 FastSkill uses system Git; install Git and ensure it can access the repository before
 adding private sources. Git credentials come from your Git configuration.
 

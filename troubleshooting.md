@@ -1,12 +1,12 @@
 # Troubleshooting
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -229,7 +229,7 @@ If you encounter lock file issues not covered here:
 1. Check lock file format: `head -20 skills.lock`
 2. Validate TOML syntax with a validator
 3. Try regenerating with `rm skills.lock && fastskill project install`
-4. Report the issue at: [https://github.com/yourusername/fastskill/issues](https://github.com/yourusername/fastskill/issues)
+4. Report the issue at: [https://github.com/gofastskill/fastskill/issues](https://github.com/gofastskill/fastskill/issues)
 
 Include:
 

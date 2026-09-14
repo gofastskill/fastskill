@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -48,13 +48,19 @@ See [bundle command](/cli-reference/bundle-command) for the manifest shape and o
 
 ## Add skills
 
+Repository-ID examples below assume a configured catalog:
+
+```bash
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+```
+
 | Operation               | Command                                                       | What It Does                                                                    |
 | ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Latest stable           | `fastskill skill add pptx@latest --repository team`           | Selects the newest stable release from the named repository                     |
 | Pinned version          | `fastskill skill add pptx@1.2.3 --repository team`            | Selects that exact version and records the repository identity                  |
 | From Git                | `fastskill skill add https://github.com/org/skill.git`        | Clones, validates layout, registers and installs                                |
 | Editable local path     | `fastskill skill add ./dev-skill -e`                          | Symlink or reference; edits apply without reinstall                             |
-| Private registry        | `fastskill skill add team-skill`                              | Uses auth from `skill-project.toml` / environment                               |
+| Private registry        | `fastskill skill add team-skill --repository team`            | Uses auth from `skill-project.toml` / environment                               |
 | Folder of skills        | `fastskill skill add ./skills -r`                             | Adds each subdirectory that contains `SKILL.md` (local trees only)              |
 | Network share (Windows) | `fastskill skill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory                   |
 | Offline add             | `fastskill skill add pptx@1.2.3 --repository team --offline`  | Uses a verified cached artifact without refresh, network, or automatic indexing |
@@ -67,6 +73,9 @@ See [bundle command](/cli-reference/bundle-command) for the manifest shape and o
 | Installed only         | `fastskill skill search "query" --local`                        | Searches skills already on disk                                    |
 | Resolve paths (agents) | `fastskill skill search "query" --local --paths`                | Emits canonical skill paths instead of result rows                 |
 | Paths with content     | `fastskill skill search "query" --local --paths --content full` | Includes `SKILL.md` content (`none`, `preview`, or `full`) in JSON |
+
+`--paths` always emits JSON. Editable installs resolve through their managed symlink to the source
+directory, so their path fields are populated like copied installs.
 
 ## Diagnostics
 
@@ -119,13 +128,13 @@ See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference
 
 # FastSkill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -134,7 +143,7 @@ Install and manage agent skills. [Start with a local skill](/quickstart).
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation*&#x2A;, optional &#x2A;*`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
+**Package manager and operational toolkit for AI agent skills.** fastskill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation*&#x2A;, optional &#x2A;*`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow*&#x2A;; local &#x2A;*`fastskill server serve`** exposes an HTTP API and web UI for browsing and integration.
 
@@ -232,13 +241,13 @@ Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/o
 
 # Install FastSkill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -304,13 +313,13 @@ Continue with [your first skill](/quickstart).
 
 # Install your first skill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/quickstart
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -395,13 +404,13 @@ restoration. For a portable artifact, use a [team bundle](/cli-reference/bundle-
 
 # Troubleshooting
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -624,7 +633,7 @@ If you encounter lock file issues not covered here:
 1. Check lock file format: `head -20 skills.lock`
 2. Validate TOML syntax with a validator
 3. Try regenerating with `rm skills.lock && fastskill project install`
-4. Report the issue at: [https://github.com/yourusername/fastskill/issues](https://github.com/yourusername/fastskill/issues)
+4. Report the issue at: [https://github.com/gofastskill/fastskill/issues](https://github.com/gofastskill/fastskill/issues)
 
 Include:
 
@@ -639,13 +648,13 @@ Include:
 
 # Understand FastSkill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -682,13 +691,13 @@ Start with [your first skill](/quickstart). Continue with
 
 # Bundle commands
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -819,13 +828,13 @@ tools unless it starts with `fastskill mcp serve --enable-write`.
 
 # cache Command
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -927,13 +936,13 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 # Discover and inspect skills
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -975,13 +984,13 @@ and [repository reference](/cli-reference/repository-command) for catalog operat
 
 # eval Command
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/eval-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -1252,13 +1261,13 @@ A case whose every trial errored is named in the output, and a metric that match
 
 # project init
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -1597,13 +1606,13 @@ Use `fastskill project init --yes` to:
 
 # project install
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -2085,13 +2094,13 @@ Keyword search with `--local --embedding false` works without an index.
 
 # optimization commands
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/optimize-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -2192,13 +2201,13 @@ fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md
 
 # CLI Reference Overview
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -2420,8 +2429,8 @@ fastskill index rebuild
 # 3. Browse with the bundled web UI
 fastskill server serve --port 8080
 
-# 4. Try search (remote catalog by default; add --local for installed skills)
-fastskill skill search "text processing"
+# 4. Search the installed skills
+fastskill skill search "text processing" --local
 ```
 
 ### Example: reproducible install
@@ -2523,13 +2532,13 @@ Commands can change installed skills and manifest files. Try changes on a copy o
 
 # index rebuild
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -3004,13 +3013,13 @@ fastskill skill list --skills-dir .claude/skills/
 
 # repo commands
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -3559,401 +3568,109 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 
 # skill search
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-
-
-## Overview
-
-`fastskill skill search` searches **remote registries by default** (same as omitting `--local`). Remote search does not use `--embedding`.
-
-The query is required. Remote results use the catalog's canonical skill ID and include the
-repository, available version, and a copy-pasteable `fastskill skill add ... --repository ...` command.
-
-With `--local`, the command searches **installed skills** in your configured skills directory. Local mode supports embedding search (`--embedding true|false|auto`), which requires `fastskill index rebuild` and embedding configuration when not using keyword-only mode.
-
-Run `fastskill skill search --help` for the authoritative flag list.
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
-Remote search distinguishes these outcomes:
 
-* no repositories are configured;
-* the requested repositories succeeded with zero matches;
-* some repositories returned results while others failed (partial, nonzero exit);
-* every requested repository failed (nonzero exit).
+# `skill search`
 
-JSON mode always writes one valid JSON value, including empty and partial results. Diagnostics are
-fields in that value instead of prose appended to stdout.
+`fastskill skill search` searches configured remote catalogs by default. Pass `--local` to search
+installed skills. Remote search uses repository catalog metadata; local search uses installed
+`SKILL.md` metadata and, when configured, the vector index.
 
-## Basic Usage
+## Usage
 
-### Remote catalog (default)
-
-```bash
-fastskill skill search "text processing"
-fastskill skill search "pptx" --repository my-registry --limit 5 --json
+```console
+$ fastskill skill search <QUERY> [OPTIONS]
 ```
 
-### Installed skills (local)
+Omitting both scope flags is equivalent to `--remote`. Use `--local` explicitly when the intent is
+to search only installed skills.
 
-```bash
-# Keyword-style local search (no embeddings)
-fastskill skill search "pdf" --local --embedding false
+## Options
 
-# Embedding / hybrid behavior (needs index + API key when embedding is true/auto)
-export OPENAI_API_KEY="your-openai-api-key"
-fastskill index rebuild
-fastskill skill search "process documents" --local --embedding auto
+| Option                  | Description                                                        | Default                         |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------- |
+| `<QUERY>`               | Required search text.                                              | —                               |
+| `--local`               | Search installed skills.                                           | `false`                         |
+| `--remote`              | Search configured catalogs.                                        | `true` when `--local` is absent |
+| `--repository <NAME>`   | Restrict remote search to one configured repository.               | all repositories                |
+| `-l, --limit <NUMBER>`  | Return between 1 and 1,000 results.                                | `10`                            |
+| `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`.                          | `table`                         |
+| `--json`                | Shorthand for `--format json`; mutually exclusive with `--format`. | `false`                         |
+| `--embedding <MODE>`    | Local search mode: `true`, `false`, or `auto`.                     | `auto`                          |
+| `--paths`               | Return resolved paths as JSON; requires `--local`.                 | `false`                         |
+| `--content <MODE>`      | Include `none`, `preview`, or `full`; requires `--local --paths`.  | `none`                          |
+| `--skills-dir <PATH>`   | Override the installation directory for this invocation.           | project setting                 |
+| `--global`              | Use the global skills directory.                                   | `false`                         |
 
-# Optional skills directory override (applies to local flows that need the service)
-fastskill skill search "powerpoint" --local --skills-dir ./.claude/skills
+## Remote search
+
+Configure a repository before searching or adding by skill ID:
+
+```console
+$ fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+$ fastskill skill search "review notes" --repository team
+$ fastskill skill search "review notes" --repository team --format json
 ```
 
-## Command Options
+Remote result rows contain `ID`, `Name`, `Description`, `Source`, and `Similarity`. Keyword catalog
+hits report a similarity of `1.000`. Human-readable output also prints the repository-qualified add
+command supplied by the result.
 
-### --limit `&lt;NUMBER&gt;`
+JSON is an array of result objects. XML always emits a `<skills>` document, including when no
+results match. A successful zero-result search exits 0. Partial repository failure returns the
+successful results plus diagnostics and exits nonzero.
 
-Maximum number of results to return:
+## Local search
 
-```bash
-# Return top 5 results
-fastskill skill search "powerpoint" --limit 5
+Keyword search does not require an embedding provider:
 
-# Request a larger page (default: 10)
-fastskill skill search "powerpoint" --limit 50
+```console
+$ fastskill skill search "pdf" --local --embedding false
 ```
 
-### --format \[table|json|grid|xml]
+`--embedding true` requires an embedding provider and fails clearly when none is configured.
+`--embedding auto` falls back to keyword search with a warning when embeddings are unavailable.
+An omitted mode also falls back, without printing the warning on every ordinary local search.
 
-Output format for results:
-
-```bash
-# ASCII table (default)
-fastskill skill search "powerpoint" --format table
-
-# JSON output
-fastskill skill search "powerpoint" --format json
-
-# XML output
-fastskill skill search "powerpoint" --format xml
+```console
+$ export OPENAI_API_KEY="your-openai-api-key"
+$ fastskill index rebuild
+$ fastskill skill search "process documents" --local --embedding true
 ```
 
-### Scope flags
+## Resolved paths and content
 
-```bash
-fastskill skill search "query" --local          # installed skills
-fastskill skill search "query" --remote         # explicit remote (default without --local)
-fastskill skill search "query" --repository r   # remote, single repo
+`--paths` always emits JSON, regardless of `--format`, because the response includes structured
+path fields and `allowed_roots`:
+
+```console
+$ fastskill skill search "presentation" --local --paths
+$ fastskill skill search "presentation" --local --paths --content preview
 ```
 
-### --embedding `&lt;true|false|auto&gt;`
+Copied installs resolve beneath the configured skills directory. Editable installs resolve through
+their managed top-level symlink to the source directory, so `skill_md_path` and `skill_root_path`
+remain usable during local development.
 
-**Only applies when `--local` is set**; ignored for remote search.
+## Validation and exit behavior
 
-```bash
-fastskill skill search --local --embedding false "documents"
-fastskill skill search --local --embedding true "documents"
-fastskill skill search --local "documents"
-```
+The command rejects conflicting scopes, an invalid format, an invalid embedding/content mode,
+`--repository` with `--local`, and path/content flags outside local scope. It exits 0 for a complete
+search, including no matches, and nonzero for invalid input or incomplete repository results.
 
-**Modes:**
+## See also
 
-* `--embedding true`: Embedding search only (requires API key and index where applicable).
-* `--embedding false`: Keyword-style search without embeddings.
-* `auto` or omitted: Let FastSkill pick a local strategy based on configuration.
-
-## Search Methods
-
-### Semantic Search (Embeddings)
-
-**How it works:**
-
-1. Converts your query to an embedding vector
-2. Calculates similarity with all indexed skill vectors
-3. Returns most semantically relevant skills
-
-**Advantages:**
-
-* Finds skills by meaning, not just keywords
-* Understands synonyms and related concepts
-* Better for natural language queries
-
-**Example:**
-
-```bash
-fastskill skill search "I need to run a meeting and summarize main points visually"
-# Finds: PowerPoint tools, presentation software, chart generators
-```
-
-## Output Formats
-
-### Table Format (Default)
-
-Professional ASCII table with columns:
-
-```
-Found 3 skills matching 'powerpoint':
-
-+-----------------+--------------------------------+------------------+
-| ID              | Path                           | Similarity       |
-+-----------------+--------------------------------+------------------+
-| pptx            | product-management/pptx        | 0.87            |
-| presentation    | tools/presentation             | 0.82            |
-| charts          | dataops/charts                 | 0.76            |
-+-----------------+--------------------------------+------------------+
-```
-
-**Features:**
-
-* Auto-sized columns based on content
-* Truncated long descriptions (50 chars max)
-* Similarity scores for embedding results
-* "N/A" for keyword search results
-
-### JSON Format
-
-Clean JSON without embedding vectors:
-
-```bash
-fastskill skill search "powerpoint" --format json --limit 2
-```
-
-```json
-[
-  {
-    "id": "pptx",
-    "name": "PowerPoint Creator",
-    "description": "Create professional presentations from text content",
-    "version": "1.0.0",
-    "author": null,
-    "tags": ["presentation", "powerpoint", "slides"],
-    "capabilities": ["create_pptx", "text_to_slides"],
-    "enabled": true,
-    "token_estimate": 145,
-    "last_updated": "2025-11-04T18:50:43.036090647Z"
-  },
-  {
-    "skill": {
-      "id": "presentation",
-      "skill_path": "tools/presentation",
-      "frontmatter_json": {
-        "name": "Presentation Tools",
-        "description": "Comprehensive presentation creation and management",
-        "tags": ["presentation", "slides", "charts"]
-      },
-      "file_hash": "a1b2c3...",
-      "updated_at": "2025-11-04T18:50:43.036090647Z"
-    },
-    "similarity": 0.82
-  }
-]
-```
-
-### XML Format
-
-Structured XML output:
-
-```bash
-fastskill skill search "powerpoint" --format xml
-```
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<skills>
-  <skill id="pptx" path="product-management/pptx">
-    <similarity>0.87</similarity>
-    <name>PowerPoint Creator</name>
-    <description>Create professional presentations from text content</description>
-  </skill>
-  <skill id="presentation" path="tools/presentation">
-    <similarity>0.82</similarity>
-    <name>Presentation Tools</name>
-    <description>Comprehensive presentation creation and management</description>
-  </skill>
-</skills>
-```
-
-## Configuration
-
-### Skills directory
-
-Local search uses the same skills directory resolution as other commands (typically `[tool.fastskill].skills_directory` in `skill-project.toml`, or `--global` on the top-level CLI). You can override per invocation with:
-
-```bash
-fastskill skill search "query" --local --skills-dir ./.claude/skills
-```
-
-## Examples
-
-### Basic Queries
-
-```bash
-# Find document processing skills
-fastskill skill search "process documents and extract text"
-
-# Find visualization tools
-fastskill skill search "create charts and graphs"
-
-# Find meeting-related skills
-fastskill skill search "schedule meetings and send invites"
-```
-
-### Advanced Queries
-
-```bash
-# Limit results and use JSON output
-fastskill skill search "powerpoint" --limit 5 --format json
-
-# Force keyword search for debugging
-fastskill skill search "presentation" --embedding false --format table
-
-# XML output for integration
-fastskill skill search "charts" --format xml > charts.xml
-```
-
-### Integration Examples
-
-#### Shell Script
-
-```bash
-#!/bin/bash
-QUERY="$1"
-RESULTS=$(fastskill skill search "$QUERY" --format json --limit 3)
-
-if [ -z "$RESULTS" ]; then
-    echo "No skills found for: $QUERY"
-    exit 1
-fi
-
-echo "Found skills for '$QUERY':"
-echo "$RESULTS" | jq -r '.[].name'
-```
-
-## Performance
-
-### Search Speed
-
-* **Embedding Search**: \< 500ms (local vector similarity)
-* **No Network Calls**: All search happens locally after indexing
-
-### Result Quality
-
-* **Semantic Understanding**: Finds skills by meaning, not just keywords
-* **Intelligent Matching**: Understands synonyms and related concepts
-* **Natural Language**: Better relevance for human queries
-
-### Scalability
-
-* **Vector Search**: Constant time after indexing, scales to 10k+ skills
-* **Local Processing**: No external API calls during search
-
-## Error Handling
-
-### Common Errors
-
-#### "No skills found matching 'query'"
-
-* **Cause**: No skills match the search criteria
-* **Solution**: Try broader terms or different search method
-
-#### "Embedding configuration required but not found"
-
-* **Cause**: No `[tool.fastskill.embedding]` section found in `skill-project.toml` (walked up from the current directory)
-* **Solution**: Run `fastskill project init` to set up your project, or add `[tool.fastskill.embedding]` to `skill-project.toml` manually
-
-#### "Vector index service not available"
-
-* **Cause**: Skills not indexed yet
-* **Solution**: Run `fastskill index rebuild` first
-
-#### "OPENAI\_API\_KEY environment variable not set"
-
-* **Cause**: API key not configured for embedding search
-* **Solution**: Set `OPENAI_API_KEY` environment variable
-
-### Troubleshooting
-
-#### Enable Debug Logging
-
-```bash
-RUST_LOG=fastskill=debug fastskill skill search "query"
-```
-
-#### Check Index Status
-
-```bash
-# Verify index exists
-ls -la .claude/skills/.fastskill/index.db
-
-# Check index contents
-sqlite3 .claude/skills/.fastskill/index.db "SELECT COUNT(*) FROM skills;"
-```
-
-#### Verify Configuration
-
-```bash
-# Check the embedding configuration
-cat skill-project.toml
-
-# Test API key is set
-echo $OPENAI_API_KEY
-
-# Test basic search functionality
-fastskill skill search "test query" --limit 1
-```
-
-## Best Practices
-
-### Query Formulation
-
-* Use natural language descriptions
-* Describe desired outcomes and use cases
-* Include context about what you want to accomplish
-* Semantic search understands synonyms and related concepts
-
-### Performance Optimization
-
-```bash
-# Use appropriate limits
-fastskill skill search "query" --limit 10  # Not too many results
-
-# Choose appropriate output formats
-fastskill skill search "query" --format json  # For programmatic use
-fastskill skill search "query" --format table # For human reading
-```
-
-### Integration Patterns
-
-#### API Integration
-
-```bash
-# For web applications (POST JSON body to the running `fastskill server serve` API)
-curl -X POST "http://localhost:8080/api/v1/search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "powerpoint", "limit": 10, "semantic": true}'
-
-# For command-line tools
-fastskill skill search "$USER_QUERY" --format json | jq '.[] | select(.similarity > 0.8)'
-```
-
-## Related Commands
-
-### Reindex Command
-
-Build or update the search index:
-
-```bash
-fastskill index rebuild --skills-dir .claude/skills/
-```
-
-`skill search` discovers skills from catalogs or the installed set, depending on `--local` and
-embedding settings.
+* [Configure skill sources](/registry/sources).
+* [Skill and project commands](/cli-reference/skill-commands).
+* [Reconciliation](/skill-management/reconciliation).
 
 
 
@@ -3961,13 +3678,13 @@ embedding settings.
 
 # server serve
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -4101,444 +3818,178 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 # Skill and project commands
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-
-
-## Overview
-
-Use `fastskill skill` to manage individual skills. Use `fastskill project` to create a manifest and
-restore all declared skills and bundles.
-
-For detailed documentation on specific commands, see the dedicated command pages linked below.
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
-## Command Reference
 
-### fastskill project init
+# Skill and project commands
 
-Initialize `skill-project.toml` for skill authors in current skill directory. This command extracts metadata from `SKILL.md` frontmatter and prompts for additional fields to create a comprehensive metadata file.
+Use `fastskill skill` to manage individual skills. Use `fastskill project` to initialize project
+state and restore all declared dependencies. Run a command with `--help` for the generated,
+version-matched option list.
 
-See [`project init`](/cli-reference/init-command) for complete flags and examples.
+## Shared scope options
 
+`--global` selects the user-level skills directory and global lock where the command supports that
+scope. `--skills-dir <PATH>` overrides the installation directory for one invocation. In project
+mode fastskill warns that subsequent project commands must use the same override to inspect the
+same installed state. `-v, --verbose` enables diagnostic logs.
 
-```bash
-# Create skill-project.toml interactively
-fastskill project init
+## `skill add`
 
-# Set version directly
-fastskill project init --set-version 1.2.3
-
-# Skip prompts, use defaults
-fastskill project init --yes
-
-# Force overwrite existing skill-project.toml
-fastskill project init --force
+```console
+$ fastskill skill add <SOURCE> [OPTIONS]
 ```
 
-**What it does**:
+`SOURCE` can be a local directory, local ZIP, Git URL, remote ZIP URL, or skill ID. An existing
+relative path wins over the skill-ID shorthand. Use `./name` when a nonexistent local path would
+otherwise look like an ID.
 
-* Derives skill ID from current directory name (required)
-* Extracts available fields from `SKILL.md` frontmatter (name, description, version, author, tags, capabilities)
-* Prompts interactively for missing fields (when not using `--yes`)
-* Creates `skill-project.toml` with all metadata fields including required `id` and `version`
+| Option                                         | Description                                          |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| `--source-type <registry\|github\|git\|local>` | Override source inference.                           |
+| `--repository <NAME>`                          | Select a configured repository for a skill ID.       |
+| `--branch <BRANCH>`                            | Select a Git branch; exclusive with `--tag`.         |
+| `--tag <TAG>`                                  | Select a Git tag; exclusive with `--branch`.         |
+| `-f, --force`                                  | Replace an existing direct declaration.              |
+| `-e, --editable`                               | Link a local directory for in-place development.     |
+| `--group <GROUP>`                              | Add the root to a nonempty group.                    |
+| `-r, --recursive`                              | Add every skill below a local directory.             |
+| `--offline`                                    | Use verified cached/local inputs only.               |
+| `--reindex` / `--no-reindex`                   | Override automatic vector indexing.                  |
+| `--dry-run`                                    | Validate and preview without changing managed state. |
+| `--json`                                       | Emit one lifecycle JSON document.                    |
 
-**Options**:
-
-* `--yes`: Skip interactive prompts and use defaults
-* `--force`: Force reinitialization even if skill-project.toml exists
-* `--set-version <VERSION>`: Set version directly
-* `--description <DESC>`: Set skill description
-* `--author <AUTHOR>`: Set skill author
-* `--download-url <URL>`: Set download URL
-
-### fastskill skill read
-
-Retrieve skill documentation and base directory path in an agent-optimized format. This command is designed for programmatic consumption by AI agents and automation tools.
-
-```bash
-# Read a skill by ID
-fastskill skill read <skill-id>
-
-# Examples
-fastskill skill read pptx
-fastskill skill read data-analyzer
-fastskill skill read web-scraper
+```console
+$ fastskill skill add ./skills/reviewer --editable --group dev
+$ fastskill skill add ./skills --recursive
+$ fastskill skill add https://github.com/your-org/reviewer.git --branch main
+$ fastskill skill add reviewer@1.2.0 --repository team
 ```
 
-**Output Format**:
-The command outputs structured text with:
+For a skill below a Git repository root, declare a clean clone URL plus `subdir`; see
+[Configure skill sources](/registry/sources). A Git repository with multiple candidate skills and
+no selected subdirectory is rejected instead of installing whichever directory is visited first.
 
-* Skill identifier
-* Base directory (absolute path)
-* Complete SKILL.md content
+## `skill remove`
 
-**Example Output**:
-
-```
-Reading: pptx
-Base directory: /home/user/.claude/skills/pptx
-
----
-description: "Presentation creation and editing"
-author: "FastSkill Team"
-version: "1.2.3"
-tags: ["presentation", "powerpoint", "office"]
-capabilities: ["create_slides", "edit_content", "export_formats"]
----
-
-# PowerPoint Skill
-
-This skill provides tools for creating and editing PowerPoint presentations programmatically.
-
-## Tools Available
-
-### create_presentation
-Creates a new PowerPoint presentation with specified parameters.
-
-**Parameters:**
-- `title` (string): Presentation title
-- `template` (string, optional): Template to use
-- `slides` (array): Array of slide definitions
-
-**Returns:** Presentation file path
-
-### add_slide
-Adds a new slide to an existing presentation.
-
-**Parameters:**
-- `presentation_path` (string): Path to presentation file
-- `slide_type` (string): Type of slide (title, content, etc.)
-- `content` (object): Slide content definition
-
-**Returns:** Updated presentation file path
+```console
+$ fastskill skill remove <SKILL_ID>... [OPTIONS]
 ```
 
-**Use Cases**:
+| Option                       | Description                                                          |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `-f, --force`                | Skip confirmation; required for non-interactive removal.             |
+| `--reindex` / `--no-reindex` | Override automatic vector indexing.                                  |
+| `--dry-run`                  | Validate and preview without changing managed state.                 |
+| `--json`                     | Emit one lifecycle JSON document; requires `--force` unless dry-run. |
 
-* **Agent Integration**: Load skill documentation into agent context
-* **Tool Discovery**: Explore available functions and parameters
-* **Documentation Access**: Get complete skill information programmatically
-* **Debugging**: Verify skill content and structure
+Validation and ownership planning happen before an interactive prompt. Missing targets are reported
+without asking for confirmation. A requested install that exists on disk but is missing from a
+damaged/stale manifest or lock can still be removed. Locally modified managed installs remain
+protected; `--force` skips only the prompt.
 
-**Error Handling**:
+Declining the prompt or reaching end-of-input cancels removal without changing files and exits
+with status 1. Non-interactive input requires `--force` or `--dry-run`.
 
-* Exit code 0: Success
-* Exit code 1: Skill not found or invalid identifier
-* Exit code 1: System error (file access, size limit exceeded)
+## `skill update`
 
-**Limitations**:
-
-* Maximum file size: 500KB for SKILL.md files
-* Single skill per invocation
-* Read-only operation (does not execute scripts or modify data)
-* Only works with already-installed skills
-
-A skill ID must follow the explicit `skill read` path. Bare skill IDs are rejected.
-
-### fastskill project install
-
-Install skills from `skill-project.toml` to skills storage directory (like `poetry install`). The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
-
-See [`project install`](/cli-reference/install-command) for groups, lockfile, and reconciliation.
-
-
-```bash
-# Install all skills from skill-project.toml
-fastskill project install
-
-# Install without dev group skills
-fastskill project install --without dev
-
-# Install only production group skills
-fastskill project install --only prod
-
-# Install and verify the exact lock without network access
-fastskill project install --lock --offline
+```console
+$ fastskill skill update [SKILL_ID] [OPTIONS]
 ```
 
-**Options**:
+| Option                                     | Description                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `--check`                                  | Resolve and validate without applying; exclusive with `--dry-run`. |
+| `--dry-run`                                | Preview without changing state; exclusive with `--check`.          |
+| `--to-version <VERSION>`                   | Exact version for one repository-origin `SKILL_ID`.                |
+| `--strategy <latest\|patch\|minor\|major>` | Strategy for one repository-origin `SKILL_ID`.                     |
+| `--repository <NAME>`                      | Repository for one repository-origin `SKILL_ID`.                   |
+| `--source <NAME>`                          | Deprecated alias for `--repository`.                               |
+| `--offline`                                | Use verified cached/local inputs only.                             |
+| `--reindex` / `--no-reindex`               | Override automatic vector indexing.                                |
+| `--json`                                   | Emit one lifecycle JSON document.                                  |
 
-* `--without <GROUPS...>`: Exclude skills from these groups
-* `--only <GROUPS...>`: Only install skills from these groups
-* `--lock`: Install from skills.lock (exact versions) instead of resolving from skill-project.toml
-* `--offline`: Use verified local and cached inputs without network, refresh, or automatic indexing
+See [`skill update`](/cli-reference/update-command) for version and closure behavior.
 
-### fastskill skill update
+## `skill list`
 
-Update skills in skills storage directory to their latest versions from source. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
-
-See [`skill update`](/cli-reference/update-command) for complete flag documentation.
-
-
-```bash
-# Update all skills
-fastskill skill update
-
-# Update specific skill
-fastskill skill update my-skill-id
-
-# Check for updates without installing
-fastskill skill update --check
-
-# Show what would be updated
-fastskill skill update --dry-run
-
-# Move one repository skill to an exact version
-fastskill skill update my-skill-id --to-version 2.1.0
+```console
+$ fastskill skill list [OPTIONS]
 ```
 
-**Options**:
+| Option                              | Description                                               |
+| ----------------------------------- | --------------------------------------------------------- |
+| `--format <table\|json\|grid\|xml>` | Select the output format.                                 |
+| `--json`                            | Shorthand for `--format json`; exclusive with `--format`. |
+| `--details`                         | Include version, source, and managed-state details.       |
+| `--check`                           | Exit nonzero when selected state needs reconciliation.    |
+| `--only <GROUP>...`                 | List and check roots in the selected groups.              |
+| `--without <GROUP>...`              | Exclude roots in the selected groups.                     |
 
-* `<SKILL_ID>`: Skill ID to update (if not specified, updates all)
-* `--check`: Check for updates without installing
-* `--dry-run`: Show what would be updated without actually updating
-* `--to-version <VERSION>`: Change one named repository skill to an exact version
-* `--strategy <patch|minor|latest|major>`: Choose a compatible update strategy
-* `--repository <NAME>`: Select a configured repository for one named repository skill
-* `--offline`: Use verified cached/local inputs only
-* `--reindex` / `--no-reindex`: Control whether the vector index is rebuilt after updating
+JSON rows expose the actual reconciliation schema, including `reconciliation`, `source_type`,
+`source_path`, `in_manifest`, `in_lock`, `installed`, `mutable`, and `extraneous`. `mutable` is the
+machine-readable field for an editable install; human-readable flags say `editable`.
 
-### fastskill skill read (metadata and tree)
+## `skill read`
 
-Display skill metadata or dependency tree. Use `--meta` for structured metadata and `--tree` for the dependency tree.
-
-```bash
-# Read full SKILL.md content (default)
-fastskill skill read my-skill-id
-
-# Show structured metadata
-fastskill skill read my-skill-id --meta
-
-# Show dependency tree
-fastskill skill read my-skill-id --tree
-
-# Metadata and tree together
-fastskill skill read my-skill-id --meta --tree
-
-# Metadata as JSON
-fastskill skill read my-skill-id --meta --json
-
-# List all installed skills
-fastskill skill list
+```console
+$ fastskill skill read <SKILL_ID> [OPTIONS]
 ```
 
+With no options, stdout is the exact installed `SKILL.md` content, so redirection creates a faithful
+copy.
 
+| Option                              | Description                                       |
+| ----------------------------------- | ------------------------------------------------- |
+| `--meta`                            | Show structured metadata instead of file content. |
+| `--tree`                            | Show the installed dependency tree.               |
+| `--format <table\|json\|grid\|xml>` | Select metadata output; requires `--meta`.        |
+| `--json`                            | Metadata JSON shorthand; requires `--meta`.       |
+| `--locked`                          | Read locked metadata; requires `--meta`.          |
 
+Invalid formats are rejected. Installed dependency data is loaded from `SKILL.md` frontmatter, so
+`--tree` works without `--locked`.
 
-### fastskill skill add
+## `skill search`
 
-Add a skill from a source (git URL, local folder, or zip file) and install it to the skills storage directory. Updates both `skill-project.toml` and `skills.lock`.
-
-**Storage Location**: Skills are installed to the directory configured in `skill-project.toml` via the `skills_directory` setting under `[tool.fastskill]` (default: `.claude/skills/`). Repository configuration is stored in the `[[tool.fastskill.repositories]]` section of `skill-project.toml`.
-
-**Installing from a subdirectory**: Declare a Git origin with a clean clone URL and `subdir` in your manifest; see [Git sources](/registry/sources).
-
-```bash
-# Add skill from git URL
-fastskill skill add https://github.com/org/skill.git
-
-# Add skill in editable mode (for local development)
-fastskill skill add ./local-skill -e
-
-# Add skill to a group
-fastskill skill add https://github.com/org/skill.git --group dev
-
-# Add editable skill to dev group
-fastskill skill add ./local-skill -e --group dev
-
-# Add all skills under a directory recursively
-fastskill skill add ./skills -r
-
-# Add all skills recursively with editable mode and group
-fastskill skill add ./skills -r -e --group dev
-
-# Add the newest stable release from a selected repository
-fastskill skill add scope/reviewer@latest --repository team
-
-# Add an exact cached release without network access
-fastskill skill add scope/reviewer@1.2.0 --repository team --offline
+```console
+$ fastskill skill search <QUERY> [OPTIONS]
 ```
 
-**Git URL formats:**
+Remote scope is the default. `--local` searches installed skills. Options include
+`--repository <NAME>`, `-l, --limit <NUMBER>`, `-f, --format <FORMAT>`, `--json`,
+`--embedding <true|false|auto>`, `--paths`, and `--content <none|preview|full>`. See
+[`skill search`](/cli-reference/search-command) for scope, path, and output contracts.
 
-* Standard: `https://github.com/user/repo.git`
-* Subdirectory: use the manifest origin’s `subdir` field with a clean clone URL.
+## Project commands
 
-**Options:**
+`fastskill project init` creates `skill-project.toml`. `fastskill project install` restores the
+selected dependency closure and writes `skills.lock`. See the dedicated
+[`project init`](/cli-reference/init-command) and
+[`project install`](/cli-reference/install-command) references.
 
-* `-e, --editable`: Install skill in editable mode (symlink/reference for local development)
-* `-r, --recursive`: Add all skills found under the directory (discovers directories containing SKILL.md). Only valid when source is a local directory
-* `--group <GROUP>`: Add skill to a specific group (e.g., "dev", "prod")
-* `--repository <NAME>`: Select the configured repository for a skill ID reference
-* `--offline`: Use verified local and cached inputs without network or automatic indexing
-* `--branch <BRANCH>`: Git branch to checkout (for git URLs)
-* `--tag <TAG>`: Git tag to checkout (for git URLs)
-* `--force`: Force registration even if skill already exists
+## Migrating from older versions
 
-### fastskill skill remove
+The former root verbs moved below the `skill` namespace:
 
-Remove a skill from the skills storage directory and update both `skill-project.toml` and `skills.lock`. The storage location is configured in `skill-project.toml` via `skills_directory` under `[tool.fastskill]` (default: `.claude/skills/`).
+| Before                   | Now                            |
+| ------------------------ | ------------------------------ |
+| `fastskill add SOURCE`   | `fastskill skill add SOURCE`   |
+| `fastskill remove ID`    | `fastskill skill remove ID`    |
+| `fastskill update [ID]`  | `fastskill skill update [ID]`  |
+| `fastskill list`         | `fastskill skill list`         |
+| `fastskill read ID`      | `fastskill skill read ID`      |
+| `fastskill search QUERY` | `fastskill skill search QUERY` |
 
-```bash
-# Remove skill (with confirmation)
-fastskill skill remove my-skill-id
-
-# Force removal without confirmation
-fastskill skill remove my-skill-id --force
-
-# Remove multiple skills
-fastskill skill remove skill1 skill2 skill3
-```
-
-**Options**:
-
-* `--force`, `-f`: Skip confirmation
-* `--skills-dir <PATH>`: Override skills directory
-
-Removing a direct root detaches that declaration and retains content still required by another
-root or bundle. Removing an ID that is only transitive fails and names its owners. `--force`
-skips confirmation; it does not bypass ownership, integrity, or local-edit protection.
-
-### fastskill repo
-
-Manage skill repositories and browse remote skill catalog for discovering and installing skills.
-
-```bash
-# Add a repository
-fastskill repo add team-tools --repo-type git-marketplace https://github.com/org/team-skills.git
-
-# List all repositories
-fastskill repo list
-
-# Remove a repository
-fastskill repo remove team-tools
-
-# Update repository metadata
-fastskill repo update team-tools --branch develop
-
-# List skills from a repository
-fastskill repo skills
-
-# Show skill details
-fastskill repo show skill-id
-```
-
-### fastskill skill list
-
-List locally installed skills with reconciliation against project and lock files. Similar to `pip list` or `uv list`.
-
-```bash
-# List all installed skills (table format, default)
-fastskill skill list
-
-# List in JSON format
-fastskill skill list --json
-
-# Explicitly request grid format
-fastskill skill list --format grid
-
-# XML output for agent consumption
-fastskill skill list --format xml
-```
-
-**Output Format**:
-
-* **Table (default)**: Human-readable table with columns: id, name, description, flags
-* **Grid**: Simple list format for commands with many columns
-* **JSON**: Machine-readable array with same fields plus reconciliation status
-* **XML**: Structured XML for agent consumption
-
-**Reconciliation Status**:
-
-* `ok`: Skill is installed and matches project/lock files
-* `missing`: Skill is in `skill-project.toml` but not installed
-* `extraneous`: Skill is installed but not in `skill-project.toml`
-* `mismatch`: Installed version differs from `skills.lock`
-
-**Options**:
-
-* `--format <table|json|grid|xml>`: Output format (default: table)
-* `--json`: Shorthand for --format json (mutually exclusive with --format)
-* `--details`: Extra columns (version, paths, reconciliation detail)
-* `--skills-dir <PATH>`: Override skills directory for this invocation
-
-**Example JSON Output**:
-
-```json
-[
-  {
-    "id": "pptx",
-    "version": "1.2.3",
-    "description": "Presentation creation and editing",
-    "source": "registry",
-    "installed_path": "/home/user/.claude/skills/pptx",
-    "installed_at": "2025-01-15T10:30:00Z",
-    "status": "ok"
-  }
-]
-```
-
-**Note**: This command reads installed skill manifests from the skills directory as the source of truth and cross-references `skill-project.toml` (desired) and `skills.lock` (pinned) to report reconciliation status.
-
-## Examples
-
-### Skill Development Workflow
-
-```bash
-# 1. Add skill from Git repository
-fastskill skill add https://github.com/org/my-skill.git
-
-# 2. List skills to verify installation
-fastskill skill list
-
-# 3. Show skill metadata
-fastskill skill read my-skill --meta
-
-# 4. Update to latest version
-fastskill skill update my-skill
-
-# 5. Remove skill when no longer needed
-fastskill skill remove my-skill --force
-```
-
-### Batch Operations
-
-```bash
-# Install multiple local skills (editable) and install
-for dir in ./skills/*; do
-  fastskill skill add "$dir" -e --group dev
-done
-
-fastskill project install
-fastskill index rebuild
-```
-
-### CI/CD Integration
-
-```bash
-# Install with locked versions for reproducible builds
-fastskill project install --lock --without dev
-
-# Reindex for search (auto-triggered after add/install/update/remove when embedding is configured)
-fastskill index rebuild
-
-# Check environment readiness
-fastskill cli doctor
-
-# Verify installation
-fastskill skill list
-```
-
-Skill commands support interactive use and automation. Index rebuilding runs automatically after
-`skill add`, `project install`, `skill update`, and `skill remove` when an embedding provider is
-configured. Use `--no-reindex` to suppress it or `fastskill cli doctor` to check readiness.
+Running an old verb prints the corresponding migration command rather than an unrelated fuzzy
+suggestion.
 
 
 
@@ -4546,13 +3997,13 @@ configured. Use `--no-reindex` to suppress it or `fastskill cli doctor` to check
 
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -4664,378 +4115,142 @@ fastskill cli doctor --json
 
 # skill update
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/cli-reference/update-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
 # `skill update`
 
-Resolve deliberate changes from each skill's recorded origin, validate the affected dependency
-closure, apply it atomically, and update `skills.lock`. Exact pins remain exact unless you name one
-repository skill and explicitly change its version.
+`fastskill skill update` re-resolves selected roots from their recorded origins, validates each
+affected dependency closure, applies the result, and updates the lockfile. Exact repository pins
+remain exact unless one named root is changed with a version or strategy control.
 
 ## Usage
 
-```bash
-fastskill skill update [SKILL_ID] [OPTIONS]
+```console
+$ fastskill skill update [SKILL_ID] [OPTIONS]
 ```
 
 ## Options
 
-| Option                                     | Description                                                                           | Default             |
-| ------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------- |
-| `<SKILL_ID>`                               | Skill ID to update (if not specified, updates all)                                    | None                |
-| `--check`                                  | Check for updates without installing                                                  | `false`             |
-| `--dry-run`                                | Show what would be updated without actually updating                                  | `false`             |
-| `--to-version <VERSION>`                   | Set one named repository skill to an exact version                                    | None                |
-| `--strategy <patch\|minor\|latest\|major>` | Select a compatible target; `major` aliases `latest`                                  | `latest`            |
-| `--repository <NAME>`                      | Select a configured repository for one named repository skill                         | recorded repository |
-| `--source <NAME>`                          | Deprecated alias of `--repository`                                                    | None                |
-| `--offline`                                | Use verified local and cached inputs without network or automatic indexing            | `false`             |
-| `--reindex`                                | Rebuild the search index after updating (overrides config)                            | config              |
-| `--no-reindex`                             | Skip rebuilding the search index after updating                                       | config              |
-| `--global`                                 | Operate on the global skill set (`~/.config/fastskill/skills`) instead of the project | `false`             |
+| Option                   | Description                                                                                     | Default             |
+| ------------------------ | ----------------------------------------------------------------------------------------------- | ------------------- |
+| `[SKILL_ID]`             | Update one declared root; omit it to update every root.                                         | all roots           |
+| `--check`                | Resolve and validate without applying; exclusive with `--dry-run`.                              | `false`             |
+| `--dry-run`              | Preview without changing managed state; exclusive with `--check`.                               | `false`             |
+| `--to-version <VERSION>` | Set one repository-origin root to an exact version; requires `SKILL_ID`.                        | —                   |
+| `--strategy <STRATEGY>`  | Use `latest`, `patch`, `minor`, or `major` for one repository-origin root; requires `SKILL_ID`. | recorded constraint |
+| `--repository <NAME>`    | Select a configured repository for one repository-origin root; requires `SKILL_ID`.             | recorded repository |
+| `--source <NAME>`        | Deprecated alias for `--repository`.                                                            | —                   |
+| `--offline`              | Use verified local sources and cached artifacts only.                                           | `false`             |
+| `--reindex`              | Rebuild the search index after applying.                                                        | configuration       |
+| `--no-reindex`           | Skip rebuilding the search index.                                                               | configuration       |
+| `--json`                 | Emit one lifecycle JSON document.                                                               | `false`             |
+| `--skills-dir <PATH>`    | Override the installation directory for this invocation.                                        | project setting     |
+| `--global`               | Update the global skill set and `global-skills.lock`.                                           | `false`             |
 
-`--to-version` and `--repository` require one named repository-backed skill. A strategy supplied
-with `--to-version`, different values for `--source` and `--repository`, or repository/version
-controls on a local, Git, or ZIP origin fail before mutation.
+`--to-version`, `--strategy`, and `--repository` apply only to repository-origin skills. The
+command rejects these controls without one `SKILL_ID`, controls applied to local/Git/ZIP origins,
+conflicting `--source` and `--repository` values, and `--check` with `--dry-run`.
 
-## Examples
+## Preview and check
 
-### Update All Skills
+Both preview modes resolve and validate the same candidates as an update, without changing files,
+the manifest, lockfile, timestamps, repository indexes, or the vector index.
 
-Update all installed skills to their current versions:
+```console
+$ fastskill skill update --check
+  • alpha: 1.0.0 -> 1.0.0 (unchanged)
+[INFO] No changes were applied
 
-```bash
-fastskill skill update
+$ fastskill skill update alpha --dry-run --json
+{
+  "scope": "project",
+  "outcome": "unchanged",
+  "dry_run": true,
+  "targets": [
+    {
+      "id": "alpha",
+      "outcome": "unchanged",
+      "current_revision": "1.0.0",
+      "target_revision": "1.0.0",
+      "changes": [],
+      "retained": []
+    }
+  ],
+  "diagnostics": [],
+  "resolution": {
+    "source": "cached",
+    "refreshed_repositories": []
+  },
+  "indexing": {
+    "outcome": "skipped",
+    "count": 0,
+    "diagnostic": "preview only; indexing was not attempted"
+  }
+}
 ```
 
-This:
+`--check` and `--dry-run` report the same validated target information; `--check` is the concise
+inspection form and `--dry-run` is the explicit lifecycle preview form.
 
-* Reads all skills from `skill-project.toml` dependencies
-* Re-resolves each origin to its current version
-* Updates skills in `.claude/skills/`
-* Updates `skills.lock` with the resolved versions
+## Apply an update
 
-### Update a Specific Skill
-
-Update only one skill by ID:
-
-```bash
-fastskill skill update web-scraper
-```
-
-### Check for Updates
-
-Show which skills have updates available without installing anything:
-
-```bash
-fastskill skill update --check
-```
-
-`--check` is the concise form of the validated update plan. It shows current and target revisions
-and makes no managed-state, timestamp, or index changes.
-
-
-### Change an exact version or repository
-
-```bash
-fastskill skill update web-scraper --to-version 1.4.2 --dry-run
-fastskill skill update web-scraper --to-version 1.4.2
-fastskill skill update web-scraper --repository team --strategy minor
-```
-
-An exact target may be a deliberate downgrade. Without `--to-version`, FastSkill preserves the
-Manifest constraint: `patch` stays in the current major/minor, `minor` stays in the current major,
-and `latest` chooses any newer stable version already allowed by the constraint. Strategies never
-widen an exact pin.
-
-### Dry Run
-
-Preview what would be updated without making changes:
-
-```bash
-fastskill skill update --dry-run
-```
-
-### Control Reindexing
-
-By default, whether the search index is rebuilt after an update follows your configuration
-(`auto_reindex`). Override it per invocation:
-
-```bash
-# Force a reindex after updating
-fastskill skill update --reindex
-
-# Skip the reindex after updating
-fastskill skill update --no-reindex
-```
-
-### Update the Global Skill Set
-
-Operate on the global skills directory (`~/.config/fastskill/skills`) and `global-skills.lock`
-instead of the current project:
-
-```bash
-fastskill skill update --global
-```
-
-## Behavior
-
-The `skill update` command:
-
-1. **Locates Project File**: Finds `skill-project.toml` (or, with `--global`, the global skill set)
-2. **Loads Dependencies**: Reads the declared skills
-3. **Filters Skills**: If `SKILL_ID` is specified, only that skill is considered
-4. **Re-resolves Origins**: Selects the newest target allowed by each recorded constraint and the
-   requested strategy, or obtains a fresh verified copy for a Git/local/ZIP origin
-5. **Updates Skills**: Stages and validates each affected closure before replacing installed files
-6. **Updates Lockfile**: Writes the resolved versions to `skills.lock`
-7. **Reindexes** (unless suppressed): Rebuilds the search index when an embedding provider is
-   configured and reindexing is not disabled
-
-## Update Modes
-
-### Update Mode (default)
-
-Updates skills and modifies the lockfile:
-
-```bash
-fastskill skill update
-```
-
-**Output:**
-
-```
+```console
+$ fastskill skill update alpha
 Updating skills...
 
-Updating web-scraper...
-✓ Updated web-scraper from 1.2.3 to 2.0.0
-  Source: git
+  • alpha: 1.0.0 -> 1.1.0 (upgrade)
 
-Updating data-processor...
-✓ Updated data-processor from 2.1.0 to 2.2.0
-  Source: registry
-
-Updated skills.lock with 2 skill(s)
-
-✓ Update complete
-Run 'fastskill index rebuild' to update search index
+[OK] Updated 1 skill(s)
+   Updated skills.lock
+   Indexing skipped: no embedding provider configured
 ```
 
-### Check Mode
+The exact change labels can include `origin changed`, `resolved content changed`, `groups changed`,
+and `dependency ownership changed`. Ownership changes are calculated per selected root, so an
+unrelated root is not reported as updated when another root's closure changes.
 
-Shows available updates without installing:
+## Version controls
 
-```bash
-fastskill skill update --check
+```console
+$ fastskill skill update alpha --to-version 1.4.2 --dry-run
+$ fastskill skill update alpha --strategy patch
+$ fastskill skill update alpha --repository team --strategy minor
 ```
 
-**Output:**
+An exact target can be a deliberate downgrade. `patch` stays within the current major/minor,
+`minor` stays within the current major, and `latest`/`major` use the recorded constraint. An exact
+pin is never widened implicitly.
 
-```
-Checking for updates...
+## Global updates
 
-Skills with updates available:
-
-web-scraper: 1.2.3 → 2.0.0 (update available)
-data-processor: 2.1.0 → 2.2.0 (update available)
-demo-skill: Already up to date (0.1.0)
-
-Run 'fastskill skill update' to apply updates
+```console
+$ fastskill skill update --global --check
+$ fastskill skill update alpha --global
 ```
 
-### Dry Run Mode
+Global JSON uses the same lifecycle keys as project JSON: `scope`, `outcome`, `dry_run`, `targets`,
+`diagnostics`, `resolution`, and `indexing`. A missing global lock returns an unchanged document
+with explicit skipped-indexing diagnostics rather than `null` lifecycle fields.
 
-Shows what would be updated without making changes:
+## Failure and recovery
 
-```bash
-fastskill skill update --dry-run
-```
+Before mutation, fastskill verifies selected managed content and refuses to replace local edits.
+Each affected closure is staged and validated. A failed application restores its prior files and
+state, reports the failed target, and exits nonzero.
 
-**Output:**
+## See also
 
-```
-Dry run: Showing what would be updated...
-
-Would update web-scraper from 1.2.3 to 2.0.0
-  Source: git
-
-Would update data-processor from 2.1.0 to 2.2.0
-  Source: registry
-
-Would keep demo-skill at 0.1.0 (already up to date)
-
-Dry run complete. No changes were made.
-```
-
-## Update Workflow
-
-### Standard Update Workflow
-
-```bash
-# 1. Check for updates
-fastskill skill update --check
-
-# 2. Preview with a dry run
-fastskill skill update --dry-run
-
-# 3. Apply updates
-fastskill skill update
-
-# 4. Reindex for search (or rely on auto-reindex)
-fastskill index rebuild
-
-# 5. Commit lockfile
-git add skills.lock
-git commit -m "Update dependencies"
-```
-
-### Pinning to Exact Versions
-
-Change one repository root's desired exact version with `--to-version`, then commit the resulting
-Manifest and lock. Restore that exact set in CI:
-
-```bash
-fastskill skill update web-scraper --to-version 1.4.2
-fastskill project install --lock --offline
-```
-
-## Dependency Management
-
-### Update Order
-
-Skills are updated alphabetically for deterministic output:
-
-```bash
-$ fastskill skill update
-Updating skills...
-
-Updating data-processor...
-✓ Updated data-processor from 2.1.0 to 2.2.0
-
-Updating demo-skill...
-✓ Updated demo-skill from 0.1.0 to 0.2.0
-
-Updating web-scraper...
-✓ Updated web-scraper from 1.2.3 to 1.3.0
-
-Updated skills.lock with 3 skill(s)
-```
-
-### Update Failures
-
-If a later independent update fails, earlier completed units are reported and the command exits
-nonzero. A failed affected closure restores its previous files and state:
-
-```bash
-$ fastskill skill update
-Updating skills...
-
-Updating web-scraper...
-✗ Failed to update web-scraper: Network error
-
-Updating data-processor...
-✓ Updated data-processor from 2.1.0 to 2.2.0
-
-demo-skill: Already up to date (0.1.0)
-
-Updated skills.lock with 1 skill(s)
-
-Update partially completed: 1 changed, 1 failed
-```
-
-## Error Handling
-
-### Skill Not Found
-
-```bash
-$ fastskill skill update unknown-skill
-error: Skill 'unknown-skill' not found in skill-project.toml dependencies
-```
-
-**Solution**: Check the skill ID in `skill-project.toml`, or add it first with `fastskill skill add`.
-
-### Missing Lockfile
-
-```bash
-$ fastskill skill update
-error: skills.lock not found. Run 'fastskill project install' first.
-```
-
-**Solution**: Run `fastskill project install` to create `skills.lock`, then update.
-
-### No Updates Available
-
-```bash
-$ fastskill skill update
-Updating skills...
-
-web-scraper: Already up to date (1.2.3)
-data-processor: Already up to date (2.1.0)
-demo-skill: Already up to date (0.1.0)
-
-✓ All skills are up to date
-```
-
-### Network Errors
-
-```bash
-$ fastskill skill update
-Updating skills...
-
-Updating web-scraper...
-✗ Failed to update web-scraper: Connection timeout
-
-Updating data-processor...
-✓ Updated data-processor from 2.1.0 to 2.2.0
-
-✓ Update complete with errors (1 failed)
-```
-
-**Solution**: Check the network connection and retry failed skills individually.
-
-## Best Practices
-
-### Check before updating
-
-Use `fastskill skill update --check` and `fastskill skill update --dry-run` to see what would change before
-applying updates.
-
-
-### Reindex after updates
-
-Run `fastskill index rebuild` after updating (or rely on auto-reindex) to keep the search index current.
-
-
-### Commit the lockfile after updates
-
-Commit `skills.lock` after successful updates to track version changes in version control.
-
-
-### Pin with the lockfile, not with flags
-
-Because `skill update` always resolves to the current version, use a committed `skills.lock` plus
-`fastskill project install --lock` to reproduce an exact version set.
-
-
-### Test updates in development first
-
-Test skill updates in a development environment before deploying to production.
-
-
-
-## See Also
-
-* [Install Command](/cli-reference/install-command) - Install skills from skill-project.toml
-* [Add Command](/cli-reference/skill-commands#fastskill-skill-add) - Add skills to project
-* [List Command](/cli-reference/skill-commands#fastskill-skill-list) - List installed skills and versions
+* [Project install](/cli-reference/install-command).
+* [Skill and project commands](/cli-reference/skill-commands).
+* [Reconciliation](/skill-management/reconciliation).
 
 
 
@@ -5043,13 +4258,13 @@ Test skill updates in a development environment before deploying to production.
 
 # Init Command
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/configuration/init-command
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -5278,225 +4493,15 @@ jobs:
 
 ---
 
-# Advanced Patterns
-
-FastSkill 0.9.230
-
-Source: https://docs.gofastskill.com/examples/advanced-patterns
-
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-
-
-## Overview
-
-These are real, source-backed workflows for teams managing many skills. Every command below exists in
-the CLI.
-
-## Find duplicate and overlapping skills
-
-As a collection grows, skills drift into overlap. `fastskill analysis` surfaces that:
-
-```bash
-# Similarity matrix across installed skills
-fastskill analysis matrix
-
-# Cluster related skills
-fastskill analysis cluster
-
-# List likely duplicate/overlapping pairs, with a merge suggestion per pair
-fastskill analysis duplicates
-```
-
-`analysis duplicates` supports filtering and output control:
-
-```bash
-fastskill analysis duplicates --threshold 0.85 --limit 20 --severity high --format json
-```
-
-| Flag          | Purpose                                                         |
-| ------------- | --------------------------------------------------------------- |
-| `--threshold` | Minimum similarity to report                                    |
-| `--limit`     | Maximum number of pairs to show                                 |
-| `--severity`  | Filter by minimum severity: `critical`, `high`, `medium`, `all` |
-| `--format`    | `table`, `json`, `grid`, or `xml` (`--json` is shorthand)       |
-
-## Improve a skill with `optimization`
-
-`fastskill optimization` runs a text-gradient loop to iteratively improve a skill's content:
-
-```bash
-fastskill optimization run --config ./optimize.toml                    # start a run
-fastskill optimization status ./optimize-runs/<run> --watch            # check progress
-fastskill optimization resume ./optimize-runs/<run>                    # resume an interrupted run
-fastskill optimization inspect ./optimize-runs/<run> --step 3          # inspect one step
-fastskill optimization export ./optimize-runs/<run> --out ./SKILL.md   # export the best skill
-```
-
-## Install only part of a collection with groups
-
-Skills can be tagged into groups; installs can include or exclude them (poetry-style):
-
-```bash
-# Only install skills in the "docs" and "core" groups
-fastskill project install --only docs --only core
-
-# Install everything except the "dev" group
-fastskill project install --without dev
-```
-
-## Editable and recursive local skills
-
-For local skill development, add without copying and add whole trees at once:
-
-```bash
-# Editable install: symlink/reference so in-place edits apply without reinstall (local only)
-fastskill skill add ./dev-skill -e
-
-# Recursively add every subdirectory containing a SKILL.md (local trees only)
-fastskill skill add ./skills -r
-```
-
-After editing an editable skill in place, run `fastskill index rebuild` so semantic search and resolve
-reflect the changes.
-
-## Project vs. global scope
-
-Most commands default to the current project. Use `--global` to operate on the shared user-level
-skills directory (`~/.config/fastskill/skills`, tracked by `global-skills.lock`):
-
-```bash
-fastskill skill add pptx --global
-fastskill skill list --global
-fastskill project install --global --lock
-```
-
-Use `analysis` to keep a collection tidy, `optimization` to sharpen individual skills, and group
-filters
-plus `--global` to control what gets installed where.
-
-
-
----
-
-# Integration Tutorials
-
-FastSkill 0.9.230
-
-Source: https://docs.gofastskill.com/examples/integration-tutorials
-
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
-
-
-
-## Overview
-
-These tutorials cover FastSkill's real integration surfaces: the **MCP** server for agents, the
-**HTTP API** from `fastskill server serve`, and **locked installs** in CI. Each uses commands and endpoints
-that exist in the tool.
-
-## MCP into Claude Code
-
-Expose FastSkill to Claude Code as MCP tools — read-only unless you start the server with
-`--enable-write`.
-
-```bash
-# Register FastSkill as an MCP server for Claude Code in this project
-fastskill mcp install --agent claude --scope project --stdio
-
-# Confirm it's registered
-fastskill mcp list
-```
-
-Claude Code will now see tools named after complete command paths, such as
-`fastskill_skill_search`, `fastskill_skill_list`, `fastskill_skill_read`, and
-`fastskill_repo_show`. Mutating tools such as `fastskill_project_install` and
-`fastskill_repo_add` are withheld until the server is started with `--enable-write`; see
-[Write access](/tool-calling/development#write-access). To point the agent at a running HTTP MCP
-server instead of spawning FastSkill itself:
-
-```bash
-fastskill mcp serve --transport http --port 8080 --path /mcp --enable-write
-fastskill mcp install --agent claude --scope project --url http://127.0.0.1:8080/mcp
-```
-
-
-## MCP into Cursor
-
-Same flow, different agent key:
-
-```bash
-fastskill mcp install --agent cursor --scope global --url http://127.0.0.1:8080/mcp
-```
-
-Supported agents: `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `codex`. See the full
-[MCP tool-calling guide](/tool-calling/development).
-
-
-## Call the HTTP API from an app
-
-Run the server and use the versioned `/api/v1/...` REST surface. Start read-only:
-
-```bash
-fastskill server serve
-```
-
-```bash
-# List installed skills
-curl http://localhost:8080/api/v1/skills
-
-# Search
-curl -X POST http://localhost:8080/api/v1/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "convert pdf"}'
-
-# Resolve the most relevant skills for a prompt (context loading)
-curl -X POST http://localhost:8080/api/v1/resolve \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt": "build a slide deck from notes", "limit": 5}'
-```
-
-These are all read endpoints and work without `--enable-write`. To manage skills over HTTP (install /
-update / delete), start with `fastskill server serve --enable-write`, and front the port with an
-authenticating proxy if it is exposed — `server serve` enforces no auth of its own. See the
-[`server serve` reference](/cli-reference/serve-command) and [security model](/security/model).
-
-
-## Reproducible installs in CI
-
-Commit `skill-project.toml` and `skills.lock`, then install exact locked versions in the pipeline:
-
-```bash
-# In CI: install exactly what the lockfile records
-fastskill project install --lock
-```
-
-Set `OPENAI_API_KEY` from a CI secret if the pipeline needs semantic search or reindex; without it
-those steps skip silently rather than failing.
-
-For agents, install FastSkill as an MCP server. For services and pipelines, use the `server serve`
-HTTP API and `project install --lock`. There is no separate SDK to integrate — the CLI, MCP tools,
-and HTTP API are the surface.
-
-
-
-
-
----
-
 # Cluster and Portfolio Analysis
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/evals-quality/cluster-analysis
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -5563,13 +4568,13 @@ Use this regularly to keep catalog maintenance costs low.
 
 # Evals and Quality Overview
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -5629,13 +4634,13 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 
 # Run Evals
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/evals-quality/run-evals
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -5704,13 +4709,13 @@ fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/code
 
 # Eval Setup
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -5987,15 +4992,226 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 ---
 
+# Advanced Patterns
+
+FastSkill 0.9.231
+
+Source: https://docs.gofastskill.com/examples/advanced-patterns
+
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+
+
+
+## Overview
+
+These are real, source-backed workflows for teams managing many skills. Every command below exists in
+the CLI.
+
+## Find duplicate and overlapping skills
+
+As a collection grows, skills drift into overlap. `fastskill analysis` surfaces that:
+
+```bash
+# Similarity matrix across installed skills
+fastskill analysis matrix
+
+# Cluster related skills
+fastskill analysis cluster
+
+# List likely duplicate/overlapping pairs, with a merge suggestion per pair
+fastskill analysis duplicates
+```
+
+`analysis duplicates` supports filtering and output control:
+
+```bash
+fastskill analysis duplicates --threshold 0.85 --limit 20 --severity high --format json
+```
+
+| Flag          | Purpose                                                         |
+| ------------- | --------------------------------------------------------------- |
+| `--threshold` | Minimum similarity to report                                    |
+| `--limit`     | Maximum number of pairs to show                                 |
+| `--severity`  | Filter by minimum severity: `critical`, `high`, `medium`, `all` |
+| `--format`    | `table`, `json`, `grid`, or `xml` (`--json` is shorthand)       |
+
+## Improve a skill with `optimization`
+
+`fastskill optimization` runs a text-gradient loop to iteratively improve a skill's content:
+
+```bash
+fastskill optimization run --config ./optimize.toml                    # start a run
+fastskill optimization status ./optimize-runs/<run> --watch            # check progress
+fastskill optimization resume ./optimize-runs/<run>                    # resume an interrupted run
+fastskill optimization inspect ./optimize-runs/<run> --step 3          # inspect one step
+fastskill optimization export ./optimize-runs/<run> --out ./SKILL.md   # export the best skill
+```
+
+## Install only part of a collection with groups
+
+Skills can be tagged into groups; installs can include or exclude them (poetry-style):
+
+```bash
+# Only install skills in the "docs" and "core" groups
+fastskill project install --only docs --only core
+
+# Install everything except the "dev" group
+fastskill project install --without dev
+```
+
+## Editable and recursive local skills
+
+For local skill development, add without copying and add whole trees at once:
+
+```bash
+# Editable install: symlink/reference so in-place edits apply without reinstall (local only)
+fastskill skill add ./dev-skill -e
+
+# Recursively add every subdirectory containing a SKILL.md (local trees only)
+fastskill skill add ./skills -r
+```
+
+After editing an editable skill in place, run `fastskill index rebuild` so semantic search and resolve
+reflect the changes.
+
+## Project vs. global scope
+
+Most commands default to the current project. Use `--global` to operate on the shared user-level
+skills directory (`~/.config/fastskill/skills`, tracked by `global-skills.lock`):
+
+```bash
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add pptx --repository team --global
+fastskill skill list --global
+fastskill project install --global --lock
+```
+
+Use `analysis` to keep a collection tidy, `optimization` to sharpen individual skills, and group
+filters
+plus `--global` to control what gets installed where.
+
+
+
+---
+
+# Integration Tutorials
+
+FastSkill 0.9.231
+
+Source: https://docs.gofastskill.com/examples/integration-tutorials
+
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+
+
+
+## Overview
+
+These tutorials cover FastSkill's real integration surfaces: the **MCP** server for agents, the
+**HTTP API** from `fastskill server serve`, and **locked installs** in CI. Each uses commands and endpoints
+that exist in the tool.
+
+## MCP into Claude Code
+
+Expose FastSkill to Claude Code as MCP tools — read-only unless you start the server with
+`--enable-write`.
+
+```bash
+# Register FastSkill as an MCP server for Claude Code in this project
+fastskill mcp install --agent claude --scope project --stdio
+
+# Confirm it's registered
+fastskill mcp list
+```
+
+Claude Code will now see tools named after complete command paths, such as
+`fastskill_skill_search`, `fastskill_skill_list`, `fastskill_skill_read`, and
+`fastskill_repo_show`. Mutating tools such as `fastskill_project_install` and
+`fastskill_repo_add` are withheld until the server is started with `--enable-write`; see
+[Write access](/tool-calling/development#write-access). To point the agent at a running HTTP MCP
+server instead of spawning FastSkill itself:
+
+```bash
+fastskill mcp serve --transport http --port 8080 --path /mcp --enable-write
+fastskill mcp install --agent claude --scope project --url http://127.0.0.1:8080/mcp
+```
+
+
+## MCP into Cursor
+
+Same flow, different agent key:
+
+```bash
+fastskill mcp install --agent cursor --scope global --url http://127.0.0.1:8080/mcp
+```
+
+Supported agents: `claude`, `cursor`, `gemini`, `copilot`, `opencode`, `codex`. See the full
+[MCP tool-calling guide](/tool-calling/development).
+
+
+## Call the HTTP API from an app
+
+Run the server and use the versioned `/api/v1/...` REST surface. Start read-only:
+
+```bash
+fastskill server serve
+```
+
+```bash
+# List installed skills
+curl http://localhost:8080/api/v1/skills
+
+# Search
+curl -X POST http://localhost:8080/api/v1/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "convert pdf"}'
+
+# Resolve the most relevant skills for a prompt (context loading)
+curl -X POST http://localhost:8080/api/v1/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "build a slide deck from notes", "limit": 5}'
+```
+
+These are all read endpoints and work without `--enable-write`. To manage skills over HTTP (install /
+update / delete), start with `fastskill server serve --enable-write`, and front the port with an
+authenticating proxy if it is exposed — `server serve` enforces no auth of its own. See the
+[`server serve` reference](/cli-reference/serve-command) and [security model](/security/model).
+
+
+## Reproducible installs in CI
+
+Commit `skill-project.toml` and `skills.lock`, then install exact locked versions in the pipeline:
+
+```bash
+# In CI: install exactly what the lockfile records
+fastskill project install --lock
+```
+
+Set `OPENAI_API_KEY` from a CI secret if the pipeline needs semantic search or reindex; without it
+those steps skip silently rather than failing.
+
+For agents, install FastSkill as an MCP server. For services and pipelines, use the `server serve`
+HTTP API and `project install --lock`. There is no separate SDK to integrate — the CLI, MCP tools,
+and HTTP API are the surface.
+
+
+
+
+
+---
+
 # Documentation and tools for agents
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/integration/agents
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6055,13 +5271,13 @@ The server exposes read-only tools by default. Mutating tools require
 
 # Claude Code Integration
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6078,8 +5294,9 @@ metadata file to generate or keep in sync.
 # Install the skills declared in skill-project.toml
 fastskill project install
 
-# ...or add one directly
-fastskill skill add scope/pptx@1.0.0
+# ...or configure a catalog and add one directly
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add scope/pptx@1.0.0 --repository team
 
 # Verify what Claude Code will see
 fastskill skill list
@@ -6167,13 +5384,13 @@ See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) 
 
 # Cursor Integration
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/integration/cursor-integration
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6327,13 +5544,13 @@ See the [agent’s skill documentation](https://cursor.com/docs/skills) for nati
 
 # Configuration Reference
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/optimize/configuration
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6535,13 +5752,13 @@ confirmed by running the binary against deliberately broken configs:
 
 # Skill Optimization Overview
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6611,13 +5828,13 @@ Each training step:
 
 # Inspecting and Exporting Results
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/optimize/results
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -6843,13 +6060,13 @@ A `history.json` record looks like:
 
 # Running and Monitoring
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7037,13 +6254,13 @@ The run directory is safe to copy, archive, or share. Resume and inspect command
 
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7203,13 +6420,13 @@ Once you have your suite and checks files ready, write the `optimize.toml` confi
 
 # Context Resolution API
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7284,13 +6501,13 @@ the `limit`, and the embedding index — not by a configurable runtime cache.
 
 # Loading Strategies
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7366,13 +6583,13 @@ covers essentially all resolution performance and quality concerns.
 
 # Registry Index System
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/index-system
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7536,13 +6753,13 @@ Skills are always stored with an organization prefix:
 
 # Marketplace.json Format
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7768,13 +6985,13 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 
 # Sources and catalogs
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/overview
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7817,13 +7034,13 @@ and [marketplace.json](/registry/marketplace-json) for catalog authoring.
 
 # Choose a distribution model
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7867,13 +7084,13 @@ to agents. See the [security model](/security/model).
 
 # Configure skill sources
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -7899,8 +7116,8 @@ review-notes = { origin = { type = "git", url = "https://github.com/your-org/ski
 fastskill project install --no-reindex
 ```
 
-Use this manifest form for subdirectories: GitHub browser `/tree/…` URLs fail ref
-resolution in the current release.
+Use this manifest form as the portable source of truth for subdirectories. It keeps the clone URL,
+branch, and subdirectory explicit in committed project state.
 FastSkill uses system Git; install Git and ensure it can access the repository before
 adding private sources. Git credentials come from your Git configuration.
 
@@ -7998,13 +7215,13 @@ For sharing an already installed set without access to its original sources, use
 
 # Local browser console
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8054,13 +7271,13 @@ For the HTTP contract, health checks, and server flags, see
 
 # Security Best Practices
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8128,13 +7345,13 @@ that front an exposed instance.
 
 # Security Model
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/security/model
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8235,13 +7452,13 @@ network policy, secrets management).
 
 # Manifests, locks, and scope
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8344,516 +7561,171 @@ project configuration controls where consumers install it. See
 
 ---
 
-# Skill Reconciliation System
+# Reconcile project skill state
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
-## Overview
+# Reconcile project skill state
 
-FastSkill compares three views of an environment:
+fastskill compares three sources of truth:
 
-1. **Installed Skills** - Skills actually present in `.claude/skills/`
-2. **Project Manifest** - Skills declared in `skill-project.toml`
-3. **Lockfile** - Exact versions pinned in `skills.lock`
+1. `skill-project.toml` records direct intent, groups, and source constraints.
+2. `skills.lock` records the resolved closure, versions, origins, ownership, and integrity data.
+3. The skills directory contains the installed files an agent reads.
 
-The comparison includes canonical identity, desired constraints, locked origin and revision,
-content digest, dependency edges, groups, and every direct, transitive, bundle, or override owner.
-An installed directory alone does not prove that the environment matches its desired state.
+`fastskill skill list` joins those sources into one row per skill. `fastskill skill list --check`
+uses the same rows and returns nonzero when selected managed state needs reconciliation.
 
-## Reconciliation States
+## Human-readable checks
 
-When you run `fastskill skill list`, each skill is assigned a reconciliation status:
-
-| Status         | Description                                                                               | Action Required                                                      |
-| -------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `ok`           | Required identity, constraint, locked facts, contents, and ownership agree                | None                                                                 |
-| `missing`      | A selected root or required dependency is absent                                          | Run `fastskill project install`                                      |
-| `extraneous`   | Installed content has no managed owner                                                    | Review it; this alone does not fail `--check`                        |
-| `mismatch`     | Desired, locked, or actual version/content differs                                        | Restore with `project install --lock` or deliberately `skill update` |
-| `unverifiable` | A required immutable selection lacks integrity evidence                                   | Update explicitly to establish a verified selection                  |
-| `mutable`      | An editable local selection is structurally valid but its bytes are intentionally mutable | Review the linked source when needed                                 |
-| `conflict`     | Retained owners require incompatible content or constraints                               | Resolve the listed owners before applying changes                    |
-
-### Status Details
-
-#### OK
-
-Skill is in the desired state:
-
-* Present in `.claude/skills/`
-* Declared in `skill-project.toml` (if applicable)
-* Desired constraint accepts the locked version
-* Installed identity, version, and digest match the lock (editable links are reported as mutable)
-* Every required owner and dependency edge is present
-
-**Example:**
-
-```bash
+```console
 $ fastskill skill list
-ID               Version  Source              Status
-──────────────────────────────────────────────────────────────
-web-scraper      1.2.3    git                  ok
-data-processor    2.1.0    registry              ok
+
+ID     Name   Description  Flags
+---------------------------------
+alpha  alpha  Example      -
+
+$ fastskill skill list --details
+
+ID     Name   Description  Version  Manifest  Lock  Installed  Source Path  Type   Flags
+-----------------------------------------------------------------------------------------
+alpha  alpha  Example      1.0.0    Y         Y     Y          ./alpha     local  -
 ```
 
-#### Missing
+The detailed source path is the recorded origin path or URL, not the installed destination.
+Editable installs use the human-readable `editable` flag.
 
-Skill is declared in `skill-project.toml` but not installed:
+## Reconciliation values
 
-```bash
-$ fastskill skill list
-ID               Version  Source              Status
-──────────────────────────────────────────────────────────────
-web-scraper      1.2.3    git                  missing
-data-processor    2.1.0    registry              ok
-```
+The `reconciliation` field is the canonical machine-readable status. Values can include:
 
-**Resolution:**
+| Value                    | Meaning                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `ok`                     | Selected state agrees and managed content passes integrity checks.  |
+| `excluded`               | A group filter excluded the owning root.                            |
+| `missing-lock`           | Declared intent has no resolved lock entry.                         |
+| `missing-content`        | Managed content is absent from the skills directory.                |
+| `intent-mismatch`        | Manifest intent and locked origin differ.                           |
+| `revision-mismatch`      | Installed and locked versions differ.                               |
+| `content-mismatch`       | Installed managed content differs from its digest.                  |
+| `integrity-error`        | Installed content could not be verified.                            |
+| `insufficient-integrity` | The lock lacks evidence required for a reliable check.              |
+| `ownership-conflict`     | Bundle owners disagree about the expected content.                  |
+| `extraneous`             | Installed content has no manifest, lock, bundle, or override owner. |
 
-```bash
-# Install missing skills
-fastskill project install
-```
+## JSON schema
 
-#### Extraneous
-
-Skill is installed but not declared in `skill-project.toml`:
-
-```bash
-$ fastskill skill list
-ID               Version  Source              Status
-──────────────────────────────────────────────────────────────
-web-scraper      1.2.3    git                  ok
-data-processor    2.1.0    registry              ok
-old-skill        0.1.0    local                extraneous
-```
-
-**Resolution options:**
-
-```bash
-# Option 1: Remove extraneous skill
-fastskill skill remove old-skill
-
-# Option 2: Add to skill-project.toml
-# Edit skill-project.toml and add:
-# [dependencies]
-# old-skill = { origin = { type = "local", path = "./old-skill" } }
-```
-
-#### Mismatch
-
-Installed version differs from `skills.lock`:
-
-```bash
-$ fastskill skill list
-ID               Version  Source              Status
-──────────────────────────────────────────────────────────────
-web-scraper      1.2.3    git                  ok
-data-processor    2.2.0    registry              mismatch (lock: 2.1.0)
-```
-
-Version mismatches indicate manual changes or corruption. Resolve to ensure reproducibility.
-
-
-**Resolution:**
-
-```bash
-# Option 1: Reinstall from lockfile (reproducible)
-fastskill project install --lock
-
-# Option 2: Update to latest and update lock
-fastskill skill update
-```
-
-## Reconciliation Process
-
-The `skill list` command performs reconciliation in this order:
-
-```mermaid
-graph TD
-    A[Scan .claude/skills/] --> B[Load SkillDefinitions]
-    B --> C[Load skill-project.toml]
-    C --> D[Load skills.lock]
-    D --> E[Compare Sources]
-    E --> F{Skill in manifest?}
-    F -->|Yes| G{Installed?}
-    F -->|No| H[Extraneous]
-    G -->|Yes| I{Version matches lock?}
-    G -->|No| J[Missing]
-    I -->|Yes| K[OK]
-    I -->|No| L[Mismatch]
-    H --> M[Report Status]
-    J --> M
-    K --> M
-    L --> M
-```
-
-## Use Cases
-
-### Development Workflow
-
-```bash
-# 1. Add skills to manifest
-# Edit skill-project.toml:
-# [dependencies]
-# new-skill = { origin = { type = "git", url = "https://github.com/user/new-skill.git" } }
-
-# 2. Install skills
-fastskill project install
-
-# 3. Check reconciliation
-fastskill skill list
-# Output: new-skill shows as "ok"
-
-# 4. Install with lock for reproducibility
-fastskill project install --lock
-```
-
-### Team Collaboration
-
-```bash
-# Team member A: Add skill and install
-fastskill skill add https://github.com/user/new-skill.git
-git add skill-project.toml skills.lock
-git commit -m "Add new-skill"
-
-# Team member B: Pull and verify
-git pull
-fastskill skill list
-# Output: All skills should be "ok"
-
-# Team member B: Install with lock
-fastskill project install --lock
-```
-
-### CI/CD Deployment
-
-```bash
-# Restore without network access, then verify the same selected closure
-fastskill project install --lock --offline --without dev
-fastskill skill list --check --without dev --json > skills-status.json
-```
-
-### Troubleshooting Discrepancies
-
-```bash
-# 1. Identify issues
-fastskill skill list
-
-# 2. Install missing skills
-fastskill project install
-
-# 3. Remove extraneous skills
-fastskill skill remove old-skill
-
-# 4. Fix version mismatches
-fastskill project install --lock
-
-# 5. Verify all are ok
-fastskill skill list
-```
-
-## Lockfile-Based Reconciliation
-
-When using `skills.lock`, reconciliation focuses on exact version matching:
-
-### Production Deployment
-
-```bash
-# Deploy with locked versions
-fastskill project install --lock
-
-# Verify reconciliation
-fastskill skill list
-# Required immutable skills should be "ok"; editable skills are labeled "mutable"
-```
-
-### Version Drift Detection
-
-```bash
-# Check for version drift
-fastskill skill list
-
-# If mismatch found:
-# data-processor    2.2.0    registry              mismatch (lock: 2.1.0)
-
-# Resolution depends on intent:
-# - If intentional update: update lockfile
-# - If accidental corruption: reinstall from lock
-```
-
-## Reconciliation JSON Format
-
-The `skill list --format json` output includes detailed reconciliation status:
-
-```json
+```console
+$ fastskill skill list --format json
 [
   {
-    "id": "web-scraper",
-    "version": "1.2.3",
-    "description": "Web scraping utilities",
-    "source": "git",
-    "installed_path": "/home/user/.claude/skills/web-scraper",
-    "installed_at": "2026-02-02T12:00:00Z",
-    "status": "ok",
-    "manifest_version": "1.2.3",
-    "lock_version": "1.2.3"
-  },
-  {
-    "id": "data-processor",
-    "version": "2.2.0",
-    "description": "Data processing tools",
-    "source": "registry",
-    "installed_path": "/home/user/.claude/skills/data-processor",
-    "installed_at": "2026-02-01T10:00:00Z",
-    "status": "mismatch",
-    "manifest_version": "2.1.0",
-    "lock_version": "2.1.0"
+    "id": "alpha",
+    "name": "alpha",
+    "description": "Example",
+    "version": "1.0.0",
+    "in_manifest": true,
+    "in_lock": true,
+    "installed": true,
+    "source_path": "./alpha",
+    "source_type": "local",
+    "missing_from_folder": false,
+    "missing_from_lock": false,
+    "missing_from_manifest": false,
+    "desired_constraint": null,
+    "locked_version": "1.0.0",
+    "actual_version": "1.0.0",
+    "reconciliation": "ok",
+    "owners": ["alpha"],
+    "groups": ["default"],
+    "mutable": false,
+    "override_active": false,
+    "extraneous": false
   }
 ]
 ```
 
-**Field Descriptions:**
+Do not test a nonexistent `.status` field. Use `reconciliation` for reports and use the
+`--check` exit status for pass/fail automation.
 
-* `id`: Skill identifier
-* `version`: Installed version (from SkillDefinition)
-* `description`: Skill description
-* `source`: Source type (git, registry, local, zip)
-* `installed_path`: Absolute path to skill directory
-* `installed_at`: Installation timestamp (ISO 8601)
-* `status`: Reconciliation status (ok, missing, extraneous, mismatch)
-* `manifest_version`: Version from `skill-project.toml` (if present)
-* `lock_version`: Version from `skills.lock` (if present)
+## Group-scoped checks
 
-## Reconciliation with Groups
+`--only` and `--without` affect both displayed rows and the selected check closure. They are
+mutually exclusive.
 
-When using dependency groups, reconciliation considers group membership:
-
-```toml skill-project.toml
-[dependencies]
-prod-skill = { origin = { type = "git", url = "https://github.com/user/prod-skill.git" }, groups = ["prod"] }
-dev-tool = { origin = { type = "local", path = "./dev-tool" }, groups = ["dev"] }
+```console
+$ fastskill skill list --check --only production
+$ fastskill skill list --check --without dev
 ```
 
-```bash
-# Install production skills only
-fastskill project install --without dev
+The implicit group for an ungrouped root is `default`. `--only default` is valid even for an empty
+project and produces an empty successful result.
 
-# Check reconciliation
-fastskill skill list
+## CI example
 
-# Output:
-# prod-skill: ok
-# dev-tool: missing (expected, excluded by --without dev)
-```
-
-Missing status is expected for skills excluded by group filters. Only report as issues if all skills should be installed.
-
-
-## Best Practices
-
-### Commit both manifest and lockfile
-
-Always commit `skill-project.toml` and `skills.lock` together to version control. This ensures team members can reproduce exact installations.
-
-
-### Run fastskill skill list after changes
-
-Run `fastskill skill list` after installing, updating, or removing skills to verify reconciliation status.
-
-
-### Use --lock for production
-
-Always use `fastskill project install --lock` for production deployments to ensure exact version reproducibility.
-
-
-### Investigate mismatches promptly
-
-Version mismatches indicate manual changes or corruption. Investigate and resolve promptly to maintain consistency.
-
-
-### Remove extraneous skills
-
-Remove or add extraneous skills to `skill-project.toml` to avoid confusion and ensure clean skill ecosystem.
-
-
-
-## Common Reconciliation Issues
-
-### Scenario: Manual Skill Installation
-
-```bash
-# Manual: Add skill outside fastskill
-cp -r /path/to/skill ~/.claude/skills/manual-skill
-
-# Check reconciliation
-fastskill skill list
-
-# Output:
-# manual-skill: extraneous (not in manifest)
-
-# Resolution: Add to manifest or remove
-```
-
-### Scenario: Version Mismatch After Update
-
-```bash
-# Update skill manually
-cd ~/.claude/skills/web-scraper
-git pull origin main
-
-# Check reconciliation
-fastskill skill list
-
-# Output:
-# web-scraper: mismatch (lock: 1.2.3, installed: 1.3.0)
-
-# Resolution: Update lockfile or reinstall from lock
-fastskill project install --lock
-```
-
-### Scenario: Missing Skills After Clone
-
-```bash
-# Clone repository without skills.lock
-git clone repo
-cd repo
-
-# Check reconciliation
-fastskill skill list
-
-# Output:
-# web-scraper: missing (skills.lock not found)
-
-# Resolution: Install skills
-fastskill project install
-```
-
-## Reconciliation in Automation
-
-### CI/CD Health Check
-
-```yaml
-# .github/workflows/health-check.yml
-name: Skill Health Check
+```yaml title=".github/workflows/skill-health.yml"
+name: Skill health
 on: [push, pull_request]
 
 jobs:
-  check-reconciliation:
+  reconcile:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install FastSkill
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
-
-      - name: Check reconciliation status
-        run: |
-          fastskill skill list --format json > skills-status.json
-
-      - name: Verify no reconciliation issues
-        run: |
-          issues=$(jq '[.[] | select(.status != "ok")] | length' skills-status.json)
-          if [ "$issues" -gt 0 ]; then
-            echo "Found $issues reconciliation issues:"
-            jq '[.[] | select(.status != "ok")]' skills-status.json
-            exit 1
-          fi
-          echo "All skills reconciled successfully"
+      - uses: actions/checkout@v4
+      - name: Install fastskill
+        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+      - name: Check managed skill state
+        run: fastskill skill list --check --format json > skills-status.json
 ```
 
-### Automated Reconciliation Report
+The last command fails the step when reconciliation is required. Keep the JSON artifact for
+diagnostics; no `jq` predicate is required to decide success.
+
+For a readable failure report while preserving the command's exit status:
 
 ```bash
-#!/bin/bash
-# reconcile.sh - Generate reconciliation report
+fastskill skill list --check --format json > /tmp/skills-status.json
+check_exit=$?
 
-echo "=== FastSkill Reconciliation Report ==="
-echo "Generated: $(date)"
-echo ""
-
-# Get reconciliation status
-fastskill skill list --format json > /tmp/skills-status.json
-
-# Count by status
-ok_count=$(jq '[.[] | select(.status == "ok")] | length' /tmp/skills-status.json)
-missing_count=$(jq '[.[] | select(.status == "missing")] | length' /tmp/skills-status.json)
-extraneous_count=$(jq '[.[] | select(.status == "extraneous")] | length' /tmp/skills-status.json)
-mismatch_count=$(jq '[.[] | select(.status == "mismatch")] | length' /tmp/skills-status.json)
-
-echo "Summary:"
-echo "  OK: $ok_count"
-echo "  Missing: $missing_count"
-echo "  Extraneous: $extraneous_count"
-echo "  Mismatch: $mismatch_count"
-echo ""
-
-# Show details if issues exist
-if [ $((missing_count + extraneous_count + mismatch_count)) -gt 0 ]; then
-  echo "Issues Found:"
-  jq '[.[] | select(.status != "ok") | .id + ": " + .status]' /tmp/skills-status.json
-  exit 1
+if [ "$check_exit" -ne 0 ]; then
+  jq '[.[] | select(.reconciliation != "ok" and .reconciliation != "excluded") |
+      {id, reconciliation}]' /tmp/skills-status.json
+  exit "$check_exit"
 fi
-
-echo "✓ All skills reconciled"
-exit 0
 ```
 
-## Troubleshooting
+## Repair workflow
 
-**All skills show as missing**
+Use the row status to choose the repair:
 
-**Skills directory incorrect**: Check that `skills_directory` under `[tool.fastskill]` in `skill-project.toml` points to correct location.
+```console
+$ fastskill project install          # resolve/restore declared state
+$ fastskill project install --lock   # restore the committed selection
+$ fastskill skill update alpha       # deliberately refresh one origin
+$ fastskill skill remove alpha       # detach one direct requirement
+```
 
+fastskill refuses to overwrite locally modified managed content during update/removal. Preserve or
+revert the local change before retrying. Editable installs are intentionally mutable and are checked
+by link shape rather than copied-content digest.
 
-**skill-project.toml missing**: Create `skill-project.toml` or use `fastskill project init`.
+## Global state
 
+Use `--global` to reconcile `global-skills.lock` and the global skills directory:
 
-**Resolution**: Run `fastskill project install` to install skills from manifest.
+```console
+$ fastskill skill list --global --check
+```
 
-
-
-**Extraneous skills accumulate**
-
-**Manual installations**: Skills may have been added outside FastSkill management.
-
-
-**Resolution**: Add to `skill-project.toml` if intentional, or remove with `fastskill skill remove`.
-
-
-**Prevention**: Always use `fastskill skill add` to install skills for proper tracking.
-
-
-
-**Persistent version mismatches**
-
-**Manual file changes**: Skills may have been updated manually (e.g., git pull).
-
-
-**Corrupted lockfile**: Lockfile may be out of sync with actual state.
-
-
-**Resolution**: Run `fastskill project install --lock` to reinstall from lockfile, or `fastskill skill update` to update lockfile.
-
-
-
-
-## See Also
-
-* [Install Command](/cli-reference/install-command) - Install skills from manifest
-* [Update Command](/cli-reference/update-command) - Update skills and lockfile
-* [List Command](/cli-reference/skill-commands#fastskill-skill-list) - List skills with reconciliation status
-* [Manifest System](/skill-management/manifest-system) - Understanding skill-project.toml and skills.lock
-* [`project init`](/configuration/init-command) - Project initialization and setup
+Global checks treat an extraneous on-disk skill as a reconciliation failure, matching project
+checks.
 
 
 
@@ -8861,13 +7733,13 @@ exit 0
 
 # Validate a skill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8920,13 +7792,13 @@ for missing, changed, conflicting, and unverifiable installations.
 
 # Debugging Guide
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -8992,13 +7864,13 @@ Start with `fastskill cli doctor` to confirm the environment, then re-run the fa
 
 # Testing Framework
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/testing/framework
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -9063,13 +7935,13 @@ Start by pinning down what "good" looks like in your `checks.toml`, then iterate
 
 # MCP Tool Calling
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 

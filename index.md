@@ -1,12 +1,12 @@
 # FastSkill
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -15,7 +15,7 @@ Install and manage agent skills. [Start with a local skill](/quickstart).
 
 ## What is FastSkill?
 
-**Package manager and operational toolkit for Agent AI Skills.** FastSkill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation*&#x2A;, optional &#x2A;*`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
+**Package manager and operational toolkit for AI agent skills.** fastskill enables discovery, installation, versioning, and deployment of skills at scale. It implements the same `SKILL.md` conventions used by Claude Code–compatible agents, and adds **manifests**, **lockfiles**, **self-contained team bundles**, **validation*&#x2A;, optional &#x2A;*`fastskill eval`** runs, and **search**. Modern agents read installed skills directly from the skills directory — no metadata-file sync step.
 
 The project is designed around a **CLI-first workflow*&#x2A;; local &#x2A;*`fastskill server serve`** exposes an HTTP API and web UI for browsing and integration.
 

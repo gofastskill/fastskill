@@ -1,12 +1,12 @@
 # Claude Code Integration
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -23,8 +23,9 @@ metadata file to generate or keep in sync.
 # Install the skills declared in skill-project.toml
 fastskill project install
 
-# ...or add one directly
-fastskill skill add scope/pptx@1.0.0
+# ...or configure a catalog and add one directly
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add scope/pptx@1.0.0 --repository team
 
 # Verify what Claude Code will see
 fastskill skill list

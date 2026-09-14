@@ -1,12 +1,12 @@
 # Advanced Patterns
 
-FastSkill 0.9.230
+FastSkill 0.9.231
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
-Documentation revision: dd983e89e5fee977325b77ae386b879e8310ed26
+Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 
 
@@ -88,7 +88,8 @@ Most commands default to the current project. Use `--global` to operate on the s
 skills directory (`~/.config/fastskill/skills`, tracked by `global-skills.lock`):
 
 ```bash
-fastskill skill add pptx --global
+fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
+fastskill skill add pptx --repository team --global
 fastskill skill list --global
 fastskill project install --global --lock
 ```
