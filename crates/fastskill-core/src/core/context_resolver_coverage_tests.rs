@@ -138,6 +138,45 @@ fn paths_reject_parent_components_and_unmanaged_locations() {
         .is_some());
 }
 
+#[test]
+fn editable_entry_checks_support_a_symlinked_managed_parent() {
+    let temp = tempfile::tempdir().unwrap();
+    let managed = temp.path().join("managed");
+    let source = temp.path().join("source");
+    let alias = temp.path().join("alias");
+    std::fs::create_dir(&managed).unwrap();
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("SKILL.md"), "body").unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&managed, &alias).unwrap();
+        std::os::unix::fs::symlink(&source, managed.join("sample")).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(&managed, &alias).unwrap();
+        std::os::windows::fs::symlink_dir(&source, managed.join("sample")).unwrap();
+    }
+    let resolver = resolver(&alias);
+    assert_eq!(
+        resolver
+            .canonicalize_within_root(&alias.join("sample/SKILL.md"))
+            .unwrap(),
+        Some(
+            source
+                .join("SKILL.md")
+                .canonicalize()
+                .unwrap()
+                .display()
+                .to_string()
+        )
+    );
+    assert!(resolver
+        .canonicalize_within_root(&alias.join("sample/../../outside"))
+        .unwrap()
+        .is_none());
+}
+
 #[tokio::test]
 async fn embedding_results_and_failed_http_fallback_are_resolved() {
     // Scope the API key to a child process, never mutate shared process env.

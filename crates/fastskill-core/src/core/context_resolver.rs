@@ -3,7 +3,7 @@ use crate::core::metadata::MetadataService;
 use crate::core::service::{EmbeddingConfig, ServiceError, SkillId};
 use crate::core::skill_manager::SkillManagementService;
 use crate::core::vector_index::VectorIndexService;
-use crate::security::path::validate_path_within_root;
+use crate::security::path::{validate_path_component, validate_path_within_root};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -324,26 +324,30 @@ impl ContextResolver {
                 // Editable installs are represented by a top-level symlink in
                 // the managed skills directory. Resolve paths through that
                 // explicit link while continuing to reject arbitrary escapes.
-                let relative = path.strip_prefix(&self.skills_root).ok();
-                let name = relative.and_then(|relative| match relative.components().next() {
-                    Some(std::path::Component::Normal(name)) => Some(name),
-                    _ => None,
-                });
-                // Select a filesystem-owned entry from the managed directory;
-                // never perform metadata I/O on a path constructed from input.
-                let editable_entry = std::fs::read_dir(&self.skills_root)
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Result::ok)
-                    .find(|entry| {
-                        Some(entry.file_name().as_os_str()) == name
-                            && entry.file_type().is_ok_and(|kind| kind.is_symlink())
-                    });
-                if let Some(entry) = editable_entry {
+                let editable_entry = (|| {
+                    // Normalize the parent, not the link: following the link
+                    // here would lose the distinction between an editable
+                    // install and an arbitrary path outside the skills root.
+                    let root = self.skills_root.canonicalize().ok()?;
+                    let relative = path.strip_prefix(&self.skills_root).ok()?;
+                    let std::path::Component::Normal(name) = relative.components().next()? else {
+                        return None;
+                    };
+                    let name = validate_path_component(name.to_str()?).ok()?;
+                    let entry = root.join(name);
+                    // Check the normalized, single-component entry before any
+                    // metadata access. Only this direct child may be a link.
+                    if !entry.starts_with(&root) {
+                        return None;
+                    }
+                    Some(entry)
+                })();
+                if let Some(entry) = editable_entry.filter(|entry| {
+                    std::fs::symlink_metadata(entry).is_ok_and(|m| m.file_type().is_symlink())
+                }) {
                     // The editable target is the boundary, not an exemption
                     // from containment checks for paths beneath that target.
-                    if let Ok(canonical) = validate_path_within_root(path, &entry.path()) {
+                    if let Ok(canonical) = validate_path_within_root(path, &entry) {
                         return Ok(Some(canonical.to_string_lossy().to_string()));
                     }
                 }
