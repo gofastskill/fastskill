@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -128,13 +128,13 @@ See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference
 
 # FastSkill
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -241,13 +241,13 @@ Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/o
 
 # Install FastSkill
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -313,13 +313,13 @@ Continue with [your first skill](/quickstart).
 
 # Install your first skill
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/quickstart
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -404,13 +404,13 @@ restoration. For a portable artifact, use a [team bundle](/cli-reference/bundle-
 
 # Troubleshooting
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -648,13 +648,13 @@ Include:
 
 # Understand FastSkill
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -691,13 +691,13 @@ Start with [your first skill](/quickstart). Continue with
 
 # Bundle commands
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -828,13 +828,13 @@ tools unless it starts with `fastskill mcp serve --enable-write`.
 
 # cache Command
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -936,13 +936,13 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 # Discover and inspect skills
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -984,13 +984,13 @@ and [repository reference](/cli-reference/repository-command) for catalog operat
 
 # eval Command
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/eval-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -1261,13 +1261,13 @@ A case whose every trial errored is named in the output, and a metric that match
 
 # project init
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -1606,13 +1606,13 @@ Use `fastskill project init --yes` to:
 
 # project install
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -2094,13 +2094,13 @@ Keyword search with `--local --embedding false` works without an index.
 
 # optimization commands
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/optimize-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -2201,13 +2201,13 @@ fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md
 
 # CLI Reference Overview
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -2532,13 +2532,13 @@ Commands can change installed skills and manifest files. Try changes on a copy o
 
 # index rebuild
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -3013,13 +3013,13 @@ fastskill skill list --skills-dir .claude/skills/
 
 # repo commands
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -3568,13 +3568,13 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 
 # skill search
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -3678,13 +3678,13 @@ search, including no matches, and nonzero for invalid input or incomplete reposi
 
 # server serve
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -3818,13 +3818,13 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 # Skill and project commands
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -3997,13 +3997,13 @@ suggestion.
 
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4115,13 +4115,13 @@ fastskill cli doctor --json
 
 # skill update
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/cli-reference/update-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4258,13 +4258,13 @@ state, reports the failed target, and exits nonzero.
 
 # Init Command
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/configuration/init-command
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4495,13 +4495,13 @@ jobs:
 
 # Cluster and Portfolio Analysis
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/evals-quality/cluster-analysis
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4568,13 +4568,13 @@ Use this regularly to keep catalog maintenance costs low.
 
 # Evals and Quality Overview
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4634,13 +4634,13 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 
 # Run Evals
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/evals-quality/run-evals
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4709,13 +4709,13 @@ fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/code
 
 # Eval Setup
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -4723,14 +4723,19 @@ Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 This page is the reference for **authoring** an eval suite: the config table in `skill-project.toml`, the prompts CSV a suite is made of, and the optional checks TOML that actually decides pass/fail. Work through it top to bottom once, then use [Run evals](/evals-quality/run-evals) for the day-to-day commands.
 
+For guided suite design, use the [FastSkill skill](https://github.com/gofastskill/skill/tree/main/fastskill).
+Its [eval-authoring workflow](https://github.com/gofastskill/skill/blob/main/fastskill/references/eval-authoring.md)
+and copyable invoice example are maintained and packaged in the skills repository.
+
 ## Prerequisites
 
 * `skill-project.toml` exists (project root or skill directory — `fastskill` walks up the tree to find it).
 * `SKILL.md` exists alongside it if you're authoring a single skill's suite.
 * For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk: `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine; a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`. `fastskill eval validate --all` reports which keys are detected in *your* environment.
 
-Evals do not require embedding or `OPENAI_API_KEY`; those are used by `index rebuild` and
-`skill search --local`.
+Deterministic validation and scoring need no model credential. Target execution needs the
+selected runtime's authentication; native judges separately need their configured endpoint,
+model, and credential environment variable. Embedding configuration is unrelated.
 
 ## The `[tool.fastskill.eval]` table
 
@@ -4750,7 +4755,7 @@ fail_on_missing_agent = true      # default true
 | Field                   | Type    | Required | Default                | Meaning                                                                                                                           |
 | ----------------------- | ------- | -------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `prompts`               | path    | **yes**  | —                      | Path to the prompts CSV.                                                                                                          |
-| `checks`                | path    | no       | none                   | Path to the checks TOML. Omit it and there are no deterministic checks at all — see the callout below.                            |
+| `checks`                | path    | no       | none                   | Path to the checks TOML. Even when omitted, `should_trigger` produces a per-case trigger expectation — see the callout below.     |
 | `timeout_seconds`       | integer | no       | `900`                  | Per-case timeout passed to the agent run.                                                                                         |
 | `trials_per_case`       | integer | no       | `1`                    | Trials run per case; validated to `[1, 1000]` (`EVAL_INVALID_TRIALS_CONFIG` otherwise).                                           |
 | `parallel`              | integer | no       | unset (CPU core count) | Max concurrent trials for one case.                                                                                               |
@@ -4760,7 +4765,7 @@ fail_on_missing_agent = true      # default true
 **Defaults verified against source** (`crates/fastskill-core/src/core/manifest.rs::EvalConfigToml`): `timeout_seconds` defaults to **900**, and `fail_on_missing_agent` defaults to **true** — the CLI refuses to run against a missing agent unless you explicitly set it to `false`. Don't assume otherwise from older examples.
 
 
-With no `checks` file configured, there is effectively no deterministic signal: a case passes purely on the agent process exiting `0`. Point `checks` at a real file once you want the suite to assert anything about *what* the agent did.
+With no `checks` file configured, each case still receives the required skill-consultation expectation implied by `should_trigger`. A successful process exit alone is not enough. Add a checks file for further deterministic outcome or adherence evidence.
 
 
 ### Validate the config
@@ -4818,13 +4823,15 @@ greet-2,What is 2+2?,false,smoke,
 | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`               | yes      | Non-empty identifier per row. Used for `--case`, artifact folder names, and reports.                                                                                                                                                                                                                                                     |
 | `prompt`           | yes      | Text sent to the agent. Use CSV quoting (`"..."`, doubled `""` for an embedded quote) for commas or newlines.                                                                                                                                                                                                                            |
-| `should_trigger`   | yes      | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. &#x2A;*See the callout below — this column does not affect pass/fail.**                                                                                                                                                                                         |
+| `should_trigger`   | yes      | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. It creates a required per-case skill-consultation expectation; see below.                                                                                                                                                                                       |
 | `tags`             | no       | Comma-separated tags inside the cell (e.g. `"smoke,basic"`). Used by `eval run --tag <name>`.                                                                                                                                                                                                                                            |
 | `workspace_subdir` | no       | Relative path that becomes the agent's working directory for the case. Under the default isolation it is created **inside the case's scratch workspace**, with fixture files copied in from the same path under the project root; under `--no-isolation` it resolves directly under the project root. Empty or omitted → workspace root. |
 
 Empty lines are skipped.
 
-**`should_trigger` is inert.** The field's own doc comment in `aikit-evals&#x60; says it plainly: &#x2A;"Whether the skill should trigger (documentation-only; checks.toml is authoritative for pass/fail)."* No scorer reads it. The same global check list from `checks.toml` runs against **every** case regardless of what `should_trigger` says, and with no checks file configured, pass/fail comes only from the agent process's exit code. There is currently no way to express a per-case "this prompt must NOT trigger the skill" expectation — treat the column as documentation for a human reader, not as a control the CLI acts on. Do not build a suite on the assumption that setting `should_trigger,false` makes the suite verify non-triggering; it does not.
+**`should_trigger` affects pass/fail.** The engine creates an implicit required `skill_invoked` check for each case, with `expected` equal to the CSV value. An explicit `skill_invoked` check that applies to the case replaces the implicit one; `eval validate` rejects a contradictory polarity. Therefore `false` tests non-consultation and `true` tests consultation, subject to the selected backend's observability.
+
+This is adherence/selection evidence, not outcome correctness. A structured `Skill` call is direct evidence; supported decoders may also recognize a tool input that references the staged skill-document path. The path proxy indicates consultation, not that the instructions were read or followed. Pair positive cases with outcome checks or judges.
 
 
 
@@ -4846,13 +4853,16 @@ skill = "my-skill"
 expected = true
 ```
 
-| Field      | Type   | Required | Default                                            |
-| ---------- | ------ | -------- | -------------------------------------------------- |
-| `skill`    | string | no       | — (omit to match *any* skill invocation)           |
-| `expected` | bool   | no       | `true` (`false` asserts the skill did **not** run) |
-| `required` | bool   | no       | `true`                                             |
+| Field      | Type         | Required | Default                                            |
+| ---------- | ------------ | -------- | -------------------------------------------------- |
+| `skill`    | string       | no       | — (omit to match *any* skill invocation)           |
+| `expected` | bool         | no       | `true` (`false` asserts the skill did **not** run) |
+| `required` | bool         | no       | `true`                                             |
+| `cases`    | string array | no       | all cases (exact case IDs)                         |
 
-Matches a **structured `Skill` tool invocation** in the trace, not a substring of prose. When `skill` is given, it must **exactly equal** the invocation's skill-identifying input field (`skill`, `name`, or `skillName`) — `"foo"` does not match a `"foo-bar"` invocation, and a skill name merely mentioned in argument text does not count. This is the robust way to assert triggering — and, with `expected = false`, the only reliable way to assert non-triggering.
+Matches a structured `Skill` invocation or, where the decoder supplies it, a tool input referring to the staged skill-document path. When `skill` is given, a structured invocation must exactly match its identifying field. A skill name merely mentioned in unrelated prose does not count. Path-reference matching improves portability but remains a consultation proxy rather than proof of adherence.
+
+Every check type supports `cases = ["case-id", ...]`, selecting exact case IDs. An absent selector applies to every case. Use selectors for checks that should not run across a mixed suite.
 
 ### `trigger_expectation`
 
@@ -4942,7 +4952,7 @@ Use it for signal you want visible in reports without gating the suite on it.
 
 ### How a case's pass/fail is decided
 
-* No `checks` file configured (or it loads zero checks): the case **passes** iff the agent process exits `0`.
+* No `checks` file configured (or it loads zero explicit checks): the case still receives the required trigger expectation generated from `should_trigger`.
 * Any checks loaded: the case **passes** only if every **required** check's `passed` is `true`. Checks marked `required = false` are reported but never fail the case. Among required checks there is no partial credit and no threshold — they are all-or-nothing per case.
 * A case whose checks are **all** advisory (`required = false`) has nothing that can fail it, so it passes as long as it does not time out. That is intentional, but it means an all-optional `checks.toml` is not a safety net.
 * A trial that times out is always `error`, independent of checks.
@@ -4977,8 +4987,8 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 * [ ] `[tool.fastskill.eval]` present with a `prompts` path that resolves.
 * [ ] Prompts CSV has `id`, `prompt`, `should_trigger` headers (plus `tags` / `workspace_subdir` if you use them).
-* [ ] You are **not** relying on `should_trigger` to gate pass/fail — it doesn't.
-* [ ] `checks.toml` exists if you want real scoring signal, and uses `skill_invoked` (not a bare-name `trigger_expectation`) to assert that your skill fired.
+* [ ] Each `should_trigger` value reflects the required consultation/non-consultation expectation; explicit `skill_invoked` checks do not contradict it.
+* [ ] Outcome correctness is measured separately where consultation alone is insufficient.
 * [ ] `fastskill eval validate --all` passes and lists the agent you intend to run against as available.
 * [ ] Output directory convention agreed for `--output-dir` (local + CI).
 
@@ -4994,13 +5004,13 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 # Advanced Patterns
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5098,13 +5108,13 @@ plus `--global` to control what gets installed where.
 
 # Integration Tutorials
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/examples/integration-tutorials
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5205,13 +5215,13 @@ and HTTP API are the surface.
 
 # Documentation and tools for agents
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/integration/agents
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5271,13 +5281,13 @@ The server exposes read-only tools by default. Mutating tools require
 
 # Claude Code Integration
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5384,13 +5394,13 @@ See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) 
 
 # Cursor Integration
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/integration/cursor-integration
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5544,13 +5554,13 @@ See the [agent’s skill documentation](https://cursor.com/docs/skills) for nati
 
 # Configuration Reference
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/optimize/configuration
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5752,13 +5762,13 @@ confirmed by running the binary against deliberately broken configs:
 
 # Skill Optimization Overview
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -5828,13 +5838,13 @@ Each training step:
 
 # Inspecting and Exporting Results
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/optimize/results
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6060,13 +6070,13 @@ A `history.json` record looks like:
 
 # Running and Monitoring
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6254,13 +6264,13 @@ The run directory is safe to copy, archive, or share. Resume and inspect command
 
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6420,13 +6430,13 @@ Once you have your suite and checks files ready, write the `optimize.toml` confi
 
 # Context Resolution API
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6501,13 +6511,13 @@ the `limit`, and the embedding index — not by a configurable runtime cache.
 
 # Loading Strategies
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6583,13 +6593,13 @@ covers essentially all resolution performance and quality concerns.
 
 # Registry Index System
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/index-system
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6753,13 +6763,13 @@ Skills are always stored with an organization prefix:
 
 # Marketplace.json Format
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -6985,13 +6995,13 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 
 # Sources and catalogs
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/overview
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7034,13 +7044,13 @@ and [marketplace.json](/registry/marketplace-json) for catalog authoring.
 
 # Choose a distribution model
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7084,13 +7094,13 @@ to agents. See the [security model](/security/model).
 
 # Configure skill sources
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7215,13 +7225,13 @@ For sharing an already installed set without access to its original sources, use
 
 # Local browser console
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7271,13 +7281,13 @@ For the HTTP contract, health checks, and server flags, see
 
 # Security Best Practices
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7345,13 +7355,13 @@ that front an exposed instance.
 
 # Security Model
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/security/model
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7452,13 +7462,13 @@ network policy, secrets management).
 
 # Manifests, locks, and scope
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7563,13 +7573,13 @@ project configuration controls where consumers install it. See
 
 # Reconcile project skill state
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7733,13 +7743,13 @@ checks.
 
 # Validate a skill
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7792,13 +7802,13 @@ for missing, changed, conflicting, and unverifiable installations.
 
 # Debugging Guide
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7864,13 +7874,13 @@ Start with `fastskill cli doctor` to confirm the environment, then re-run the fa
 
 # Testing Framework
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/testing/framework
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -7935,13 +7945,13 @@ Start by pinning down what "good" looks like in your `checks.toml`, then iterate
 
 # MCP Tool Calling
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 

@@ -1,12 +1,12 @@
 # Eval Setup
 
-FastSkill 0.9.231
+FastSkill 0.9.232
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
-Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
+Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
 
 
 
@@ -14,14 +14,19 @@ Documentation revision: badfc78e531a8b50f7e36f1e11fa8c819c52cd3d
 
 This page is the reference for **authoring** an eval suite: the config table in `skill-project.toml`, the prompts CSV a suite is made of, and the optional checks TOML that actually decides pass/fail. Work through it top to bottom once, then use [Run evals](/evals-quality/run-evals) for the day-to-day commands.
 
+For guided suite design, use the [FastSkill skill](https://github.com/gofastskill/skill/tree/main/fastskill).
+Its [eval-authoring workflow](https://github.com/gofastskill/skill/blob/main/fastskill/references/eval-authoring.md)
+and copyable invoice example are maintained and packaged in the skills repository.
+
 ## Prerequisites
 
 * `skill-project.toml` exists (project root or skill directory — `fastskill` walks up the tree to find it).
 * `SKILL.md` exists alongside it if you're authoring a single skill's suite.
 * For `fastskill eval run`: a supported agent CLI on `PATH`. Agent keys come from aikit-sdk: `aikit`, `claude`, `codex`, `cursor`, `gemini`, and `pi`. A key is accepted only when its CLI is detected on the current machine; a typo and an uninstalled agent both error with `RUNTIME_UNKNOWN_ID`. `fastskill eval validate --all` reports which keys are detected in *your* environment.
 
-Evals do not require embedding or `OPENAI_API_KEY`; those are used by `index rebuild` and
-`skill search --local`.
+Deterministic validation and scoring need no model credential. Target execution needs the
+selected runtime's authentication; native judges separately need their configured endpoint,
+model, and credential environment variable. Embedding configuration is unrelated.
 
 ## The `[tool.fastskill.eval]` table
 
@@ -41,7 +46,7 @@ fail_on_missing_agent = true      # default true
 | Field                   | Type    | Required | Default                | Meaning                                                                                                                           |
 | ----------------------- | ------- | -------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `prompts`               | path    | **yes**  | —                      | Path to the prompts CSV.                                                                                                          |
-| `checks`                | path    | no       | none                   | Path to the checks TOML. Omit it and there are no deterministic checks at all — see the callout below.                            |
+| `checks`                | path    | no       | none                   | Path to the checks TOML. Even when omitted, `should_trigger` produces a per-case trigger expectation — see the callout below.     |
 | `timeout_seconds`       | integer | no       | `900`                  | Per-case timeout passed to the agent run.                                                                                         |
 | `trials_per_case`       | integer | no       | `1`                    | Trials run per case; validated to `[1, 1000]` (`EVAL_INVALID_TRIALS_CONFIG` otherwise).                                           |
 | `parallel`              | integer | no       | unset (CPU core count) | Max concurrent trials for one case.                                                                                               |
@@ -51,7 +56,7 @@ fail_on_missing_agent = true      # default true
 **Defaults verified against source** (`crates/fastskill-core/src/core/manifest.rs::EvalConfigToml`): `timeout_seconds` defaults to **900**, and `fail_on_missing_agent` defaults to **true** — the CLI refuses to run against a missing agent unless you explicitly set it to `false`. Don't assume otherwise from older examples.
 
 
-With no `checks` file configured, there is effectively no deterministic signal: a case passes purely on the agent process exiting `0`. Point `checks` at a real file once you want the suite to assert anything about *what* the agent did.
+With no `checks` file configured, each case still receives the required skill-consultation expectation implied by `should_trigger`. A successful process exit alone is not enough. Add a checks file for further deterministic outcome or adherence evidence.
 
 
 ### Validate the config
@@ -109,13 +114,15 @@ greet-2,What is 2+2?,false,smoke,
 | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`               | yes      | Non-empty identifier per row. Used for `--case`, artifact folder names, and reports.                                                                                                                                                                                                                                                     |
 | `prompt`           | yes      | Text sent to the agent. Use CSV quoting (`"..."`, doubled `""` for an embedded quote) for commas or newlines.                                                                                                                                                                                                                            |
-| `should_trigger`   | yes      | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. &#x2A;*See the callout below — this column does not affect pass/fail.**                                                                                                                                                                                         |
+| `should_trigger`   | yes      | `true`/`1` (case-insensitive `true`) or anything else counts as `false`. It creates a required per-case skill-consultation expectation; see below.                                                                                                                                                                                       |
 | `tags`             | no       | Comma-separated tags inside the cell (e.g. `"smoke,basic"`). Used by `eval run --tag <name>`.                                                                                                                                                                                                                                            |
 | `workspace_subdir` | no       | Relative path that becomes the agent's working directory for the case. Under the default isolation it is created **inside the case's scratch workspace**, with fixture files copied in from the same path under the project root; under `--no-isolation` it resolves directly under the project root. Empty or omitted → workspace root. |
 
 Empty lines are skipped.
 
-**`should_trigger` is inert.** The field's own doc comment in `aikit-evals&#x60; says it plainly: &#x2A;"Whether the skill should trigger (documentation-only; checks.toml is authoritative for pass/fail)."* No scorer reads it. The same global check list from `checks.toml` runs against **every** case regardless of what `should_trigger` says, and with no checks file configured, pass/fail comes only from the agent process's exit code. There is currently no way to express a per-case "this prompt must NOT trigger the skill" expectation — treat the column as documentation for a human reader, not as a control the CLI acts on. Do not build a suite on the assumption that setting `should_trigger,false` makes the suite verify non-triggering; it does not.
+**`should_trigger` affects pass/fail.** The engine creates an implicit required `skill_invoked` check for each case, with `expected` equal to the CSV value. An explicit `skill_invoked` check that applies to the case replaces the implicit one; `eval validate` rejects a contradictory polarity. Therefore `false` tests non-consultation and `true` tests consultation, subject to the selected backend's observability.
+
+This is adherence/selection evidence, not outcome correctness. A structured `Skill` call is direct evidence; supported decoders may also recognize a tool input that references the staged skill-document path. The path proxy indicates consultation, not that the instructions were read or followed. Pair positive cases with outcome checks or judges.
 
 
 
@@ -137,13 +144,16 @@ skill = "my-skill"
 expected = true
 ```
 
-| Field      | Type   | Required | Default                                            |
-| ---------- | ------ | -------- | -------------------------------------------------- |
-| `skill`    | string | no       | — (omit to match *any* skill invocation)           |
-| `expected` | bool   | no       | `true` (`false` asserts the skill did **not** run) |
-| `required` | bool   | no       | `true`                                             |
+| Field      | Type         | Required | Default                                            |
+| ---------- | ------------ | -------- | -------------------------------------------------- |
+| `skill`    | string       | no       | — (omit to match *any* skill invocation)           |
+| `expected` | bool         | no       | `true` (`false` asserts the skill did **not** run) |
+| `required` | bool         | no       | `true`                                             |
+| `cases`    | string array | no       | all cases (exact case IDs)                         |
 
-Matches a **structured `Skill` tool invocation** in the trace, not a substring of prose. When `skill` is given, it must **exactly equal** the invocation's skill-identifying input field (`skill`, `name`, or `skillName`) — `"foo"` does not match a `"foo-bar"` invocation, and a skill name merely mentioned in argument text does not count. This is the robust way to assert triggering — and, with `expected = false`, the only reliable way to assert non-triggering.
+Matches a structured `Skill` invocation or, where the decoder supplies it, a tool input referring to the staged skill-document path. When `skill` is given, a structured invocation must exactly match its identifying field. A skill name merely mentioned in unrelated prose does not count. Path-reference matching improves portability but remains a consultation proxy rather than proof of adherence.
+
+Every check type supports `cases = ["case-id", ...]`, selecting exact case IDs. An absent selector applies to every case. Use selectors for checks that should not run across a mixed suite.
 
 ### `trigger_expectation`
 
@@ -233,7 +243,7 @@ Use it for signal you want visible in reports without gating the suite on it.
 
 ### How a case's pass/fail is decided
 
-* No `checks` file configured (or it loads zero checks): the case **passes** iff the agent process exits `0`.
+* No `checks` file configured (or it loads zero explicit checks): the case still receives the required trigger expectation generated from `should_trigger`.
 * Any checks loaded: the case **passes** only if every **required** check's `passed` is `true`. Checks marked `required = false` are reported but never fail the case. Among required checks there is no partial credit and no threshold — they are all-or-nothing per case.
 * A case whose checks are **all** advisory (`required = false`) has nothing that can fail it, so it passes as long as it does not time out. That is intentional, but it means an all-optional `checks.toml` is not a safety net.
 * A trial that times out is always `error`, independent of checks.
@@ -268,8 +278,8 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 * [ ] `[tool.fastskill.eval]` present with a `prompts` path that resolves.
 * [ ] Prompts CSV has `id`, `prompt`, `should_trigger` headers (plus `tags` / `workspace_subdir` if you use them).
-* [ ] You are **not** relying on `should_trigger` to gate pass/fail — it doesn't.
-* [ ] `checks.toml` exists if you want real scoring signal, and uses `skill_invoked` (not a bare-name `trigger_expectation`) to assert that your skill fired.
+* [ ] Each `should_trigger` value reflects the required consultation/non-consultation expectation; explicit `skill_invoked` checks do not contradict it.
+* [ ] Outcome correctness is measured separately where consultation alone is insufficient.
 * [ ] `fastskill eval validate --all` passes and lists the agent you intend to run against as available.
 * [ ] Output directory convention agreed for `--output-dir` (local + CI).
 
