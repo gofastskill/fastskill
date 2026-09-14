@@ -9,6 +9,9 @@ use crate::search::SearchResultItem;
 use serde_json;
 use std::fmt;
 
+#[cfg(test)]
+mod tests;
+
 /// Short origin-type label (git/local/zip-url/repository) for display.
 fn origin_type_label(origin: &Origin) -> &'static str {
     match origin {

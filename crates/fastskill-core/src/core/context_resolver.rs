@@ -11,6 +11,10 @@ use std::sync::Arc;
 const MAX_CONTENT_SIZE: u64 = 512_000;
 const PREVIEW_BODY_LINES: usize = 20;
 
+#[cfg(test)]
+#[path = "context_resolver_coverage_tests.rs"]
+mod coverage_tests;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ResolveScope {
@@ -321,15 +325,25 @@ impl ContextResolver {
                 // the managed skills directory. Resolve paths through that
                 // explicit link while continuing to reject arbitrary escapes.
                 let relative = path.strip_prefix(&self.skills_root).ok();
-                let editable_entry = relative
-                    .and_then(|relative| relative.components().next())
-                    .map(|component| self.skills_root.join(component.as_os_str()));
-                if let Some(entry) = editable_entry.as_ref().filter(|entry| {
-                    std::fs::symlink_metadata(entry).is_ok_and(|m| m.file_type().is_symlink())
-                }) {
+                let name = relative.and_then(|relative| match relative.components().next() {
+                    Some(std::path::Component::Normal(name)) => Some(name),
+                    _ => None,
+                });
+                // Select a filesystem-owned entry from the managed directory;
+                // never perform metadata I/O on a path constructed from input.
+                let editable_entry = std::fs::read_dir(&self.skills_root)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .find(|entry| {
+                        Some(entry.file_name().as_os_str()) == name
+                            && entry.file_type().is_ok_and(|kind| kind.is_symlink())
+                    });
+                if let Some(entry) = editable_entry {
                     // The editable target is the boundary, not an exemption
                     // from containment checks for paths beneath that target.
-                    if let Ok(canonical) = validate_path_within_root(path, entry) {
+                    if let Ok(canonical) = validate_path_within_root(path, &entry.path()) {
                         return Ok(Some(canonical.to_string_lossy().to_string()));
                     }
                 }
