@@ -139,7 +139,7 @@ mod tests {
         save_project_preserving(&path, &project).unwrap();
         assert!(std::fs::read_to_string(&path)
             .unwrap()
-            .contains("schema_version = \"1\""));
+            .contains(&format!("schema_version = \"{MANIFEST_SCHEMA_VERSION}\"")));
 
         std::fs::write(&path, "[invalid\n").unwrap();
         assert!(matches!(

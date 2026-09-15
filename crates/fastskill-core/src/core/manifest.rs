@@ -1,6 +1,9 @@
 //! Skills manifest management for declarative skill control
 
 use crate::core::origin::{GitRef, Origin};
+use crate::core::origin_infer::{
+    github_tree_path, is_github_tree_url, parse_git_url, tree_path_subdir,
+};
 use crate::core::version::VersionConstraint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -116,9 +119,22 @@ impl SkillsManifest {
 /// format shipped before this field existed — every manifest written before this feature is
 /// unversioned, so "absent" is the only correct interpretation of "legacy".
 ///
+/// Reading upgrades along the chain `legacy (absent) → 1 → 2`:
+///
+/// * **1** — `Origin`-shaped dependencies, but a git `url` was allowed to be a GitHub browser
+///   link (`/org/repo/tree/<branch>[/<subdir>]`), which git cannot clone.
+/// * **2** — every `Origin::Git.url` is a plain clone URL; the branch or tag lives only in
+///   `ref` and the subdirectory only in `subdir`. See
+///   [`SkillProjectToml::from_toml_str`] for the dispatch and
+///   `docs/requirements/manifest-schema-v2.md` for the rationale.
+///
 /// Bump this when the on-disk shape changes incompatibly, and teach
 /// [`SkillProjectToml::load_from_file`] to upgrade from the previous value.
-pub const MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const MANIFEST_SCHEMA_VERSION: &str = "2";
+
+/// The previous schema version, still accepted on read and upgraded in memory by
+/// [`SkillProjectToml::upgrade_v1_to_v2`]. Nothing writes it any more.
+const MANIFEST_SCHEMA_V1: &str = "1";
 
 /// Root structure for skill-project.toml file
 /// Contains both project metadata and dependencies
@@ -582,11 +598,14 @@ impl SkillProjectToml {
     /// approach `skills.lock` uses):
     ///
     /// * **Absent** — either a legacy manifest or a hand-written current one, since nothing
-    ///   stamped the field until now. Try the current shape first, and only on failure fall
+    ///   stamped the field until v1. Try the current shape first, and only on failure fall
     ///   back to the legacy shape. Trying current-first matters: a hand-written modern file
-    ///   must not be mistaken for legacy and rewritten.
+    ///   must not be mistaken for legacy and rewritten. Either way the result then goes
+    ///   through [`SkillProjectToml::upgrade_v1_to_v2`].
+    /// * **Equal to [`MANIFEST_SCHEMA_V1`]** — parse the current shape, then upgrade to v2.
     /// * **Equal to [`MANIFEST_SCHEMA_VERSION`]** — parse the current shape, and let a parse
-    ///   failure be a real error. A file that declares its version is taken at its word.
+    ///   failure be a real error. A file that declares its version is taken at its word, so
+    ///   it is also validated rather than repaired ([`SkillProjectToml::validate_v2`]).
     /// * **Anything else** — refuse. A newer version means a newer FastSkill wrote it, and
     ///   guessing at a shape we do not know would corrupt it on the next save.
     ///
@@ -608,24 +627,164 @@ impl SkillProjectToml {
             .and_then(|v| v.schema_version);
 
         match declared.as_deref() {
-            Some(MANIFEST_SCHEMA_VERSION) => Self::parse_current(content),
+            Some(MANIFEST_SCHEMA_VERSION) => {
+                let project = Self::parse_current(content)?;
+                project.validate_v2()?;
+                Ok(project)
+            }
+            Some(MANIFEST_SCHEMA_V1) => {
+                let mut project = Self::parse_current(content)?;
+                project.upgrade_v1_to_v2()?;
+                Ok(project)
+            }
             Some(unknown) => Err(ManifestError::Parse(format!(
                 "skill-project.toml declares schema_version '{unknown}', which this FastSkill \
-                 ({}) does not understand. It was probably written by a newer FastSkill — \
+                 ({}) does not understand — it knows '{MANIFEST_SCHEMA_V1}' and \
+                 '{MANIFEST_SCHEMA_VERSION}'. It was probably written by a newer FastSkill — \
                  upgrade, or remove the schema_version line if you set it by hand.",
                 env!("CARGO_PKG_VERSION")
             ))),
-            None => match Self::parse_current(content) {
-                Ok(project) => Ok(project),
-                // Report the CURRENT-format error if the legacy attempt also fails: for a file
-                // that was simply malformed, the current-format diagnostic (with line numbers
-                // and the pre-Origin hint) is the more useful of the two.
-                Err(current_err) => match toml::from_str::<LegacySkillProjectToml>(content) {
-                    Ok(legacy) => legacy.upgrade(),
-                    Err(_) => Err(current_err),
-                },
-            },
+            None => {
+                let mut project = match Self::parse_current(content) {
+                    Ok(project) => project,
+                    // Report the CURRENT-format error if the legacy attempt also fails: for a
+                    // file that was simply malformed, the current-format diagnostic (with line
+                    // numbers and the pre-Origin hint) is the more useful of the two.
+                    Err(current_err) => match toml::from_str::<LegacySkillProjectToml>(content) {
+                        Ok(legacy) => legacy.upgrade()?,
+                        Err(_) => return Err(current_err),
+                    },
+                };
+                project.upgrade_v1_to_v2()?;
+                Ok(project)
+            }
         }
+    }
+
+    /// Upgrade a v1 (or legacy, already lifted to v1) manifest to v2 in memory.
+    ///
+    /// v1 allowed a git origin's `url` to be a GitHub browser link
+    /// (`/org/repo/tree/<branch>[/<subdir>]`) — `skill add` wrote them that way until
+    /// 0.9.221. Git cannot clone such a URL, so each one is split into the v2 shape: the
+    /// clone URL in `url`, the subdirectory in `subdir`, the branch in `ref`.
+    ///
+    /// Everything else is left exactly as it was. In particular a plain URL is never
+    /// touched — not even to append `.git` — so upgrading an already-correct file is a
+    /// no-op, and a conflict between the URL and an explicit `ref`/`subdir` is reported
+    /// rather than resolved by guessing which the author meant.
+    fn upgrade_v1_to_v2(&mut self) -> Result<(), ManifestError> {
+        self.schema_version = Some(MANIFEST_SCHEMA_VERSION.to_string());
+        let Some(section) = self.dependencies.as_mut() else {
+            return Ok(());
+        };
+
+        for (id, spec) in section.dependencies.iter_mut() {
+            let DependencySpec::Inline {
+                origin: Origin::Git { url, r#ref, subdir },
+                ..
+            } = spec
+            else {
+                continue;
+            };
+            let Some(tree_path) = github_tree_path(url) else {
+                continue;
+            };
+            let info = parse_git_url(url).map_err(|error| {
+                ManifestError::Parse(format!(
+                    "dependency '{id}' has an unusable git url '{url}': {error}"
+                ))
+            })?;
+
+            // An explicitly declared branch or tag is authoritative: it is the only thing
+            // that can say where the branch ends and the subdirectory begins when the
+            // branch name itself contains a `/`.
+            let derived_subdir = match r#ref {
+                GitRef::Branch(name) | GitRef::Tag(name) => tree_path_subdir(&tree_path, name)
+                    .ok_or_else(|| {
+                        ManifestError::Parse(format!(
+                            "dependency '{id}' declares ref '{name}' but its url '{url}' points \
+                             at '/tree/{tree_path}'; the ref does not match the /tree/ path — \
+                             fix one of them"
+                        ))
+                    })?,
+                GitRef::Default | GitRef::Commit(_) => info.subdir.clone(),
+            };
+
+            if subdir.is_some() && *subdir != derived_subdir {
+                return Err(ManifestError::Parse(format!(
+                    "dependency '{id}' sets subdir '{}' but its url '{url}' points at a \
+                     different subdirectory; the two disagree — fix one of them",
+                    subdir
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default()
+                )));
+            }
+
+            if matches!(r#ref, GitRef::Default) {
+                if let Some(branch) = &info.branch {
+                    *r#ref = GitRef::Branch(branch.clone());
+                }
+            }
+            *url = info.repo_url;
+            *subdir = derived_subdir;
+
+            tracing::warn!(
+                "manifest: rewrote git origin for '{id}': url={url} subdir={} ref={:?} \
+                 (schema {MANIFEST_SCHEMA_V1} -> {MANIFEST_SCHEMA_VERSION}; will be saved on \
+                 next write)",
+                subdir
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                r#ref
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Reject what v2 promises cannot be there: a git origin whose `url` is a GitHub browser
+    /// link. A file that declares v2 is taken at its word, so this is an error with the
+    /// corrected TOML in it rather than a silent repair.
+    fn validate_v2(&self) -> Result<(), ManifestError> {
+        let Some(section) = self.dependencies.as_ref() else {
+            return Ok(());
+        };
+        for (id, spec) in &section.dependencies {
+            let DependencySpec::Inline {
+                origin: Origin::Git { url, .. },
+                ..
+            } = spec
+            else {
+                continue;
+            };
+            if !is_github_tree_url(url) {
+                continue;
+            }
+            let info = parse_git_url(url).ok();
+            let repo_url = info
+                .as_ref()
+                .map(|info| info.repo_url.clone())
+                .unwrap_or_else(|| url.clone());
+            let subdir = info
+                .as_ref()
+                .and_then(|info| info.subdir.as_ref())
+                .map(|path| format!("subdir = \"{}\"\n", path.display()))
+                .unwrap_or_default();
+            let branch = info
+                .as_ref()
+                .and_then(|info| info.branch.as_ref())
+                .map(|branch| format!("[dependencies.{id}.origin.ref]\nbranch = \"{branch}\"\n"))
+                .unwrap_or_default();
+            return Err(ManifestError::Parse(format!(
+                "dependency '{id}' declares the GitHub browser url '{url}', which git cannot \
+                 clone. Schema version {MANIFEST_SCHEMA_VERSION} keeps the repository, the \
+                 subdirectory and the branch apart:\n\n\
+                 [dependencies.{id}.origin]\ntype = \"git\"\nurl = \"{repo_url}\"\n{subdir}{branch}"
+            )));
+        }
+        Ok(())
     }
 
     fn parse_current(content: &str) -> Result<Self, ManifestError> {

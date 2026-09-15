@@ -117,6 +117,90 @@ pub fn parse_git_url(git_url: &str) -> Result<GitUrlInfo, ServiceError> {
     })
 }
 
+/// True when `git_url` is a GitHub *browser* link (`/org/repo/tree/<branch>[/<subdir>]`)
+/// rather than a clone URL. Git cannot clone such a URL, so manifest schema v2 refuses it
+/// and keeps the repository, the subdirectory and the branch in separate fields.
+pub fn is_github_tree_url(git_url: &str) -> bool {
+    github_tree_segments(git_url).is_some()
+}
+
+/// Everything a GitHub tree URL carries after `/tree/`: `<branch>[/<subdir>]`, undivided.
+/// The URL alone cannot say where the branch ends, because a branch name may contain `/` —
+/// only an explicitly declared ref can. `None` when this is not a GitHub tree URL, or when
+/// nothing follows `/tree/`.
+pub fn github_tree_path(git_url: &str) -> Option<String> {
+    let segments = github_tree_segments(git_url)?;
+    let path = segments.get(3..)?.join("/");
+    (!path.is_empty()).then_some(path)
+}
+
+/// The path segments of `git_url` when it is a GitHub tree URL, else `None`.
+fn github_tree_segments(git_url: &str) -> Option<Vec<String>> {
+    let url = Url::parse(git_url).ok()?;
+    if url.host_str() != Some("github.com") {
+        return None;
+    }
+    let segments: Vec<String> = url
+        .path()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_string)
+        .collect();
+    (segments.get(2).map(String::as_str) == Some("tree")).then_some(segments)
+}
+
+/// The subdirectory a GitHub tree path names once the declared ref is taken off the front:
+/// `Some(None)` when the path is exactly the ref, `Some(Some(dir))` for the remainder, and
+/// `None` when the path does not start with the ref at all — which means the two disagree.
+///
+/// Splitting on the declared ref rather than on the first path segment is the only way to
+/// get a branch containing `/` right, and the declared ref is the only place that is known.
+pub fn tree_path_subdir(tree_path: &str, ref_name: &str) -> Option<Option<PathBuf>> {
+    if tree_path == ref_name {
+        return Some(None);
+    }
+    tree_path
+        .strip_prefix(&format!("{ref_name}/"))
+        .map(|remainder| Some(PathBuf::from(remainder)))
+}
+
+/// Best-effort v1 → v2 normalization of a single [`Origin`], for *comparing* a record
+/// written before manifest schema v2 (a `skills.lock` entry) with its upgraded manifest
+/// entry. Anything that is not a git origin carrying a GitHub tree URL passes through
+/// untouched, and an explicit `ref`/`subdir` always wins over the URL-derived one.
+///
+/// Unlike the manifest upgrade this never fails: a lock is a record of what happened, not
+/// a declaration to validate, so a URL that cannot be split is simply left alone.
+pub fn normalize_git_tree_origin(origin: &Origin) -> Origin {
+    let Origin::Git { url, r#ref, subdir } = origin else {
+        return origin.clone();
+    };
+    if !is_github_tree_url(url) {
+        return origin.clone();
+    }
+    let Ok(info) = parse_git_url(url) else {
+        return origin.clone();
+    };
+    // An explicitly declared branch or tag is what the tree path is split on; only when
+    // there is none does the URL's own first segment become the branch.
+    let declared = match r#ref {
+        GitRef::Branch(name) | GitRef::Tag(name) => Some(name.as_str()),
+        GitRef::Default | GitRef::Commit(_) => None,
+    };
+    let derived_subdir = declared
+        .and_then(|name| github_tree_path(url).and_then(|path| tree_path_subdir(&path, name)))
+        .unwrap_or(info.subdir);
+    let derived_ref = match (r#ref, &info.branch) {
+        (GitRef::Default, Some(branch)) => GitRef::Branch(branch.clone()),
+        _ => r#ref.clone(),
+    };
+    Origin::Git {
+        url: info.repo_url,
+        r#ref: derived_ref,
+        subdir: subdir.clone().or(derived_subdir),
+    }
+}
+
 impl FastSkillService {
     /// Resolve a raw **Origin ref** string into a typed [`Origin`] (ADR-0005 /
     /// spec 003 Phase 3). See the module docs for the full classification

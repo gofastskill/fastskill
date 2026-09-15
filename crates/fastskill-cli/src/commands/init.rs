@@ -705,7 +705,9 @@ mod tests {
 
         execute_init(args()).await.unwrap();
         let content = fs::read_to_string("skill-project.toml").unwrap();
-        assert!(content.contains("schema_version = \"1\""));
+        assert!(content.contains(&format!(
+            "schema_version = \"{MANIFEST_SCHEMA_VERSION}\""
+        )));
         assert!(content.contains("id = \"demo-project\""));
         assert!(content.contains("version = \"1.0.0\""));
         assert!(content.contains("skills_directory = \".claude/skills\""));
