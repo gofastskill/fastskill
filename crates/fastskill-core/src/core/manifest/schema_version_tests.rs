@@ -86,6 +86,29 @@ skill = "helper"
     }
 }
 
+/// The v1 → v2 regression: `skill add` up to 0.9.221 wrote the GitHub browser link
+/// verbatim, and git cannot clone it. Reading such a manifest must produce the split
+/// form instead, or `project install` fails with "repository not found".
+#[test]
+fn v1_tree_url_is_split_into_clone_url_subdir_and_branch() {
+    let v1 = r#"
+schema_version = "1"
+
+[dependencies.agwiki.origin]
+type = "git"
+url = "https://github.com/goagwiki/agwiki/tree/main/skill"
+"#;
+    let parsed = SkillProjectToml::from_toml_str(v1).expect("a v1 manifest must still parse");
+    match origin_of(&parsed, "agwiki") {
+        Origin::Git { url, r#ref, subdir } => {
+            assert_eq!(url, "https://github.com/goagwiki/agwiki.git");
+            assert_eq!(*r#ref, GitRef::Branch("main".to_string()));
+            assert_eq!(subdir.as_deref(), Some(Path::new("skill")));
+        }
+        other => panic!("expected git origin, got {other:?}"),
+    }
+}
+
 /// A modern file that nobody has stamped yet must NOT be mistaken for legacy.
 #[test]
 fn unstamped_current_format_is_parsed_as_current() {
