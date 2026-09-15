@@ -14,6 +14,7 @@ use crate::core::manifest::{
 };
 use crate::core::metadata::{parse_yaml_frontmatter, SkillFrontmatter};
 use crate::core::origin::{GitRef, Origin, Resolved};
+use crate::core::origin_infer::{is_github_tree_url, parse_git_url};
 use crate::core::project::{detect_context_from_content, resolve_project_file};
 use crate::core::repository::RepositoryManager;
 use crate::core::service::{FastSkillService, ServiceError, SkillId};
@@ -391,6 +392,13 @@ impl FastSkillService {
         git_ref: &GitRef,
         subdir: Option<&Path>,
     ) -> Result<Fetched, ServiceError> {
+        // Before anything shells out: git cannot clone a GitHub browser url, and the error
+        // it returns ("repository not found") points at the network rather than at the
+        // manifest field that is actually wrong. The manifest loader splits these on read
+        // (schema v2), so reaching here means a hand-edited v2 file or a caller that built
+        // the `Origin` itself.
+        reject_github_tree_url(url)?;
+
         let (branch, tag) = match git_ref {
             GitRef::Default => (None, None),
             GitRef::Branch(branch) => (Some(branch.as_str()), None),
@@ -967,6 +975,34 @@ impl FastSkillService {
             }
         }
     }
+}
+
+/// Refuse a GitHub browser url (`/org/repo/tree/<branch>[/<subdir>]`) as a git origin,
+/// naming the three fields it has to be spelled as instead. Manifest schema v2 guarantees
+/// this cannot come from a loaded manifest; this covers everything else.
+fn reject_github_tree_url(url: &str) -> Result<(), ServiceError> {
+    if !is_github_tree_url(url) {
+        return Ok(());
+    }
+    let info = parse_git_url(url).ok();
+    let repo_url = info
+        .as_ref()
+        .map(|info| info.repo_url.as_str())
+        .unwrap_or(url);
+    let subdir = info
+        .as_ref()
+        .and_then(|info| info.subdir.as_ref())
+        .map(|path| format!(", subdir = \"{}\"", path.display()))
+        .unwrap_or_default();
+    let git_ref = info
+        .as_ref()
+        .and_then(|info| info.branch.as_ref())
+        .map(|branch| format!(", ref = {{ branch = \"{branch}\" }}"))
+        .unwrap_or_default();
+    Err(ServiceError::InvalidOperation(format!(
+        "git cannot clone the GitHub browser url '{url}'. Use the repository url with the \
+         subdirectory and branch in their own fields: url = \"{repo_url}\"{subdir}{git_ref}"
+    )))
 }
 
 mod dependencies;

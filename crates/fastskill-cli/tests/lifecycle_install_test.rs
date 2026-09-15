@@ -794,3 +794,41 @@ fn strict_restore_rejects_missing_integrity_evidence_in_transitive_lock_entry() 
     assert!(!root.join(".claude/skills/root").exists());
     assert!(!root.join(".claude/skills/child").exists());
 }
+
+/// A v1 manifest is upgraded on read and lands on disk the next time any command saves it —
+/// here `skill remove` of an unrelated entry. The browser url must be gone afterwards, or
+/// the next `project install` would still hand it to git.
+#[test]
+fn a_command_that_rewrites_a_v1_manifest_persists_the_v2_git_origin() {
+    let (_temp, root) = project();
+    std::fs::write(
+        root.join("skill-project.toml"),
+        "schema_version = \"1\"\n\n[dependencies]\n\
+         stale = { origin = { type = \"local\", path = \"./sources/stale\" } }\n\
+         agwiki = { origin = { type = \"git\", \
+         url = \"https://github.com/goagwiki/agwiki/tree/main/skill\" } }\n\n\
+         [tool.fastskill]\nskills_directory = \".claude/skills\"\n",
+    )
+    .unwrap();
+
+    assert_success(&run(
+        &root,
+        &["skill", "remove", "stale", "--force", "--no-reindex"],
+    ));
+
+    let manifest = std::fs::read_to_string(root.join("skill-project.toml")).unwrap();
+    assert!(
+        manifest.contains("schema_version = \"2\""),
+        "the rewrite must stamp v2:\n{manifest}"
+    );
+    assert!(
+        !manifest.contains("/tree/"),
+        "the browser url must be gone:\n{manifest}"
+    );
+    assert!(
+        manifest.contains("url = \"https://github.com/goagwiki/agwiki.git\"")
+            && manifest.contains("subdir = \"skill\"")
+            && manifest.contains("branch = \"main\""),
+        "the split fields must be written:\n{manifest}"
+    );
+}

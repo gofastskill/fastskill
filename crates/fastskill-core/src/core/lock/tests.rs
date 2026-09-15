@@ -370,3 +370,65 @@ fn test_save_to_file_is_last_writer_wins() {
     let reloaded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
     assert_eq!(reloaded.skills.len(), 1);
 }
+
+/// A lock written against a v1 manifest recorded the GitHub browser url verbatim. Loading
+/// it must produce the same origin the upgraded manifest produces, or every `project
+/// install` would compare the two, see a difference nobody made, and report drift forever
+/// (`install::plan::validate_recorded_roots`).
+#[test]
+fn a_lock_written_from_a_v1_tree_url_matches_the_upgraded_manifest() {
+    let temporary = TempDir::new().unwrap();
+    let path = temporary.path().join("skills.lock");
+    std::fs::write(
+        &path,
+        format!(
+            "[metadata]\nversion = \"{LOCK_FORMAT_VERSION}\"\n\n\
+             [[skills]]\nid = \"agwiki\"\nname = \"agwiki\"\n\
+             origin = {{ type = \"git\", \
+             url = \"https://github.com/goagwiki/agwiki/tree/main/skill\", \
+             ref = {{ branch = \"main\" }} }}\n\
+             resolved = {{ version = \"1.0.0\", commit_hash = \"abc123\" }}\n"
+        ),
+    )
+    .unwrap();
+
+    let lock = ProjectSkillsLock::load_from_file(&path).unwrap();
+
+    let manifest = crate::core::manifest::SkillProjectToml::from_toml_str(
+        "schema_version = \"1\"\n\n[dependencies.agwiki]\n\
+         origin = { type = \"git\", \
+         url = \"https://github.com/goagwiki/agwiki/tree/main/skill\", \
+         ref = { branch = \"main\" } }\n",
+    )
+    .unwrap();
+    let entries = manifest.to_skill_entries(temporary.path()).unwrap();
+
+    assert_eq!(
+        lock.skills[0].origin, entries[0].origin,
+        "the Lock and the Manifest must describe the same origin after loading"
+    );
+    assert_eq!(
+        lock.skills[0].origin,
+        Origin::Git {
+            url: "https://github.com/goagwiki/agwiki.git".to_string(),
+            r#ref: GitRef::Branch("main".to_string()),
+            subdir: Some(std::path::PathBuf::from("skill")),
+        }
+    );
+    // Reading never writes: the normalized form reaches disk on the next save.
+    assert!(std::fs::read_to_string(&path).unwrap().contains("/tree/"));
+}
+
+/// Normalizing is confined to browser urls: an ordinary recorded origin, including the
+/// `git://` daemon urls the integration tests use, must be returned byte-identical.
+#[test]
+fn loading_a_lock_leaves_ordinary_origins_untouched() {
+    let temporary = TempDir::new().unwrap();
+    let path = temporary.path().join("skills.lock");
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.update_skill(&make_skill("plain"));
+    lock.save_to_file(&path).unwrap();
+
+    let loaded = ProjectSkillsLock::load_from_file(&path).unwrap();
+    assert_eq!(loaded.skills[0].origin, lock.skills[0].origin);
+}

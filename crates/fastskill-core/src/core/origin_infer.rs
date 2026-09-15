@@ -568,6 +568,108 @@ mod tests {
         assert!(matches!(result, Err(ServiceError::InvalidOperation(_))));
     }
 
+    // ── GitHub browser ("/tree/") urls ─────────────────────────────────────
+
+    #[test]
+    fn github_tree_urls_are_recognized_and_nothing_else_is() {
+        assert!(is_github_tree_url(
+            "https://github.com/org/repo/tree/main/skill"
+        ));
+        assert!(is_github_tree_url("https://github.com/org/repo/tree/main"));
+        for plain in [
+            "https://github.com/org/repo.git",
+            "https://github.com/org/tree.git",
+            "https://gitlab.com/org/repo/-/tree/main/skill",
+            "git://127.0.0.1:9418/repo.git",
+            "not a url",
+        ] {
+            assert!(!is_github_tree_url(plain), "{plain} is not a browser url");
+        }
+    }
+
+    #[test]
+    fn github_tree_path_is_everything_after_tree() {
+        assert_eq!(
+            github_tree_path("https://github.com/org/repo/tree/feature/x/skills/foo").as_deref(),
+            Some("feature/x/skills/foo")
+        );
+        assert_eq!(
+            github_tree_path("https://github.com/org/repo/tree/main").as_deref(),
+            Some("main")
+        );
+        // Nothing after `/tree/` names neither a branch nor a subdirectory.
+        assert_eq!(github_tree_path("https://github.com/org/repo/tree"), None);
+        assert_eq!(github_tree_path("https://github.com/org/repo.git"), None);
+    }
+
+    #[test]
+    fn tree_path_subdir_splits_on_the_declared_ref() {
+        assert_eq!(tree_path_subdir("main", "main"), Some(None));
+        assert_eq!(
+            tree_path_subdir("feature/x/skills/foo", "feature/x"),
+            Some(Some(PathBuf::from("skills/foo")))
+        );
+        // A path that does not start with the ref means the two disagree.
+        assert_eq!(tree_path_subdir("main/skill", "release"), None);
+        assert_eq!(tree_path_subdir("mainline/skill", "main"), None);
+    }
+
+    #[test]
+    fn normalizing_a_recorded_origin_produces_the_schema_two_form() {
+        let normalized = normalize_git_tree_origin(&Origin::Git {
+            url: "https://github.com/org/repo/tree/main/skill".to_string(),
+            r#ref: GitRef::Branch("main".to_string()),
+            subdir: None,
+        });
+        assert_eq!(
+            normalized,
+            Origin::Git {
+                url: "https://github.com/org/repo.git".to_string(),
+                r#ref: GitRef::Branch("main".to_string()),
+                subdir: Some(PathBuf::from("skill")),
+            }
+        );
+
+        // A branch containing `/` splits on the declared ref, as the manifest upgrade does.
+        assert_eq!(
+            normalize_git_tree_origin(&Origin::Git {
+                url: "https://github.com/org/repo/tree/feature/x/skills/foo".to_string(),
+                r#ref: GitRef::Branch("feature/x".to_string()),
+                subdir: None,
+            }),
+            Origin::Git {
+                url: "https://github.com/org/repo.git".to_string(),
+                r#ref: GitRef::Branch("feature/x".to_string()),
+                subdir: Some(PathBuf::from("skills/foo")),
+            }
+        );
+    }
+
+    #[test]
+    fn normalizing_leaves_everything_else_alone() {
+        for origin in [
+            Origin::Git {
+                url: "https://github.com/org/repo".to_string(),
+                r#ref: GitRef::Default,
+                subdir: None,
+            },
+            Origin::Git {
+                url: "git://127.0.0.1:9418/repo.git".to_string(),
+                r#ref: GitRef::Branch("main".to_string()),
+                subdir: Some(PathBuf::from("skill")),
+            },
+            Origin::Local {
+                path: PathBuf::from("./demo"),
+                editable: true,
+            },
+            Origin::ZipUrl {
+                url: "https://example.com/s.zip".to_string(),
+            },
+        ] {
+            assert_eq!(normalize_git_tree_origin(&origin), origin);
+        }
+    }
+
     #[test]
     fn is_skill_id_accepts_scoped_and_bare() {
         assert!(is_skill_id("web-scraper"));

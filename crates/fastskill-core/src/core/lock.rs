@@ -5,6 +5,7 @@
 //! - `GlobalSkillsLock`: operational, with timestamps, for `global-skills.lock` in user config dir
 
 use crate::core::origin::{GitRef, Origin, Resolved};
+use crate::core::origin_infer::normalize_git_tree_origin;
 use crate::core::skill_manager::SkillDefinition;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -128,17 +129,45 @@ impl ProjectSkillsLock {
 
         match read_lock_format_version(&content)?.as_str() {
             LOCK_FORMAT_VERSION => {
-                toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))
+                let mut lock: Self =
+                    toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
+                lock.normalize_git_tree_origins();
+                Ok(lock)
             }
             LEGACY_PROJECT_LOCK_VERSION => {
                 let legacy: LegacyProjectSkillsLock =
                     toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
-                legacy.upgrade()
+                let mut lock = legacy.upgrade()?;
+                lock.normalize_git_tree_origins();
+                Ok(lock)
             }
             // Anything else — including a version newer than this build — is still refused.
             found => Err(LockError::UnsupportedVersion {
                 found: found.to_string(),
             }),
+        }
+    }
+
+    /// Bring recorded git origins into the form manifest schema v2 requires, so a lock
+    /// written against a v1 manifest still describes the same skill as that manifest does
+    /// once it is loaded.
+    ///
+    /// Without this, every comparison of "what the Manifest asks for" against "what the Lock
+    /// recorded" — `validate_recorded_roots`, `origins_accept_same_resolution` — would see
+    /// the browser url on one side and the clone url on the other and report drift on every
+    /// single `project install`, for a project nobody had changed. The normalized form
+    /// reaches disk the next time something saves the lock; reading never writes.
+    fn normalize_git_tree_origins(&mut self) {
+        for entry in &mut self.skills {
+            let normalized = normalize_git_tree_origin(&entry.origin);
+            if normalized != entry.origin {
+                tracing::warn!(
+                    "skills.lock: rewrote the git origin recorded for '{}' into its schema-2 \
+                     form (will be saved on next write)",
+                    entry.id
+                );
+                entry.origin = normalized;
+            }
         }
     }
 
