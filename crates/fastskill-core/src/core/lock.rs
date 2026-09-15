@@ -161,10 +161,13 @@ impl ProjectSkillsLock {
         for entry in &mut self.skills {
             let normalized = normalize_git_tree_origin(&entry.origin);
             if normalized != entry.origin {
-                tracing::warn!(
-                    "skills.lock: rewrote the git origin recorded for '{}' into its schema-2 \
-                     form (will be saved on next write)",
-                    entry.id
+                crate::utils::warn_once(
+                    &format!("lock-tree-url:{}", entry.id),
+                    format!(
+                        "skills.lock: rewrote the git origin recorded for '{}' into its \
+                         schema-2 form (will be saved on next write)",
+                        entry.id
+                    ),
                 );
                 entry.origin = normalized;
             }

@@ -211,6 +211,25 @@ fn v1_tree_url_accepts_an_agreeing_explicit_subdir() {
     );
 }
 
+/// A URL that stops at the branch says nothing about the subdirectory, so an explicit
+/// `subdir` beside it is the only source of truth and is kept, not reported as a conflict.
+#[test]
+fn v1_tree_url_without_a_subdirectory_keeps_an_explicit_subdir() {
+    let parsed = SkillProjectToml::from_toml_str(&v1_with(
+        "origin = { type = \"git\", url = \"https://github.com/org/repo/tree/main\", \
+         subdir = \"skill\" }",
+    ))
+    .unwrap();
+    assert_eq!(
+        git_origin_of(&parsed),
+        (
+            "https://github.com/org/repo.git",
+            &GitRef::Branch("main".to_string()),
+            Some(Path::new("skill"))
+        )
+    );
+}
+
 /// Two sources of truth that disagree are reported, never resolved by guessing: a
 /// dependency silently pointing somewhere else is the failure mode worth avoiding.
 #[test]

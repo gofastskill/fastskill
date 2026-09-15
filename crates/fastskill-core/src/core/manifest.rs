@@ -710,16 +710,20 @@ impl SkillProjectToml {
                 GitRef::Default | GitRef::Commit(_) => info.subdir.clone(),
             };
 
-            if subdir.is_some() && *subdir != derived_subdir {
-                return Err(ManifestError::Parse(format!(
-                    "dependency '{id}' sets subdir '{}' but its url '{url}' points at a \
-                     different subdirectory; the two disagree — fix one of them",
-                    subdir
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default()
-                )));
+            // An explicit `subdir` only conflicts when the URL names a *different* one. A
+            // URL that stops at the branch says nothing about the subdirectory, so the
+            // declared value simply stands.
+            if let (Some(declared), Some(derived)) = (subdir.as_ref(), derived_subdir.as_ref()) {
+                if declared != derived {
+                    return Err(ManifestError::Parse(format!(
+                        "dependency '{id}' sets subdir '{}' but its url '{url}' points at \
+                         '{}'; the two disagree — fix one of them",
+                        declared.display(),
+                        derived.display()
+                    )));
+                }
             }
+            let derived_subdir = subdir.take().or(derived_subdir);
 
             if matches!(r#ref, GitRef::Default) {
                 if let Some(branch) = &info.branch {
@@ -729,15 +733,18 @@ impl SkillProjectToml {
             *url = info.repo_url;
             *subdir = derived_subdir;
 
-            tracing::warn!(
-                "manifest: rewrote git origin for '{id}': url={url} subdir={} ref={:?} \
-                 (schema {MANIFEST_SCHEMA_V1} -> {MANIFEST_SCHEMA_VERSION}; will be saved on \
-                 next write)",
-                subdir
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                r#ref
+            crate::utils::warn_once(
+                &format!("manifest-tree-url:{id}:{url}"),
+                format!(
+                    "manifest: rewrote git origin for '{id}': url={url} subdir={} ref={:?} \
+                     (schema {MANIFEST_SCHEMA_V1} -> {MANIFEST_SCHEMA_VERSION}; will be saved \
+                     on next write)",
+                    subdir
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    r#ref
+                ),
             );
         }
 

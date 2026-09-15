@@ -4,6 +4,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 /// Encode `bytes` as lowercase hex, e.g. for rendering a SHA-256 digest as a
 /// cache key / integrity checksum string.
@@ -66,6 +67,22 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     tmp.persist(path).map_err(|e| e.error)?;
 
     Ok(())
+}
+
+/// Emit `message` at `warn` level the first time `key` is seen in this process, and never
+/// again. One CLI command loads the project Manifest and Lock several times, so a warning
+/// attached to loading — "this file will be rewritten on the next save" — would otherwise
+/// repeat verbatim for every load and bury the output that matters.
+pub(crate) fn warn_once(key: &str, message: impl std::fmt::Display) {
+    static SEEN: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    let first = seen
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(key.to_string());
+    if first {
+        tracing::warn!("{message}");
+    }
 }
 
 #[cfg(test)]

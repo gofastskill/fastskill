@@ -37,7 +37,7 @@ git `url`, e.g., `https://github.com/your-org/skills/tree/main/review-notes`. Gi
 clone such a URL. Manifest `schema_version = "2"` splits it into the three fields shown
 above, and fastskill performs that split while reading — no manual edit is needed. The
 rewritten form reaches disk the next time a command saves the manifest, e.g.,
-`skill add`, `skill remove`, or `project install`. A `/tree/` URL in a manifest that
+`skill add` or `skill remove` (`project install` reads it and updates only `skills.lock`). A `/tree/` URL in a manifest that
 already declares `schema_version = "2"` is an error, and the message shows the corrected
 TOML.
 
