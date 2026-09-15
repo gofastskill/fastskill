@@ -1,12 +1,12 @@
 # Configure skill sources
 
-FastSkill 0.9.232
+FastSkill 0.9.233
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
+Release revision: ecd9b1230f1aa44e755628f4ce266b570b8529d0
 
-Documentation revision: 310f24931204d05ee3c6be68ea348b8c6277ae84
+Documentation revision: ecd9b1230f1aa44e755628f4ce266b570b8529d0
 
 
 
@@ -36,6 +36,21 @@ Use this manifest form as the portable source of truth for subdirectories. It ke
 branch, and subdirectory explicit in committed project state.
 FastSkill uses system Git; install Git and ensure it can access the repository before
 adding private sources. Git credentials come from your Git configuration.
+
+### Migrating from `/tree/` URLs
+
+Manifests written by fastskill 0.9.221 and earlier recorded a GitHub browser link as the
+git `url`, e.g., `https://github.com/your-org/skills/tree/main/review-notes`. Git cannot
+clone such a URL. Manifest `schema_version = "2"` splits it into the three fields shown
+above, and fastskill performs that split while reading — no manual edit is needed. The
+rewritten form reaches disk the next time a command saves the manifest, e.g.,
+`skill add` or `skill remove` (`project install` reads it and updates only `skills.lock`). A `/tree/` URL in a manifest that
+already declares `schema_version = "2"` is an error, and the message shows the corrected
+TOML.
+
+One consequence is worth planning for: a manifest saved by a current fastskill declares
+`schema_version = "2"`, and fastskill 0.9.232 and earlier refuse to read it. Upgrade every
+machine and CI job that shares the project before the first save.
 
 The manifest records the requested origin/ref; the lock records the selected commit
 and integrity evidence. `project install --lock` restores that selection even when
