@@ -391,6 +391,13 @@ impl FastSkillService {
         git_ref: &GitRef,
         subdir: Option<&Path>,
     ) -> Result<Fetched, ServiceError> {
+        // Before anything shells out: git cannot clone a GitHub browser url, and the error
+        // it returns ("repository not found") points at the network rather than at the
+        // manifest field that is actually wrong. The manifest loader splits these on read
+        // (schema v2), so reaching here means a hand-edited v2 file or a caller that built
+        // the `Origin` itself.
+        reject_github_tree_url(url)?;
+
         let (branch, tag) = match git_ref {
             GitRef::Default => (None, None),
             GitRef::Branch(branch) => (Some(branch.as_str()), None),

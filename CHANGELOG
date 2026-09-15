@@ -4,6 +4,14 @@
 
 ### Breaking Changes
 
+- **`skill-project.toml` is now written with `schema_version = "2"`.** In schema 2 every git
+  origin `url` is a plain clone URL: the branch or tag lives only in `ref`, the subdirectory
+  only in `subdir`. Manifests that declare `"1"` — or declare nothing — are still read and are
+  upgraded in memory, so no manual edit is needed; the upgraded form reaches disk the next time
+  a command saves the manifest. fastskill 0.9.232 and earlier refuse to read a manifest that
+  declares `"2"`, so upgrade every machine and CI job that shares a project. See
+  [Configure skill sources](webdocs/registry/sources.mdx) for the migration note.
+
 - **Commands now use explicit namespaces.** Root action commands, plural `repos`, implicit
   skill-ID reads, and the hidden `mcp register` alias were removed. MCP tool names now include the
   complete command path. Migration table:
@@ -88,6 +96,13 @@
   flip `/readyz` to 503, stop the `ValidationWorker` cleanly, and exit with code 0.
 
 ### Fixed
+
+- **`project install` fails on a GitHub `/tree/` URL (regression since 0.9.222).** A manifest
+  recording `https://github.com/org/repo/tree/main/skill` as a git origin was handed to
+  `git ls-remote` verbatim and failed with "repository not found". Reading now splits such a
+  URL into `url` + `subdir` + `ref`, a `skills.lock` entry recorded in the old form is matched
+  against the upgraded manifest instead of being reported as drift, and an origin that still
+  carries a browser URL is refused before git runs, naming the fields to use instead.
 
 - **ValidationWorker leak**: The background validation task now exits cleanly when the server
   shuts down. Previously, the task was leaked on SIGINT/SIGTERM.

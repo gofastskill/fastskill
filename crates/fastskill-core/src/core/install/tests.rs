@@ -1668,3 +1668,49 @@ fn safe_subdir_join_rejects_a_symlink_escape() {
     let error = safe_subdir_join(&root, Path::new("escape")).unwrap_err();
     assert!(error.to_string().contains("escapes the cloned repository"));
 }
+
+/// A GitHub browser url never reaches git: it cannot be cloned, and git's own
+/// "repository not found" hides which manifest field is wrong. Asserting the clone
+/// counter is unchanged is what proves the check runs *before* any invocation.
+#[tokio::test]
+async fn a_github_tree_url_origin_fails_before_any_git_invocation() {
+    let tmp = TestTempDir::new().unwrap();
+    let service = make_service(&tmp.path().join("storage")).await;
+    let clones_before = crate::storage::git::CLONE_INVOCATIONS.load(Ordering::SeqCst);
+
+    let error = service
+        .fetch(&Origin::Git {
+            url: "https://github.com/org/repo/tree/main/skill".to_string(),
+            r#ref: GitRef::Default,
+            subdir: None,
+        })
+        .await
+        .expect_err("a browser url must be refused, not handed to git")
+        .to_string();
+
+    assert!(
+        error.contains("url = \"https://github.com/org/repo.git\"")
+            && error.contains("subdir = \"skill\"")
+            && error.contains("branch = \"main\""),
+        "the error must show the three fields to use instead: {error}"
+    );
+    assert_eq!(
+        crate::storage::git::CLONE_INVOCATIONS.load(Ordering::SeqCst),
+        clones_before,
+        "nothing may be cloned for a url git cannot clone"
+    );
+}
+
+/// The guard is narrow on purpose: an ordinary clone url, including one that merely
+/// contains the word "tree", must pass straight through.
+#[test]
+fn plain_git_urls_pass_the_browser_url_guard() {
+    for url in [
+        "https://github.com/org/repo.git",
+        "https://github.com/org/tree.git",
+        "git://127.0.0.1:9418/repo.git",
+        "https://gitlab.com/org/repo/-/tree/main/skill",
+    ] {
+        assert!(reject_github_tree_url(url).is_ok(), "{url} must be allowed");
+    }
+}

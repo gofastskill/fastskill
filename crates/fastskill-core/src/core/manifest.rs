@@ -116,9 +116,22 @@ impl SkillsManifest {
 /// format shipped before this field existed — every manifest written before this feature is
 /// unversioned, so "absent" is the only correct interpretation of "legacy".
 ///
+/// Reading upgrades along the chain `legacy (absent) → 1 → 2`:
+///
+/// * **1** — `Origin`-shaped dependencies, but a git `url` was allowed to be a GitHub browser
+///   link (`/org/repo/tree/<branch>[/<subdir>]`), which git cannot clone.
+/// * **2** — every `Origin::Git.url` is a plain clone URL; the branch or tag lives only in
+///   `ref` and the subdirectory only in `subdir`. See
+///   [`SkillProjectToml::from_toml_str`] for the dispatch and
+///   `docs/requirements/manifest-schema-v2.md` for the rationale.
+///
 /// Bump this when the on-disk shape changes incompatibly, and teach
 /// [`SkillProjectToml::load_from_file`] to upgrade from the previous value.
-pub const MANIFEST_SCHEMA_VERSION: &str = "1";
+pub const MANIFEST_SCHEMA_VERSION: &str = "2";
+
+/// The previous schema version, still accepted on read and upgraded in memory by
+/// [`SkillProjectToml::upgrade_v1_to_v2`]. Nothing writes it any more.
+const MANIFEST_SCHEMA_V1: &str = "1";
 
 /// Root structure for skill-project.toml file
 /// Contains both project metadata and dependencies
@@ -582,11 +595,14 @@ impl SkillProjectToml {
     /// approach `skills.lock` uses):
     ///
     /// * **Absent** — either a legacy manifest or a hand-written current one, since nothing
-    ///   stamped the field until now. Try the current shape first, and only on failure fall
+    ///   stamped the field until v1. Try the current shape first, and only on failure fall
     ///   back to the legacy shape. Trying current-first matters: a hand-written modern file
-    ///   must not be mistaken for legacy and rewritten.
+    ///   must not be mistaken for legacy and rewritten. Either way the result then goes
+    ///   through [`SkillProjectToml::upgrade_v1_to_v2`].
+    /// * **Equal to [`MANIFEST_SCHEMA_V1`]** — parse the current shape, then upgrade to v2.
     /// * **Equal to [`MANIFEST_SCHEMA_VERSION`]** — parse the current shape, and let a parse
-    ///   failure be a real error. A file that declares its version is taken at its word.
+    ///   failure be a real error. A file that declares its version is taken at its word, so
+    ///   it is also validated rather than repaired ([`SkillProjectToml::validate_v2`]).
     /// * **Anything else** — refuse. A newer version means a newer FastSkill wrote it, and
     ///   guessing at a shape we do not know would corrupt it on the next save.
     ///
@@ -608,23 +624,37 @@ impl SkillProjectToml {
             .and_then(|v| v.schema_version);
 
         match declared.as_deref() {
-            Some(MANIFEST_SCHEMA_VERSION) => Self::parse_current(content),
+            Some(MANIFEST_SCHEMA_VERSION) => {
+                let project = Self::parse_current(content)?;
+                project.validate_v2()?;
+                Ok(project)
+            }
+            Some(MANIFEST_SCHEMA_V1) => {
+                let mut project = Self::parse_current(content)?;
+                project.upgrade_v1_to_v2()?;
+                Ok(project)
+            }
             Some(unknown) => Err(ManifestError::Parse(format!(
                 "skill-project.toml declares schema_version '{unknown}', which this FastSkill \
-                 ({}) does not understand. It was probably written by a newer FastSkill — \
+                 ({}) does not understand — it knows '{MANIFEST_SCHEMA_V1}' and \
+                 '{MANIFEST_SCHEMA_VERSION}'. It was probably written by a newer FastSkill — \
                  upgrade, or remove the schema_version line if you set it by hand.",
                 env!("CARGO_PKG_VERSION")
             ))),
-            None => match Self::parse_current(content) {
-                Ok(project) => Ok(project),
-                // Report the CURRENT-format error if the legacy attempt also fails: for a file
-                // that was simply malformed, the current-format diagnostic (with line numbers
-                // and the pre-Origin hint) is the more useful of the two.
-                Err(current_err) => match toml::from_str::<LegacySkillProjectToml>(content) {
-                    Ok(legacy) => legacy.upgrade(),
-                    Err(_) => Err(current_err),
-                },
-            },
+            None => {
+                let mut project = match Self::parse_current(content) {
+                    Ok(project) => project,
+                    // Report the CURRENT-format error if the legacy attempt also fails: for a
+                    // file that was simply malformed, the current-format diagnostic (with line
+                    // numbers and the pre-Origin hint) is the more useful of the two.
+                    Err(current_err) => match toml::from_str::<LegacySkillProjectToml>(content) {
+                        Ok(legacy) => legacy.upgrade()?,
+                        Err(_) => return Err(current_err),
+                    },
+                };
+                project.upgrade_v1_to_v2()?;
+                Ok(project)
+            }
         }
     }
 
@@ -875,6 +905,8 @@ pub enum ManifestError {
     #[error("Serialize error: {0}")]
     Serialize(String),
 }
+
+mod schema_upgrade;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

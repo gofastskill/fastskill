@@ -201,7 +201,7 @@ All project configuration lives in **`skill-project.toml`** at your project root
 to find it). A minimal manifest:
 
 ```toml
-schema_version = "1"
+schema_version = "2"
 
 [dependencies]
 demo-skill = { origin = { type = "local", path = "./skills/demo-skill", editable = true }, groups = ["dev"] }
