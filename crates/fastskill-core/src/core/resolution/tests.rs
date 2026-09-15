@@ -642,7 +642,10 @@ async fn a_single_failing_root_keeps_its_original_error() {
     let temp = TempDir::new().unwrap();
     let service = service(temp.path()).await;
     let good = write_skill(&temp.path().join("good"), "good", &[]);
-    let roots = vec![root(good, "good"), root(temp.path().join("missing"), "missing")];
+    let roots = vec![
+        root(good, "good"),
+        root(temp.path().join("missing"), "missing"),
+    ];
 
     let error = prepare_resolution(&service, roots, &HashMap::new(), 4, false)
         .await

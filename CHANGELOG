@@ -97,6 +97,13 @@
 
 ### Fixed
 
+- **`project install` reports every dependency that fails to resolve, not just the first.** A
+  missing local path, a moved git subdirectory or a renamed skill used to stop the run at the first
+  bad entry, so fixing a large manifest took one run per error. All root dependencies are now
+  fetched first and the failures are listed together (`2 of 3 skills could not be resolved: ...`).
+  Installation is still all-or-nothing: nothing is installed and `skills.lock` is unchanged. A
+  single failure keeps its original error message.
+
 - **`project install` fails on a GitHub `/tree/` URL (regression since 0.9.222).** A manifest
   recording `https://github.com/org/repo/tree/main/skill` as a git origin was handed to
   `git ls-remote` verbatim and failed with "repository not found". Reading now splits such a
