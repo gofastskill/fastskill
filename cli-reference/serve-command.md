@@ -1,12 +1,12 @@
 # server serve
 
-FastSkill 0.9.233
+FastSkill 0.9.234
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: ecd9b1230f1aa44e755628f4ce266b570b8529d0
+Release revision: 4c53c4f9f1f29de6b881bad19f40dd4f7c68ea5e
 
-Documentation revision: ecd9b1230f1aa44e755628f4ce266b570b8529d0
+Documentation revision: 4c53c4f9f1f29de6b881bad19f40dd4f7c68ea5e
 
 
 
