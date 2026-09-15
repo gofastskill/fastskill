@@ -77,7 +77,7 @@ cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "e343173
 # cli-framework's own `rmcp` dependency: `fastskill mcp serve` wraps
 # cli-framework's `CliFrameworkHandler` in its own `ServerHandler`, so the two
 # crates must resolve to the same `rmcp`.
-rmcp = { version = "1.6", features = ["server", "transport-streamable-http-server", "transport-io"] }
+rmcp = { version = "2.2", features = ["server", "transport-streamable-http-server", "transport-io"] }
 
 # Request validation
 validator = { version = "0.21", features = ["derive"] }
