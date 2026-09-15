@@ -610,3 +610,50 @@ async fn preview_uses_disposable_catalog_and_content_cache() {
     let after = entries(cache);
     assert_eq!(after, before);
 }
+
+#[tokio::test]
+async fn reports_every_failing_root_before_giving_up() {
+    let temp = TempDir::new().unwrap();
+    let service = service(temp.path()).await;
+    let good = write_skill(&temp.path().join("good"), "good", &[]);
+    let roots = vec![
+        root(temp.path().join("missing-a"), "missing-a"),
+        root(good, "good"),
+        root(temp.path().join("missing-b"), "missing-b"),
+    ];
+
+    let error = prepare_resolution(&service, roots, &HashMap::new(), 4, false)
+        .await
+        .err()
+        .expect("resolution must fail");
+
+    let message = error.to_string();
+    assert!(
+        message.contains("2 of 3 skills could not be resolved"),
+        "{message}"
+    );
+    assert!(message.contains("  - missing-a: "), "{message}");
+    assert!(message.contains("  - missing-b: "), "{message}");
+    assert!(!message.contains("  - good"), "{message}");
+}
+
+#[tokio::test]
+async fn a_single_failing_root_keeps_its_original_error() {
+    let temp = TempDir::new().unwrap();
+    let service = service(temp.path()).await;
+    let good = write_skill(&temp.path().join("good"), "good", &[]);
+    let roots = vec![
+        root(good, "good"),
+        root(temp.path().join("missing"), "missing"),
+    ];
+
+    let error = prepare_resolution(&service, roots, &HashMap::new(), 4, false)
+        .await
+        .err()
+        .expect("resolution must fail");
+
+    assert!(
+        matches!(&error, ServiceError::InvalidOperation(message) if message.contains("Local path does not exist")),
+        "{error}"
+    );
+}

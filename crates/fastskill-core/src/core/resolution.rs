@@ -202,6 +202,25 @@ async fn prepare_resolution_with_policy(
     }
 }
 
+/// A single failure keeps its original error; several are listed together.
+fn root_failures_error(
+    mut failures: Vec<(String, ServiceError)>,
+    total: usize,
+) -> Option<ServiceError> {
+    match failures.len() {
+        0 => None,
+        1 => failures.pop().map(|(_, error)| error),
+        count => Some(ServiceError::Validation(format!(
+            "{count} of {total} skills could not be resolved:\n{}",
+            failures
+                .iter()
+                .map(|(id, error)| format!("  - {id}: {error}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn prepare_resolution_attempt(
     service: &FastSkillService,
@@ -220,24 +239,40 @@ async fn prepare_resolution_attempt(
     let mut queue = VecDeque::new();
     let mut root_ids = Vec::new();
 
+    // Fetch every root before failing so one bad source does not hide the rest.
+    let mut failures = Vec::new();
     for root in roots.iter().cloned() {
-        refresh_if_floating(
-            service,
-            &root.origin,
-            offline || lock_first,
-            refreshed,
-            refreshed_names,
-        )
-        .await?;
-        let prepared = prepare_candidate(
-            service,
-            root.origin.clone(),
-            root.expected_id.as_deref(),
-            root.locked.as_ref(),
-            offline,
-            lock_first,
-        )
-        .await?;
+        let fetched: Result<_, ServiceError> = async {
+            refresh_if_floating(
+                service,
+                &root.origin,
+                offline || lock_first,
+                refreshed,
+                refreshed_names,
+            )
+            .await?;
+            prepare_candidate(
+                service,
+                root.origin.clone(),
+                root.expected_id.as_deref(),
+                root.locked.as_ref(),
+                offline,
+                lock_first,
+            )
+            .await
+        }
+        .await;
+        let prepared = match fetched {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let label = root
+                    .expected_id
+                    .clone()
+                    .unwrap_or_else(|| format!("{:?}", root.origin));
+                failures.push((label, error));
+                continue;
+            }
+        };
         let id = prepared.id().to_string();
         if positions.contains_key(&id) {
             return Err(ServiceError::Validation(format!(
@@ -260,6 +295,10 @@ async fn prepare_resolution_attempt(
             required_by: BTreeSet::new(),
             dependencies: dependencies.into_iter().map(|entry| entry.id).collect(),
         });
+    }
+
+    if let Some(error) = root_failures_error(failures, roots.len()) {
+        return Err(error);
     }
 
     while let Some(mut item) = queue.pop_front() {
