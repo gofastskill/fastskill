@@ -354,7 +354,7 @@ function methodContent() {
     return {
       command: "curl -fsSL " + installScript + " | sh\nfastskill --version",
       caption: "Install script · macOS and Linux",
-      note: "Picks the right binary, checks it against the release's SHA256SUMS, installs to ~/.local/bin and adds it to PATH (open a new shell). Update later with fastskill cli self update.",
+      note: "Picks the right binary, checks it against the release's SHA256SUMS, installs to ~/.local/bin and adds it to PATH (open a new shell).",
       help: ["Installation and PATH help", "https://docs.gofastskill.com/installation"],
     };
   }

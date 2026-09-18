@@ -17,6 +17,11 @@ const CANONICAL_PATHS: &[&str] = &[
     "cache/info",
     "cli/completion",
     "cli/doctor",
+    "cli/self/install",
+    "cli/self/rollback",
+    "cli/self/status",
+    "cli/self/uninstall",
+    "cli/self/update",
     "cli/spec",
     "eval/judge",
     "eval/report",
@@ -95,7 +100,7 @@ fn spec_exports_the_exact_canonical_inventory() {
         .collect::<BTreeSet<_>>();
     let expected = CANONICAL_PATHS.iter().copied().collect::<BTreeSet<_>>();
     assert_eq!(actual, expected);
-    assert_eq!(actual.len(), 49);
+    assert_eq!(actual.len(), 54);
 }
 
 #[test]

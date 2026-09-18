@@ -35,9 +35,9 @@ Every operation uses an explicit resource or operational namespace followed by a
 | Operations | `cache` | `info`, `clean` |
 | Operations | `server` | `serve` |
 | Operations | `mcp` | `serve`, `install`, `list` |
-| Operations | `cli` | `doctor`, `completion`, `spec` |
+| Operations | `cli` | `doctor`, `completion`, `spec`, `self install`, `self update`, `self rollback`, `self status`, `self uninstall` |
 
-This tree has 49 leaf commands. The command registry remains authoritative for parser dispatch,
+This tree has 54 leaf commands. The command registry remains authoritative for parser dispatch,
 help, completion output, specification export, and MCP tool names. MCP names include the complete
 path, such as `fastskill_skill_add` and `fastskill_bundle_remove`.
 
