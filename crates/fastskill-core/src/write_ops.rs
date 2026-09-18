@@ -76,6 +76,7 @@ pub static READ_ONLY_COMMAND_PATHS: &[&[&str]] = &[
     &["cache", "info"],
     &["cli", "completion"],
     &["cli", "doctor"],
+    &["cli", "self", "status"],
     &["cli", "spec"],
     &["eval", "report"],
     &["eval", "score"],
@@ -284,6 +285,28 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
     WriteOperation {
         id: "optimization-export",
         command_path: Some(&["optimization", "export"]),
+        http_routes: &[],
+    },
+    // `cli self` (cli-framework self-install) replaces or removes the binary
+    // itself. The framework never exports these as MCP tools.
+    WriteOperation {
+        id: "cli-self-install",
+        command_path: Some(&["cli", "self", "install"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "cli-self-update",
+        command_path: Some(&["cli", "self", "update"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "cli-self-rollback",
+        command_path: Some(&["cli", "self", "rollback"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "cli-self-uninstall",
+        command_path: Some(&["cli", "self", "uninstall"]),
         http_routes: &[],
     },
     // Manifest editing has no single CLI equivalent (`add` covers creation only).

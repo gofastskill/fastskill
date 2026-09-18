@@ -319,7 +319,7 @@ fastskill skill list</code></pre>
 // Stable release URLs follow the asset names published by the release workflow.
 const releases = "https://github.com/gofastskill/fastskill/releases/latest";
 const archiveBase = releases + "/download/fastskill-";
-const installScript = "https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh";
+const installScript = releases + "/download/install.sh";
 const platforms = {
   macos: { methods: ["homebrew", "curl", "download"], shell: "Terminal" },
   linux: { methods: ["curl", "homebrew", "download"], shell: "Bash" },
@@ -351,26 +351,25 @@ function methodContent() {
     };
   }
   if (selectedMethod === "curl") {
-    const target = selectedOS === "macos" ? macTarget() : "x86_64-unknown-linux-musl";
     return {
-      command: "curl -fL " + archiveBase + target + ".tar.gz -o fastskill.tar.gz\ntar -xzf fastskill.tar.gz\nmkdir -p ~/.local/bin\nmv fastskill ~/.local/bin/fastskill\n~/.local/bin/fastskill --version",
-      caption: "curl · macOS and Linux",
-      note: "Run in an empty folder. Downloads the latest release directly, then installs to ~/.local/bin. Add that directory to PATH. Linux downloads use the portable x86_64 musl binary.",
+      command: "curl -fsSL " + installScript + " | sh\nfastskill --version",
+      caption: "Install script · macOS and Linux",
+      note: "Picks the right binary, checks it against the release's SHA256SUMS, installs to ~/.local/bin and adds it to PATH (open a new shell).",
       help: ["Installation and PATH help", "https://docs.gofastskill.com/installation"],
     };
   }
   const downloads = selectedOS === "macos"
     ? [["Download macOS .tar.gz", archiveBase + macTarget() + ".tar.gz"]]
     : selectedOS === "linux"
-      ? [["Linux x86_64 · musl .tar.gz", archiveBase + "x86_64-unknown-linux-musl.tar.gz"], ["Linux x86_64 · GNU .tar.gz", archiveBase + "x86_64-unknown-linux-gnu.tar.gz"]]
-      : [["Windows x86_64 · .zip", archiveBase + "x86_64-pc-windows-msvc.zip"]];
+      ? [["Linux x86_64 · musl .tar.gz", archiveBase + "x86_64-unknown-linux-musl.tar.gz"], ["Linux ARM64 · musl .tar.gz", archiveBase + "aarch64-unknown-linux-musl.tar.gz"], ["Linux x86_64 · GNU .tar.gz", archiveBase + "x86_64-unknown-linux-gnu.tar.gz"]]
+      : [["Windows x86_64 · .zip", archiveBase + "x86_64-pc-windows-msvc.zip"], ["Windows ARM64 · .zip", archiveBase + "aarch64-pc-windows-msvc.zip"]];
   return {
     command: selectedOS === "windows" ? ".\\fastskill.exe --version" : "./fastskill --version",
     caption: "Prebuilt binary · no package manager",
     note: selectedOS === "windows"
       ? "Extract the ZIP, then open PowerShell in the extracted folder to verify. Add that folder to your user PATH to run fastskill anywhere."
       : selectedOS === "linux"
-        ? "Extract the archive and open a terminal in that folder to verify. Choose musl for portability, or GNU for glibc 2.38+. Move the binary to a directory on PATH. No native Linux ARM64 binary is published."
+        ? "Extract the archive and open a terminal in that folder to verify. Choose musl for portability, or GNU for glibc 2.38+. Move the binary to a directory on PATH."
         : "Choose your Mac’s processor, extract the archive, and open a terminal in that folder to verify. Move the binary to a directory on PATH.",
     help: ["Release notes and checksums", releases],
     downloads,

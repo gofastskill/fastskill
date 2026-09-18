@@ -42,15 +42,18 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 Pick one (see the [installation guide](webdocs/installation.mdx) for all options and platform notes):
 
 ```bash
+# Linux & macOS (install script; update later with `fastskill cli self update`)
+curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/gofastskill/fastskill/releases/latest/download/install.ps1 | iex
+
 # macOS & Linux (Homebrew)
 brew install gofastskill/cli/fastskill
 
 # Windows (Scoop)
 scoop bucket add gofastskill https://github.com/gofastskill/scoop-bucket
 scoop install fastskill
-
-# Linux & macOS (install script)
-curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
 ```
 
 Verify:

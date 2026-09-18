@@ -1,6 +1,7 @@
 //! Top-level help, global arguments, and environment metadata.
 
 use cli_framework::prelude::AppBuilder;
+use cli_framework::self_install::SelfInstallOptions;
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandPath;
 use cli_framework::spec::EnvVarEntry;
@@ -17,6 +18,9 @@ pub fn configure(builder: AppBuilder) -> anyhow::Result<AppBuilder> {
     let builder = builder
         .with_help_section_order(HELP_SECTIONS)
         .with_builtin_command_namespace(&CommandPath::root_for("cli"))
+        // `fastskill cli self install|update|rollback|status|uninstall`, fed by the
+        // release contract that .github/workflows/release.yml publishes.
+        .with_self_install(SelfInstallOptions::github("gofastskill/fastskill"))
         .global_flag(ArgSpec {
             name: "skills-dir",
             kind: ArgKind::Option,
