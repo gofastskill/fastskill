@@ -1,12 +1,12 @@
 # Claude Code Integration
 
-FastSkill 0.9.234
+FastSkill 0.9.235
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: 4c53c4f9f1f29de6b881bad19f40dd4f7c68ea5e
+Release revision: a5edf1ff0ba99c5381a99bcaf78efac64137214f
 
-Documentation revision: 4c53c4f9f1f29de6b881bad19f40dd4f7c68ea5e
+Documentation revision: a5edf1ff0ba99c5381a99bcaf78efac64137214f
 
 
 
@@ -61,7 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install FastSkill
-        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+        run: |
+          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | FASTSKILL_UNMANAGED=1 sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install skills from lock
         run: fastskill project install --lock
       - name: Verify
