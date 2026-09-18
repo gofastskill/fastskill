@@ -10,6 +10,11 @@ on:
         description: 'Version to release (e.g., 1.2.3)'
         required: true
         type: string
+      dry_run:
+        description: 'Build, smoke-test and checksum every target, but publish nothing'
+        required: false
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -86,11 +91,25 @@ jobs:
             archive-format: tar.gz
             archive-name: fastskill-x86_64-unknown-linux-musl.tar.gz
             use-cross: true
+          # Native arm64 runners (free for public repos) so the smoke test below can
+          # execute the binary it just built.
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            binary-name: fastskill
+            archive-format: tar.gz
+            archive-name: fastskill-aarch64-unknown-linux-musl.tar.gz
+            use-cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary-name: fastskill.exe
             archive-format: zip
             archive-name: fastskill-x86_64-pc-windows-msvc.zip
+            use-cross: false
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            binary-name: fastskill.exe
+            archive-format: zip
+            archive-name: fastskill-aarch64-pc-windows-msvc.zip
             use-cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -137,6 +156,15 @@ jobs:
         env:
           RUSTFLAGS: ""
 
+      # Native (non-cross) musl build: the C dependencies (ring, onig, zstd, ...)
+      # must be compiled against musl too.
+      - name: Install musl tools
+        if: ${{ !matrix.use-cross && endsWith(matrix.target, '-musl') }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_$(echo '${{ matrix.target }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
+
       - name: Build release binary (cargo)
         if: ${{ !matrix.use-cross }}
         run: cargo build --release --verbose --target ${{ matrix.target }}
@@ -148,6 +176,7 @@ jobs:
         run: |
           mkdir -p release
           cp target/${{ matrix.target }}/release/${{ matrix.binary-name }} release/
+          cp LICENSE release/
 
       # This CLI builds its command tree at RUNTIME (cli-framework AppBuilder::register /
       # register_out in main()), not at compile time -- a duplicate command path or a bad
@@ -172,54 +201,27 @@ jobs:
           cat > release/README.md << 'README_EOF'
           # FastSkill ${{ needs.verify-version.outputs.version }}
 
-          ## Installation
+          The recommended install is the one-line installer, which verifies this
+          archive against the release's SHA256SUMS and keeps FastSkill updatable
+          with `fastskill cli self update`:
 
-          ### macOS
-
-          | Binary | Hardware |
-          |--------|----------|
-          | `fastskill-aarch64-apple-darwin.tar.gz` | Apple Silicon (M1/M2/M3+) |
-          | `fastskill-x86_64-apple-darwin.tar.gz` | Intel Macs |
-
-          Example:
           ```bash
-          tar -xzf fastskill-aarch64-apple-darwin.tar.gz
-          sudo mv fastskill /usr/local/bin/
-          fastskill --version
+          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | sh
           ```
 
-          ### Linux
-
-          Two Linux binaries are available:
-
-          | Binary | Best For |
-          |--------|----------|
-          | `fastskill-x86_64-unknown-linux-musl.tar.gz` | Universal - containers, CI/CD, older distributions |
-          | `fastskill-x86_64-unknown-linux-gnu.tar.gz` | FIPS/compliance environments requiring dynamic linking |
-
-          **Recommended (musl/static - works everywhere):**
-          ```bash
-          tar -xzf fastskill-x86_64-unknown-linux-musl.tar.gz
-          sudo mv fastskill /usr/local/bin/
-          fastskill --version
-          ```
-
-          **For FIPS/compliance (glibc - requires glibc 2.38+):**
-          ```bash
-          tar -xzf fastskill-x86_64-unknown-linux-gnu.tar.gz
-          sudo mv fastskill /usr/local/bin/
-          fastskill --version
-          ```
-
-          ### Windows
-          Extract the ZIP file and add to your PATH, or run from the extracted directory:
           ```powershell
-          # Extract fastskill-x86_64-pc-windows-msvc.zip
-          # Add to PATH or run from extracted directory
-          fastskill.exe --version
+          irm https://github.com/gofastskill/fastskill/releases/latest/download/install.ps1 | iex
           ```
 
-          For more information, visit: https://github.com/gofastskill/fastskill
+          To install from this archive instead, run from the extracted directory:
+
+          ```bash
+          ./fastskill cli self install --from <this-archive>   # SHA256SUMS from the release must sit beside it
+          ```
+
+          or copy `fastskill` (`fastskill.exe` on Windows) to a directory on your PATH.
+
+          More: https://github.com/gofastskill/fastskill
           README_EOF
 
       - name: Create archive
@@ -252,48 +254,29 @@ jobs:
     if: always() && needs.verify-version.result == 'success'
 
     steps:
-      - name: Download Linux GNU artifact
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: fastskill-x86_64-unknown-linux-gnu.tar.gz
+          pattern: fastskill-*
           path: ./artifacts
-        continue-on-error: true
+          merge-multiple: true
 
-      - name: Download Linux MUSL artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fastskill-x86_64-unknown-linux-musl.tar.gz
-          path: ./artifacts
-        continue-on-error: true
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fastskill-x86_64-pc-windows-msvc.zip
-          path: ./artifacts
-        continue-on-error: true
-
-      - name: Download macOS ARM64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fastskill-aarch64-apple-darwin.tar.gz
-          path: ./artifacts
-        continue-on-error: true
-
-      - name: Download macOS x86_64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fastskill-x86_64-apple-darwin.tar.gz
-          path: ./artifacts
-        continue-on-error: true
-
+      # The release contract (cli-framework ADR 0080) that `fastskill cli self update`
+      # and the installers rely on: one top-level archive per target, SHA256SUMS over
+      # all of them, and the two installer scripts. x86_64-unknown-linux-gnu is an
+      # extra for glibc/FIPS users; installs of it update from the same name.
       - name: Verify required artifacts
         run: |
           set -euo pipefail
           REQUIRED=(
             "fastskill-x86_64-unknown-linux-gnu.tar.gz"
             "fastskill-x86_64-unknown-linux-musl.tar.gz"
+            "fastskill-aarch64-unknown-linux-musl.tar.gz"
             "fastskill-x86_64-pc-windows-msvc.zip"
+            "fastskill-aarch64-pc-windows-msvc.zip"
             "fastskill-aarch64-apple-darwin.tar.gz"
             "fastskill-x86_64-apple-darwin.tar.gz"
           )
@@ -316,21 +299,27 @@ jobs:
             exit 1
           fi
 
+      # SHA256SUMS is the contract name. checksums.txt is the same file under its old
+      # name, kept for older consumers (Homebrew/Scoop generators, scripts pinned to it).
       - name: Generate checksums
         run: |
           set -euo pipefail
           (
             cd artifacts
-            sha256sum \
-              fastskill-x86_64-unknown-linux-gnu.tar.gz \
-              fastskill-x86_64-unknown-linux-musl.tar.gz \
-              fastskill-x86_64-pc-windows-msvc.zip \
-              fastskill-aarch64-apple-darwin.tar.gz \
-              fastskill-x86_64-apple-darwin.tar.gz \
-              | sort > checksums.txt
+            sha256sum ./*.tar.gz ./*.zip | sed 's#  \./#  #' | sort -k2 > SHA256SUMS
+            cp SHA256SUMS checksums.txt
           )
           echo "Generated checksums:"
-          cat artifacts/checksums.txt
+          cat artifacts/SHA256SUMS
+
+      - name: Add installer scripts
+        run: |
+          set -euo pipefail
+          if grep -n '__[A-Z_]*__' scripts/install.sh scripts/install.ps1; then
+            echo "Installer template placeholder left unreplaced"
+            exit 1
+          fi
+          cp scripts/install.sh scripts/install.ps1 artifacts/
 
       - name: Upload collected artifacts
         uses: actions/upload-artifact@v4
@@ -343,7 +332,7 @@ jobs:
     name: Create GitHub Release
     needs: [verify-version, collect-artifacts]
     runs-on: ubuntu-latest
-    if: always() && needs.verify-version.result == 'success' && needs.collect-artifacts.result == 'success'
+    if: always() && needs.verify-version.result == 'success' && needs.collect-artifacts.result == 'success' && !inputs.dry_run
     permissions:
       contents: write
 
@@ -374,10 +363,15 @@ jobs:
           FILES=(
             "artifacts/fastskill-x86_64-unknown-linux-gnu.tar.gz"
             "artifacts/fastskill-x86_64-unknown-linux-musl.tar.gz"
+            "artifacts/fastskill-aarch64-unknown-linux-musl.tar.gz"
             "artifacts/fastskill-x86_64-pc-windows-msvc.zip"
+            "artifacts/fastskill-aarch64-pc-windows-msvc.zip"
             "artifacts/fastskill-aarch64-apple-darwin.tar.gz"
             "artifacts/fastskill-x86_64-apple-darwin.tar.gz"
+            "artifacts/SHA256SUMS"
             "artifacts/checksums.txt"
+            "artifacts/install.sh"
+            "artifacts/install.ps1"
           )
 
           for file in "${FILES[@]}"; do
@@ -429,30 +423,38 @@ jobs:
             } > release_notes.md
           fi
 
-          {
-            echo
-            echo "## Installation"
-            echo
-            echo "Download the pre-built binary for your platform:"
-            echo
-            echo "### macOS"
-            echo
-            echo "- **Apple Silicon**: \`fastskill-aarch64-apple-darwin.tar.gz\`"
-            echo "- **Intel**: \`fastskill-x86_64-apple-darwin.tar.gz\`"
-            echo
-            echo "### Linux"
-            echo
-            echo "- **Linux (glibc)**: \`fastskill-x86_64-unknown-linux-gnu.tar.gz\`"
-            echo "- **Linux (musl/static)**: \`fastskill-x86_64-unknown-linux-musl.tar.gz\`"
-            echo
-            echo "### Windows"
-            echo
-            echo "- **Windows**: \`fastskill-x86_64-pc-windows-msvc.zip\`"
-            echo
-            echo "### Checksums"
-            echo
-            echo "- **SHA256 checksums**: \`checksums.txt\`"
-          } >> release_notes.md
+          cat >> release_notes.md << 'NOTES_EOF'
+
+          ## Installation
+
+          Linux and macOS:
+
+          ```bash
+          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | sh
+          ```
+
+          Windows (PowerShell):
+
+          ```powershell
+          irm https://github.com/gofastskill/fastskill/releases/latest/download/install.ps1 | iex
+          ```
+
+          Already installed that way? Run `fastskill cli self update`.
+
+          ### Archives
+
+          | Platform | Archive |
+          |----------|---------|
+          | Linux x86_64 (static, any distro) | `fastskill-x86_64-unknown-linux-musl.tar.gz` |
+          | Linux arm64 (static, any distro) | `fastskill-aarch64-unknown-linux-musl.tar.gz` |
+          | Linux x86_64 (glibc 2.38+, FIPS) | `fastskill-x86_64-unknown-linux-gnu.tar.gz` |
+          | macOS Apple Silicon | `fastskill-aarch64-apple-darwin.tar.gz` |
+          | macOS Intel | `fastskill-x86_64-apple-darwin.tar.gz` |
+          | Windows x86_64 | `fastskill-x86_64-pc-windows-msvc.zip` |
+          | Windows arm64 | `fastskill-aarch64-pc-windows-msvc.zip` |
+
+          SHA-256 checksums: `SHA256SUMS` (also published as `checksums.txt`).
+          NOTES_EOF
 
           cat release_notes.md
 

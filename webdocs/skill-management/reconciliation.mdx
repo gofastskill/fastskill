@@ -110,7 +110,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install fastskill
-        run: curl -fsSL https://raw.githubusercontent.com/gofastskill/fastskill/main/scripts/install.sh | bash
+        run: |
+          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | FASTSKILL_UNMANAGED=1 sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Check managed skill state
         run: fastskill skill list --check --format json > skills-status.json
 ```

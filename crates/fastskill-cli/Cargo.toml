@@ -18,7 +18,7 @@ path = "src/main.rs"
 fastskill-core = { path = "../fastskill-core", default-features = false, features = ["filesystem-storage", "hot-reload"] }
 
 # CLI framework for AppBuilder, command registry, MCP server, and doctor
-cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor"] }
+cli-framework = { workspace = true, default-features = false, features = ["mcp-server", "mcp-install", "doctor", "self-install"] }
 
 # MCP protocol types + transports, for the write-gated `mcp serve` handler
 rmcp.workspace = true
