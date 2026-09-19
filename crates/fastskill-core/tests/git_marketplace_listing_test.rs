@@ -147,9 +147,15 @@ async fn honors_configured_tag() {
     repo.commit(&[("marketplace.json", &catalog("after-tag"))], "main");
     let daemon = GitDaemonFixture::start(base);
 
-    let manager = manager_with(&daemon.repo_url("repo"), None, Some("v1.0.0"));
+    let url = daemon.repo_url("repo");
+    let manager = manager_with(&url, None, Some("v1.0.0"));
     let marketplace = manager.get_marketplace_json("git-src").await.unwrap();
     assert_eq!(listed_ids(&marketplace), vec!["tagged"]);
+    // A non-GitHub host has no ref in its links, and `./` segments are dropped.
+    assert_eq!(
+        marketplace.skills[0].download_url,
+        Some(format!("{url}/skills/tagged"))
+    );
 }
 
 #[tokio::test]
