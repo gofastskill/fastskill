@@ -1,12 +1,12 @@
 # Skill and project commands
 
-FastSkill 0.9.238
+FastSkill 0.9.239
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: a2236e2db7eb3b8ba883ce37acb74842c0047bb7
+Release revision: ff334f44e8ae22ca3622495e3110bd17258771e7
 
-Documentation revision: a2236e2db7eb3b8ba883ce37acb74842c0047bb7
+Documentation revision: ff334f44e8ae22ca3622495e3110bd17258771e7
 
 
 
@@ -32,6 +32,11 @@ $ fastskill skill add <SOURCE> [OPTIONS]
 `SOURCE` can be a local directory, local ZIP, Git URL, remote ZIP URL, or skill ID. An existing
 relative path wins over the skill-ID shorthand. Use `./name` when a nonexistent local path would
 otherwise look like an ID.
+
+A skill ID is bare (`reviewer`) or, for an `http-registry` skill, scoped by its publisher
+(`acme/reviewer`). `--repository` looks it up in that repository only. Without it, the ID resolves
+against the highest-priority repository that lists it. A higher-priority repository is passed over
+only when its refreshed (or, with `--offline`, cached) metadata shows the skill is absent.
 
 | Option                                         | Description                                          |
 | ---------------------------------------------- | ---------------------------------------------------- |
