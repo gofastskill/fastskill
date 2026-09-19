@@ -30,8 +30,8 @@ const SKILL_MD: &str =
 // shared with `git_content_cache_test.rs` and `offline_verification_sweep_test.rs`.
 
 /// Seed a bare repo at `base/<repo_name>.git` with a single commit on
-/// `branch`, including a root `.claude-plugin/marketplace.json` so the repo
-/// is also listable as a marketplace source. Returns the seeded commit's SHA.
+/// `branch` containing only a `SKILL.md` (no marketplace catalog). Returns
+/// the seeded commit's SHA.
 fn seed_bare_repo(base: &Path, repo_name: &str, branch: &str) -> String {
     let bare_path = base.join(format!("{repo_name}.git"));
     run_git(
@@ -70,10 +70,10 @@ fn seed_bare_repo(base: &Path, repo_name: &str, branch: &str) -> String {
 /// git-resolutions index — the same cache `install::fetch_git` reads for
 /// offline resolution (US-002's acceptance criterion this unblocks) — even
 /// though the fixture repo has no marketplace.json (so the listing half of
-/// the refresh fails: `list_skills()` fetches marketplace.json over HTTP(S),
-/// a completely separate path from the git-protocol `ls_remote` this test
-/// exercises). That the resolution is recorded regardless proves the two
-/// steps are independent, per `refresh_index`'s doc comment.
+/// the refresh fails: `list_skills()` clones the repo and finds no catalog,
+/// a separate step from the `ls_remote` this test exercises). That the
+/// resolution is recorded regardless proves the two steps are independent,
+/// per `refresh_index`'s doc comment.
 #[tokio::test]
 async fn refresh_index_records_git_ref_resolution() {
     let daemon_base = TempDir::new().unwrap();
@@ -106,7 +106,7 @@ async fn refresh_index_records_git_ref_resolution() {
     let result = manager.refresh_index(&cache, "git-src").await;
     assert!(
         result.is_err(),
-        "the listing step must fail: nothing serves marketplace.json over HTTP for this fixture"
+        "the listing step must fail: the fixture repo has no marketplace.json"
     );
 
     let resolutions = cache.read_git_resolutions().unwrap();

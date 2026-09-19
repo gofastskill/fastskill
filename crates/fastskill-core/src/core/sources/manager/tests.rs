@@ -297,26 +297,17 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
 }
 
 #[test]
-fn raw_url_conversion_handles_github_and_plain_hosts() {
+fn join_url_adds_exactly_one_separator() {
     assert_eq!(
-        SourcesManager::to_github_raw_url(
-            "https://github.com/acme/skills.git",
-            "release",
-            "marketplace.json"
-        ),
-        "https://raw.githubusercontent.com/acme/skills/release/marketplace.json"
-    );
-    assert_eq!(
-        SourcesManager::to_github_raw_url(
-            "https://raw.githubusercontent.com/acme/skills/main",
-            "ignored",
-            "marketplace.json"
-        ),
-        "https://raw.githubusercontent.com/acme/skills/main/marketplace.json"
-    );
-    assert_eq!(
-        SourcesManager::to_github_raw_url("https://example.test/base/", "", "marketplace.json"),
+        SourcesManager::join_url("https://example.test/base/", "marketplace.json"),
         "https://example.test/base/marketplace.json"
+    );
+    assert_eq!(
+        SourcesManager::join_url(
+            "https://example.test/base",
+            ".claude-plugin/marketplace.json"
+        ),
+        "https://example.test/base/.claude-plugin/marketplace.json"
     );
 }
 
