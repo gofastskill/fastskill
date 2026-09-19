@@ -248,7 +248,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
         .convert_claude_to_fastskill_format(
             claude,
             "https://github.com/acme/skills.git".to_string(),
-            "source",
+            "HEAD",
         )
         .await
         .unwrap();
@@ -266,7 +266,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
     assert_eq!(converted.skills[0].author.as_deref(), Some("Owner"));
     assert_eq!(
         converted.skills[0].download_url.as_deref(),
-        Some("https://github.com/acme/skills/tree/main/./plugins/pack/skills/one")
+        Some("https://github.com/acme/skills/tree/HEAD/plugins/pack/skills/one")
     );
 
     let minimal: ClaudeCodeMarketplaceJson = serde_json::from_value(serde_json::json!({
@@ -275,7 +275,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
     }))
     .unwrap();
     let without_base = manager
-        .convert_claude_to_fastskill_format(minimal.clone(), String::new(), "source")
+        .convert_claude_to_fastskill_format(minimal.clone(), String::new(), "HEAD")
         .await
         .unwrap();
     assert_eq!(without_base.skills[0].description, "Skill from bare");
@@ -286,13 +286,13 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
         .convert_claude_to_fastskill_format(
             minimal,
             "https://skills.example.test/base/".to_string(),
-            "source",
+            "HEAD",
         )
         .await
         .unwrap();
     assert_eq!(
         hosted.skills[0].download_url.as_deref(),
-        Some("https://skills.example.test/base/./skill-a")
+        Some("https://skills.example.test/base/skill-a")
     );
 }
 
@@ -321,6 +321,72 @@ fn raw_url_conversion_handles_github_and_plain_hosts() {
 }
 
 #[tokio::test]
+async fn github_download_urls_use_the_listing_ref_not_main() {
+    let manager = SourcesManager::new(PathBuf::from("unused"));
+    let claude: ClaudeCodeMarketplaceJson = serde_json::from_value(serde_json::json!({
+        "name": "fixture",
+        "plugins": [{"name": "bare", "source": "./", "skills": ["./skills/one"]}]
+    }))
+    .unwrap();
+
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    for listing_ref in ["master", "v1.2.0", sha] {
+        let converted = manager
+            .convert_claude_to_fastskill_format(
+                claude.clone(),
+                "https://github.com/acme/skills".to_string(),
+                listing_ref,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            converted.skills[0].download_url,
+            Some(format!(
+                "https://github.com/acme/skills/tree/{listing_ref}/skills/one"
+            ))
+        );
+    }
+}
+
+/// A git source on a non-GitHub host has no ref in its listing URL, so a
+/// tag-only source is fetched as configured, without `git ls-remote`, and its
+/// links lose the `./` segment.
+#[tokio::test]
+async fn tag_only_git_source_on_a_plain_host_lists_without_resolving() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/.claude-plugin/marketplace.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "fixture",
+            "plugins": [{"name": "bare", "skills": ["skill-a"]}]
+        })))
+        .mount(&server)
+        .await;
+
+    let mut manager = SourcesManager::new(PathBuf::from("unused"));
+    manager.sources.insert(
+        "tagged".to_string(),
+        SourceDefinition {
+            name: "tagged".to_string(),
+            priority: 0,
+            source: SourceConfig::Git {
+                url: server.uri(),
+                branch: None,
+                tag: Some("v1.2.0".to_string()),
+                auth: None,
+            },
+        },
+    );
+
+    let marketplace = manager.get_marketplace_json("tagged").await.unwrap();
+    assert_eq!(marketplace.skills[0].id, "skill-a");
+    assert_eq!(
+        marketplace.skills[0].download_url,
+        Some(format!("{}/skill-a", server.uri()))
+    );
+}
+
+#[tokio::test]
 async fn marketplace_fetch_reports_http_parse_and_validation_failures() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -341,19 +407,19 @@ async fn marketplace_fetch_reports_http_parse_and_validation_failures() {
 
     let manager = SourcesManager::new(PathBuf::from("unused"));
     let err = manager
-        .try_fetch_marketplace(&format!("{}/failure", server.uri()), None)
+        .try_fetch_marketplace(&format!("{}/failure", server.uri()), None, "HEAD")
         .await
         .unwrap_err();
     assert!(err.to_string().contains("HTTP 503"));
 
     let err = manager
-        .try_fetch_marketplace(&format!("{}/malformed", server.uri()), None)
+        .try_fetch_marketplace(&format!("{}/malformed", server.uri()), None, "HEAD")
         .await
         .unwrap_err();
     assert!(matches!(err, SourcesError::Parse(_)));
 
     let err = manager
-        .try_fetch_marketplace(&format!("{}/invalid-skill", server.uri()), None)
+        .try_fetch_marketplace(&format!("{}/invalid-skill", server.uri()), None, "HEAD")
         .await
         .unwrap_err();
     assert!(err.to_string().contains("skills must have id"));
