@@ -1,12 +1,12 @@
 # Install FastSkill
 
-FastSkill 0.9.239
+FastSkill 0.9.240
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: ff334f44e8ae22ca3622495e3110bd17258771e7
+Release revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
 
-Documentation revision: ff334f44e8ae22ca3622495e3110bd17258771e7
+Documentation revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
 
 
 
