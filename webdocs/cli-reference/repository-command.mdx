@@ -87,8 +87,10 @@ For Git marketplaces, `--branch` and `--tag` are mutually exclusive. The selecte
 stored in `skill-project.toml` and reused after FastSkill restarts.
 
 1. **git-marketplace**: Git repository with `marketplace.json` for skill discovery
-   - Uses the system Git credential helper or an SSH remote and loaded SSH agent
-   - Can specify branch or tag
+   - Uses the system Git credential helper or an SSH remote and loaded SSH agent, for both
+     reading the catalog and downloading skills, so private repositories work
+   - Reads `.claude-plugin/marketplace.json`, then `marketplace.json`, from a shallow clone
+   - Can specify branch or tag; without either, uses the repository's default branch
    - Scans for skills across repository structure
 
 2. **http-registry**: HTTP-based registry with flat skill index

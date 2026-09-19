@@ -297,26 +297,17 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
 }
 
 #[test]
-fn raw_url_conversion_handles_github_and_plain_hosts() {
+fn join_url_adds_exactly_one_separator() {
     assert_eq!(
-        SourcesManager::to_github_raw_url(
-            "https://github.com/acme/skills.git",
-            "release",
-            "marketplace.json"
-        ),
-        "https://raw.githubusercontent.com/acme/skills/release/marketplace.json"
-    );
-    assert_eq!(
-        SourcesManager::to_github_raw_url(
-            "https://raw.githubusercontent.com/acme/skills/main",
-            "ignored",
-            "marketplace.json"
-        ),
-        "https://raw.githubusercontent.com/acme/skills/main/marketplace.json"
-    );
-    assert_eq!(
-        SourcesManager::to_github_raw_url("https://example.test/base/", "", "marketplace.json"),
+        SourcesManager::join_url("https://example.test/base/", "marketplace.json"),
         "https://example.test/base/marketplace.json"
+    );
+    assert_eq!(
+        SourcesManager::join_url(
+            "https://example.test/base",
+            ".claude-plugin/marketplace.json"
+        ),
+        "https://example.test/base/.claude-plugin/marketplace.json"
     );
 }
 
@@ -346,44 +337,6 @@ async fn github_download_urls_use_the_listing_ref_not_main() {
             ))
         );
     }
-}
-
-/// A git source on a non-GitHub host has no ref in its listing URL, so a
-/// tag-only source is fetched as configured, without `git ls-remote`, and its
-/// links lose the `./` segment.
-#[tokio::test]
-async fn tag_only_git_source_on_a_plain_host_lists_without_resolving() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/.claude-plugin/marketplace.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "fixture",
-            "plugins": [{"name": "bare", "skills": ["skill-a"]}]
-        })))
-        .mount(&server)
-        .await;
-
-    let mut manager = SourcesManager::new(PathBuf::from("unused"));
-    manager.sources.insert(
-        "tagged".to_string(),
-        SourceDefinition {
-            name: "tagged".to_string(),
-            priority: 0,
-            source: SourceConfig::Git {
-                url: server.uri(),
-                branch: None,
-                tag: Some("v1.2.0".to_string()),
-                auth: None,
-            },
-        },
-    );
-
-    let marketplace = manager.get_marketplace_json("tagged").await.unwrap();
-    assert_eq!(marketplace.skills[0].id, "skill-a");
-    assert_eq!(
-        marketplace.skills[0].download_url,
-        Some(format!("{}/skill-a", server.uri()))
-    );
 }
 
 #[tokio::test]
