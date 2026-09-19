@@ -19,8 +19,9 @@ pub fn configure(builder: AppBuilder) -> anyhow::Result<AppBuilder> {
         .with_help_section_order(HELP_SECTIONS)
         .with_builtin_command_namespace(&CommandPath::root_for("cli"))
         // `fastskill cli self install|update|rollback|status|uninstall`, fed by the
-        // release contract that .github/workflows/release.yml publishes.
-        .with_self_install(SelfInstallOptions::github("gofastskill/fastskill"))
+        // release contract that .github/workflows/release.yml publishes. The update
+        // notice checks at most once a day; FASTSKILL_NO_UPDATE_CHECK or CI silences it.
+        .with_self_install(SelfInstallOptions::github("gofastskill/fastskill").update_notice(true))
         .global_flag(ArgSpec {
             name: "skills-dir",
             kind: ArgKind::Option,
