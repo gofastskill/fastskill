@@ -340,6 +340,34 @@ async fn github_download_urls_use_the_listing_ref_not_main() {
 }
 
 #[tokio::test]
+async fn ssh_remotes_produce_the_same_github_tree_url_as_https() {
+    let manager = SourcesManager::new(PathBuf::from("unused"));
+    let claude: ClaudeCodeMarketplaceJson = serde_json::from_value(serde_json::json!({
+        "name": "fixture",
+        "plugins": [{"name": "bare", "source": "./", "skills": ["./skills/one"]}]
+    }))
+    .unwrap();
+
+    // A source configured from `git remote -v` output used to yield
+    // `https://github.com/git@github.com:acme/skills/tree/main/skills/one`.
+    for remote in [
+        "git@github.com:acme/skills.git",
+        "ssh://git@github.com/acme/skills.git",
+        "ssh://git@github.com:22/acme/skills",
+    ] {
+        let converted = manager
+            .convert_claude_to_fastskill_format(claude.clone(), remote.to_string(), "main")
+            .await
+            .unwrap();
+        assert_eq!(
+            converted.skills[0].download_url.as_deref(),
+            Some("https://github.com/acme/skills/tree/main/skills/one"),
+            "{remote}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn marketplace_fetch_reports_http_parse_and_validation_failures() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
