@@ -52,6 +52,10 @@ In GitHub Actions:
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
 
+### Update notice
+
+After a successful command in an interactive terminal, FastSkill prints one line on stderr when a newer release exists, with the command that upgrades your install (`fastskill cli self update`, or `brew upgrade fastskill` for a Homebrew install). It checks at most once a day. Set `FASTSKILL_NO_UPDATE_CHECK=1` to turn it off; it is also off when `CI` is set, when stderr is not a terminal, and under `fastskill mcp serve`.
+
 ## Homebrew
 
 On macOS or Linux with [Homebrew](https://brew.sh/):

@@ -707,7 +707,7 @@ dependencies = [
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=bf127ea53bba5bc5f3b8157c1efa8c13bd5a8e8b#bf127ea53bba5bc5f3b8157c1efa8c13bd5a8e8b"
+source = "git+https://github.com/aroff/cli-framework?rev=24d0f85b8f7d4dfd11cb755565210c7a586747e1#24d0f85b8f7d4dfd11cb755565210c7a586747e1"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",
