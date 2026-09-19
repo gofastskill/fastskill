@@ -1,12 +1,12 @@
 # Skill and project commands
 
-FastSkill 0.9.237
+FastSkill 0.9.238
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
+Release revision: a2236e2db7eb3b8ba883ce37acb74842c0047bb7
 
-Documentation revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
+Documentation revision: a2236e2db7eb3b8ba883ce37acb74842c0047bb7
 
 
 

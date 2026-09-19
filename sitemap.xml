@@ -67,6 +67,12 @@
 <loc>https://docs.gofastskill.com/configuration/init-command</loc>
 </url>
 <url>
+<loc>https://docs.gofastskill.com/examples/advanced-patterns</loc>
+</url>
+<url>
+<loc>https://docs.gofastskill.com/examples/integration-tutorials</loc>
+</url>
+<url>
 <loc>https://docs.gofastskill.com/evals-quality/cluster-analysis</loc>
 </url>
 <url>
@@ -77,12 +83,6 @@
 </url>
 <url>
 <loc>https://docs.gofastskill.com/evals-quality/setup</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/examples/advanced-patterns</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/examples/integration-tutorials</loc>
 </url>
 <url>
 <loc>https://docs.gofastskill.com/integration/agents</loc>
