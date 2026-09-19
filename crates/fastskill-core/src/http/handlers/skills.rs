@@ -259,7 +259,13 @@ pub async fn install_skill(
     // not for classifying the ref itself).
     let mut origin = state
         .service
-        .infer_origin(&request.origin)
+        .infer_origin_with(
+            &request.origin,
+            crate::core::origin_infer::InferOptions {
+                repository: request.repository.as_deref(),
+                offline: false,
+            },
+        )
         .await
         .map_err(|e| HttpError::BadRequest(e.to_string()))?;
     if let Some(repository) = request.repository.as_deref() {

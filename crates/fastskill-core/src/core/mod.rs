@@ -97,7 +97,7 @@ pub use metadata::{
 pub use origin::{GitRef, Origin, Resolved};
 
 // origin_infer (the Origin-ref inference seam, spec 003 Phase 3)
-pub use origin_infer::{is_skill_id, parse_git_url, parse_skill_id_ref, GitUrlInfo};
+pub use origin_infer::{is_skill_id, parse_git_url, parse_skill_id_ref, GitUrlInfo, InferOptions};
 
 // install seam
 pub use install::{AddMode, AddOutcome, Fetched, UpdatePreflight};

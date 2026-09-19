@@ -9,13 +9,17 @@ pub(super) fn parse_registry_scope_id(
     use fastskill_core::security::path::validate_path_component;
 
     let (skill_id_full, version) = parse_skill_id(skill_id_input);
-    let (scope, expected_id) = skill_id_full.split_once('/').ok_or_else(|| {
-        CliError::Config(format!(
-            "Registry skill ID must be in format 'scope/id', got: {skill_id_full}"
-        ))
-    })?;
-    validate_path_component(scope)
-        .map_err(|error| CliError::Config(format!("Invalid registry scope '{scope}': {error}")))?;
+    // Only http-registry skills carry a scope (the publisher namespace);
+    // git-marketplace and local repositories list bare ids.
+    let (scope, expected_id) = match skill_id_full.split_once('/') {
+        Some((scope, id)) => {
+            validate_path_component(scope).map_err(|error| {
+                CliError::Config(format!("Invalid registry scope '{scope}': {error}"))
+            })?;
+            (scope, id)
+        }
+        None => ("", skill_id_full.as_str()),
+    };
     validate_path_component(expected_id).map_err(|error| {
         CliError::Config(format!(
             "Invalid registry skill id '{expected_id}': {error}"
@@ -35,8 +39,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_reference_requires_a_scope() {
-        assert!(parse_registry_scope_id("no-scope").is_err());
+    fn registry_reference_accepts_a_bare_id() {
+        let (full, scope, id, version) = parse_registry_scope_id("cli-rust-dev@1.0.0").unwrap();
+        assert_eq!(full, "cli-rust-dev");
+        assert_eq!(scope, "");
+        assert_eq!(id, "cli-rust-dev");
+        assert_eq!(version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn registry_reference_rejects_empty_components() {
+        assert!(parse_registry_scope_id("/id").is_err());
+        assert!(parse_registry_scope_id("scope/").is_err());
     }
 
     #[test]
@@ -44,6 +58,8 @@ mod tests {
         assert!(parse_registry_scope_id("../evil").is_err());
         assert!(parse_registry_scope_id("bad\\scope/id").is_err());
         assert!(parse_registry_scope_id("safe/../evil").is_err());
+        assert!(parse_registry_scope_id("a/b/c").is_err());
+        assert!(parse_registry_scope_id("..").is_err());
     }
 
     #[test]

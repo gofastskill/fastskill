@@ -93,6 +93,25 @@ async fn repository_selectors_preserve_constraints_and_require_configured_names(
             version: Some(VersionConstraint::parse("1.2.0").unwrap()),
         }
     );
+    // Local and git-marketplace repositories list bare ids; the form
+    // `skill search` prints as its install hint must resolve.
+    let bare_reference = SkillSource::SkillId("demo@1.2.0".to_string());
+    let bare_expected = Origin::Repository {
+        repo: "private".to_string(),
+        skill: "demo".to_string(),
+        version: Some(VersionConstraint::parse("1.2.0").unwrap()),
+    };
+    assert_eq!(
+        build_explicit_origin(&bare_reference, &selected).unwrap(),
+        bare_expected
+    );
+    selected.source = "demo@1.2.0".to_string();
+    assert_eq!(
+        build_origin(&service, &bare_reference, &selected)
+            .await
+            .unwrap(),
+        bare_expected
+    );
     assert!(!root.path().join("catalog").exists());
     assert!(!global_lock_path().unwrap().exists());
 }
