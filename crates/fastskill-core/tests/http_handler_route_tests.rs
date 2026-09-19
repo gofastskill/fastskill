@@ -1497,7 +1497,7 @@ async fn manifest_add_reports_not_found_after_a_successful_catalog_read() {
     fs::write(
         &f.project_file_path,
         format!(
-            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"git-marketplace\"\nurl = {:?}\nbranch = \"main\"\npriority = 0\n",
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"zip-url\"\nzip_url = {:?}\npriority = 0\n",
             server.uri()
         ),
     )
@@ -1543,7 +1543,7 @@ async fn manifest_add_records_repository_intent_after_catalog_match() {
     fs::write(
         &f.project_file_path,
         format!(
-            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"git-marketplace\"\nurl = {:?}\nbranch = \"main\"\npriority = 0\n",
+            "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"market-success\"\ntype = \"zip-url\"\nzip_url = {:?}\npriority = 0\n",
             server.uri()
         ),
     )

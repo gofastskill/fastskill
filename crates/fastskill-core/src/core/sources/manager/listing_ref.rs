@@ -1,40 +1,16 @@
 //! Which git ref a git source's marketplace listing is read at.
 //!
-//! The listing (`marketplace.json` over `raw.githubusercontent.com`) and the
-//! download (`git clone`) must agree on one revision. The download honors the
-//! configured `branch`, then `tag`, then the remote's default branch, so the
-//! listing follows the same order instead of assuming `main`, and is pinned to
-//! the commit that ref currently points at whenever it can be resolved.
+//! The listing (`marketplace.json` read from a shallow clone) and the download
+//! (`git clone`) must agree on one revision. Both honor the configured
+//! `branch`, then `tag`, then the remote's default branch, and listing URLs are
+//! pinned to the commit the catalog was read at whenever git can report it.
 
-/// The ref name used when no commit could be resolved: the configured branch,
+/// The ref name used when no commit is known: the configured branch,
 /// then the configured tag, then `HEAD` (which GitHub resolves to the
 /// repository's default branch in both raw and tree URLs). Branch wins over tag
 /// to mirror `storage::git::build_clone_args`.
 pub(super) fn configured_ref<'a>(branch: Option<&'a str>, tag: Option<&'a str>) -> &'a str {
     branch.or(tag).unwrap_or("HEAD")
-}
-
-/// Resolve the listing ref for `url` to a commit SHA via `git ls-remote`.
-///
-/// Falls back to [`configured_ref`] when resolution fails (no `git` binary,
-/// offline, unknown ref) so a listing is never worse off than fetching by ref
-/// name; the HTTP fetch that follows reports the real failure, if any.
-pub(super) async fn resolve_listing_ref(
-    url: &str,
-    branch: Option<&str>,
-    tag: Option<&str>,
-) -> String {
-    match crate::storage::git::ls_remote(url, branch, tag).await {
-        Ok(sha) => sha,
-        Err(e) => {
-            let fallback = configured_ref(branch, tag);
-            tracing::debug!(
-                "could not resolve a commit for the marketplace listing ({e}); \
-                 listing at '{fallback}' instead"
-            );
-            fallback.to_string()
-        }
-    }
 }
 
 /// True for a `github.com` repository URL (as opposed to a raw-content URL or
@@ -72,22 +48,6 @@ mod tests {
         assert_eq!(configured_ref(Some("develop"), None), "develop");
         assert_eq!(configured_ref(None, Some("v1.2.0")), "v1.2.0");
         assert_eq!(configured_ref(Some("develop"), Some("v1.2.0")), "develop");
-    }
-
-    #[tokio::test]
-    async fn unresolvable_remote_falls_back_to_the_configured_ref() {
-        // `file://` is refused by the protocol allowlist, so this fails
-        // immediately without touching the network.
-        let url = "file:///nonexistent/repo.git";
-        assert_eq!(resolve_listing_ref(url, None, None).await, "HEAD");
-        assert_eq!(
-            resolve_listing_ref(url, None, Some("v1.2.0")).await,
-            "v1.2.0"
-        );
-        assert_eq!(
-            resolve_listing_ref(url, Some("master"), Some("v1.2.0")).await,
-            "master"
-        );
     }
 
     #[test]

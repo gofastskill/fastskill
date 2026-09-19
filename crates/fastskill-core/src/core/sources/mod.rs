@@ -1,5 +1,6 @@
 //! Sources system for managing skill repositories
 
+mod git_catalog;
 pub mod local;
 pub mod manager;
 pub mod marketplace;
