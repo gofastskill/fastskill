@@ -1,12 +1,12 @@
 # Discover and inspect skills
 
-FastSkill 0.9.236
+FastSkill 0.9.237
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: 50543431bfa9b105a425a9bd7ac7dffad54db43a
+Release revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
 
-Documentation revision: 50543431bfa9b105a425a9bd7ac7dffad54db43a
+Documentation revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
 
 
 

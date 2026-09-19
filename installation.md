@@ -1,12 +1,12 @@
 # Install FastSkill
 
-FastSkill 0.9.236
+FastSkill 0.9.237
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: 50543431bfa9b105a425a9bd7ac7dffad54db43a
+Release revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
 
-Documentation revision: 50543431bfa9b105a425a9bd7ac7dffad54db43a
+Documentation revision: 5b80b2c114e7507b8e2af92ec7e725d9d68fe3f2
 
 
 
@@ -58,6 +58,10 @@ In GitHub Actions:
     curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | FASTSKILL_UNMANAGED=1 sh
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 ```
+
+### Update notice
+
+After a successful command in an interactive terminal, FastSkill prints one line on stderr when a newer release exists, with the command that upgrades your install (`fastskill cli self update`, or `brew upgrade fastskill` for a Homebrew install). It checks at most once a day. Set `FASTSKILL_NO_UPDATE_CHECK=1` to turn it off; it is also off when `CI` is set, when stderr is not a terminal, and under `fastskill mcp serve`.
 
 ## Homebrew
 
