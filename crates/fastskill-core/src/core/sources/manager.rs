@@ -14,6 +14,11 @@ use super::model::{SkillInfo, SourceAuth, SourceConfig, SourceDefinition, Source
 use super::SourcesError;
 use crate::core::cache::SkillCache;
 
+mod listing_ref;
+use listing_ref::{
+    configured_ref, github_repo_path, is_github_repo_url, normalize_repo_path, resolve_listing_ref,
+};
+
 /// Reject a configured `auth` on a git source loudly rather than silently
 /// ignoring it. Git sources authenticate via the system git credential
 /// helper or SSH agent -- fastskill has no PAT/basic credential-injection
@@ -75,6 +80,14 @@ fn reject_configured_zip_url_auth(
 #[doc(hidden)] // test instrumentation, not supported public API
 pub static MARKETPLACE_FETCH_INVOCATIONS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
+
+/// The `branch`/`tag` a git source is configured with, threaded to the
+/// marketplace fetch so the listing is read at the ref the download clones.
+#[derive(Clone, Copy)]
+struct GitListingRef<'a> {
+    branch: Option<&'a str>,
+    tag: Option<&'a str>,
+}
 
 /// Sources manager for handling multiple sources
 pub struct SourcesManager {
@@ -243,13 +256,20 @@ impl SourcesManager {
     ) -> Result<Vec<SkillInfo>, SourcesError> {
         match &source_def.source {
             SourceConfig::Git {
-                url, branch, auth, ..
+                url,
+                branch,
+                tag,
+                auth,
             } => {
                 reject_configured_git_auth(source_name, auth)?;
 
-                // Try to load marketplace.json from Git source
-                // Pass branch info for proper URL construction
-                self.load_marketplace_from_url_with_branch(url, branch.as_deref(), source_name)
+                // Try to load marketplace.json from Git source, at the same
+                // ref the download clones.
+                let git_ref = GitListingRef {
+                    branch: branch.as_deref(),
+                    tag: tag.as_deref(),
+                };
+                self.load_marketplace_from_url_with_branch(url, Some(git_ref), source_name)
                     .await
             }
             SourceConfig::ZipUrl { base_url, auth } => {
@@ -272,7 +292,7 @@ impl SourcesManager {
         &self,
         claude_marketplace: ClaudeCodeMarketplaceJson,
         base_url: String,
-        _source_name: &str,
+        listing_ref: &str,
     ) -> Result<MarketplaceJson, SourcesError> {
         let mut skills = Vec::new();
         let owner_name = claude_marketplace.owner.as_ref().map(|o| o.name.clone());
@@ -321,22 +341,19 @@ impl SourcesManager {
                     })
                     .unwrap_or_else(|| format!("Skill from {}", plugin.name));
 
-                // Construct download URL if base_url is provided
-                let download_url = if base_url.contains("github.com")
-                    && !base_url.contains("raw.githubusercontent.com")
-                {
-                    let repo_path = base_url
-                        .trim_start_matches("https://github.com/")
-                        .trim_start_matches("http://github.com/")
-                        .trim_end_matches(".git")
-                        .trim_end_matches('/');
+                // Construct download URL if base_url is provided, at the ref
+                // the listing was read at rather than an assumed `main`.
+                let url_path = normalize_repo_path(&resolved_path);
+                let download_url = if is_github_repo_url(&base_url) {
                     Some(format!(
-                        "https://github.com/{}/tree/main/{}",
-                        repo_path, resolved_path
+                        "https://github.com/{}/tree/{}/{}",
+                        github_repo_path(&base_url),
+                        listing_ref,
+                        url_path
                     ))
                 } else if !base_url.is_empty() {
                     let base = base_url.trim_end_matches('/');
-                    Some(format!("{}/{}", base, resolved_path))
+                    Some(format!("{}/{}", base, url_path))
                 } else {
                     None
                 };
@@ -367,6 +384,7 @@ impl SourcesManager {
         &self,
         url: &str,
         base_repo_url: Option<&str>,
+        listing_ref: &str,
     ) -> Result<MarketplaceJson, SourcesError> {
         MARKETPLACE_FETCH_INVOCATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let client = reqwest::Client::new();
@@ -416,7 +434,7 @@ impl SourcesManager {
 
         // Convert Claude Code format to FastSkill internal format
         let marketplace = self
-            .convert_claude_to_fastskill_format(claude_marketplace, base_url, "")
+            .convert_claude_to_fastskill_format(claude_marketplace, base_url, listing_ref)
             .await?;
 
         // Validate marketplace.json structure
@@ -437,15 +455,12 @@ impl SourcesManager {
     /// Both callers that construct marketplace.json URLs use this helper, eliminating
     /// the repeated `.contains("github.com") && !.contains("raw.githubusercontent.com")` idiom.
     fn to_github_raw_url(base_url: &str, branch: &str, path: &str) -> String {
-        if base_url.contains("github.com") && !base_url.contains("raw.githubusercontent.com") {
-            let repo_path = base_url
-                .trim_start_matches("https://github.com/")
-                .trim_start_matches("http://github.com/")
-                .trim_end_matches(".git")
-                .trim_end_matches('/');
+        if is_github_repo_url(base_url) {
             format!(
                 "https://raw.githubusercontent.com/{}/{}/{}",
-                repo_path, branch, path
+                github_repo_path(base_url),
+                branch,
+                path
             )
         } else {
             let base = if base_url.ends_with('/') {
@@ -482,6 +497,7 @@ impl SourcesManager {
         claude_plugin_url: &str,
         root_url: &str,
         base_url: &str,
+        git_ref: Option<GitListingRef<'_>>,
     ) -> Result<MarketplaceJson, SourcesError> {
         // Check cache first (try both URLs)
         {
@@ -510,15 +526,39 @@ impl SourcesManager {
             return Ok(marketplace);
         }
 
+        // Only now that a live fetch is unavoidable, pin a GitHub git source's
+        // listing to the commit its ref points at (the same revision a
+        // download clones). `claude_plugin_url`/`root_url` stay the cache keys
+        // so a moving commit never fragments the in-memory cache.
+        let (listing_ref, claude_fetch_url, root_fetch_url) = match git_ref {
+            Some(git_ref) if is_github_repo_url(base_url) => {
+                let resolved = resolve_listing_ref(base_url, git_ref.branch, git_ref.tag).await;
+                let claude =
+                    Self::to_github_raw_url(base_url, &resolved, ".claude-plugin/marketplace.json");
+                let root = Self::to_github_raw_url(base_url, &resolved, "marketplace.json");
+                (resolved, claude, root)
+            }
+            Some(git_ref) => (
+                configured_ref(git_ref.branch, git_ref.tag).to_string(),
+                claude_plugin_url.to_string(),
+                root_url.to_string(),
+            ),
+            None => (
+                configured_ref(None, None).to_string(),
+                claude_plugin_url.to_string(),
+                root_url.to_string(),
+            ),
+        };
+
         // Try Claude Code standard location first, fall back to root
         let live_fetch = match self
-            .try_fetch_marketplace(claude_plugin_url, Some(base_url))
+            .try_fetch_marketplace(&claude_fetch_url, Some(base_url), &listing_ref)
             .await
         {
             Ok(m) => {
                 tracing::debug!(
                     "Loaded marketplace.json from Claude Code standard location: {}",
-                    claude_plugin_url
+                    claude_fetch_url
                 );
                 Ok((m, claude_plugin_url.to_string()))
             }
@@ -526,11 +566,17 @@ impl SourcesManager {
                 tracing::debug!(
                     "Claude Code location failed ({}), trying root location: {}",
                     e,
-                    root_url
+                    root_fetch_url
                 );
-                match self.try_fetch_marketplace(root_url, Some(base_url)).await {
+                match self
+                    .try_fetch_marketplace(&root_fetch_url, Some(base_url), &listing_ref)
+                    .await
+                {
                     Ok(m) => {
-                        tracing::debug!("Loaded marketplace.json from root location: {}", root_url);
+                        tracing::debug!(
+                            "Loaded marketplace.json from root location: {}",
+                            root_fetch_url
+                        );
                         Ok((m, root_url.to_string()))
                     }
                     Err(e2) => Err(SourcesError::Network(format!(
@@ -626,16 +672,23 @@ impl SourcesManager {
     async fn load_marketplace_from_url_with_branch(
         &self,
         base_url: &str,
-        branch: Option<&str>,
+        git_ref: Option<GitListingRef<'_>>,
         source_name: &str,
     ) -> Result<Vec<SkillInfo>, SourcesError> {
-        let branch_name = branch.unwrap_or("main");
+        let branch_name =
+            configured_ref(git_ref.and_then(|r| r.branch), git_ref.and_then(|r| r.tag));
         let claude_plugin_url =
             Self::to_github_raw_url(base_url, branch_name, ".claude-plugin/marketplace.json");
         let root_url = Self::to_github_raw_url(base_url, branch_name, "marketplace.json");
 
         let marketplace = self
-            .fetch_and_cache_marketplace(source_name, &claude_plugin_url, &root_url, base_url)
+            .fetch_and_cache_marketplace(
+                source_name,
+                &claude_plugin_url,
+                &root_url,
+                base_url,
+                git_ref,
+            )
             .await?;
 
         Ok(marketplace
@@ -731,16 +784,23 @@ impl SourcesManager {
             .get(source_name)
             .ok_or_else(|| SourcesError::SourceNotFound(source_name.to_string()))?;
 
-        let (base_url, branch) = match &source_def.source {
+        let (base_url, git_ref) = match &source_def.source {
             SourceConfig::Git {
-                url, branch, auth, ..
+                url,
+                branch,
+                tag,
+                auth,
             } => {
                 reject_configured_git_auth(source_name, auth)?;
-                (url.as_str(), branch.as_deref().unwrap_or("main"))
+                let git_ref = GitListingRef {
+                    branch: branch.as_deref(),
+                    tag: tag.as_deref(),
+                };
+                (url.as_str(), Some(git_ref))
             }
             SourceConfig::ZipUrl { base_url, auth } => {
                 reject_configured_zip_url_auth(source_name, auth)?;
-                (base_url.as_str(), "")
+                (base_url.as_str(), None)
             }
             SourceConfig::Local { .. } => {
                 return Err(SourcesError::Network(
@@ -749,12 +809,19 @@ impl SourcesManager {
             }
         };
 
+        let branch = configured_ref(git_ref.and_then(|r| r.branch), git_ref.and_then(|r| r.tag));
         let claude_plugin_url =
             Self::to_github_raw_url(base_url, branch, ".claude-plugin/marketplace.json");
         let root_url = Self::to_github_raw_url(base_url, branch, "marketplace.json");
 
-        self.fetch_and_cache_marketplace(source_name, &claude_plugin_url, &root_url, base_url)
-            .await
+        self.fetch_and_cache_marketplace(
+            source_name,
+            &claude_plugin_url,
+            &root_url,
+            base_url,
+            git_ref,
+        )
+        .await
     }
 }
 
