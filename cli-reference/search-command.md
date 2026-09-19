@@ -1,12 +1,12 @@
 # skill search
 
-FastSkill 0.9.240
+FastSkill 0.9.241
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
+Release revision: 97f7564008a0606619899214a29efbf688e98e2c
 
-Documentation revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
+Documentation revision: 97f7564008a0606619899214a29efbf688e98e2c
 
 
 

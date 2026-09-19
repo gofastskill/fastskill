@@ -1,12 +1,12 @@
 # repo commands
 
-FastSkill 0.9.240
+FastSkill 0.9.241
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
+Release revision: 97f7564008a0606619899214a29efbf688e98e2c
 
-Documentation revision: 2e52884aa06c3c422244980368afae2cf6c6e0c9
+Documentation revision: 97f7564008a0606619899214a29efbf688e98e2c
 
 
 
@@ -95,8 +95,10 @@ For Git marketplaces, `--branch` and `--tag` are mutually exclusive. The selecte
 stored in `skill-project.toml` and reused after FastSkill restarts.
 
 1. **git-marketplace**: Git repository with `marketplace.json` for skill discovery
-   * Uses the system Git credential helper or an SSH remote and loaded SSH agent
-   * Can specify branch or tag
+   * Uses the system Git credential helper or an SSH remote and loaded SSH agent, for both
+     reading the catalog and downloading skills, so private repositories work
+   * Reads `.claude-plugin/marketplace.json`, then `marketplace.json`, from a shallow clone
+   * Can specify branch or tag; without either, uses the repository's default branch
    * Scans for skills across repository structure
 
 2. **http-registry**: HTTP-based registry with flat skill index
