@@ -12,9 +12,9 @@
 //!
 //! Classification rules (identical to the pre-seam CLI behavior):
 //! - `scope/skill`, `skill`, or `skill[@version]` (an id, not a URL/path) →
-//!   [`Origin::Repository`], resolved against the injected
-//!   [`RepositoryManager`](crate::core::repository::RepositoryManager)'s default
-//!   repository (recorded by its concrete name — ADR-0005 §Q4).
+//!   [`Origin::Repository`], resolved against an explicitly selected repository
+//!   or else the highest-priority configured repository that has the skill
+//!   (recorded by its concrete name — ADR-0005 §Q4; see [`repository_walk`]).
 //! - A `git`/`http`/`https` URL whose path does **not** end in `.zip` →
 //!   [`Origin::Git`] (branch/tag/subdir parsed the same way `parse_git_url` did:
 //!   a `?branch=` query param, or a GitHub `/tree/<branch>[/<subdir>]` path).
@@ -28,6 +28,19 @@ use crate::core::service::{FastSkillService, ServiceError};
 use crate::core::version::VersionConstraint;
 use std::path::PathBuf;
 use url::Url;
+
+mod repository_walk;
+
+/// Caller context for [`FastSkillService::infer_origin_with`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InferOptions<'a> {
+    /// A repository the caller selected explicitly (`--repository`). A
+    /// skill-id ref resolves against it without consulting other repositories;
+    /// the caller validates that it exists.
+    pub repository: Option<&'a str>,
+    /// Use only cached repository metadata while choosing a repository.
+    pub offline: bool,
+}
 
 /// Git repository info parsed from a URL: the clean clone URL plus any
 /// branch/subdir extracted from query params or a GitHub tree-URL path.
@@ -204,9 +217,21 @@ pub fn normalize_git_tree_origin(origin: &Origin) -> Origin {
 impl FastSkillService {
     /// Resolve a raw **Origin ref** string into a typed [`Origin`] (ADR-0005 /
     /// spec 003 Phase 3). See the module docs for the full classification
-    /// table. This does not fetch or validate anything — it only classifies;
-    /// `add_from_origin` performs the actual fetch.
+    /// table. This fetches no skill content — `add_from_origin` does that — but
+    /// choosing the repository for a skill id may refresh repository metadata
+    /// when several repositories are configured.
     pub async fn infer_origin(&self, origin_ref: &str) -> Result<Origin, ServiceError> {
+        self.infer_origin_with(origin_ref, InferOptions::default())
+            .await
+    }
+
+    /// [`Self::infer_origin`] with an explicit repository selection and/or
+    /// offline mode.
+    pub async fn infer_origin_with(
+        &self,
+        origin_ref: &str,
+        options: InferOptions<'_>,
+    ) -> Result<Origin, ServiceError> {
         let trimmed = origin_ref.trim();
         if trimmed.is_empty() {
             return Err(ServiceError::InvalidOperation(
@@ -218,7 +243,7 @@ impl FastSkillService {
         // skill-ID shorthand. Without this check, `fastskill skill add demo`
         // tries a repository lookup even when ./demo exists.
         if !PathBuf::from(trimmed).exists() && is_skill_id(trimmed) {
-            return self.infer_repository_origin(trimmed).await;
+            return self.infer_repository_origin(trimmed, options).await;
         }
 
         if let Ok(url) = Url::parse(trimmed) {
@@ -251,10 +276,13 @@ impl FastSkillService {
     }
 
     /// Resolve a classified skill-id ref (`scope/skill`, `skill`, or
-    /// `skill@version`) into `Origin::Repository`, against the injected
-    /// [`RepositoryManager`](crate::core::repository::RepositoryManager)'s
-    /// default repository (recorded by its concrete name, ADR-0005 §Q4).
-    async fn infer_repository_origin(&self, skill_id_ref: &str) -> Result<Origin, ServiceError> {
+    /// `skill@version`) into `Origin::Repository`, recorded by the concrete
+    /// repository name (ADR-0005 §Q4).
+    async fn infer_repository_origin(
+        &self,
+        skill_id_ref: &str,
+        options: InferOptions<'_>,
+    ) -> Result<Origin, ServiceError> {
         let (skill, version_str) = parse_skill_id_ref(skill_id_ref);
         let version = version_str
             .as_deref()
@@ -264,23 +292,28 @@ impl FastSkillService {
                 ServiceError::InvalidOperation(format!("Invalid version constraint: {e}"))
             })?;
 
-        let repo_manager = self.repository_manager().ok_or_else(|| {
-            ServiceError::Config(
-                "No default repository configured. Use 'fastskill repo add' to add a \
-                 repository before installing by skill id."
-                    .to_string(),
-            )
-        })?;
-        let default_repo = repo_manager.get_default_repository().ok_or_else(|| {
-            ServiceError::Config(
-                "No default repository configured. Use 'fastskill repo add' to add a \
-                 repository before installing by skill id."
-                    .to_string(),
-            )
-        })?;
+        let repo = match options.repository {
+            Some(repository) => repository.to_string(),
+            None => {
+                let repo_manager = self.repository_manager().ok_or_else(|| {
+                    ServiceError::Config(
+                        "No default repository configured. Use 'fastskill repo add' to add a \
+                         repository before installing by skill id."
+                            .to_string(),
+                    )
+                })?;
+                repository_walk::choose_repository(
+                    repo_manager,
+                    self.skill_cache(),
+                    &skill,
+                    options.offline,
+                )
+                .await?
+            }
+        };
 
         Ok(Origin::Repository {
-            repo: default_repo.name.clone(),
+            repo,
             skill,
             version,
         })

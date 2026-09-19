@@ -164,6 +164,14 @@ precedence).
 _Avoid_: **source**, **registry**, **repos** — historical command names must not be reintroduced as
 current concepts.
 
+**Scope**:
+The publisher namespace of an `http-registry` skill: `acme/web-scraper` has scope `acme`. Only
+`http-registry` repositories have scopes; `git-marketplace` and `local` repositories list bare
+Skill IDs. A skill-id **Origin ref** may therefore be bare or scoped. Without an explicit
+repository it resolves against the highest-priority repository whose metadata lists it, and a
+repository is skipped only when fresh or offline-cached metadata proves the skill is absent.
+_Avoid_: using the repository name or the repository owner as a scope.
+
 **Origin**:
 Where a single installed skill came from — the install **intent** (what the user asked for), recorded as provenance on the installed skill. Variants: `git` (url + ref + subdir), `local` (a filesystem path — directory *or* `.zip` — plus `editable`, dir-only), `zip-url` (a remote zip), and `repository` (a *reference into* a configured **Repository**: `{repo, skill, version?}`). The `repository` variant is the only one **Version constraint** / ADR-0004 governs; `git`/`local`/`zip-url` are ref-based and versionless. `Origin` is intent only: the **resolved** facts (exact commit, resolved version, checksum, timestamps) live in the **Lock**, not in `Origin`. It is the single canonical model — replacing the former `SkillSource` (two colliding types), `SourceType`, `SourceSpecificFields`, and the flat `source_*` fields on the manifest/lock/skill records.
 _Avoid_: **source** (banned, see above); do not blur `Origin::repository` (a reference; always names a concrete Repository) with **Repository** (the configured place itself).

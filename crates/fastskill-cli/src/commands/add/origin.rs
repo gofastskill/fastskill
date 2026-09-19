@@ -447,7 +447,11 @@ pub(super) async fn build_origin(
     if args.repository.is_some() && matches!(source, SkillSource::SkillId(_)) {
         return build_explicit_origin(source, args);
     }
-    let mut origin = service.infer_origin(&args.source).await?;
+    let options = fastskill_core::core::origin_infer::InferOptions {
+        repository: None,
+        offline: args.offline,
+    };
+    let mut origin = service.infer_origin_with(&args.source, options).await?;
     if let Some(repository) = &args.repository {
         match &mut origin {
             Origin::Repository { repo, .. } => {

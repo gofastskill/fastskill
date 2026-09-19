@@ -26,6 +26,11 @@ $ fastskill skill add <SOURCE> [OPTIONS]
 relative path wins over the skill-ID shorthand. Use `./name` when a nonexistent local path would
 otherwise look like an ID.
 
+A skill ID is bare (`reviewer`) or, for an `http-registry` skill, scoped by its publisher
+(`acme/reviewer`). `--repository` looks it up in that repository only. Without it, the ID resolves
+against the highest-priority repository that lists it. A higher-priority repository is passed over
+only when its refreshed (or, with `--offline`, cached) metadata shows the skill is absent.
+
 | Option | Description |
 | --- | --- |
 | `--source-type <registry\|github\|git\|local>` | Override source inference. |
