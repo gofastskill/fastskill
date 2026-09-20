@@ -1,9 +1,9 @@
-# FastSkill 0.9.241
+# FastSkill 0.9.242
 
 Documentation for the current release only.
 
-Release revision: 97f7564008a0606619899214a29efbf688e98e2c
-Documentation revision: 97f7564008a0606619899214a29efbf688e98e2c
+Release revision: ba6c5374bf105c17bbc96061f1a39e6361270e34
+Documentation revision: ba6c5374bf105c17bbc96061f1a39e6361270e34
 
 ## Pages
 
@@ -13,6 +13,7 @@ Documentation revision: 97f7564008a0606619899214a29efbf688e98e2c
 - [Install your first skill](https://docs.gofastskill.com/quickstart.md): Install a local skill, verify it, and make it available to an agent without an API key.
 - [Troubleshooting](https://docs.gofastskill.com/troubleshooting.md): Diagnose and fix common FastSkill issues: lock files, embedding search, installs, and environment problems.
 - [Understand FastSkill](https://docs.gofastskill.com/welcome.md): Skills, projects, locks, and bundles in one workflow.
+- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Bundle commands](https://docs.gofastskill.com/cli-reference/bundle-command.md): Build, install, update, restore, and customize self-contained team skill bundles.
 - [cache Command](https://docs.gofastskill.com/cli-reference/cache-command.md): Inspect and reclaim the on-disk skill content cache with fastskill cache.
 - [Discover and inspect skills](https://docs.gofastskill.com/cli-reference/discovery-commands.md): Find a catalog result, inspect its origin, and install it explicitly.
@@ -28,7 +29,6 @@ Documentation revision: 97f7564008a0606619899214a29efbf688e98e2c
 - [Skill and project commands](https://docs.gofastskill.com/cli-reference/skill-commands.md): Add, remove, update, list, read, and search skills through explicit namespaces.
 - [Marketplace, analysis, and CLI tools](https://docs.gofastskill.com/cli-reference/tooling-commands.md): CLI reference for fastskill marketplace, fastskill analysis, and fastskill cli doctor.
 - [skill update](https://docs.gofastskill.com/cli-reference/update-command.md): Resolve and apply deliberate changes from recorded skill origins.
-- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Cluster and Portfolio Analysis](https://docs.gofastskill.com/evals-quality/cluster-analysis.md): Analyze skill quality at portfolio level using cluster, matrix, and duplicate detection.
 - [Evals and Quality Overview](https://docs.gofastskill.com/evals-quality/overview.md): How FastSkill quality workflows fit together: validate, run evals, score, and cluster analysis.
 - [Run Evals](https://docs.gofastskill.com/evals-quality/run-evals.md): Operational guide for running, reporting, and scoring FastSkill eval suites.
