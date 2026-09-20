@@ -16,7 +16,7 @@ use super::SourcesError;
 use crate::core::cache::SkillCache;
 
 mod listing_ref;
-use listing_ref::{configured_ref, github_repo_path, is_github_repo_url, normalize_repo_path};
+use listing_ref::{configured_ref, github_repo, normalize_repo_path};
 
 /// Reject a configured `auth` on a git source loudly rather than silently
 /// ignoring it. Git sources authenticate via the system git credential
@@ -371,12 +371,12 @@ impl SourcesManager {
                 // Construct download URL if base_url is provided, at the ref
                 // the listing was read at rather than an assumed `main`.
                 let url_path = normalize_repo_path(&resolved_path);
-                let download_url = if is_github_repo_url(&base_url) {
+                let download_url = if let Some(repo) = github_repo(&base_url) {
+                    // Rebuilt from `owner/repo` rather than from `base_url`, so
+                    // an SSH remote links to the same page an HTTPS one does.
                     Some(format!(
                         "https://github.com/{}/tree/{}/{}",
-                        github_repo_path(&base_url),
-                        listing_ref,
-                        url_path
+                        repo, listing_ref, url_path
                     ))
                 } else if !base_url.is_empty() {
                     let base = base_url.trim_end_matches('/');
