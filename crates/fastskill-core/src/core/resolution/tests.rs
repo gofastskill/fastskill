@@ -624,8 +624,7 @@ async fn reports_every_failing_root_before_giving_up() {
 
     let error = prepare_resolution(&service, roots, &HashMap::new(), 4, false)
         .await
-        .err()
-        .expect("resolution must fail");
+        .expect_err("resolution must fail");
 
     let message = error.to_string();
     assert!(
@@ -649,8 +648,7 @@ async fn a_single_failing_root_keeps_its_original_error() {
 
     let error = prepare_resolution(&service, roots, &HashMap::new(), 4, false)
         .await
-        .err()
-        .expect("resolution must fail");
+        .expect_err("resolution must fail");
 
     assert!(
         matches!(&error, ServiceError::InvalidOperation(message) if message.contains("Local path does not exist")),

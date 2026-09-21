@@ -551,6 +551,112 @@ allowed_origins = ["https://example.com"]
     );
 }
 
+#[test]
+fn composed_manifests_merge_dependencies_and_resolve_each_relative_origin() {
+    let root = tempfile::tempdir().unwrap();
+    let shared = root.path().join("shared");
+    std::fs::create_dir_all(shared.join("skills/shared-skill")).unwrap();
+    std::fs::write(
+        shared.join("skill-project.toml"),
+        "[dependencies.shared-skill]\norigin = { type = \"local\", path = \"skills/shared-skill\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join("skill-project.toml"),
+        "[dependencies.local-skill]\norigin = { type = \"local\", path = \"local-skill\" }\n\n[tool.fastskill]\nskills_directory = \"skills\"\n\n[tool.fastskill.manifests]\nteam = \"shared/skill-project.toml\"\n",
+    )
+    .unwrap();
+
+    let project =
+        SkillProjectToml::load_from_file(&root.path().join("skill-project.toml")).unwrap();
+    let entries = project.to_skill_entries(root.path()).unwrap();
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().any(|entry| {
+        entry.id == "local-skill"
+            && entry.origin
+                == Origin::Local {
+                    path: root.path().join("local-skill"),
+                    editable: false,
+                }
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry.id == "shared-skill"
+            && entry.origin
+                == Origin::Local {
+                    path: shared.join("skills/shared-skill"),
+                    editable: false,
+                }
+    }));
+}
+
+#[test]
+fn composed_manifests_reject_cycles_and_conflicting_dependencies() {
+    let root = tempfile::tempdir().unwrap();
+    let first = root.path().join("first.toml");
+    let second = root.path().join("second.toml");
+    std::fs::write(
+        &first,
+        "[dependencies.demo]\norigin = { type = \"local\", path = \"one\" }\n[tool.fastskill.manifests]\nsecond = \"second.toml\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &second,
+        "[dependencies.demo]\norigin = { type = \"local\", path = \"two\" }\n",
+    )
+    .unwrap();
+    let project = SkillProjectToml::load_from_file(&first).unwrap();
+    let conflict = project.to_skill_entries(root.path()).unwrap_err();
+    assert!(
+        conflict.contains("Conflicting dependency 'demo'"),
+        "{conflict}"
+    );
+
+    std::fs::write(
+        &second,
+        "[dependencies]\n[tool.fastskill.manifests]\nfirst = \"first.toml\"\n",
+    )
+    .unwrap();
+    let cycle = project.to_skill_entries(root.path()).unwrap_err();
+    assert!(cycle.contains("Manifest composition cycle"), "{cycle}");
+}
+
+#[test]
+fn composed_manifests_accept_directory_and_absolute_paths_and_report_load_failures() {
+    let root = tempfile::tempdir().unwrap();
+    let shared = root.path().join("shared");
+    std::fs::create_dir_all(&shared).unwrap();
+    let shared_manifest = shared.join("skill-project.toml");
+    std::fs::write(&shared_manifest, "[dependencies]\ndemo = \"1.0.0\"\n").unwrap();
+    let project = SkillProjectToml::from_toml_str(&format!(
+        "[tool.fastskill.manifests]\nabsolute = {:?}\ndirectory = \"shared\"\n",
+        shared_manifest
+    ))
+    .unwrap();
+
+    let entries = project.to_skill_entries(root.path()).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].id, "demo");
+
+    let missing = SkillProjectToml::from_toml_str(
+        "[tool.fastskill.manifests]\nmissing = \"not-there.toml\"\n",
+    )
+    .unwrap()
+    .to_skill_entries(root.path())
+    .unwrap_err();
+    assert!(missing.contains("Failed to load composed Manifest 'missing'"));
+
+    let malformed_path = root.path().join("malformed.toml");
+    std::fs::write(&malformed_path, "invalid = [").unwrap();
+    let malformed = SkillProjectToml::from_toml_str(
+        "[tool.fastskill.manifests]\nmalformed = \"malformed.toml\"\n",
+    )
+    .unwrap()
+    .to_skill_entries(root.path())
+    .unwrap_err();
+    assert!(malformed.contains("Failed to load composed Manifest 'malformed'"));
+}
+
 #[cfg(unix)]
 #[test]
 fn unserializable_local_paths_do_not_replace_existing_manifests() {

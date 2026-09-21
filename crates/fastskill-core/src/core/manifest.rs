@@ -3,7 +3,7 @@
 use crate::core::origin::{GitRef, Origin};
 use crate::core::version::VersionConstraint;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Main skills manifest structure
@@ -389,6 +389,10 @@ pub struct FastSkillToolConfig {
     /// Optional skills storage directory override
     #[serde(default)]
     pub skills_directory: Option<PathBuf>,
+    /// Reusable project Manifests composed into this project's dependency roots.
+    /// Paths are resolved relative to the Manifest that declares them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub manifests: BTreeMap<String, PathBuf>,
     /// Optional embedding configuration
     #[serde(default)]
     pub embedding: Option<EmbeddingConfigToml>,
@@ -792,52 +796,9 @@ impl SkillProjectToml {
         }
         Ok(())
     }
-
-    /// Convert SkillProjectToml dependencies to SkillEntry format for installation
-    /// T027: Helper to convert unified format to legacy format for compatibility
-    ///
-    /// `manifest_dir` is the directory this Manifest was loaded from. A local
-    /// origin recorded relative to the Manifest is resolved against it here —
-    /// never against the process's current directory, which has nothing to do
-    /// with where the Manifest lives. Taking the directory as an argument is
-    /// what makes that impossible to forget at a call site.
-    pub fn to_skill_entries(&self, manifest_dir: &Path) -> Result<Vec<SkillEntry>, String> {
-        let mut entries = Vec::new();
-
-        if let Some(ref deps_section) = self.dependencies {
-            for (skill_id, dep_spec) in &deps_section.dependencies {
-                let (origin, groups) = match dep_spec {
-                    DependencySpec::Version(version_str) => {
-                        // Version-only dependency: resolved against the "default" repository,
-                        // preserving today's implicit-source behavior.
-                        let constraint = VersionConstraint::parse(version_str).map_err(|e| {
-                            format!("Invalid version '{}' for {}: {}", version_str, skill_id, e)
-                        })?;
-                        (
-                            Origin::Repository {
-                                repo: "default".to_string(),
-                                skill: skill_id.clone(),
-                                version: Some(constraint),
-                            },
-                            Vec::new(),
-                        )
-                    }
-                    DependencySpec::Inline { origin, groups } => {
-                        (origin.clone(), groups.clone().unwrap_or_default())
-                    }
-                };
-
-                entries.push(SkillEntry {
-                    id: skill_id.clone(),
-                    origin: origin.resolved_against(manifest_dir),
-                    groups,
-                });
-            }
-        }
-
-        Ok(entries)
-    }
 }
+
+mod composition;
 
 /// Canonical conversion from manifest RepositoryDefinition to the runtime type.
 /// This is the single authoritative definition; all call-sites MUST use this impl.

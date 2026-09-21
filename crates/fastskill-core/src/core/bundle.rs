@@ -6,9 +6,10 @@
 //! the installed membership.
 
 use crate::core::bundle_archive::{write_bundle_archive, BundleArchiveLock};
+use crate::core::bundle_build::prepare_bundle_build_manifest;
 use crate::core::bundle_persistence::{
-    apply_personal_override, digest_directory, parse_bundle_descriptor, parse_bundle_project,
-    prepare_members, preview_personal_override, remove_skill_directory, replace_skill_directory,
+    apply_personal_override, digest_directory, parse_bundle_descriptor, prepare_members,
+    preview_personal_override, remove_skill_directory, replace_skill_directory,
     save_bundle_declarations, BundleHistory, BundleTransaction,
 };
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
@@ -90,19 +91,20 @@ impl BundleService {
         }
     }
 
-    /// Build `<bundle-id>-<version>.zip` from the current project's declared
-    /// members. Only members named by `[bundle.members]` are packaged.
+    /// Build `<metadata.id>-<metadata.version>.zip` from every dependency in
+    /// the current project Manifest and its installed dependency closure.
     pub fn build(&self, output_directory: &Path) -> Result<BundleBuildResult, ServiceError> {
         let manifest_path = self.project_root.join("skill-project.toml");
         let manifest_bytes = fs::read(&manifest_path).map_err(ServiceError::Io)?;
-        let (descriptor, dependencies) = parse_bundle_project(&manifest_bytes)?;
+        let (descriptor, dependencies, archive_manifest) =
+            prepare_bundle_build_manifest(&manifest_bytes, &self.project_root)?;
         let members = prepare_members(&self.skills_directory, &descriptor, &dependencies)?;
         fs::create_dir_all(output_directory).map_err(ServiceError::Io)?;
 
         let artifact =
             output_directory.join(format!("{}-{}.zip", descriptor.id, descriptor.version));
         let archive_lock = BundleArchiveLock::from_members(&descriptor, &members);
-        write_bundle_archive(&artifact, &manifest_bytes, &archive_lock, &members)?;
+        write_bundle_archive(&artifact, &archive_manifest, &archive_lock, &members)?;
 
         Ok(BundleBuildResult {
             id: descriptor.id,

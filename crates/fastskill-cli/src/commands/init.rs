@@ -384,6 +384,7 @@ fn build_skill_project(meta: InitMetadata<'_>) -> CliResult<SkillProjectToml> {
     let tool = meta.skills_directory.as_ref().map(|dir| ToolSection {
         fastskill: Some(FastSkillToolConfig {
             skills_directory: Some(std::path::PathBuf::from(dir)),
+            manifests: std::collections::BTreeMap::new(),
             embedding: None,
             repositories: None,
             server: None,
@@ -429,6 +430,9 @@ fn append_tool_comment(path: &Path, is_skill_level: bool) -> CliResult<()> {
 # [tool.fastskill.embedding]
 # openai_base_url = "https://api.openai.com/v1"
 # embedding_model = "text-embedding-3-small"
+#
+# [tool.fastskill.manifests]
+# platform = "../platform-team/skill-project.toml"
 #
 # [[tool.fastskill.repositories]]
 # name = "default"

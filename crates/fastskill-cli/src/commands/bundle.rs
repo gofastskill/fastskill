@@ -29,21 +29,16 @@ pub struct BuildArgs {
 impl IntoCommandSpec for BuildArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
-            summary: "Build the bundle declared in skill-project.toml's [bundle] section",
+            summary: "Build a bundle from skill-project.toml metadata and dependencies",
             long_about: Some(
-                "Build a self-contained ZIP from the skills selected under [bundle.members]. \
-                 Each selected member must also appear in [dependencies].\n\n\
+                "Build a self-contained ZIP from every skill in [dependencies], plus their \
+                 installed dependency closure. Bundle identity comes from [metadata].\n\n\
                  Add this to skill-project.toml before building:\n\n\
-                 [bundle]\n\
-                 format = \"fastskill-bundle-v1\"\n\
+                 [metadata]\n\
                  id = \"payments-team\"\n\
                  version = \"1.2.0\"\n\n\
-                 [bundle.members.code-review]\n\
-                 overridable = false\n\n\
                  [dependencies]\n\
-                 code-review = \"1.0.0\"\n\n\
-                 Set overridable = true only when recipients may replace that member with a \
-                 declared personal override.",
+                 code-review = \"1.0.0\"",
             ),
             syntax: Some("bundle build [--output DIRECTORY]"),
             category: Some("skills-projects"),

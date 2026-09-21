@@ -10,7 +10,6 @@
 
 #![recursion_limit = "256"]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-#![recursion_limit = "256"]
 mod arg_helpers;
 mod commands;
 mod config;

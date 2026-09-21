@@ -41,7 +41,7 @@ def main(binary, verify_git=False):
         json.loads(missing.stdout)
 
         manifest = project / 'skill-project.toml'
-        manifest.write_text(manifest.read_text() + '\n[bundle]\nformat = "fastskill-bundle-v1"\nid = "notes-team"\nversion = "1.0.0"\n\n[bundle.members.review-notes]\noverridable = true\n')
+        manifest.write_text(manifest.read_text().replace('id = "fastskill-demo"', 'id = "notes-team"'))
         cli('bundle', 'build', '--output', 'dist')
         recipient = temp / 'recipient'
         recipient.mkdir()

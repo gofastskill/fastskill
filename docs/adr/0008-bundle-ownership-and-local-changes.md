@@ -1,6 +1,8 @@
 # Bundle lifecycle preserves shared skills and local changes
 
-Status: accepted
+Status: Partially superseded by [ADR-0015](0015-manifest-composition-and-bundle-exports.md).
+Ownership and local-change protection remain accepted. New bundle builds no longer author
+per-member override policy; the override paragraphs below describe legacy archives.
 
 Multiple bundles and individual installation may require the same skill. FastSkill shares identical contents under the same skill ID and records all owners. Differing contents cause a conflict before any installation changes. Removing one bundle preserves skills required by another owner, including an explicit individual installation.
 
