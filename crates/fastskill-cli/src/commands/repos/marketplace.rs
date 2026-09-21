@@ -303,26 +303,48 @@ fn is_hidden_child(root: &Path, entry: &walkdir::DirEntry) -> bool {
             .is_some_and(|n| n.starts_with('.'))
 }
 
+/// Read a skill's catalog entry from its own files.
+///
+/// ADR-0014: `skill-project.toml` is authoritative for id and version, with
+/// `SKILL.md`'s frontmatter behind it. Every way of failing to read it is an
+/// error naming the file. It used to swallow an unreadable or malformed
+/// `skill-project.toml` into `None`, which then surfaced as "skill-project.toml
+/// is required but not found" about a file that was sitting right there.
 pub fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<MarketplaceSkill> {
-    let skill_project_path = skill_dir.join("skill-project.toml");
-    let skill_metadata = if skill_project_path.exists() {
-        if let Ok(skill_project_content) = fs::read_to_string(&skill_project_path) {
-            #[derive(serde::Deserialize)]
-            struct SkillProjectToml {
-                metadata: Option<MetadataSection>,
-            }
+    #[derive(serde::Deserialize)]
+    struct SkillProjectToml {
+        metadata: Option<MetadataSection>,
+    }
 
-            if let Ok(skill_project) = toml::from_str::<SkillProjectToml>(&skill_project_content) {
-                skill_project.metadata
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let skill_project_path = skill_dir.join("skill-project.toml");
+    if !skill_project_path.exists() {
+        return Err(CliError::Validation(format!(
+            "skill-project.toml is required but not found in: {}",
+            skill_dir.display()
+        )));
+    }
+    let skill_project_content = fs::read_to_string(&skill_project_path).map_err(|e| {
+        CliError::Validation(format!(
+            "Failed to read {}: {}",
+            skill_project_path.display(),
+            e
+        ))
+    })?;
+    let skill_metadata = toml::from_str::<SkillProjectToml>(&skill_project_content)
+        .map_err(|e| {
+            CliError::Validation(format!(
+                "Failed to parse {}: {}",
+                skill_project_path.display(),
+                e
+            ))
+        })?
+        .metadata
+        .ok_or_else(|| {
+            CliError::Validation(format!(
+                "{} has no [metadata] section, so the skill declares no id",
+                skill_project_path.display()
+            ))
+        })?;
 
     let skill_content = fs::read_to_string(skill_file)
         .map_err(|e| CliError::Validation(format!("Failed to read SKILL.md: {}", e)))?;
@@ -332,49 +354,36 @@ pub fn extract_skill_metadata(skill_dir: &Path, skill_file: &Path) -> CliResult<
     })?;
 
     let id = skill_metadata
-        .as_ref()
-        .ok_or_else(|| {
-            CliError::Validation(format!(
-                "skill-project.toml is required but not found in: {}",
-                skill_dir.display()
-            ))
-        })?
         .id
         .clone()
+        .filter(|id| !id.is_empty())
         .ok_or_else(|| {
-            CliError::Validation(
-                "skill-project.toml [metadata] section must have a non-empty 'id' field"
-                    .to_string(),
-            )
+            CliError::Validation(format!(
+                "{} [metadata] section must have a non-empty 'id' field",
+                skill_project_path.display()
+            ))
         })?;
 
     let name = frontmatter.name.clone();
 
     let description = skill_metadata
-        .as_ref()
-        .and_then(|m| m.description.clone())
+        .description
+        .clone()
         .filter(|d| !d.is_empty())
         .unwrap_or_else(|| frontmatter.description.clone());
 
-    let version = if let Some(metadata) = skill_metadata.as_ref() {
-        metadata
-            .version
-            .clone()
-            .unwrap_or_else(|| frontmatter.version.unwrap_or_else(|| "1.0.0".to_string()))
-    } else {
-        frontmatter.version.unwrap_or_else(|| "1.0.0".to_string())
-    };
+    let version = skill_metadata
+        .version
+        .clone()
+        .or(frontmatter.version)
+        .unwrap_or_else(|| "1.0.0".to_string());
 
     let author = skill_metadata
-        .as_ref()
-        .and_then(|m| m.author.clone())
+        .author
+        .clone()
         .or_else(|| frontmatter.author.clone());
 
-    let download_url = skill_metadata.as_ref().and_then(|m| m.download_url.clone());
-
-    if skill_metadata.is_some() {
-        info!("Using metadata from skill-project.toml for skill: {}", id);
-    }
+    let download_url = skill_metadata.download_url.clone();
 
     Ok(MarketplaceSkill {
         id,
@@ -532,5 +541,214 @@ mod tests {
             err.to_string().contains("skill-project.toml is required"),
             "{err}"
         );
+    }
+
+    async fn create_in(
+        root: &Path,
+        output: Option<PathBuf>,
+        name: Option<String>,
+    ) -> CliResult<()> {
+        execute_create(
+            root.to_path_buf(),
+            output,
+            name,
+            Some("Owner".to_string()),
+            None,
+            None,
+            None,
+            false,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_path_that_does_not_exist_is_reported_as_such() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let err = create_in(&temp.path().join("nope"), None, Some("n".into()))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Failed to resolve path"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_directory_with_no_skills_is_reported_rather_than_written_empty() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let err = create_in(temp.path(), None, Some("n".into()))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("No skills found"), "{err}");
+    }
+
+    /// Without `--name` the scanned directory's own name stands in.
+    #[tokio::test]
+    async fn the_directory_name_stands_in_for_a_missing_name() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join("acme-skills");
+        write_skill(&root, "a", "a", "1.0.0");
+
+        create_in(&root, None, None).await.unwrap();
+
+        let written =
+            fs::read_to_string(root.join(".claude-plugin").join("marketplace.json")).unwrap();
+        assert!(written.contains("\"name\": \"acme-skills\""), "{written}");
+    }
+
+    /// A skill the catalog cannot address is refused at generation time,
+    /// rather than written as a path that resolves somewhere else.
+    #[tokio::test]
+    async fn a_skill_above_the_output_directory_is_refused() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+        write_skill(root, "a", "a", "1.0.0");
+        // Catalog written *below* the skill, so the skill is outside its root.
+        let output = root
+            .join("deeper")
+            .join(".claude-plugin")
+            .join("marketplace.json");
+
+        let err = create_in(root, Some(output), Some("n".into()))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("outside the catalog root"),
+            "{err}"
+        );
+    }
+
+    /// `--description`/`--repo-version` describe the catalog, and land in
+    /// `metadata`; without either, `metadata` is omitted rather than written
+    /// as `null`, which `claude plugin validate` rejects.
+    #[tokio::test]
+    async fn catalog_metadata_is_written_only_when_given() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+        write_skill(root, "a", "a", "1.0.0");
+        let output = root.join("marketplace.json");
+
+        execute_create(
+            root.to_path_buf(),
+            Some(output.clone()),
+            Some("n".into()),
+            Some("Owner".into()),
+            None,
+            Some("A collection".into()),
+            Some("3.0.0".into()),
+            false,
+        )
+        .await
+        .unwrap();
+
+        let written = fs::read_to_string(&output).unwrap();
+        assert!(
+            written.contains("\"description\": \"A collection\""),
+            "{written}"
+        );
+        assert!(written.contains("\"version\": \"3.0.0\""), "{written}");
+        assert!(!written.contains("null"), "{written}");
+        assert!(written.ends_with("}\n"), "{written}");
+
+        create_in(root, Some(output.clone()), Some("n".into()))
+            .await
+            .unwrap();
+        let plain = fs::read_to_string(&output).unwrap();
+        assert!(!plain.contains("metadata"), "{plain}");
+    }
+
+    /// `--check` against a catalog that was never generated says how to make
+    /// one, rather than reporting it as a mismatch.
+    #[tokio::test]
+    async fn check_on_a_missing_catalog_says_how_to_create_it() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+        write_skill(root, "a", "a", "1.0.0");
+
+        let err = execute_create(
+            root.to_path_buf(),
+            None,
+            Some("n".into()),
+            Some("Owner".into()),
+            None,
+            None,
+            None,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Cannot check"), "{err}");
+        assert!(!root.join(".claude-plugin").exists());
+    }
+
+    /// Every way `skill-project.toml` can fail to yield an id names the file.
+    /// A malformed or unreadable one used to be swallowed into "skill-project
+    /// .toml is required but not found", about a file that was right there.
+    #[test]
+    fn metadata_failures_name_the_file_and_the_missing_piece() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+
+        let cases: [(&str, &str, &str); 3] = [
+            ("broken", "[metadata\nid = \"x\"\n", "Failed to parse"),
+            ("no-section", "[other]\nkey = 1\n", "no [metadata] section"),
+            (
+                "no-id",
+                "[metadata]\nversion = \"1.0.0\"\n",
+                "non-empty 'id'",
+            ),
+        ];
+        for (dir, toml_body, expected) in cases {
+            let skill = root.join(dir);
+            fs::create_dir_all(&skill).unwrap();
+            fs::write(
+                skill.join("SKILL.md"),
+                "---\nname: n\ndescription: d\n---\n",
+            )
+            .unwrap();
+            fs::write(skill.join("skill-project.toml"), toml_body).unwrap();
+
+            let err = extract_skill_metadata(&skill, &skill.join("SKILL.md")).unwrap_err();
+            assert!(err.to_string().contains(expected), "{dir}: {err}");
+            assert!(
+                err.to_string().contains("skill-project.toml"),
+                "{dir}: {err}"
+            );
+            fs::remove_dir_all(&skill).unwrap();
+        }
+    }
+
+    /// `skill-project.toml` wins over the frontmatter, and the frontmatter
+    /// fills in what it leaves out.
+    #[test]
+    fn skill_project_toml_takes_precedence_and_frontmatter_fills_the_gaps() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let skill = temp.path().join("s");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: Display Name\ndescription: from frontmatter\nversion: 9.9.9\nauthor: fm\n---\n",
+        )
+        .unwrap();
+
+        fs::write(
+            skill.join("skill-project.toml"),
+            "[metadata]\nid = \"real-id\"\nversion = \"2.0.0\"\ndescription = \"from toml\"\n",
+        )
+        .unwrap();
+        let skill_md = skill.join("SKILL.md");
+        let from_toml = extract_skill_metadata(&skill, &skill_md).unwrap();
+        assert_eq!(from_toml.id, "real-id");
+        assert_eq!(from_toml.version, "2.0.0");
+        assert_eq!(from_toml.description, "from toml");
+        assert_eq!(from_toml.name, "Display Name");
+        assert_eq!(from_toml.author.as_deref(), Some("fm"));
+
+        // An empty description and an absent version defer to the frontmatter.
+        fs::write(
+            skill.join("skill-project.toml"),
+            "[metadata]\nid = \"real-id\"\ndescription = \"\"\n",
+        )
+        .unwrap();
+        let from_frontmatter = extract_skill_metadata(&skill, &skill_md).unwrap();
+        assert_eq!(from_frontmatter.description, "from frontmatter");
+        assert_eq!(from_frontmatter.version, "9.9.9");
     }
 }

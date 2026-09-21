@@ -354,4 +354,69 @@ mod tests {
         assert!(MarketplaceCreateArgs::from_arg_value_map(&map).check);
         assert!(!MarketplaceCreateArgs::from_arg_value_map(&HashMap::new()).check);
     }
+
+    /// Every arg the spec advertises reaches the command, under the spelling
+    /// the spec uses -- `repo-version` feeds `version`, and the hyphenated
+    /// owner keys are not the struct's underscored field names.
+    #[test]
+    fn every_advertised_arg_is_carried_through() {
+        let pairs = [
+            ("path", "./skills"),
+            ("output", "out/marketplace.json"),
+            ("name", "my-skills"),
+            ("owner-name", "Team"),
+            ("owner-email", "team@example.test"),
+            ("description", "A collection"),
+            ("repo-version", "3.0.0"),
+        ];
+        let map: HashMap<String, ArgValue> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), ArgValue::Str(v.to_string())))
+            .collect();
+
+        let parsed = MarketplaceCreateArgs::from_arg_value_map(&map);
+        assert_eq!(parsed.path, PathBuf::from("./skills"));
+        assert_eq!(parsed.output, Some(PathBuf::from("out/marketplace.json")));
+        assert_eq!(parsed.name.as_deref(), Some("my-skills"));
+        assert_eq!(parsed.owner_name.as_deref(), Some("Team"));
+        assert_eq!(parsed.owner_email.as_deref(), Some("team@example.test"));
+        assert_eq!(parsed.description.as_deref(), Some("A collection"));
+        assert_eq!(parsed.version.as_deref(), Some("3.0.0"));
+        assert!(!parsed.check);
+
+        for spec_arg in MarketplaceCreateArgs::command_spec().args {
+            assert!(
+                pairs.iter().any(|(k, _)| *k == spec_arg.name) || spec_arg.name == "check",
+                "spec advertises '{}' but nothing parses it",
+                spec_arg.name
+            );
+        }
+    }
+
+    /// A value of the wrong type is ignored rather than panicking, and `path`
+    /// falls back to the working directory the spec's default names.
+    #[test]
+    fn values_of_the_wrong_type_fall_back_to_the_defaults() {
+        let map: HashMap<String, ArgValue> = [
+            ("path", ArgValue::Bool(true)),
+            ("output", ArgValue::Bool(true)),
+            ("name", ArgValue::Bool(true)),
+            ("owner-name", ArgValue::Bool(true)),
+            ("owner-email", ArgValue::Bool(true)),
+            ("description", ArgValue::Bool(true)),
+            ("repo-version", ArgValue::Bool(true)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+
+        let parsed = MarketplaceCreateArgs::from_arg_value_map(&map);
+        assert_eq!(parsed.path, PathBuf::from("."));
+        assert!(parsed.output.is_none());
+        assert!(parsed.name.is_none());
+        assert!(parsed.owner_name.is_none());
+        assert!(parsed.owner_email.is_none());
+        assert!(parsed.description.is_none());
+        assert!(parsed.version.is_none());
+    }
 }
