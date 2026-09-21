@@ -1,6 +1,6 @@
 # Skill identity comes from skill content, never from a catalog path
 
-Status: proposed. Date: 2026-09-19.
+Status: accepted. Date: 2026-09-19. Implemented: 2026-09-21.
 
 Related: [ADR-0004](0004-bare-version-is-exact.md),
 [ADR-0005](0005-install-seam-and-origin-model.md),
