@@ -2,7 +2,7 @@
 
 use chrono::Utc;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -17,6 +17,68 @@ use crate::core::cache::SkillCache;
 
 mod listing_ref;
 use listing_ref::{configured_ref, github_repo, normalize_repo_path};
+
+/// A skill's own account of itself, read from the files a catalog entry
+/// points at.
+struct ResolvedEntry {
+    id: String,
+    name: String,
+    description: String,
+    version: String,
+}
+
+/// Read the skill an entry points at, out of `checkout`.
+///
+/// ADR-0014: a catalog entry is a pointer, not a declaration of identity.
+/// `workspace/cli-rust-dev/` may hold a skill whose `skill-project.toml` says
+/// `id = "rust-dev"`, and the folder name is the wrong answer in every such
+/// case. Reading the skill's own files is also what install already does, so
+/// listing and install now agree on what a source contains.
+///
+/// A path that escapes the checkout is rejected rather than followed: entries
+/// come from a remote repository, and `../../etc` must not be read.
+fn read_entry_from_checkout(
+    checkout: &Path,
+    resolved_path: &str,
+) -> Result<ResolvedEntry, SourcesError> {
+    let mut skill_dir = checkout.to_path_buf();
+    for component in Path::new(resolved_path).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => skill_dir.push(part),
+            _ => {
+                return Err(SourcesError::Parse(format!(
+                    "Catalog entry '{resolved_path}' must be a relative path inside the \
+                     repository, without '..' or a leading '/'"
+                )))
+            }
+        }
+    }
+
+    let skill_file = skill_dir.join("SKILL.md");
+    if !skill_file.is_file() {
+        return Err(SourcesError::Parse(format!(
+            "Catalog entry '{resolved_path}' does not name a skill: no SKILL.md there. The \
+             catalog lists a path that is not in the repository at this revision -- it was \
+             most likely generated before the skill moved, or by a version of `fastskill \
+             marketplace create` that wrote './<id>' instead of the skill's real path. \
+             Regenerate it with `fastskill marketplace create`."
+        )));
+    }
+
+    let content = std::fs::read_to_string(&skill_file).map_err(SourcesError::Io)?;
+    let (_, name, description, _) = super::local::parse_skill_frontmatter(&content, &skill_dir)?;
+    let (id, version) = crate::core::install::read_skill_identity(&skill_dir).map_err(|error| {
+        SourcesError::Parse(format!("Catalog entry '{resolved_path}': {error}"))
+    })?;
+
+    Ok(ResolvedEntry {
+        id: id.into_string(),
+        name,
+        description,
+        version,
+    })
+}
 
 /// Reject a configured `auth` on a git source loudly rather than silently
 /// ignoring it. Git sources authenticate via the system git credential
@@ -315,11 +377,19 @@ impl SourcesManager {
 
     /// Convert Claude Code format to FastSkill internal format
     /// This extracts skills from plugins by resolving skill paths
+    ///
+    /// `checkout`, when present, is a working tree holding the catalog *and*
+    /// the skills it points at, at one commit. ADR-0014: with the content in
+    /// hand, each skill's id and version are read from that content. Without
+    /// it (a zip-url source, where the catalog is fetched over HTTP and the
+    /// skills are archives) the entry's path and the catalog-wide version are
+    /// still all there is; narrowing that gap is tracked separately.
     async fn convert_claude_to_fastskill_format(
         &self,
         claude_marketplace: ClaudeCodeMarketplaceJson,
         base_url: String,
         listing_ref: &str,
+        checkout: Option<&Path>,
     ) -> Result<MarketplaceJson, SourcesError> {
         let mut skills = Vec::new();
         let owner_name = claude_marketplace.owner.as_ref().map(|o| o.name.clone());
@@ -348,18 +418,35 @@ impl SourcesManager {
                     format!("{}/{}", plugin_source.trim_end_matches('/'), skill_path)
                 };
 
-                // Extract skill ID from path (use directory name or last component)
-                let skill_id = resolved_path
-                    .trim_end_matches('/')
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(&resolved_path)
-                    .to_string();
+                let resolved = match checkout {
+                    Some(root) => Some(read_entry_from_checkout(root, &resolved_path)?),
+                    None => None,
+                };
 
-                // Use plugin description as fallback, or metadata description
-                let description = plugin
-                    .description
-                    .clone()
+                // The folder name is a last resort, used only when the skill's
+                // own files are out of reach. It is not identity: a skill at
+                // `workspace/cli-rust-dev/` may well declare a different id.
+                let skill_id = resolved.as_ref().map(|r| r.id.clone()).unwrap_or_else(|| {
+                    resolved_path
+                        .trim_end_matches('/')
+                        .split('/')
+                        .next_back()
+                        .unwrap_or(&resolved_path)
+                        .to_string()
+                });
+                let skill_name = resolved
+                    .as_ref()
+                    .map(|r| r.name.clone())
+                    .unwrap_or_else(|| skill_id.clone());
+
+                // The skill's own description first; the plugin's and the
+                // catalog's are fallbacks that describe the collection, not
+                // this skill.
+                let description = resolved
+                    .as_ref()
+                    .map(|r| r.description.clone())
+                    .filter(|d| !d.is_empty())
+                    .or_else(|| plugin.description.clone())
                     .or_else(|| {
                         claude_marketplace
                             .metadata
@@ -386,11 +473,15 @@ impl SourcesManager {
                 };
 
                 skills.push(MarketplaceSkill {
-                    id: skill_id.clone(),
-                    name: skill_id.clone(), // Use ID as name if not available
+                    id: skill_id,
+                    name: skill_name,
                     description,
-                    version: metadata_version
-                        .clone()
+                    // The catalog-wide `metadata.version` is the catalog's
+                    // version, not any skill's; it only stands in when the
+                    // skill's own version cannot be read.
+                    version: resolved
+                        .map(|r| r.version)
+                        .or_else(|| metadata_version.clone())
                         .unwrap_or_else(|| "1.0.0".to_string()),
                     author: owner_name.clone(),
                     download_url,
@@ -455,7 +546,8 @@ impl SourcesManager {
             }
         };
 
-        self.parse_marketplace(&body, base_url, listing_ref).await
+        self.parse_marketplace(&body, base_url, listing_ref, None)
+            .await
     }
 
     /// Parse a Claude Code `marketplace.json` body (the only supported
@@ -466,6 +558,7 @@ impl SourcesManager {
         body: &[u8],
         base_url: String,
         listing_ref: &str,
+        checkout: Option<&Path>,
     ) -> Result<MarketplaceJson, SourcesError> {
         let claude_marketplace: ClaudeCodeMarketplaceJson =
             serde_json::from_slice(body).map_err(|e| {
@@ -477,7 +570,7 @@ impl SourcesManager {
 
         // Convert Claude Code format to FastSkill internal format
         let marketplace = self
-            .convert_claude_to_fastskill_format(claude_marketplace, base_url, listing_ref)
+            .convert_claude_to_fastskill_format(claude_marketplace, base_url, listing_ref, checkout)
             .await?;
 
         // Validate marketplace.json structure
@@ -615,7 +708,12 @@ impl SourcesManager {
                     .commit
                     .unwrap_or_else(|| configured_ref(*branch, *tag).to_string());
                 let marketplace = self
-                    .parse_marketplace(&catalog.body, url.to_string(), &listing_ref)
+                    .parse_marketplace(
+                        &catalog.body,
+                        url.to_string(),
+                        &listing_ref,
+                        Some(catalog.checkout.path()),
+                    )
                     .await?;
                 return Ok((marketplace, location.cache_keys().remove(0)));
             }

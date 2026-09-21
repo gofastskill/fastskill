@@ -35,13 +35,10 @@ pub enum MarketplaceCommand {
         /// Output file path (default: .claude-plugin/marketplace.json in the specified directory)
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Base URL for download links (optional)
-        #[arg(long)]
-        base_url: Option<String>,
         /// Repository name (required)
         #[arg(long)]
         name: Option<String>,
-        /// Owner name (optional)
+        /// Owner name (required by Claude Code)
         #[arg(long)]
         owner_name: Option<String>,
         /// Owner email (optional)
@@ -53,6 +50,9 @@ pub enum MarketplaceCommand {
         /// Repository version (optional)
         #[arg(long)]
         version: Option<String>,
+        /// Verify the existing marketplace.json matches the skills on disk, writing nothing
+        #[arg(long)]
+        check: bool,
     },
 }
 
@@ -63,8 +63,6 @@ pub struct MarketplaceCreateArgs {
     pub path: PathBuf,
     /// Output file path
     pub output: Option<PathBuf>,
-    /// Base URL for download links
-    pub base_url: Option<String>,
     /// Repository name
     pub name: Option<String>,
     /// Owner name
@@ -75,6 +73,8 @@ pub struct MarketplaceCreateArgs {
     pub description: Option<String>,
     /// Repository version
     pub version: Option<String>,
+    /// Verify the existing catalog instead of writing one
+    pub check: bool,
 }
 
 impl IntoCommandSpec for MarketplaceCreateArgs {
@@ -85,7 +85,8 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
             category: Some("publishing"),
             examples: vec![
                 "fastskill marketplace create . --name my-skills",
-                "fastskill marketplace create ./skills --name my-skills --output .claude-plugin/marketplace.json",
+                "fastskill marketplace create ./skills --name my-skills --owner-name \"Team\" --output .claude-plugin/marketplace.json",
+                "fastskill marketplace create . --name my-skills --owner-name \"Team\" --check",
             ],
             args: vec![
                 ArgSpec {
@@ -108,15 +109,6 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
                     ..Default::default()
                 },
                 ArgSpec {
-                    name: "base-url",
-                    kind: ArgKind::Option,
-                    long: Some("base-url"),
-                    value_type: ArgValueType::String,
-                    cardinality: Cardinality::Optional,
-                    help: "Base URL for download links (optional)",
-                    ..Default::default()
-                },
-                ArgSpec {
                     name: "name",
                     kind: ArgKind::Option,
                     long: Some("name"),
@@ -131,7 +123,7 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
                     long: Some("owner-name"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Owner name (optional)",
+                    help: "Owner name (required)",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -161,6 +153,15 @@ impl IntoCommandSpec for MarketplaceCreateArgs {
                     help: "Repository version (optional)",
                     ..Default::default()
                 },
+                ArgSpec {
+                    name: "check",
+                    kind: ArgKind::Flag,
+                    long: Some("check"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Verify the existing marketplace.json matches the skills on disk, writing nothing",
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }
@@ -183,13 +184,6 @@ impl FromArgValueMap for MarketplaceCreateArgs {
             output: map.get("output").and_then(|v| {
                 if let ArgValue::Str(s) = v {
                     Some(PathBuf::from(s))
-                } else {
-                    None
-                }
-            }),
-            base_url: map.get("base-url").and_then(|v| {
-                if let ArgValue::Str(s) = v {
-                    Some(s.clone())
                 } else {
                     None
                 }
@@ -229,6 +223,7 @@ impl FromArgValueMap for MarketplaceCreateArgs {
                     None
                 }
             }),
+            check: matches!(map.get("check"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -237,12 +232,12 @@ pub async fn execute_marketplace_create(args: MarketplaceCreateArgs) -> CliResul
     super::repos::marketplace::execute_create(
         args.path,
         args.output,
-        args.base_url,
         args.name,
         args.owner_name,
         args.owner_email,
         args.description,
         args.version,
+        args.check,
     )
     .await
 }
@@ -251,26 +246,177 @@ pub async fn execute_marketplace_create(args: MarketplaceCreateArgs) -> CliResul
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
 
-    #[tokio::test]
-    async fn test_execute_marketplace_create() {
-        let temp_dir = TempDir::new().unwrap();
+    fn write_skill(root: &std::path::Path, rel: &str, id: &str, version: &str) {
+        let dir = root.join(rel);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nname: {id}\ndescription: d\nversion: {version}\n---\n\n# {id}\n"),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("skill-project.toml"),
+            format!("[metadata]\nid = \"{id}\"\nversion = \"{version}\"\n"),
+        )
+        .unwrap();
+    }
 
-        let args = MarketplaceCreateArgs {
-            path: temp_dir.path().to_path_buf(),
+    fn args(path: &std::path::Path) -> MarketplaceCreateArgs {
+        MarketplaceCreateArgs {
+            path: path.to_path_buf(),
             output: None,
-            base_url: None,
             name: Some("test-marketplace".to_string()),
-            owner_name: None,
+            owner_name: Some("Test Owner".to_string()),
             owner_email: None,
             description: None,
             version: None,
-        };
+            check: false,
+        }
+    }
 
-        // This test verifies the command structure compiles correctly
-        // The actual execution may fail without proper skill directory structure
-        let result = execute_marketplace_create(args).await;
-        assert!(result.is_ok() || result.is_err());
+    /// The path a catalog entry carries is the skill's own folder. This is the
+    /// regression the command existed to get wrong: it used to write `./{id}`,
+    /// which names a real folder only when a skill sits at the root under its
+    /// own id.
+    #[tokio::test]
+    async fn create_writes_each_skill_real_path() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write_skill(root, "workspace/cli-rust-dev", "cli-rust-dev", "1.0.0");
+        write_skill(root, "skills/nested/deep", "deep-skill", "2.0.0");
+
+        execute_marketplace_create(args(root)).await.unwrap();
+
+        let written =
+            fs::read_to_string(root.join(".claude-plugin").join("marketplace.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
+        let skills = parsed["plugins"][0]["skills"].as_array().unwrap();
+        assert_eq!(
+            skills
+                .iter()
+                .map(|s| s.as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["./skills/nested/deep", "./workspace/cli-rust-dev"],
+        );
+    }
+
+    /// Claude Code rejects a catalog without an owner, so the command refuses to
+    /// write one rather than producing a file that fails `claude plugin validate`.
+    #[tokio::test]
+    async fn create_requires_an_owner_name() {
+        let temp = TempDir::new().unwrap();
+        write_skill(temp.path(), "a", "a", "1.0.0");
+
+        let mut args = args(temp.path());
+        args.owner_name = None;
+        let err = execute_marketplace_create(args).await.unwrap_err();
+
+        assert!(err.to_string().contains("Owner name is required"), "{err}");
+        assert!(!temp.path().join(".claude-plugin").exists());
+    }
+
+    /// `--check` is the CI gate: it must report a stale catalog as a failure and
+    /// leave the file untouched.
+    #[tokio::test]
+    async fn check_fails_on_a_stale_catalog_without_writing() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write_skill(root, "a", "a", "1.0.0");
+        execute_marketplace_create(args(root)).await.unwrap();
+
+        write_skill(root, "b", "b", "1.0.0");
+        let mut stale = args(root);
+        stale.check = true;
+        let err = execute_marketplace_create(stale).await.unwrap_err();
+        assert!(err.to_string().contains("out of date"), "{err}");
+
+        let written =
+            fs::read_to_string(root.join(".claude-plugin").join("marketplace.json")).unwrap();
+        assert!(!written.contains("./b"));
+
+        execute_marketplace_create(args(root)).await.unwrap();
+        let mut fresh = args(root);
+        fresh.check = true;
+        execute_marketplace_create(fresh).await.unwrap();
+    }
+
+    #[test]
+    fn check_flag_is_parsed_and_base_url_is_gone() {
+        let spec = MarketplaceCreateArgs::command_spec();
+        assert!(spec.args.iter().any(|a| a.name == "check"));
+        assert!(!spec.args.iter().any(|a| a.name == "base-url"));
+
+        let mut map = HashMap::new();
+        map.insert("check".to_string(), ArgValue::Bool(true));
+        assert!(MarketplaceCreateArgs::from_arg_value_map(&map).check);
+        assert!(!MarketplaceCreateArgs::from_arg_value_map(&HashMap::new()).check);
+    }
+
+    /// Every arg the spec advertises reaches the command, under the spelling
+    /// the spec uses -- `repo-version` feeds `version`, and the hyphenated
+    /// owner keys are not the struct's underscored field names.
+    #[test]
+    fn every_advertised_arg_is_carried_through() {
+        let pairs = [
+            ("path", "./skills"),
+            ("output", "out/marketplace.json"),
+            ("name", "my-skills"),
+            ("owner-name", "Team"),
+            ("owner-email", "team@example.test"),
+            ("description", "A collection"),
+            ("repo-version", "3.0.0"),
+        ];
+        let map: HashMap<String, ArgValue> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), ArgValue::Str(v.to_string())))
+            .collect();
+
+        let parsed = MarketplaceCreateArgs::from_arg_value_map(&map);
+        assert_eq!(parsed.path, PathBuf::from("./skills"));
+        assert_eq!(parsed.output, Some(PathBuf::from("out/marketplace.json")));
+        assert_eq!(parsed.name.as_deref(), Some("my-skills"));
+        assert_eq!(parsed.owner_name.as_deref(), Some("Team"));
+        assert_eq!(parsed.owner_email.as_deref(), Some("team@example.test"));
+        assert_eq!(parsed.description.as_deref(), Some("A collection"));
+        assert_eq!(parsed.version.as_deref(), Some("3.0.0"));
+        assert!(!parsed.check);
+
+        for spec_arg in MarketplaceCreateArgs::command_spec().args {
+            assert!(
+                pairs.iter().any(|(k, _)| *k == spec_arg.name) || spec_arg.name == "check",
+                "spec advertises '{}' but nothing parses it",
+                spec_arg.name
+            );
+        }
+    }
+
+    /// A value of the wrong type is ignored rather than panicking, and `path`
+    /// falls back to the working directory the spec's default names.
+    #[test]
+    fn values_of_the_wrong_type_fall_back_to_the_defaults() {
+        let map: HashMap<String, ArgValue> = [
+            ("path", ArgValue::Bool(true)),
+            ("output", ArgValue::Bool(true)),
+            ("name", ArgValue::Bool(true)),
+            ("owner-name", ArgValue::Bool(true)),
+            ("owner-email", ArgValue::Bool(true)),
+            ("description", ArgValue::Bool(true)),
+            ("repo-version", ArgValue::Bool(true)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+
+        let parsed = MarketplaceCreateArgs::from_arg_value_map(&map);
+        assert_eq!(parsed.path, PathBuf::from("."));
+        assert!(parsed.output.is_none());
+        assert!(parsed.name.is_none());
+        assert!(parsed.owner_name.is_none());
+        assert!(parsed.owner_email.is_none());
+        assert!(parsed.description.is_none());
+        assert!(parsed.version.is_none());
     }
 }
