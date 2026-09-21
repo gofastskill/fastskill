@@ -29,8 +29,11 @@ use std::path::PathBuf;
 mod global;
 #[path = "list/output.rs"]
 mod output;
+#[path = "list/status.rs"]
+mod status;
 use global::execute_global_list;
 use output::ListRow;
+use status::ReconciliationStatus;
 
 /// List locally installed skills
 #[derive(Debug, Clone)]
@@ -416,29 +419,29 @@ pub async fn execute_list(
             let mutable = locked_entry
                 .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));
             let reconciliation = if !selected && !owners.is_empty() {
-                "excluded"
+                ReconciliationStatus::Excluded
             } else if selected && desired_entry.is_some() && locked_entry.is_none() {
-                "missing-lock"
+                ReconciliationStatus::MissingLock
             } else if selected && !installed {
-                "missing-content"
+                ReconciliationStatus::MissingContent
             } else if let (Some(desired), Some(locked)) = (desired_entry, locked_entry) {
                 if desired.origin != locked.origin.resolved_against(manifest_directory) {
-                    "intent-mismatch"
+                    ReconciliationStatus::IntentMismatch
                 } else if installed_map
                     .get(&id)
                     .is_some_and(|actual| actual.version != locked.resolved.version)
                 {
-                    "revision-mismatch"
+                    ReconciliationStatus::RevisionMismatch
                 } else if mutable {
-                    "ok"
+                    ReconciliationStatus::Ok
                 } else if let Some(expected) = &locked.resolved.checksum {
                     match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                        Ok(actual) if &actual == expected => "ok",
-                        Ok(_) => "content-mismatch",
-                        Err(_) => "integrity-error",
+                        Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
+                        Ok(_) => ReconciliationStatus::ContentMismatch,
+                        Err(_) => ReconciliationStatus::IntegrityError,
                     }
                 } else {
-                    "insufficient-integrity"
+                    ReconciliationStatus::InsufficientIntegrity
                 }
             } else if selected && (!bundle_members.is_empty() || override_entry.is_some()) {
                 let expected = override_entry
@@ -449,36 +452,36 @@ pub async fn execute_list(
                         .iter()
                         .all(|member| Some(member.digest.as_str()) == expected);
                 match (owners_agree, expected) {
-                    (false, _) => "ownership-conflict",
+                    (false, _) => ReconciliationStatus::OwnershipConflict,
                     (true, Some(expected)) => {
                         match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                            Ok(actual) if actual == expected => "ok",
-                            Ok(_) => "content-mismatch",
-                            Err(_) => "integrity-error",
+                            Ok(actual) if actual == expected => ReconciliationStatus::Ok,
+                            Ok(_) => ReconciliationStatus::ContentMismatch,
+                            Err(_) => ReconciliationStatus::IntegrityError,
                         }
                     }
-                    _ => "insufficient-integrity",
+                    _ => ReconciliationStatus::InsufficientIntegrity,
                 }
             } else if let (Some(locked), Some(actual)) = (locked_entry, installed_map.get(&id)) {
                 if actual.version != locked.resolved.version {
-                    "revision-mismatch"
+                    ReconciliationStatus::RevisionMismatch
                 } else if mutable {
-                    "ok"
+                    ReconciliationStatus::Ok
                 } else if let Some(expected) = &locked.resolved.checksum {
                     match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                        Ok(actual) if &actual == expected => "ok",
-                        Ok(_) => "content-mismatch",
-                        Err(_) => "integrity-error",
+                        Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
+                        Ok(_) => ReconciliationStatus::ContentMismatch,
+                        Err(_) => ReconciliationStatus::IntegrityError,
                     }
                 } else {
-                    "insufficient-integrity"
+                    ReconciliationStatus::InsufficientIntegrity
                 }
             } else if extraneous {
-                "extraneous"
+                ReconciliationStatus::Extraneous
             } else {
-                "ok"
+                ReconciliationStatus::Ok
             };
-            if args.check && selected && !matches!(reconciliation, "ok" | "excluded") {
+            if args.check && selected && !reconciliation.is_settled() {
                 check_failures.push(format!("{id}: {reconciliation}"));
             }
             let desired_constraint = desired_entry.map(|entry| match &entry.origin {
@@ -505,7 +508,7 @@ pub async fn execute_list(
                 desired_constraint,
                 locked_version: locked_entry.map(|entry| entry.resolved.version.clone()),
                 actual_version: installed_map.get(&id).map(|skill| skill.version.clone()),
-                reconciliation: reconciliation.to_string(),
+                reconciliation,
                 owners,
                 groups: desired_entry
                     .map(|entry| entry.groups.clone())

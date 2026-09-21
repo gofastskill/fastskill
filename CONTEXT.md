@@ -47,8 +47,29 @@ directory — not the Manifest — is the source of truth for what `skill list` 
 
 **Reconciliation**:
 The comparison of the three states — Manifest (desired), Lock (pinned), skills directory
-(actual) — producing a status per skill: `ok`, `missing`, `extraneous`, `mismatch`. Owned by
-`skill list`.
+(actual) — producing exactly one **reconciliation status** per skill. Owned by `skill list`.
+
+**Reconciliation status**:
+A closed vocabulary of eleven values. Two are **settled** — the skill needs no action:
+
+- `ok` — the three states agree.
+- `excluded` — the skill is required by something, but is outside the current selection.
+
+The other nine each name a specific disagreement, and `skill list --check` fails on any of
+them. Because `--check` is how callers gate a build, this vocabulary is a compatibility
+surface rather than an internal detail:
+
+- `missing-lock` — in the Manifest, absent from the Lock.
+- `missing-content` — selected, but absent from the skills directory.
+- `intent-mismatch` — the Manifest and the Lock disagree about where the skill comes from.
+- `revision-mismatch` — the installed version is not the pinned one.
+- `content-mismatch` — the installed content does not match the pinned checksum.
+- `integrity-error` — the installed content could not be read to check it.
+- `insufficient-integrity` — nothing pins the content, so it cannot be checked at all.
+- `ownership-conflict` — two **dependency roots** require the same skill at different content.
+- `extraneous` — installed, but no dependency root requires it.
+
+_Avoid_: `missing` and `mismatch` — neither is a status; name which one.
 
 **Installation scope**:
 The project or global environment whose requirements and installed contents an

@@ -31,7 +31,6 @@ pub mod project_apply;
 pub mod project_config;
 pub mod project_removal;
 pub mod project_state;
-pub mod reconciliation;
 pub mod registry;
 pub mod registry_index;
 pub mod reindex;
