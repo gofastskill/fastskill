@@ -12,6 +12,7 @@
 
 use super::SourcesError;
 use crate::storage::git::{clone_repository, redact_url_credentials, scrub_inherited_git_env};
+use tempfile::TempDir;
 
 /// Catalog locations inside a repository, in lookup order: the Claude Code
 /// standard location first, then the repository root.
@@ -68,6 +69,14 @@ pub(super) struct GitCatalog {
     /// Commit the checkout is at, when `git rev-parse` could tell. Listing
     /// URLs are pinned to it so they name the revision the catalog came from.
     pub(super) commit: Option<String>,
+    /// The clone the catalog was read from, held open for the caller.
+    ///
+    /// ADR-0014: a skill's id and version come from its own content, so the
+    /// listing must read `skill-project.toml`/`SKILL.md` beside the catalog,
+    /// at the same commit. Dropping the [`TempDir`] here -- as this did
+    /// before -- deleted the checkout before anything could look, leaving the
+    /// caller to guess identity from the catalog's path strings.
+    pub(super) checkout: TempDir,
 }
 
 /// Shallow-clone `url` at the configured ref (the remote's default branch
@@ -84,10 +93,13 @@ pub(super) async fn read_git_catalog(
     for found_at in CATALOG_PATHS {
         let candidate = checkout.path().join(found_at);
         if candidate.is_file() {
+            let body = std::fs::read(&candidate)?;
+            let commit = head_commit(checkout.path()).await;
             return Ok(GitCatalog {
-                body: std::fs::read(&candidate)?,
+                body,
                 found_at,
-                commit: head_commit(checkout.path()).await,
+                commit,
+                checkout,
             });
         }
     }

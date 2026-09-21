@@ -249,6 +249,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
             claude,
             "https://github.com/acme/skills.git".to_string(),
             "HEAD",
+            None,
         )
         .await
         .unwrap();
@@ -275,7 +276,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
     }))
     .unwrap();
     let without_base = manager
-        .convert_claude_to_fastskill_format(minimal.clone(), String::new(), "HEAD")
+        .convert_claude_to_fastskill_format(minimal.clone(), String::new(), "HEAD", None)
         .await
         .unwrap();
     assert_eq!(without_base.skills[0].description, "Skill from bare");
@@ -287,6 +288,7 @@ async fn claude_conversion_resolves_paths_descriptions_versions_and_urls() {
             minimal,
             "https://skills.example.test/base/".to_string(),
             "HEAD",
+            None,
         )
         .await
         .unwrap();
@@ -327,6 +329,7 @@ async fn github_download_urls_use_the_listing_ref_not_main() {
                 claude.clone(),
                 "https://github.com/acme/skills".to_string(),
                 listing_ref,
+                None,
             )
             .await
             .unwrap();
@@ -356,7 +359,7 @@ async fn ssh_remotes_produce_the_same_github_tree_url_as_https() {
         "ssh://git@github.com:22/acme/skills",
     ] {
         let converted = manager
-            .convert_claude_to_fastskill_format(claude.clone(), remote.to_string(), "main")
+            .convert_claude_to_fastskill_format(claude.clone(), remote.to_string(), "main", None)
             .await
             .unwrap();
         assert_eq!(
@@ -627,4 +630,135 @@ async fn index_conversion_deduplicates_versions_and_empty_disk_indexes_are_ignor
     let manager = SourcesManager::new(PathBuf::from("unused")).with_skill_cache(cache);
     assert!(manager.disk_index_marketplace("missing").await.is_none());
     assert!(manager.disk_index_marketplace("empty").await.is_none());
+}
+
+// --- ADR-0014: identity comes from the checkout, not from catalog paths ---
+//
+// These drive the conversion directly against a working tree. That a git
+// source actually *has* one at this point is a compile-time property rather
+// than a test one: `fetch_live_marketplace` passes `catalog.checkout.path()`,
+// which the borrow checker will not let outlive the `TempDir` it belongs to.
+// Driving them through a real `git clone` instead would make them depend on
+// `protocol.file.allow`, which some environments set to `never`.
+
+/// A working tree with one skill at `skill_rel` whose declared id and version
+/// differ from its folder name.
+fn checkout_with_skill(root: &std::path::Path, skill_rel: &str) {
+    let dir = root.join(skill_rel);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("SKILL.md"),
+        "---\nname: Rust CLI Dev\ndescription: Builds Rust CLIs\nversion: 0.0.1\n---\n\n# Rust\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("skill-project.toml"),
+        "[metadata]\nid = \"rust-dev\"\nversion = \"2.3.0\"\n",
+    )
+    .unwrap();
+}
+
+fn catalog_listing(entry: &str) -> ClaudeCodeMarketplaceJson {
+    serde_json::from_str(&format!(
+        r#"{{"name":"acme","owner":{{"name":"Acme"}},"metadata":{{"description":"Acme skills","version":"9.9.9"}},"plugins":[{{"name":"acme","description":"Acme plugin","source":"./","skills":["{entry}"]}}]}}"#
+    ))
+    .unwrap()
+}
+
+async fn convert_against(
+    checkout: &std::path::Path,
+    entry: &str,
+) -> Result<MarketplaceJson, SourcesError> {
+    let temp = TempDir::new().unwrap();
+    let manager = SourcesManager::new(temp.path().join("sources.toml"));
+    manager
+        .convert_claude_to_fastskill_format(
+            catalog_listing(entry),
+            "https://github.com/acme/skills".to_string(),
+            "main",
+            Some(checkout),
+        )
+        .await
+}
+
+/// The folder name is not the id. A skill at `workspace/cli-rust-dev/` that
+/// declares `id = "rust-dev"` is listed as `rust-dev` at its own version --
+/// not as `cli-rust-dev` at the catalog-wide `metadata.version`, which is
+/// what deriving identity from the catalog's path strings produced.
+#[tokio::test]
+async fn listing_reads_identity_from_the_checkout_not_the_path() {
+    let tmp = TempDir::new().unwrap();
+    checkout_with_skill(tmp.path(), "workspace/cli-rust-dev");
+
+    let listed = convert_against(tmp.path(), "./workspace/cli-rust-dev")
+        .await
+        .unwrap();
+
+    assert_eq!(listed.skills.len(), 1);
+    let skill = &listed.skills[0];
+    assert_eq!(skill.id, "rust-dev");
+    assert_eq!(skill.version, "2.3.0");
+    assert_eq!(skill.name, "Rust CLI Dev");
+    // The skill's own description, not the plugin's or the catalog's.
+    assert_eq!(skill.description, "Builds Rust CLIs");
+    assert_eq!(
+        skill.download_url.as_deref(),
+        Some("https://github.com/acme/skills/tree/main/workspace/cli-rust-dev")
+    );
+}
+
+/// A catalog entry that names no skill is a broken catalog, and says so.
+/// `./cli-rust-dev` is exactly what the old `marketplace create` wrote for a
+/// skill living at `workspace/cli-rust-dev`; it used to be listed as a
+/// perfectly plausible skill that only failed at install time.
+#[tokio::test]
+async fn listing_rejects_an_entry_that_names_no_skill() {
+    let tmp = TempDir::new().unwrap();
+    checkout_with_skill(tmp.path(), "workspace/cli-rust-dev");
+
+    let err = convert_against(tmp.path(), "./cli-rust-dev")
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("does not name a skill"), "{err}");
+    assert!(err.to_string().contains("./cli-rust-dev"), "{err}");
+}
+
+/// Catalog entries are data from a remote repository; one that climbs out of
+/// the checkout is refused, not followed.
+///
+/// A *leading* `/` is not an escape: Claude Code reads it as "from the
+/// repository root", and the resolver already strips it, so `/etc` names
+/// `<checkout>/etc` and fails as an ordinary missing entry.
+#[tokio::test]
+async fn listing_rejects_an_entry_that_escapes_the_checkout() {
+    let tmp = TempDir::new().unwrap();
+    checkout_with_skill(tmp.path(), "workspace/cli-rust-dev");
+
+    for entry in ["../../etc", "./a/../../b", "workspace/../../outside"] {
+        let err = convert_against(tmp.path(), entry).await.unwrap_err();
+        assert!(err.to_string().contains("without '..'"), "{entry}: {err}");
+    }
+}
+
+/// Without a checkout -- a zip-url source, whose skills are archives fetched
+/// over HTTP -- the path and the catalog-wide version remain all there is.
+/// Pinned so the narrowing of that gap is a deliberate, visible change.
+#[tokio::test]
+async fn listing_without_a_checkout_still_falls_back_to_the_path() {
+    let temp = TempDir::new().unwrap();
+    let manager = SourcesManager::new(temp.path().join("sources.toml"));
+
+    let listed = manager
+        .convert_claude_to_fastskill_format(
+            catalog_listing("./workspace/cli-rust-dev"),
+            String::new(),
+            "main",
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(listed.skills[0].id, "cli-rust-dev");
+    assert_eq!(listed.skills[0].version, "9.9.9");
 }

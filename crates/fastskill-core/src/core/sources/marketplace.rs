@@ -25,12 +25,17 @@ pub struct MarketplaceSkill {
 
 /// Claude Code marketplace.json format structures
 /// This format is used by Claude Code standard repositories
+///
+/// Optional fields are `skip_serializing_if = "Option::is_none"`: Claude Code's
+/// own validator rejects an explicit `null` where it expects an absent key, so a
+/// generated catalog that wrote `"owner": null` / `"description": null` /
+/// `"metadata": null` failed `claude plugin validate` outright (ADR-0014).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCodeMarketplaceJson {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<ClaudeCodeOwner>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ClaudeCodeMetadata>,
     pub plugins: Vec<ClaudeCodePlugin>,
 }
@@ -39,16 +44,16 @@ pub struct ClaudeCodeMarketplaceJson {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCodeOwner {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
 }
 
 /// Metadata in Claude Code format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCodeMetadata {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 }
 
@@ -56,11 +61,11 @@ pub struct ClaudeCodeMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeCodePlugin {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strict: Option<bool>,
     pub skills: Vec<String>, // Array of skill paths (relative to repository root)
 }
