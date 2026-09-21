@@ -5,6 +5,26 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 impl SkillProjectToml {
+    /// Read dependencies of an installed or fetched skill without following host paths.
+    /// Manifest composition is a project-authoring feature, not package metadata.
+    pub(crate) fn to_package_skill_entries(
+        &self,
+        manifest_dir: &Path,
+    ) -> Result<Vec<SkillEntry>, String> {
+        if self
+            .tool
+            .as_ref()
+            .and_then(|tool| tool.fastskill.as_ref())
+            .is_some_and(|config| !config.manifests.is_empty())
+        {
+            return Err(
+                "Manifest composition is only supported in project manifests, not skill packages"
+                    .into(),
+            );
+        }
+        self.direct_skill_entries(manifest_dir)
+    }
+
     /// Convert local and composed Manifest dependencies to install roots.
     /// Relative origins stay anchored to the Manifest that declares them.
     pub fn to_skill_entries(&self, manifest_dir: &Path) -> Result<Vec<SkillEntry>, String> {
@@ -52,15 +72,21 @@ impl SkillProjectToml {
             } else {
                 manifest_dir.join(declared_path)
             };
-            if path.is_dir() {
-                path.push("skill-project.toml");
-            }
-            let canonical = path.canonicalize().map_err(|error| {
+            let mut canonical = path.canonicalize().map_err(|error| {
                 format!(
                     "Failed to load composed Manifest '{name}' at {}: {error}",
                     path.display()
                 )
             })?;
+            if canonical.is_dir() {
+                path.push("skill-project.toml");
+                canonical = canonical
+                    .join("skill-project.toml")
+                    .canonicalize()
+                    .map_err(|error| {
+                        format!("Failed to load composed Manifest '{name}': {error}")
+                    })?;
+            }
             if let Some(position) = stack.iter().position(|candidate| candidate == &canonical) {
                 let mut cycle: Vec<_> = stack[position..]
                     .iter()
@@ -77,7 +103,9 @@ impl SkillProjectToml {
             }
             let referenced = Self::load_from_file(&canonical)
                 .map_err(|error| format!("Failed to load composed Manifest '{name}': {error}"))?;
-            let referenced_dir = canonical.parent().map(Path::to_path_buf).ok_or_else(|| {
+            // Canonical paths identify cycles, but origins retain the caller's path
+            // spelling, including Windows non-verbatim prefixes and symlink paths.
+            let referenced_dir = path.parent().map(Path::to_path_buf).ok_or_else(|| {
                 format!(
                     "Composed Manifest '{}' has no parent directory",
                     canonical.display()

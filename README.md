@@ -144,6 +144,10 @@ platform = "../platform-team/skill-project.toml"
 project. Relative paths are resolved from the Manifest that declares them. Duplicate declarations
 must agree; missing files, cycles, and conflicting origins fail before installation changes state.
 
+Manifest composition is supported in author-controlled project manifests. Installed or fetched
+skill packages must declare dependencies directly; their manifest references are rejected before
+any referenced file is read. This prevents packages from importing host project files.
+
 **Use a shared catalog (repository)**
 
 ```bash

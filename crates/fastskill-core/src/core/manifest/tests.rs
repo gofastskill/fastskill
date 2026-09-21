@@ -621,6 +621,34 @@ fn composed_manifests_reject_cycles_and_conflicting_dependencies() {
     assert!(cycle.contains("Manifest composition cycle"), "{cycle}");
 }
 
+#[cfg(unix)]
+#[test]
+fn composed_manifests_preserve_origin_paths_through_a_symlinked_project() {
+    let root = tempfile::tempdir().unwrap();
+    let real = root.path().join("real");
+    let alias = root.path().join("alias");
+    std::fs::create_dir_all(real.join("shared")).unwrap();
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    std::fs::write(real.join("skill-project.toml"),
+        "[dependencies.demo.origin]\ntype = \"local\"\npath = \"skill\"\n[tool.fastskill.manifests]\nteam = \"shared\"\n",
+    ).unwrap();
+    std::fs::write(
+        real.join("shared/skill-project.toml"),
+        "[dependencies.demo.origin]\ntype = \"local\"\npath = \"../skill\"\n",
+    )
+    .unwrap();
+    let project = SkillProjectToml::load_from_file(&alias.join("skill-project.toml")).unwrap();
+    let entries = project.to_skill_entries(&alias).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].origin,
+        Origin::Local {
+            path: alias.join("skill"),
+            editable: false
+        }
+    );
+}
+
 #[test]
 fn composed_manifests_accept_directory_and_absolute_paths_and_report_load_failures() {
     let root = tempfile::tempdir().unwrap();
@@ -645,6 +673,14 @@ fn composed_manifests_accept_directory_and_absolute_paths_and_report_load_failur
     .to_skill_entries(root.path())
     .unwrap_err();
     assert!(missing.contains("Failed to load composed Manifest 'missing'"));
+
+    std::fs::create_dir(root.path().join("empty")).unwrap();
+    let empty_directory =
+        SkillProjectToml::from_toml_str("[tool.fastskill.manifests]\nempty = \"empty\"\n")
+            .unwrap()
+            .to_skill_entries(root.path())
+            .unwrap_err();
+    assert!(empty_directory.contains("Failed to load composed Manifest 'empty'"));
 
     let malformed_path = root.path().join("malformed.toml");
     std::fs::write(&malformed_path, "invalid = [").unwrap();

@@ -40,6 +40,10 @@ shared-filesystem origins normally.
 identical declarations are deduplicated. Missing files, cycles, or different origins/groups for the
 same skill ID are errors and stop installation before managed state changes.
 
+Manifest composition is supported in author-controlled project manifests. Installed or fetched
+skill packages must declare dependencies directly; their manifest references are rejected before
+any referenced file is read. This prevents packages from importing host project files.
+
 ## Dependency origins
 
 These are examples of source declarations, not publicly available packages:

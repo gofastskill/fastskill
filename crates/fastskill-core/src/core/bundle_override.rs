@@ -160,7 +160,7 @@ fn validate_promotion_dependencies(
             "Failed to load personal override dependencies for '{override_id}': {error}"
         ))
     })?;
-    let requirements = manifest.to_skill_entries(source).map_err(|error| {
+    let requirements = manifest.to_package_skill_entries(source).map_err(|error| {
         ServiceError::Config(format!(
             "Failed to load personal override dependencies for '{override_id}': {error}"
         ))

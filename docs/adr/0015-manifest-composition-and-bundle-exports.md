@@ -34,3 +34,7 @@ The shared Manifest may declare Git, repository, ZIP URL, or shared-filesystem o
 Bundle authors maintain one dependency list and one identity. A bundle is always the offline-ready
 artifact; a reusable online setup remains a Manifest. The old member policy remains readable for
 installed legacy archives, but new builds make every member required.
+
+Manifest composition is supported in author-controlled project manifests. Installed or fetched
+skill packages must declare dependencies directly; their manifest references are rejected before
+any referenced file is read. This prevents packages from importing host project files.
