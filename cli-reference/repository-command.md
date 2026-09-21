@@ -1,12 +1,12 @@
 # repo commands
 
-FastSkill 0.9.242
+FastSkill 0.9.243
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: ba6c5374bf105c17bbc96061f1a39e6361270e34
+Release revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
 
-Documentation revision: ba6c5374bf105c17bbc96061f1a39e6361270e34
+Documentation revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
 
 
 
@@ -479,24 +479,38 @@ fastskill repo add local-dev --repo-type local ./skills --priority 2
 mkdir my-marketplace
 cd my-marketplace
 
-# 2. Add skills (each in its own subdirectory)
+# 2. Add skills (each in its own subdirectory, at any depth)
 git clone https://github.com/org/pptx.git skills/pptx
 git clone https://github.com/org/web-scraper.git skills/web-scraper
 
-# 3. Create marketplace.json
+# 3. Create marketplace.json. Each entry records the skill's real path
+#    relative to the directory holding .claude-plugin/, and each skill's id
+#    and version come from its own skill-project.toml / SKILL.md.
+fastskill marketplace create \
+  --name "My Marketplace" \
+  --owner-name "Your Name" \
+  --description "Collection of skills"
+
+# 4. In CI, fail if the committed catalog no longer matches the skills on
+#    disk (a skill added, moved, renamed, or re-versioned without regenerating)
 fastskill marketplace create \
   --name "My Marketplace" \
   --owner-name "Your Name" \
   --description "Collection of skills" \
-  --base-url https://cdn.example.com/marketplace/
+  --check
 
-# 4. Commit and push
+# 5. Commit and push
 git init
 git add .
 git commit -m "Initial marketplace"
 git remote add origin https://github.com/username/marketplace.git
 git push -u origin main
 ```
+
+`--owner-name` is required: Claude Code rejects a marketplace without an
+owner. Run `claude plugin validate .` to check the generated file against
+Claude Code's own rules.
+
 
 ### Troubleshooting
 
