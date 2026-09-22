@@ -73,8 +73,14 @@ _Avoid_: version requirement, semver range (a bare version is *not* a range here
 ### Team presets
 
 **Bundle**:
-A named, versioned collection distributed as a self-contained ZIP package containing a `skill-project.toml` and the exact contents of its skills and their skill dependencies.
+A self-contained ZIP export of a project Manifest. Its identity comes from `[metadata]`; it contains
+every declared skill, the installed dependency closure, resources, and exact content digests.
 _Avoid_: skill (when referring to the whole package).
+
+**Composed Manifest**:
+A `skill-project.toml` referenced under `[tool.fastskill.manifests]`. Its dependency roots are
+combined recursively with the consuming project without copying those declarations. Relative paths
+remain relative to the Manifest that declares them; cycles and conflicting declarations are errors.
 
 **Installed bundle**:
 A bundle recorded on a target with its identity, version, and skill membership, so its skills can be managed together while remaining individually inspectable.
@@ -85,10 +91,11 @@ An immutable set of packaged contents identified by a bundle identity and versio
 **Skill ownership**:
 The recorded bundle memberships, individual selections, and transitive requirements
 that require an installed skill to remain present. Multiple owners may share a
-skill when their selected contents agree, subject to the personal override rules.
+skill when their selected contents agree. Legacy archives may additionally carry personal override rules.
 
 **Personal override**:
-An explicitly declared personal skill selection with its own origin that replaces bundled contents where every owning bundle permits it. An untracked edit is not an approved override.
+A legacy bundle customization mechanism retained for archives created with explicit member policy.
+Manifest-driven bundles do not declare per-member override policy.
 
 **Preset**:
 A named selection of skills and customization rules for a team or project.

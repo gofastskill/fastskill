@@ -1,6 +1,8 @@
 # Publishable skill bundles and team presets
 
-Status: implemented. The user confirmed the consolidated product design and shared understanding after decisions Q1–Q24. This document defines the released bundle behavior.
+Status: historical requirements. Bundle authoring and reference-only reuse were superseded by
+[ADR-0015](../adr/0015-manifest-composition-and-bundle-exports.md): new builds export all project
+dependencies using `[metadata]`, while reusable online collections use Manifest composition.
 
 ## Confirmed need
 
@@ -16,7 +18,7 @@ command surface and archive contract are recorded below.
 
 Q4: A managed launcher may be offered later as an optional convenience. It cannot be required or relied on for enforcement. Bundle creation, publication, and installation must work independently of managed agent sessions. Installation does not establish that an independently launched agent used or followed the installed skills.
 
-## Agreed customization model
+## Historical customization model
 
 Presets distinguish required skills, overridable defaults, and permitted additions. Personal customization must respect those rules. Execution restrictions belong in the runtime and its permissions. The earlier proposal for managed CI checks and developer drift reporting is a future integration concern, not a prerequisite for the initial bundle feature.
 
@@ -70,7 +72,7 @@ fastskill bundle remove payments-team
 
 Q21: Packaging requires structural validation, complete skill dependencies, valid identities, and content digests. Agent evaluations are optional and separately invoked. Packaging and installation MUST NOT automatically execute bundled scripts or launch agents. Teams may require evaluations in their external publishing pipeline.
 
-## Consolidated archive and override contract
+## Historical archive and override contract
 
 The following captures the closing archive discussion, including Q22's versioned filenames, Q23's explicit overrides, and Q24's renamed-download behavior.
 

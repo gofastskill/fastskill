@@ -1,31 +1,30 @@
 ---
 title: Bundle commands
-description: Build, install, update, restore, and customize self-contained team skill bundles.
+description: Build, install, update, and restore self-contained project exports.
 ---
 
 # `bundle` commands
 
-Bundles turn a selected team setup into one versioned ZIP. The artifact contains the selected
-skills, their installed dependency closure, resource files, and content digests. A recipient can
+Bundles turn a skill project into one versioned ZIP. The artifact contains every declared skill,
+its installed dependency closure, resource files, and content digests. A recipient can
 install it without access to the original repositories.
 
 ## Build a bundle
 
-Complete the [quickstart](/quickstart), then add this declaration to that project's
-existing `skill-project.toml`. Keep its `[dependencies]` and `[tool.fastskill]` sections.
+Complete the [quickstart](/quickstart), then give the project an identity and version in its existing
+`skill-project.toml`:
 
 ```toml
-[bundle]
-format = "fastskill-bundle-v1"
+[metadata]
 id = "notes-team"
 version = "1.0.0"
 
-[bundle.members.review-notes]
-overridable = true
+[dependencies]
+review-notes = "2.1.0"
 ```
 
-Every bundle member must also appear in `[dependencies]`. The installed member version must
-satisfy that declaration. FastSkill stops before writing an artifact when a declared member is
+Every dependency becomes a bundle member. Its installed version must satisfy the declaration.
+FastSkill stops before writing an artifact when a declared dependency is
 missing, has invalid frontmatter, or has a different version.
 
 Build the release:
@@ -37,6 +36,9 @@ fastskill bundle build --output dist
 
 The result is `dist/notes-team-1.0.0.zip`. Its embedded identity, version, membership, and
 digests are authoritative, so renaming the download does not change the release.
+
+There is no `[bundle.members]` list to maintain. A source Manifest using the earlier `[bundle]`
+format remains buildable for migration, while all new bundles should use `[metadata]`.
 
 ## Install and inspect
 
@@ -81,7 +83,7 @@ fastskill bundle update notes-team --from ./notes-team-1.1.0.zip
 
 FastSkill checks the new artifact, shared ownership, local modifications, and release immutability
 before it changes installed members. The preview runs the same validation as apply and reports
-policy-only changes, such as a member becoming non-overridable, even when its bytes are unchanged.
+membership changes even when retained member bytes are unchanged.
 
 ## Remove a bundle
 
@@ -95,31 +97,32 @@ fastskill bundle remove notes-team --force
 Removing a direct declaration detaches that owner. FastSkill retains the installed member while a
 bundle or another dependency root still requires it. An ID that is only a transitive requirement
 cannot be removed directly; the error names the roots that require it. A member is deleted only
-after its final direct, transitive, bundle, and override owner is gone.
+after its final direct, transitive, or bundle owner is gone.
 
-## Personal overrides
+## Reuse a setup without packaging it
 
-An edited installed file is not an approved override. Put the customized skill in a separate
-directory and declare it explicitly. Every installed bundle that owns the skill must mark the
-member as `overridable = true`.
+A references-only bundle would duplicate a Manifest, so FastSkill uses Manifest composition for
+that case. A consuming project references the shared file once:
 
-```bash
-fastskill bundle override review-notes --from ./my-review-notes
+```toml
+[tool.fastskill.manifests]
+notes-team = "../notes-team/skill-project.toml"
 ```
 
-`fastskill project install` and `fastskill project install --lock` restore valid personal overrides after
-bundle members. Updates stop when a new bundle policy no longer permits an existing override.
+The shared Manifest can declare skills from multiple Git repositories, configured repositories,
+ZIP URLs, or shared paths. `project install` resolves the combined roots and the consuming project
+writes the exact results to its own `skills.lock`. References may be nested. FastSkill rejects
+missing files, reference cycles, and incompatible declarations of the same skill ID.
 
-Return to the packaged member and clear the override records in one operation:
+Use a bundle when recipients need an offline-ready artifact. Use a composed Manifest when they
+have access to the declared sources and should obtain the skills from those sources.
 
-```bash
-fastskill bundle override review-notes --reset
-```
+## Legacy member overrides
 
-Reset is blocked if retained bundles disagree on the packaged bytes or if the installed member has
-untracked edits. Removing the last bundle owner of a personal replacement keeps that replacement
-as an individual requirement instead of deleting it. FastSkill validates the replacement's complete
-dependency closure first; bundle removal is blocked if that closure cannot be retained.
+Bundles created with the earlier `[bundle.members]` format may permit a personal replacement.
+Those existing artifacts remain supported through `fastskill bundle override <skill-id> --from
+<directory>` and `fastskill bundle override <skill-id> --reset`. Manifest-driven builds make all
+members required and do not create new override policies.
 
 <Callout type="info">
 Every bundle action except `bundle list` changes files. The MCP server hides and refuses these

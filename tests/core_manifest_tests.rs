@@ -172,6 +172,7 @@ fn test_validation_project_level() {
         tool: Some(ToolSection {
             fastskill: Some(FastSkillToolConfig {
                 skills_directory: Some(PathBuf::from(".cursor/skills")),
+                manifests: std::collections::BTreeMap::new(),
                 embedding: None,
                 repositories: None,
                 server: None,

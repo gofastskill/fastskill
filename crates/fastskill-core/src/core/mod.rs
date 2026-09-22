@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod build_cache;
 pub mod bundle;
 pub(crate) mod bundle_archive;
+pub(crate) mod bundle_build;
 pub(crate) mod bundle_declared;
 pub(crate) mod bundle_override;
 pub(crate) mod bundle_persistence;

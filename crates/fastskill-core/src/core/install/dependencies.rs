@@ -23,7 +23,7 @@ pub(super) fn durable_dependencies(
     };
     let base = local_parent.as_deref().unwrap_or(fetched_path);
     let mut entries = manifest
-        .to_skill_entries(base)
+        .to_package_skill_entries(base)
         .map_err(ServiceError::Validation)?;
     let Some(specs) = manifest.dependencies.as_ref() else {
         return Ok(entries);
@@ -111,6 +111,48 @@ mod tests {
 
     fn dependency_manifest() -> SkillProjectToml {
         toml::from_str("[dependencies.child.origin]\ntype = \"local\"\npath = \"child\"\n").unwrap()
+    }
+
+    #[tokio::test]
+    async fn skill_packages_reject_manifest_composition_before_reading_host_files() {
+        let root = TempDir::new().unwrap();
+        let package = root.path().join("package");
+        std::fs::create_dir(&package).unwrap();
+        let outside = root.path().join("private.toml");
+        std::fs::write(&outside, "[dependencies]\nsecret = \"1.0.0\"\n").unwrap();
+        let service = FastSkillService::new(crate::ServiceConfig::default())
+            .await
+            .unwrap();
+        for reference in [
+            PathBuf::from("../private.toml"),
+            outside.clone(),
+            PathBuf::from("nested.toml"),
+        ] {
+            let manifest: SkillProjectToml = toml::from_str(&format!(
+                "[tool.fastskill.manifests]\nexternal = {:?}\n",
+                reference
+            ))
+            .unwrap();
+            let error = durable_dependencies(
+                &service,
+                &manifest,
+                &package,
+                &Origin::ZipUrl {
+                    url: "https://example.test/package.zip".into(),
+                },
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("only supported in project manifests"),
+                "{error}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(outside).unwrap(),
+            "[dependencies]\nsecret = \"1.0.0\"\n"
+        );
     }
 
     #[tokio::test]

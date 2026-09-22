@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::bundle_build::{prepare_bundle_build_manifest, serialized_document};
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember};
 
 fn recovery_destinations(recovery_map: &Path) -> Vec<PathBuf> {
@@ -100,6 +101,102 @@ fn bundle_project_parser_reports_each_invalid_manifest_contract() {
     .unwrap_err()
     .to_string()
     .contains("not declared in [dependencies]"));
+}
+
+#[test]
+fn bundle_build_manifest_derives_identity_and_all_members_from_project() {
+    let source = br#"schema_version = "2"
+[metadata]
+id = "platform-team"
+version = "1.4.0"
+
+[dependencies]
+review = "1.0.0"
+testing = "2.0.0"
+"#;
+    let (descriptor, dependencies, archive) =
+        prepare_bundle_build_manifest(source, Path::new(".")).unwrap();
+    assert_eq!(descriptor.id, "platform-team");
+    assert_eq!(descriptor.version, "1.4.0");
+    assert_eq!(descriptor.members.len(), 2);
+    assert!(descriptor
+        .members
+        .values()
+        .all(|member| !member.overridable));
+    assert_eq!(dependencies.len(), 2);
+    let archive = String::from_utf8(archive).unwrap();
+    assert!(archive.contains("[bundle]"));
+    assert!(archive.contains("[bundle.members.review]"));
+    assert!(archive.contains("[bundle.members.testing]"));
+}
+
+#[test]
+fn bundle_build_manifest_includes_composed_manifest_roots() {
+    let root = TempDir::new().unwrap();
+    let shared = root.path().join("shared");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(
+        shared.join("skill-project.toml"),
+        "[dependencies.shared]\norigin = { type = \"local\", path = \"skill\" }\n",
+    )
+    .unwrap();
+    let source = b"[metadata]\nid = \"team\"\nversion = \"1.0.0\"\n[dependencies]\nlocal = \"1.0.0\"\n[tool.fastskill.manifests]\nshared = \"shared/skill-project.toml\"\n";
+
+    let (descriptor, dependencies, archive) =
+        prepare_bundle_build_manifest(source, root.path()).unwrap();
+
+    assert_eq!(descriptor.members.len(), 2);
+    assert!(descriptor.members.contains_key("local"));
+    assert!(descriptor.members.contains_key("shared"));
+    assert!(dependencies.contains_key("shared"));
+    let (_, archived_dependencies) = parse_bundle_project(&archive).unwrap();
+    assert!(archived_dependencies.contains_key("shared"));
+}
+
+#[test]
+fn bundle_build_manifest_requires_complete_metadata_and_dependencies() {
+    for (manifest, expected) in [
+        ("[dependencies]\ndemo = \"1.0.0\"", "requires [metadata]"),
+        (
+            "[metadata]\nversion = \"1.0.0\"\n[dependencies]\ndemo = \"1.0.0\"",
+            "[metadata].id",
+        ),
+        (
+            "[metadata]\nid = \"team\"\n[dependencies]\ndemo = \"1.0.0\"",
+            "[metadata].version",
+        ),
+        (
+            "[metadata]\nid = \"team\"\nversion = \"1.0.0\"\n[dependencies]\n",
+            "at least one [dependencies] entry",
+        ),
+    ] {
+        let error = prepare_bundle_build_manifest(manifest.as_bytes(), Path::new("."))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+    }
+
+    let invalid_utf8 = prepare_bundle_build_manifest(&[0xff], Path::new("."))
+        .unwrap_err()
+        .to_string();
+    assert!(invalid_utf8.contains("not UTF-8"), "{invalid_utf8}");
+
+    let invalid_toml = prepare_bundle_build_manifest(b"[metadata", Path::new("."))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        invalid_toml.contains("Invalid skill-project.toml"),
+        "{invalid_toml}"
+    );
+
+    let unsupported_map_key = BTreeMap::from([(vec![1_u8], "value")]);
+    let serialization = serialized_document(&unsupported_map_key)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        serialization.contains("Failed to serialize bundle manifest"),
+        "{serialization}"
+    );
 }
 
 #[test]

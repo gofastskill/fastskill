@@ -113,12 +113,9 @@ groups, bundles, and the install destination. Restore `global-skills.lock` with
 **Build and share a team bundle**
 
 ```toml
-[bundle]
-format = "fastskill-bundle-v1"
+[metadata]
 id = "platform-team"
 version = "1.0.0"
-
-[bundle.members.code-review]
 
 [dependencies]
 code-review = "2.1.0"
@@ -130,15 +127,26 @@ fastskill bundle add dist/platform-team-1.0.0.zip
 fastskill bundle list
 ```
 
-Bundle builds validate each selected skill against its declared version. Installed bundle members
+Bundle builds include every declared skill and its installed dependency closure, validating each
+skill against its declaration. Installed bundle members
 stay protected from `skill remove`; remove the owning setup with
 `fastskill bundle remove platform-team --force`. See the
-[bundle guide](webdocs/cli-reference/bundle-command.mdx) for updates, lock-based restoration, and
-personal overrides.
+[bundle guide](webdocs/cli-reference/bundle-command.mdx) for updates and lock-based restoration.
 
-Reset a permitted personal replacement to the packaged member with
-`fastskill bundle override <member-id> --reset`. FastSkill keeps a shared member until its last
-direct, transitive, bundle, or override owner is removed.
+**Compose a shared team manifest**
+
+```toml
+[tool.fastskill.manifests]
+platform = "../platform-team/skill-project.toml"
+```
+
+`project install` recursively combines the referenced Manifest's dependencies with the local
+project. Relative paths are resolved from the Manifest that declares them. Duplicate declarations
+must agree; missing files, cycles, and conflicting origins fail before installation changes state.
+
+Manifest composition is supported in author-controlled project manifests. Installed or fetched
+skill packages must declare dependencies directly; their manifest references are rejected before
+any referenced file is read. This prevents packages from importing host project files.
 
 **Use a shared catalog (repository)**
 

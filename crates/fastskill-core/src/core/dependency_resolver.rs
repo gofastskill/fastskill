@@ -222,7 +222,7 @@ impl DependencyResolver {
         // manifest — the installed skill's directory — not to the root project.
         let manifest_dir = manifest_path.parent().unwrap_or(Path::new("."));
         project
-            .to_skill_entries(manifest_dir)
+            .to_package_skill_entries(manifest_dir)
             .map_err(ManifestError::Parse)
     }
 }

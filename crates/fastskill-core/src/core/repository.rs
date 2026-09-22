@@ -240,6 +240,7 @@ impl RepositoryManager {
             project.tool = Some(crate::core::manifest::ToolSection {
                 fastskill: Some(crate::core::manifest::FastSkillToolConfig {
                     skills_directory: None,
+                    manifests: std::collections::BTreeMap::new(),
                     embedding: None,
                     repositories: Some(manifest_repos),
                     server: None,
@@ -253,6 +254,7 @@ impl RepositoryManager {
             if tool.fastskill.is_none() {
                 tool.fastskill = Some(crate::core::manifest::FastSkillToolConfig {
                     skills_directory: None,
+                    manifests: std::collections::BTreeMap::new(),
                     embedding: None,
                     repositories: Some(manifest_repos),
                     server: None,

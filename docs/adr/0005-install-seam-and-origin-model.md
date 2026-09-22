@@ -76,8 +76,8 @@ affected files. Preview and apply MUST use the same rules; apply MUST revalidate
 state that could have changed since planning. A refetchable origin alone is not
 evidence that its installed contents are outdated.
 
-All writers MUST preserve supported Manifest sections, including bundle authoring,
-bundle dependencies, and personal overrides. A writer MUST NOT serialize a partial
+All writers MUST preserve supported Manifest sections, including composed Manifest declarations,
+bundle dependencies, and legacy personal overrides. A writer MUST NOT serialize a partial
 model over a complete document. Fetching and validation MUST finish before a
 working installation is replaced, and persistence failures MUST NOT be reported as
 successful installation. The recovery unit and acceptance scenarios are specified

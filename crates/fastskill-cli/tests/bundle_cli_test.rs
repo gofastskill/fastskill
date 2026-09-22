@@ -91,7 +91,7 @@ fn assert_success(output: std::process::Output) -> String {
 }
 
 #[test]
-fn bundle_build_explains_the_required_bundle_declaration() {
+fn bundle_build_explains_the_required_project_metadata() {
     let project = TempDir::new().unwrap();
     fs::write(
         project.path().join("skill-project.toml"),
@@ -103,12 +103,11 @@ fn bundle_build_explains_the_required_bundle_declaration() {
 
     assert!(!output.status.success());
     let error = String::from_utf8(output.stderr).unwrap();
-    assert!(error.contains("has no [bundle] declaration"), "{error}");
-    assert!(error.contains("fastskill bundle build --help"), "{error}");
+    assert!(error.contains("requires [metadata]"), "{error}");
 }
 
 #[test]
-fn bundle_build_help_shows_a_complete_bundle_declaration() {
+fn bundle_build_help_shows_a_complete_manifest_declaration() {
     let project = TempDir::new().unwrap();
 
     let output = run(project.path(), &["bundle", "build", "--help"]);
@@ -118,12 +117,42 @@ fn bundle_build_help_shows_a_complete_bundle_declaration() {
         help.contains("Add this to skill-project.toml before building:"),
         "{help}"
     );
-    assert!(help.contains("[bundle]"), "{help}");
-    assert!(help.contains("format = \"fastskill-bundle-v1\""), "{help}");
+    assert!(help.contains("[metadata]"), "{help}");
     assert!(help.contains("id = \"payments-team\""), "{help}");
     assert!(help.contains("version = \"1.2.0\""), "{help}");
-    assert!(help.contains("[bundle.members.code-review]"), "{help}");
     assert!(help.contains("code-review = \"1.0.0\""), "{help}");
+}
+
+#[test]
+fn bundle_build_uses_metadata_and_packages_every_dependency() {
+    let project = TempDir::new().unwrap();
+    for id in ["code-review", "testing"] {
+        fs::create_dir_all(project.path().join("skills").join(id)).unwrap();
+        fs::write(
+            project.path().join("skills").join(id).join("SKILL.md"),
+            format!("---\nname: {id}\nversion: 1.0.0\ndescription: {id}\n---\n"),
+        )
+        .unwrap();
+    }
+    fs::write(
+        project.path().join("skill-project.toml"),
+        "schema_version = \"2\"\n[metadata]\nid = \"platform-team\"\nversion = \"1.0.0\"\n[dependencies]\ncode-review = \"1.0.0\"\ntesting = \"1.0.0\"\n[tool.fastskill]\nskills_directory = \"skills\"\n",
+    )
+    .unwrap();
+
+    assert_success(run(project.path(), &["bundle", "build"]));
+    let artifact = project.path().join("platform-team-1.0.0.zip");
+    assert!(artifact.is_file());
+    let extracted = TempDir::new().unwrap();
+    fastskill_core::storage::zip::ZipHandler::new()
+        .unwrap()
+        .extract_to_dir(&artifact, extracted.path())
+        .unwrap();
+    assert!(extracted
+        .path()
+        .join("skills/code-review/SKILL.md")
+        .is_file());
+    assert!(extracted.path().join("skills/testing/SKILL.md").is_file());
 }
 
 #[test]
