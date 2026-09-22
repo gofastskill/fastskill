@@ -19,9 +19,6 @@
 <loc>https://docs.gofastskill.com/welcome</loc>
 </url>
 <url>
-<loc>https://docs.gofastskill.com/configuration/init-command</loc>
-</url>
-<url>
 <loc>https://docs.gofastskill.com/cli-reference/bundle-command</loc>
 </url>
 <url>
@@ -65,6 +62,9 @@
 </url>
 <url>
 <loc>https://docs.gofastskill.com/cli-reference/update-command</loc>
+</url>
+<url>
+<loc>https://docs.gofastskill.com/configuration/init-command</loc>
 </url>
 <url>
 <loc>https://docs.gofastskill.com/evals-quality/cluster-analysis</loc>

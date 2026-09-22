@@ -1,12 +1,12 @@
 # cache Command
 
-FastSkill 0.9.243
+FastSkill 0.9.244
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
+Release revision: a1671ec96114becc4cc8eecb5a3ae7c0ddfc5634
 
-Documentation revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
+Documentation revision: a1671ec96114becc4cc8eecb5a3ae7c0ddfc5634
 
 
 

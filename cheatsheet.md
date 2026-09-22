@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.243
+FastSkill 0.9.244
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
+Release revision: a1671ec96114becc4cc8eecb5a3ae7c0ddfc5634
 
-Documentation revision: e4ca871058054389e06ffc0b42286eb5b78f48c0
+Documentation revision: a1671ec96114becc4cc8eecb5a3ae7c0ddfc5634
 
 
 
@@ -33,18 +33,23 @@ Quick reference for common FastSkill operations, ordered from everyday manifest 
 
 ## Team bundles
 
-| Operation         | Command                                                   | What It Does                                                                         |
-| ----------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Build release     | `fastskill bundle build --output dist`                    | Validates declared member versions and creates a self-contained `<id>-<version>.zip` |
-| Install bundle    | `fastskill bundle add ./team-1.0.0.zip`                   | Installs members and records bundle ownership in the manifest and lock               |
-| List bundles      | `fastskill bundle list`                                   | Shows installed bundle identities, versions, and members                             |
-| Restore locked    | `fastskill project install --lock`                        | Restores the exact bundle releases and digests in `skills.lock`                      |
-| Update bundle     | `fastskill bundle update team --from ./team-1.1.0.zip`    | Verifies and applies an explicitly selected release                                  |
-| Remove bundle     | `fastskill bundle remove team`                            | Removes bundle ownership and only deletes members with no other owner                |
-| Personal override | `fastskill bundle override member --from ./custom-member` | Declares a permitted replacement for an overridable member                           |
-| Reset override    | `fastskill bundle override member --reset`                | Restores agreed packaged bytes and clears the personal replacement                   |
+| Operation      | Command                                                | What It Does                                                                            |
+| -------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Build release  | `fastskill bundle build --output dist`                 | Uses `[metadata]` identity, packages all dependencies, and creates `<id>-<version>.zip` |
+| Install bundle | `fastskill bundle add ./team-1.0.0.zip`                | Installs members and records bundle ownership in the manifest and lock                  |
+| List bundles   | `fastskill bundle list`                                | Shows installed bundle identities, versions, and members                                |
+| Restore locked | `fastskill project install --lock`                     | Restores the exact bundle releases and digests in `skills.lock`                         |
+| Update bundle  | `fastskill bundle update team --from ./team-1.1.0.zip` | Verifies and applies an explicitly selected release                                     |
+| Remove bundle  | `fastskill bundle remove team`                         | Removes bundle ownership and only deletes members with no other owner                   |
 
 See [bundle command](/cli-reference/bundle-command) for the manifest shape and ownership rules.
+
+## Shared Manifests
+
+| Task                    | Declaration                  | Result                                                              |
+| ----------------------- | ---------------------------- | ------------------------------------------------------------------- |
+| Compose a team setup    | `[tool.fastskill.manifests]` | Adds every dependency from the referenced `skill-project.toml`      |
+| Install the composition | `fastskill project install`  | Resolves the combined dependency roots and writes one `skills.lock` |
 
 ## Add skills
 
