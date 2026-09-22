@@ -110,9 +110,9 @@ pub async fn get_skill(
 /// `SKILL.md` (spec 003 §5 / Phase 3 §Q4). Always mounted on the read router
 /// (not write-gated). PATH-CONFINEMENT is a hard requirement here: the
 /// resolved file must canonicalize to somewhere inside the canonicalized
-/// skills directory, or the request is rejected — this endpoint must never
-/// become a directory-traversal primitive, even though `serve` itself is not a
-/// security boundary (ADR-0003).
+/// skills directory, except for the exact target of an installed editable
+/// symlink. This endpoint must never become a directory-traversal primitive,
+/// even though `serve` itself is not a security boundary (ADR-0003).
 pub async fn get_skill_content(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
@@ -137,17 +137,36 @@ pub async fn get_skill_content(
     };
 
     let confined =
-        crate::security::path::validate_path_within_root(&candidate, &state.skills_directory)
-            .map_err(|e| match e {
-                crate::security::path::PathSecurityError::EscapesRoot(msg)
-                | crate::security::path::PathSecurityError::TraversalAttempt(msg)
-                | crate::security::path::PathSecurityError::InvalidComponent(msg) => {
-                    HttpError::BadRequest(msg)
+        match crate::security::path::validate_path_within_root(&candidate, &state.skills_directory)
+        {
+            Ok(path) => path,
+            Err(escape_error) => {
+                let installed_root = state.skills_directory.join(&skill_id);
+                let editable_target = std::fs::symlink_metadata(&installed_root)
+                    .ok()
+                    .filter(|metadata| metadata.file_type().is_symlink())
+                    .and_then(|_| installed_root.join("SKILL.md").canonicalize().ok());
+                let candidate_target = candidate.canonicalize().ok();
+                match (editable_target, candidate_target) {
+                    (Some(editable), Some(candidate)) if editable == candidate => candidate,
+                    _ => {
+                        return Err(match escape_error {
+                            crate::security::path::PathSecurityError::EscapesRoot(msg)
+                            | crate::security::path::PathSecurityError::TraversalAttempt(msg)
+                            | crate::security::path::PathSecurityError::InvalidComponent(msg) => {
+                                HttpError::BadRequest(msg)
+                            }
+                            crate::security::path::PathSecurityError::CanonicalizationFailed(_) => {
+                                HttpError::NotFound(format!(
+                                    "Skill file not found on disk: {}",
+                                    skill_id
+                                ))
+                            }
+                        });
+                    }
                 }
-                crate::security::path::PathSecurityError::CanonicalizationFailed(_) => {
-                    HttpError::NotFound(format!("Skill file not found on disk: {}", skill_id))
-                }
-            })?;
+            }
+        };
 
     let content = tokio::fs::read_to_string(&confined)
         .await
@@ -486,6 +505,29 @@ mod tests {
         )
         .await
         .is_ok());
+
+        #[cfg(unix)]
+        {
+            let editable = root.path().join("editable-source");
+            std::fs::create_dir(&editable).unwrap();
+            std::fs::write(editable.join("SKILL.md"), "# editable").unwrap();
+            std::fs::remove_dir_all(state.skills_directory.join("demo")).unwrap();
+            std::os::unix::fs::symlink(&editable, state.skills_directory.join("demo")).unwrap();
+            definition.skill_file = editable.join("SKILL.md");
+            service
+                .skill_manager()
+                .force_register_skill(definition.clone())
+                .await
+                .unwrap();
+            let response = get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.0.data.unwrap().content, "# editable");
+        }
 
         let outside = root.path().join("outside.md");
         std::fs::write(&outside, "outside").unwrap();

@@ -183,6 +183,33 @@ fn project_loaders_share_manifest_resolution_and_validate_server_origins() {
     let repositories = load_repositories_from_project().unwrap();
     assert_eq!(repositories.len(), 1);
     assert_eq!(repositories[0].repo_type, RepositoryType::Local);
+    let nested = root.path().join("nested/project");
+    fs::create_dir_all(&nested).unwrap();
+    let nested_cwd = CurrentDirectoryGuard::enter(&nested);
+    let repositories = load_repositories_from_project().unwrap();
+    assert!(matches!(
+        repositories[0].config,
+        RepositoryConfig::Local { ref path } if path == &PathBuf::from("catalog")
+    ));
+    let catalog = root.path().join("catalog/demo");
+    fs::create_dir_all(&catalog).unwrap();
+    fs::write(
+        catalog.join("SKILL.md"),
+        "---\nname: demo\ndescription: demo\nversion: 1.0.0\n---\n",
+    )
+    .unwrap();
+    let manager = RepositoryManager::from_definitions(repositories);
+    let listed = tokio::runtime::Runtime::new().unwrap().block_on(async {
+        manager
+            .get_client("local")
+            .await
+            .unwrap()
+            .list_skills()
+            .await
+            .unwrap()
+    });
+    assert_eq!(listed.len(), 1);
+    drop(nested_cwd);
 
     let expected_skills = root.path().join("managed-skills");
     assert_eq!(

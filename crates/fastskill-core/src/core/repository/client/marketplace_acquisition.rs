@@ -1,4 +1,5 @@
 use super::{RepositoryClientError, RepositoryConfig};
+use crate::core::service::ServiceError;
 use crate::core::sources::SourcesManager;
 use reqwest::Client;
 use std::io::{Cursor, Write};
@@ -93,7 +94,6 @@ fn find_skill(root: &Path, id: &str, version: &str) -> Result<PathBuf, Repositor
 
 fn archive_skill(directory: &Path, id: &str) -> Result<Vec<u8>, RepositoryClientError> {
     let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     for entry in WalkDir::new(directory).follow_links(false) {
         let entry = entry.map_err(|error| RepositoryClientError::Client(error.to_string()))?;
         if entry.file_type().is_symlink() {
@@ -108,6 +108,12 @@ fn archive_skill(directory: &Path, id: &str) -> Result<Vec<u8>, RepositoryClient
             RepositoryClientError::Client(format!("cannot archive '{id}': {error}"))
         })?;
         let name = relative.to_string_lossy().replace('\\', "/");
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(
+                crate::utils::package_file_mode(entry.path())
+                    .map_err(|error| RepositoryClientError::Service(ServiceError::Io(error)))?,
+            );
         archive
             .start_file(name, options)
             .map_err(|error| RepositoryClientError::Client(error.to_string()))?;
@@ -176,9 +182,28 @@ mod tests {
     fn archive_has_skill_at_root_and_rejects_links() {
         let root = tempfile::tempdir().unwrap();
         let directory = skill(root.path(), "source", "demo", "Demo", "1.0.0");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::create_dir(directory.join("scripts")).unwrap();
+            let script = directory.join("scripts/run.sh");
+            std::fs::write(&script, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let bytes = archive_skill(&directory, "demo").unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         assert!(archive.by_name("SKILL.md").is_ok());
+
+        #[cfg(unix)]
+        assert_eq!(
+            archive
+                .by_name("scripts/run.sh")
+                .unwrap()
+                .unix_mode()
+                .unwrap()
+                & 0o777,
+            0o755
+        );
 
         #[cfg(unix)]
         {

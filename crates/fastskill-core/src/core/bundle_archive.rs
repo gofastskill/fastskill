@@ -81,14 +81,24 @@ pub(super) fn write_bundle_archive(
 ) -> Result<(), ServiceError> {
     let file = fs::File::create(artifact).map_err(ServiceError::Io)?;
     let mut writer = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
+    let metadata_options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
-    write_zip_file(&mut writer, "skill-project.toml", manifest, options)?;
+    write_zip_file(
+        &mut writer,
+        "skill-project.toml",
+        manifest,
+        metadata_options,
+    )?;
     let lock_content = toml::to_string_pretty(archive_lock).map_err(|error| {
         ServiceError::Config(format!("Failed to serialize bundle skills.lock: {error}"))
     })?;
-    write_zip_file(&mut writer, "skills.lock", lock_content.as_bytes(), options)?;
+    write_zip_file(
+        &mut writer,
+        "skills.lock",
+        lock_content.as_bytes(),
+        metadata_options,
+    )?;
     for member in members.values() {
         for entry in WalkDir::new(&member.source).sort_by_file_name() {
             let entry = entry.map_err(|error| ServiceError::Io(std::io::Error::other(error)))?;
@@ -114,7 +124,11 @@ pub(super) fn write_bundle_archive(
                 &mut writer,
                 &archive_path,
                 &fs::read(entry.path()).map_err(ServiceError::Io)?,
-                options,
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated)
+                    .unix_permissions(
+                        crate::utils::package_file_mode(entry.path()).map_err(ServiceError::Io)?,
+                    ),
             )?;
         }
     }
@@ -136,4 +150,53 @@ fn write_zip_file(
         ))
     })?;
     writer.write_all(content).map_err(ServiceError::Io)
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::core::bundle::{BundleMemberPolicy, BUNDLE_FORMAT};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn bundle_archive_preserves_the_executable_bit_for_member_files() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("demo");
+        std::fs::create_dir_all(source.join("scripts")).unwrap();
+        std::fs::write(source.join("SKILL.md"), "skill").unwrap();
+        let script = source.join("scripts/run.sh");
+        std::fs::write(&script, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let descriptor = BundleDescriptor {
+            format_marker: BUNDLE_FORMAT.to_string(),
+            id: "team".to_string(),
+            version: "1.0.0".to_string(),
+            members: BTreeMap::from([("demo".to_string(), BundleMemberPolicy::default())]),
+        };
+        let members = BTreeMap::from([(
+            "demo".to_string(),
+            PreparedMember {
+                id: "demo".to_string(),
+                source,
+                digest: "digest".to_string(),
+                overridable: false,
+            },
+        )]);
+        let lock = BundleArchiveLock::from_members(&descriptor, &members);
+        let artifact = root.path().join("bundle.zip");
+
+        write_bundle_archive(&artifact, b"manifest", &lock, &members).unwrap();
+
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(artifact).unwrap()).unwrap();
+        assert_eq!(
+            archive
+                .by_name("skills/demo/scripts/run.sh")
+                .unwrap()
+                .unix_mode()
+                .unwrap()
+                & 0o777,
+            0o755
+        );
+    }
 }

@@ -191,7 +191,7 @@ pub async fn execute_init(mut args: InitArgs) -> CliResult<()> {
     let download_url = resolve_download_url(&args)?;
     let skills_directory = resolve_skills_directory(is_skill_level, &args)?;
 
-    let skill_id = resolve_skill_id()?;
+    let skill_id = resolve_skill_id(is_skill_level, &frontmatter)?;
 
     let meta = InitMetadata {
         skill_id: &skill_id,
@@ -355,7 +355,26 @@ struct InitMetadata<'a> {
     skills_directory: &'a Option<String>,
 }
 
-fn resolve_skill_id() -> CliResult<String> {
+fn resolve_skill_id(
+    is_skill_level: bool,
+    frontmatter: &fastskill_core::core::metadata::SkillFrontmatter,
+) -> CliResult<String> {
+    if is_skill_level {
+        let skill_id = frontmatter
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("id"))
+            .or_else(|| {
+                (!frontmatter.name.is_empty() && frontmatter.name != "Unknown")
+                    .then_some(&frontmatter.name)
+            });
+        if let Some(skill_id) = skill_id {
+            validate_identifier(skill_id).map_err(|error| {
+                CliError::InvalidIdentifier(format!("Skill ID '{}': {}", skill_id, error))
+            })?;
+            return Ok(skill_id.clone());
+        }
+    }
     let current_dir = std::env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
     let skill_id = current_dir
@@ -746,6 +765,29 @@ mod tests {
         assert!(content.contains("author = \"Ada\""));
         assert!(!content.contains("\n[tool.fastskill]\n"));
         assert!(content.contains("# [tool.fastskill]"));
+    }
+
+    #[tokio::test]
+    async fn skill_init_preserves_content_identity_when_folder_name_differs() {
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let project = valid_dir(&temp_dir, "source-folder");
+        fs::write(
+            project.join("SKILL.md"),
+            "---\nname: canonical-skill\ndescription: Demo skill\nversion: 1.0.0\n---\n",
+        )
+        .unwrap();
+        let _cwd = CwdGuard::enter(&project);
+
+        execute_init(args()).await.unwrap();
+
+        let project = SkillProjectToml::load_from_file(Path::new("skill-project.toml")).unwrap();
+        assert_eq!(
+            project.metadata.and_then(|metadata| metadata.id).as_deref(),
+            Some("canonical-skill")
+        );
     }
 
     #[test]

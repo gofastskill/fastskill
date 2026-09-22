@@ -98,6 +98,10 @@ priority = 3
 zip_url = "https://example.com/skills/"
 ```
 
+Relative local repository paths are resolved from the directory containing
+`skill-project.toml`. They therefore keep the same meaning when FastSkill is invoked from a
+nested project directory.
+
 `zip_url` is the manifest field for a ZIP catalog's base URL. Direct ZIP dependency
 origins use `origin.type = "zip-url"` and `origin.url` instead. These are different
 configuration objects.
