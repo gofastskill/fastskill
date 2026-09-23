@@ -1,12 +1,12 @@
 # Security Best Practices
 
-FastSkill 0.9.246
+FastSkill 0.9.248
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Release revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
-Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Documentation revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
 
 
@@ -46,6 +46,11 @@ protection comes from *how you run and expose it*.
 
 * **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
   manager. Commit `skill-project.toml`; keep the token value out of the repo.
+
+* **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT to
+  index and artifact URLs only when they have the same scheme, host, and port as `index_url`.
+  Use a pre-signed URL or separately authenticated delivery layer when artifacts are hosted on
+  another origin.
 
 * **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
   embedding-based features silently skip rather than failing — but do not paste the key into config

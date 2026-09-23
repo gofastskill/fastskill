@@ -1,12 +1,12 @@
 # Configure skill sources
 
-FastSkill 0.9.246
+FastSkill 0.9.248
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Release revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
-Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Documentation revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
 
 
@@ -104,6 +104,10 @@ type = "zip-url"
 priority = 3
 zip_url = "https://example.com/skills/"
 ```
+
+Relative local repository paths are resolved from the directory containing
+`skill-project.toml`. They therefore keep the same meaning when FastSkill is invoked from a
+nested project directory.
 
 `zip_url` is the manifest field for a ZIP catalog's base URL. Direct ZIP dependency
 origins use `origin.type = "zip-url"` and `origin.url` instead. These are different

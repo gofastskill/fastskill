@@ -1,12 +1,12 @@
 # project init
 
-FastSkill 0.9.246
+FastSkill 0.9.248
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Release revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
-Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Documentation revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
 
 
@@ -135,13 +135,15 @@ example-skill = { origin = { type = "git", url = "https://github.com/user/exampl
 
 ## Skill ID Detection
 
-The skill ID is automatically derived from the current directory name:
+For an existing skill, the skill ID is preserved from `SKILL.md`: `metadata.id` when present,
+otherwise `name`. The directory name is used only when initializing a project without a
+`SKILL.md`:
 
 ```bash
-# In directory: /path/to/my-skill
-# → Skill ID: my-skill
+# In directory: /path/to/source-folder
+# SKILL.md contains: name: my-skill
 
-cd my-skill
+cd source-folder
 fastskill project init
 # Creates: [metadata] id = "my-skill"
 ```

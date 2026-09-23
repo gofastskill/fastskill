@@ -1,12 +1,12 @@
 # Bundle commands
 
-FastSkill 0.9.246
+FastSkill 0.9.248
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Release revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
-Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
+Documentation revision: 13e6863cfec5c25999a6d649659285a48b3188bc
 
 
 
@@ -14,7 +14,8 @@ Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 Bundles turn a skill project into one versioned ZIP. The artifact contains every declared skill,
 its installed dependency closure, resource files, and content digests. A recipient can
-install it without access to the original repositories.
+install it without access to the original repositories. On Unix systems, executable files remain
+executable after bundle installation; other permission bits are normalized for portability.
 
 ## Build a bundle
 
