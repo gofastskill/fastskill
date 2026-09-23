@@ -287,22 +287,10 @@ pub fn load_server_config() -> CliResult<Option<HttpServerConfig>> {
         .and_then(|f| f.server);
 
     if let Some(server) = server_toml {
-        // Validate and convert allowed_origins
-        let allowed_origins: Vec<String> = server
-            .allowed_origins
-            .into_iter()
-            .filter(|origin| {
-                if is_valid_origin(origin) {
-                    true
-                } else {
-                    tracing::warn!("Invalid origin in config, skipping: {}", origin);
-                    false
-                }
-            })
-            .collect();
-
+        // Validated when `serve` builds its CORS layer, so a bad entry stops
+        // the server instead of being skipped here.
         let http_config = HttpServerConfig {
-            allowed_origins,
+            allowed_origins: server.allowed_origins,
             allowed_headers: server.allowed_headers,
         };
 
@@ -310,21 +298,6 @@ pub fn load_server_config() -> CliResult<Option<HttpServerConfig>> {
     } else {
         Ok(None)
     }
-}
-
-/// Validate that an origin string is a valid URI origin
-pub fn is_valid_origin(origin: &str) -> bool {
-    // Basic validation: must be a non-empty string that looks like a URL
-    if origin.trim().is_empty() {
-        return false;
-    }
-
-    // Check for valid URL pattern (http://, https://)
-    let after_proto = origin
-        .strip_prefix("http://")
-        .or_else(|| origin.strip_prefix("https://"));
-
-    matches!(after_proto, Some(after) if !after.is_empty())
 }
 
 #[cfg(test)]

@@ -143,17 +143,7 @@ fn converts_every_repository_connection_without_losing_metadata() {
 }
 
 #[test]
-fn origin_validation_accepts_http_origins_and_rejects_incomplete_values() {
-    assert!(is_valid_origin("http://localhost:8080"));
-    assert!(is_valid_origin("https://fastskill.dev"));
-    assert!(!is_valid_origin(""));
-    assert!(!is_valid_origin("   "));
-    assert!(!is_valid_origin("https://"));
-    assert!(!is_valid_origin("ftp://fastskill.dev"));
-}
-
-#[test]
-fn project_loaders_share_manifest_resolution_and_validate_server_origins() {
+fn project_loaders_share_manifest_resolution_and_server_config() {
     let _process_state = CONFIG_PROCESS_STATE.lock().unwrap();
     let root = tempfile::TempDir::new().unwrap();
     let _cwd = CurrentDirectoryGuard::enter(root.path());
@@ -170,7 +160,7 @@ fn project_loaders_share_manifest_resolution_and_validate_server_origins() {
          embedding_model = \"example-embedding\"\n\
          index_path = \"custom-index\"\n\
          [tool.fastskill.server]\n\
-         allowed_origins = [\"https://fastskill.dev\", \"invalid\"]\n\
+         allowed_origins = [\"https://fastskill.dev\"]\n\
          allowed_headers = [\"Content-Type\", \"X-FastSkill\"]\n\
          [[tool.fastskill.repositories]]\n\
          name = \"local\"\n\
