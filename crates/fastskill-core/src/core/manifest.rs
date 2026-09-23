@@ -405,7 +405,9 @@ pub struct FastSkillToolConfig {
     /// Maximum dependency depth for recursive install (default: 5)
     #[serde(default = "default_install_depth")]
     pub install_depth: u32,
-    /// Skip transitive dependency resolution entirely (default: false)
+    /// Declare that no installed skill needs another skill (default: false).
+    /// `install`, `add` and `update` refuse a plan that would pull in a
+    /// dependency, rather than install an incomplete set.
     #[serde(default)]
     pub skip_transitive: bool,
     /// Optional evaluation configuration

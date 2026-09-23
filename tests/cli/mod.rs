@@ -28,6 +28,7 @@ pub mod repository_tests;
 pub mod serve_e2e_tests;
 pub mod shorthand_e2e_tests;
 pub mod skillopt_tests;
+pub mod skip_transitive_e2e_tests;
 pub mod snapshot_helpers;
 pub mod test_helpers;
 pub mod unit_tests;

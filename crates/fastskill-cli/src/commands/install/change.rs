@@ -1,4 +1,4 @@
-use super::plan::{PlannedSkill, PreparedInstallPlan};
+use super::plan::{reject_transitive, InstallSettings, PlannedSkill, PreparedInstallPlan};
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::manifest::SkillEntry;
@@ -38,10 +38,11 @@ pub(crate) async fn prepare_changes(
     lock_path: &Path,
     manifest_dir: &Path,
     roots: Vec<ChangeRoot>,
-    max_levels: u32,
+    settings: InstallSettings,
     offline: bool,
     preview: bool,
 ) -> CliResult<(PreparedInstallPlan, Vec<ChangePreview>)> {
+    let max_levels = settings.max_levels;
     let existing = if lock_path.exists() {
         Some(
             ProjectSkillsLock::load_from_file(lock_path)
@@ -163,7 +164,8 @@ pub(crate) async fn prepare_changes(
             required_by: candidate.required_by,
             dependencies: candidate.dependencies,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    reject_transitive(settings.skip_transitive, &planned)?;
     let root_ids = resolution.root_ids;
     let expected_manifest: Vec<_> = root_ids
         .iter()
