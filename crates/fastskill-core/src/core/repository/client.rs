@@ -49,6 +49,7 @@ pub trait RepositoryClient: Send + Sync {
 pub async fn create_client(
     repo: &RepositoryDefinition,
 ) -> Result<Arc<dyn RepositoryClient + Send + Sync>, ServiceError> {
+    repo.validate().map_err(ServiceError::Validation)?;
     match repo.repo_type {
         RepositoryType::GitMarketplace | RepositoryType::ZipUrl | RepositoryType::Local => {
             Ok(Arc::new(MarketplaceRepositoryClient::new(repo)?))

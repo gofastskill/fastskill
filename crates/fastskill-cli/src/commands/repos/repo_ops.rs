@@ -302,6 +302,7 @@ pub async fn execute_add(
         auth,
         storage: None,
     };
+    repo.validate().map_err(CliError::Config)?;
 
     repo_manager
         .add_repository(name.clone(), repo)
