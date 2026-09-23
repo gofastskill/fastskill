@@ -199,4 +199,75 @@ mod tests {
             0o755
         );
     }
+
+    #[test]
+    fn bundle_lock_verification_rejects_identity_and_content_changes() {
+        let descriptor = BundleDescriptor {
+            format_marker: BUNDLE_FORMAT.to_string(),
+            id: "team".to_string(),
+            version: "1.0.0".to_string(),
+            members: BTreeMap::from([("demo".to_string(), BundleMemberPolicy::default())]),
+        };
+        let members = BTreeMap::from([(
+            "demo".to_string(),
+            PreparedMember {
+                id: "demo".to_string(),
+                source: std::path::PathBuf::from("demo"),
+                digest: "digest".to_string(),
+                overridable: false,
+            },
+        )]);
+        let lock = BundleArchiveLock::from_members(&descriptor, &members);
+        lock.verify(&descriptor, &members).unwrap();
+
+        let mut wrong_identity = descriptor.clone();
+        wrong_identity.version = "2.0.0".to_string();
+        assert!(matches!(
+            lock.verify(&wrong_identity, &members),
+            Err(ServiceError::Validation(message))
+                if message.contains("does not match bundle identity")
+        ));
+
+        let mut changed_members = members;
+        changed_members.get_mut("demo").unwrap().digest = "changed".to_string();
+        assert!(matches!(
+            lock.verify(&descriptor, &changed_members),
+            Err(ServiceError::Validation(message))
+                if message.contains("do not match the digests")
+        ));
+    }
+
+    #[test]
+    fn bundle_archive_rejects_symlinks_and_invalid_artifact_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("demo");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "skill").unwrap();
+        std::os::unix::fs::symlink(source.join("SKILL.md"), source.join("linked")).unwrap();
+        let descriptor = BundleDescriptor {
+            format_marker: BUNDLE_FORMAT.to_string(),
+            id: "team".to_string(),
+            version: "1.0.0".to_string(),
+            members: BTreeMap::from([("demo".to_string(), BundleMemberPolicy::default())]),
+        };
+        let members = BTreeMap::from([(
+            "demo".to_string(),
+            PreparedMember {
+                id: "demo".to_string(),
+                source,
+                digest: "digest".to_string(),
+                overridable: false,
+            },
+        )]);
+        let lock = BundleArchiveLock::from_members(&descriptor, &members);
+
+        assert!(matches!(
+            write_bundle_archive(&root.path().join("bundle.zip"), b"manifest", &lock, &members),
+            Err(ServiceError::Validation(message)) if message.contains("symbolic link")
+        ));
+        assert!(matches!(
+            write_bundle_archive(root.path(), b"manifest", &lock, &members),
+            Err(ServiceError::Io(_))
+        ));
+    }
 }

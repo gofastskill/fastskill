@@ -141,11 +141,10 @@ pub async fn get_skill_content(
         {
             Ok(path) => path,
             Err(escape_error) => {
-                let installed_root = state.skills_directory.join(&skill_id);
-                let editable_target = std::fs::symlink_metadata(&installed_root)
-                    .ok()
-                    .filter(|metadata| metadata.file_type().is_symlink())
-                    .and_then(|_| installed_root.join("SKILL.md").canonicalize().ok());
+                // Editable origins are authoritative managed state. Permit only
+                // their exact SKILL.md target; the route ID is never used to
+                // construct or open a path.
+                let editable_target = editable_skill_target(&skill, &candidate);
                 let candidate_target = candidate.canonicalize().ok();
                 match (editable_target, candidate_target) {
                     (Some(editable), Some(candidate)) if editable == candidate => candidate,
@@ -200,6 +199,22 @@ pub async fn get_skill_content(
         format: format.as_str().to_string(),
         content: rendered_content,
     })))
+}
+
+fn editable_skill_target(
+    skill: &crate::core::skill_manager::SkillDefinition,
+    candidate: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    let Origin::Local {
+        path,
+        editable: true,
+    } = &skill.origin
+    else {
+        return None;
+    };
+    let expected = path.join("SKILL.md").canonicalize().ok()?;
+    let candidate = candidate.canonicalize().ok()?;
+    (candidate == expected).then_some(candidate)
 }
 
 /// Render `SKILL.md` Markdown to sanitized HTML (spec 003 v2 / Phase 4 §5
@@ -514,6 +529,10 @@ mod tests {
             std::fs::remove_dir_all(state.skills_directory.join("demo")).unwrap();
             std::os::unix::fs::symlink(&editable, state.skills_directory.join("demo")).unwrap();
             definition.skill_file = editable.join("SKILL.md");
+            definition.origin = Origin::Local {
+                path: editable.clone(),
+                editable: true,
+            };
             service
                 .skill_manager()
                 .force_register_skill(definition.clone())
@@ -527,6 +546,41 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(response.0.data.unwrap().content, "# editable");
+
+            let scoped_source = root.path().join("scoped-editable-source");
+            std::fs::create_dir(&scoped_source).unwrap();
+            std::fs::write(scoped_source.join("SKILL.md"), "# scoped editable").unwrap();
+            std::fs::create_dir(state.skills_directory.join("team")).unwrap();
+            std::os::unix::fs::symlink(
+                &scoped_source,
+                state.skills_directory.join("team/reviewer"),
+            )
+            .unwrap();
+            let scoped_id = SkillId::new("team/reviewer".to_string()).unwrap();
+            let mut scoped_definition = SkillDefinition::new(
+                scoped_id,
+                "reviewer".to_string(),
+                "reviewer".to_string(),
+                "1.0.0".to_string(),
+                Origin::Local {
+                    path: scoped_source.clone(),
+                    editable: true,
+                },
+            );
+            scoped_definition.skill_file = scoped_source.join("SKILL.md");
+            service
+                .skill_manager()
+                .force_register_skill(scoped_definition)
+                .await
+                .unwrap();
+            let response = get_skill_content(
+                State(state.clone()),
+                Path("team/reviewer".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.0.data.unwrap().content, "# scoped editable");
         }
 
         let outside = root.path().join("outside.md");

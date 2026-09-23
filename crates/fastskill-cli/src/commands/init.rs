@@ -16,6 +16,7 @@ use fastskill_core::core::manifest::{
     MANIFEST_SCHEMA_VERSION,
 };
 use fastskill_core::core::metadata::parse_yaml_frontmatter;
+use fastskill_core::core::service::SkillId;
 use fastskill_core::core::validation::{
     validate_identifier, validate_project_structure, validate_semver,
 };
@@ -369,7 +370,7 @@ fn resolve_skill_id(
                     .then_some(&frontmatter.name)
             });
         if let Some(skill_id) = skill_id {
-            validate_identifier(skill_id).map_err(|error| {
+            SkillId::new(skill_id.clone()).map_err(|error| {
                 CliError::InvalidIdentifier(format!("Skill ID '{}': {}", skill_id, error))
             })?;
             return Ok(skill_id.clone());
@@ -788,6 +789,36 @@ mod tests {
             project.metadata.and_then(|metadata| metadata.id).as_deref(),
             Some("canonical-skill")
         );
+    }
+
+    #[test]
+    fn skill_id_resolution_honors_metadata_and_legacy_fallbacks() {
+        let metadata_id = parse_yaml_frontmatter(
+            "---\nname: display-name\ndescription: Demo\nmetadata:\n  id: team/canonical-id\n---\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_skill_id(true, &metadata_id).unwrap(),
+            "team/canonical-id"
+        );
+
+        let invalid = parse_yaml_frontmatter(
+            "---\nname: display-name\ndescription: Demo\nmetadata:\n  id: invalid id\n---\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            resolve_skill_id(true, &invalid),
+            Err(CliError::InvalidIdentifier(_))
+        ));
+
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp_dir = TempDir::new().unwrap();
+        let project = valid_dir(&temp_dir, "folder-fallback");
+        let _cwd = CwdGuard::enter(&project);
+        let unnamed = parse_yaml_frontmatter("---\ndescription: Demo\n---\n").unwrap();
+        assert_eq!(resolve_skill_id(true, &unnamed).unwrap(), "folder-fallback");
     }
 
     #[test]
