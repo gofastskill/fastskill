@@ -42,6 +42,7 @@ pub mod skill_manager;
 pub(crate) mod skill_walk;
 pub mod sources;
 pub mod state_guard;
+pub mod unknown_keys;
 pub mod update;
 pub mod validation;
 pub mod vector_index;

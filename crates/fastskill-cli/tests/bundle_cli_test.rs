@@ -55,7 +55,7 @@ fn write_recipient(root: &Path) -> std::path::PathBuf {
     fs::create_dir_all(&storage).unwrap();
     fs::write(
         root.join("skill-project.toml"),
-        "custom_root = \"keep\"\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n[tool.fastskill.extension]\nflag = true\n\n[dependencies]\n",
+        "custom_root = \"keep\"\n\n[tool.fastskill]\nskills_directory = \".claude/skills\"\n\n[tool.other]\nflag = true\n\n[dependencies]\n",
     )
     .unwrap();
     storage
@@ -537,10 +537,7 @@ fn adding_and_removing_an_unrelated_skill_preserves_bundle_and_extension_tables(
     let manifest = fs::read_to_string(recipient.path().join("skill-project.toml")).unwrap();
     assert!(manifest.contains("[bundles.payments-team]"), "{manifest}");
     assert!(manifest.contains("custom_root = \"keep\""), "{manifest}");
-    assert!(
-        manifest.contains("[tool.fastskill.extension]"),
-        "{manifest}"
-    );
+    assert!(manifest.contains("[tool.other]"), "{manifest}");
     assert!(manifest.contains("flag = true"), "{manifest}");
 }
 

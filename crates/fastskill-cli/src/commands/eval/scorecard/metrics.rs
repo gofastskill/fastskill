@@ -8,12 +8,12 @@
 
 use crate::error::{CliError, CliResult};
 use fastskill_evals::checks::load_checks_file;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// What a metric measures, and the bar it has to clear.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MetricKind {
     /// Passing check results over observed check results, for the named check
@@ -34,7 +34,7 @@ pub enum MetricKind {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MetricSpec {
     pub name: String,
     /// Case-id patterns, `*` matching any run of characters. An empty list
@@ -47,7 +47,7 @@ pub struct MetricSpec {
 }
 
 /// The metrics file as written.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MetricsFile {
     #[serde(rename = "metric", default)]
     pub metrics: Vec<MetricSpec>,
@@ -105,13 +105,27 @@ pub fn load_metrics(path: &Path) -> CliResult<MetricsFile> {
             e
         ))
     })?;
-    let parsed: MetricsFile = toml::from_str(&text).map_err(|e| {
+    let parse_error = |e: toml::de::Error| {
         config_error(format!(
             "cannot parse metrics file '{}': {}",
             path.display(),
             e
         ))
-    })?;
+    };
+    let parsed: MetricsFile = toml::from_str(&text).map_err(parse_error)?;
+    // Every optional key changes the question silently when misspelt: a lost
+    // `cases` gates every case, a lost `criterion` scores `overall`, and a lost
+    // `suites` leaves the benchmark unhashable.
+    let raw: toml::Value = toml::from_str(&text).map_err(parse_error)?;
+    let dropped = fastskill_core::core::unknown_keys::dropped_keys(&raw, &parsed, "metrics");
+    if !dropped.is_empty() {
+        return Err(config_error(
+            fastskill_core::core::unknown_keys::unknown_keys_message(
+                &format!("metrics file '{}'", path.display()),
+                &dropped,
+            ),
+        ));
+    }
     if parsed.metrics.is_empty() {
         return Err(config_error(format!(
             "metrics file '{}' declares no [[metric]] entries",
@@ -235,6 +249,40 @@ mod tests {
         let err = load_metrics(&path).unwrap_err().to_string();
         assert!(err.contains("EVAL_SCORECARD_CONFIG"), "{err}");
         assert!(err.contains("no [[metric]] entries"), "{err}");
+    }
+
+    #[test]
+    fn a_misspelt_metrics_key_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("metrics.toml");
+        std::fs::write(
+            &path,
+            "suite = [\"s\"]\n[[metric]]\nname = \"Judge\"\nkind = \"judge_score\"\n\
+             judges = [\"j\"]\ncritera = \"tone\"\nmin_score = 0.5\n",
+        )
+        .unwrap();
+        let err = load_metrics(&path).unwrap_err().to_string();
+        assert!(err.contains("EVAL_SCORECARD_CONFIG"), "{err}");
+        assert!(err.contains("metrics.suite"), "{err}");
+        assert!(err.contains("metrics.metric.0.critera"), "{err}");
+    }
+
+    #[test]
+    fn a_missing_metrics_file_is_a_config_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = load_metrics(&dir.path().join("metrics.toml"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot read metrics file"), "{err}");
+    }
+
+    #[test]
+    fn a_metrics_file_that_is_not_toml_is_a_config_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("metrics.toml");
+        std::fs::write(&path, "[[metric]\nname = \"Judge\"\n").unwrap();
+        let err = load_metrics(&path).unwrap_err().to_string();
+        assert!(err.contains("cannot parse metrics file"), "{err}");
     }
 
     #[test]
@@ -387,6 +435,19 @@ min_rate = 0.85
             .to_string();
         assert!(err.contains("EVAL_SCORECARD_CONFIG"), "{err}");
         assert!(err.contains("suites/consultation"), "{err}");
+    }
+
+    #[test]
+    fn a_suite_without_its_checks_file_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let suite_dir = suite(dir.path(), "consultation", "Judge this.");
+        std::fs::remove_file(suite_dir.join("checks.toml")).unwrap();
+        let path = metrics_with_suites(dir.path());
+        let file = load_metrics(&path).unwrap();
+        let err = benchmark_sha256(&path, &file.suites)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("has no checks.toml"), "{err}");
     }
 
     #[test]

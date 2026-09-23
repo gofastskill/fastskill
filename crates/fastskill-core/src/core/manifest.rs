@@ -595,6 +595,35 @@ impl SkillProjectToml {
         Self::from_toml_str(&content)
     }
 
+    /// Parse manifest content, then refuse unknown keys under `[tool.fastskill]`.
+    pub fn from_toml_str(content: &str) -> Result<Self, ManifestError> {
+        let project = Self::parse_any_schema(content)?;
+        project.reject_unknown_tool_keys(content)?;
+        Ok(project)
+    }
+
+    /// `[tool.fastskill]` is FastSkill's own table, so a misspelt key there would
+    /// silently change behaviour; refuse it. The rest of the manifest stays
+    /// permissive: other tools' tables and sections this version does not model
+    /// are kept as they are.
+    fn reject_unknown_tool_keys(&self, content: &str) -> Result<(), ManifestError> {
+        let Some(config) = self.tool.as_ref().and_then(|tool| tool.fastskill.as_ref()) else {
+            return Ok(());
+        };
+        let raw: toml::Value =
+            toml::from_str(content).map_err(|error| ManifestError::Parse(error.to_string()))?;
+        let Some(raw) = raw.get("tool").and_then(|tool| tool.get("fastskill")) else {
+            return Ok(());
+        };
+        let dropped = crate::core::unknown_keys::dropped_keys(raw, config, "tool.fastskill");
+        if dropped.is_empty() {
+            return Ok(());
+        }
+        Err(ManifestError::Parse(
+            crate::core::unknown_keys::unknown_keys_message("skill-project.toml", &dropped),
+        ))
+    }
+
     /// Parse manifest content, upgrading a legacy (pre-`Origin`) file in memory.
     ///
     /// Dispatch is driven by the `schema_version` key, read in a cheap first pass (the same
@@ -614,7 +643,7 @@ impl SkillProjectToml {
     ///
     /// Nothing is written to disk here. The upgrade is persisted only when something saves
     /// the manifest for its own reasons — see [`SkillProjectToml::save_to_file`].
-    pub fn from_toml_str(content: &str) -> Result<Self, ManifestError> {
+    fn parse_any_schema(content: &str) -> Result<Self, ManifestError> {
         /// First pass: read only `schema_version`, ignoring everything else. A legacy file
         /// does not parse as the current shape, so the version cannot be read from a full parse.
         #[derive(Deserialize)]
