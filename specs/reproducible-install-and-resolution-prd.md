@@ -184,7 +184,7 @@ provider credentials or paid evaluations are needed.
 
 Start with [add installation orchestration](../crates/fastskill-cli/src/commands/add/install.rs),
 [install orchestration](../crates/fastskill-cli/src/commands/install.rs),
-[dependency resolver](../crates/fastskill-core/src/core/dependency_resolver.rs),
+[dependency resolution](../crates/fastskill-core/src/core/resolution.rs),
 [core acquisition](../crates/fastskill-core/src/core/install.rs),
 [version selection](../crates/fastskill-core/src/core/install/support.rs),
 [repository clients](../crates/fastskill-core/src/core/repository/client.rs), and

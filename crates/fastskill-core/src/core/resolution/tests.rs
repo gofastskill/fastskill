@@ -519,6 +519,40 @@ async fn rejects_cycle_duplicate_root_and_truncated_depth() {
     );
 }
 
+/// A cycle first reached through non-cyclic paths (a -> b, d -> c, b <-> c)
+/// escapes the per-chain BFS check and is caught by the final acyclicity
+/// pass; the reported path must not depend on HashMap iteration order.
+#[tokio::test]
+async fn cycle_behind_distinct_roots_reports_a_stable_path() {
+    let temp = TempDir::new().unwrap();
+    let a = temp.path().join("a");
+    let b = temp.path().join("b");
+    let c = temp.path().join("c");
+    let d = temp.path().join("d");
+    write_skill(&a, "a", &[("b", &b)]);
+    write_skill(&d, "d", &[("c", &c)]);
+    write_skill(&b, "b", &[("c", &c)]);
+    write_skill(&c, "c", &[("b", &b)]);
+    let service = service(temp.path()).await;
+
+    let mut messages = std::collections::BTreeSet::new();
+    for _ in 0..16 {
+        let error = prepare_resolution(
+            &service,
+            vec![root(a.clone(), "a"), root(d.clone(), "d")],
+            &HashMap::new(),
+            5,
+            false,
+        )
+        .await
+        .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("circular dependency"), "{message}");
+        messages.insert(message);
+    }
+    assert_eq!(messages.len(), 1, "cycle path is unstable: {messages:?}");
+}
+
 #[tokio::test]
 async fn locked_restore_detects_source_drift_and_missing_facts() {
     let temp = TempDir::new().unwrap();

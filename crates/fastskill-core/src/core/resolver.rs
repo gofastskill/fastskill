@@ -265,8 +265,8 @@ impl PackageResolver {
     ///
     /// Renamed from `resolve_dependencies_recursive` (PARTIAL-8): this method
     /// resolves only the directly supplied `dependencies` — it does not fetch
-    /// resolved skills' transitive dependencies. Real transitive traversal lives
-    /// in `DependencyResolver` (see `dependency_resolver.rs`).
+    /// resolved skills' transitive dependencies. Transitive traversal for
+    /// install lives in `core::resolution` (`prepare_resolution`).
     fn resolve_dependency_list(
         &self,
         _skill_id: &str,

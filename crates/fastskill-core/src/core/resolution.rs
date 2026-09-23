@@ -458,7 +458,10 @@ fn validate_acyclic(candidates: &[ResolutionCandidate]) -> Result<(), ServiceErr
     let mut complete = HashSet::new();
     let mut active = HashSet::new();
     let mut chain = Vec::new();
-    for id in graph.keys().copied() {
+    // Walk candidates in their (deterministic) resolution order, not HashMap
+    // order, so the reported cycle path is stable across runs.
+    for candidate in candidates {
+        let id = candidate.prepared.id();
         visit_dependency(id, &graph, &mut active, &mut complete, &mut chain)?;
     }
     Ok(())
