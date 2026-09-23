@@ -62,14 +62,6 @@ pub struct ReindexArgs {
     /// Force re-indexing of all skills (ignore existing hashes)
     pub force: bool,
 
-    /// Maximum number of concurrent embedding requests
-    ///
-    /// NOTE (core-seam gap): the core `reindex` seam processes skills
-    /// sequentially and takes no concurrency parameter, so this is currently
-    /// accepted but has no effect. Kept for CLI/arg compatibility.
-    #[allow(dead_code)]
-    pub max_concurrent: usize,
-
     /// Show progress bars and processing details
     pub progress: bool,
 
@@ -106,17 +98,6 @@ impl IntoCommandSpec for ReindexArgs {
                     value_type: ArgValueType::Bool,
                     cardinality: Cardinality::Optional,
                     default: None,
-                    ..Default::default()
-                },
-                ArgSpec {
-                    name: "max-concurrent",
-                    long: Some("max-concurrent"),
-                    short: None,
-                    help: "Maximum concurrent embedding requests",
-                    kind: ArgKind::Option,
-                    value_type: ArgValueType::Int,
-                    cardinality: Cardinality::Optional,
-                    default: Some(ArgValue::Int(5)),
                     ..Default::default()
                 },
                 ArgSpec {
@@ -158,16 +139,6 @@ impl FromArgValueMap for ReindexArgs {
                 }
             }),
             force: matches!(map.get("force"), Some(ArgValue::Bool(true))),
-            max_concurrent: map
-                .get("max-concurrent")
-                .and_then(|v| {
-                    if let ArgValue::Int(n) = v {
-                        Some(*n as usize)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(5),
             progress: matches!(map.get("progress"), Some(ArgValue::Bool(true))),
             no_progress: matches!(map.get("no-progress"), Some(ArgValue::Bool(true))),
         }
@@ -344,7 +315,6 @@ Test skill content"#,
         let args = ReindexArgs {
             skills_dir: None,
             force: false,
-            max_concurrent: 5,
             progress: false,
             no_progress: false,
         };
@@ -378,7 +348,6 @@ Test skill content"#,
         let args = ReindexArgs {
             skills_dir: Some(nonexistent_dir),
             force: false,
-            max_concurrent: 5,
             progress: false,
             no_progress: false,
         };
@@ -413,7 +382,6 @@ Test skill content"#,
         let args = ReindexArgs {
             skills_dir: Some(skills_dir),
             force: true,
-            max_concurrent: 5,
             progress: false,
             no_progress: false,
         };
@@ -458,7 +426,6 @@ Test skill content"#,
         let args = ReindexArgs {
             skills_dir: Some(skills_dir.clone()),
             force: false,
-            max_concurrent: 2,
             progress: true,
             no_progress: false,
         };
@@ -469,7 +436,6 @@ Test skill content"#,
         let force_args = ReindexArgs {
             skills_dir: Some(skills_dir),
             force: true,
-            max_concurrent: 2,
             progress: false,
             no_progress: true,
         };
@@ -494,7 +460,6 @@ Test skill content"#,
         let args = ReindexArgs {
             skills_dir: None,
             force: false,
-            max_concurrent: 5,
             progress: true,
             no_progress: true,
         };

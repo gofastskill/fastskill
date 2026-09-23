@@ -21,7 +21,7 @@ Options:
   -l, --limit <limit>            Maximum number of results [default: 10]
   -f, --format <format>          Output format: table, json, grid, xml
       --json                     Shorthand for --format json
-      --embedding <embedding>    Use embedding search: true, false, or auto
+      --embedding <embedding>    Use embedding search (requires --local): true, false, or auto
       --paths                    Output resolved file paths instead of search results (--local only)
       --content <content>        Content to include in JSON output: none, preview, full (--local
                                  --paths only)

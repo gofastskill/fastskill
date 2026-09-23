@@ -131,39 +131,21 @@ embedding_model = "text-embedding-3-small"
     assert_snapshot_with_settings("reindex_force", &result.stdout, &cli_snapshot_settings());
 }
 
+/// `--max-concurrent` was accepted and silently ignored (indexing is
+/// sequential); it is now an unknown argument so callers learn it did nothing.
 #[test]
-fn test_reindex_max_concurrent() {
+fn test_reindex_rejects_max_concurrent() {
     let temp_dir = TempDir::new().unwrap();
-    let skills_dir = temp_dir.path().join(".skills");
-    fs::create_dir_all(&skills_dir).unwrap();
-
-    // Create config for reindex
-    let config_content = r#"[dependencies]
-
-[tool.fastskill]
-skills_directory = ".skills"
-
-[tool.fastskill.embedding]
-openai_base_url = "https://api.openai.com/v1"
-embedding_model = "text-embedding-3-small"
-"#;
-    fs::write(temp_dir.path().join("skill-project.toml"), config_content).unwrap();
-
-    // Set OPENAI_API_KEY to avoid config requirement
-    let env_vars = vec![("OPENAI_API_KEY", "test-key")];
-    let result = run_fastskill_command_with_env(
+    let result = run_fastskill_command(
         &["index", "rebuild", "--max-concurrent", "2"],
-        &env_vars,
         Some(temp_dir.path()),
     );
 
-    assert!(result.success);
-    // Should succeed with concurrency limit
-
-    assert_snapshot_with_settings(
-        "reindex_max_concurrent",
-        &result.stdout,
-        &cli_snapshot_settings(),
+    assert!(!result.success, "--max-concurrent must be rejected");
+    assert!(
+        result.stderr.contains("unknown argument"),
+        "stderr: {}",
+        result.stderr
     );
 }
 
