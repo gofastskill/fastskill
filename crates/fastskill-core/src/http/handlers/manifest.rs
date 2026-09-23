@@ -65,22 +65,21 @@ fn ensure_document_unchanged(
     }
 }
 
-/// Get repositories from skill-project.toml using the canonical From impl.
+/// Repositories of the project and every Manifest it composes, converted with
+/// the canonical From impl.
 pub(crate) fn get_repositories(
     project: &SkillProjectToml,
-) -> Vec<crate::core::repository::RepositoryDefinition> {
-    project
-        .tool
-        .as_ref()
-        .and_then(|t| t.fastskill.as_ref())
-        .and_then(|f| f.repositories.as_ref())
-        .map(|repos| {
-            repos
-                .iter()
-                .map(crate::core::repository::RepositoryDefinition::from)
-                .collect()
-        })
-        .unwrap_or_default()
+    project_path: &std::path::Path,
+) -> HttpResult<Vec<crate::core::repository::RepositoryDefinition>> {
+    let project_dir = project_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    Ok(project
+        .composed_repositories(project_dir)
+        .map_err(HttpError::InternalServerError)?
+        .iter()
+        .map(crate::core::repository::RepositoryDefinition::from)
+        .collect())
 }
 
 fn dep_source_type(spec: &DependencySpec) -> &'static str {
@@ -292,7 +291,7 @@ pub async fn add_skill_to_manifest(
         });
 
     // Get repositories and create manager
-    let repositories = get_repositories(&project);
+    let repositories = get_repositories(&project, project_path)?;
     let repo_manager = RepositoryManager::from_definitions(repositories);
 
     // Get sources manager for marketplace-based repositories. spec 008: opts

@@ -11,27 +11,27 @@ use axum::{
 };
 use std::collections::HashSet;
 
-fn get_repository_manager(project_file_path: &std::path::Path) -> RepositoryManager {
-    if project_file_path.exists() {
-        if let Ok(project) =
-            crate::core::manifest::SkillProjectToml::load_from_file(project_file_path)
-        {
-            if let Some(tool) = project.tool {
-                if let Some(fastskill_config) = tool.fastskill {
-                    if let Some(repos) = fastskill_config.repositories {
-                        let definitions: Vec<_> = repos
-                            .iter()
-                            .map(crate::core::repository::RepositoryDefinition::from)
-                            .collect();
-
-                        return RepositoryManager::from_definitions(definitions);
-                    }
-                }
-            }
-        }
-    }
-
-    RepositoryManager::from_definitions(Vec::new())
+/// Repositories of the served project and every Manifest it composes. An
+/// unreadable project still serves no repositories; a composition that names
+/// one repository two ways is an error rather than a silent pick.
+fn get_repository_manager(project_file_path: &std::path::Path) -> HttpResult<RepositoryManager> {
+    let Some(project) = project_file_path
+        .exists()
+        .then(|| crate::core::manifest::SkillProjectToml::load_from_file(project_file_path).ok())
+        .flatten()
+    else {
+        return Ok(RepositoryManager::from_definitions(Vec::new()));
+    };
+    let project_dir = project_file_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let definitions = project
+        .composed_repositories(project_dir)
+        .map_err(HttpError::InternalServerError)?
+        .iter()
+        .map(crate::core::repository::RepositoryDefinition::from)
+        .collect();
+    Ok(RepositoryManager::from_definitions(definitions))
 }
 
 /// Builds a `SourcesManager` backed by a unique per-call temp directory.
@@ -140,12 +140,25 @@ async fn get_sources_manager_from_repos(
     Ok((sources_manager, temp_dir))
 }
 
+/// Marketplace sources for the served project's repositories, kept alive by
+/// the returned temp dir.
+async fn project_sources_manager(
+    state: &AppState,
+) -> HttpResult<(SourcesManager, tempfile::TempDir)> {
+    let repo_manager = get_repository_manager(&state.project_file_path)?;
+    get_sources_manager_from_repos(&repo_manager)
+        .await
+        .map_err(|e| {
+            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
+        })
+}
+
 /// GET /api/v1/registry/sources - List all configured sources/repositories
 pub async fn list_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<Vec<SourceResponse>>>> {
     // Get repository manager (supports all formats)
-    let repo_manager = get_repository_manager(&state.project_file_path);
+    let repo_manager = get_repository_manager(&state.project_file_path)?;
 
     let repos = repo_manager.list_repositories();
 
@@ -190,12 +203,7 @@ pub async fn list_sources(
 pub async fn list_all_skills(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.project_file_path);
-    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let (sources_manager, _sources_tmp) = project_sources_manager(&state).await?;
     let skill_manager = state.service.skill_manager();
 
     // Get all installed skills
@@ -277,12 +285,7 @@ pub async fn list_source_skills(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<SourceSkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.project_file_path);
-    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let (sources_manager, _sources_tmp) = project_sources_manager(&state).await?;
     let skill_manager = state.service.skill_manager();
 
     // Get source definition
@@ -343,12 +346,7 @@ pub async fn get_marketplace(
     Path(source_name): Path<String>,
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<MarketplaceJson>>> {
-    let repo_manager = get_repository_manager(&state.project_file_path);
-    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let (sources_manager, _sources_tmp) = project_sources_manager(&state).await?;
 
     // Get source definition
     let source_def = sources_manager
@@ -377,12 +375,7 @@ pub async fn get_marketplace(
 pub async fn refresh_sources(
     State(state): State<AppState>,
 ) -> HttpResult<axum::Json<ApiResponse<RegistrySkillsResponse>>> {
-    let repo_manager = get_repository_manager(&state.project_file_path);
-    let (sources_manager, _sources_tmp) = get_sources_manager_from_repos(&repo_manager)
-        .await
-        .map_err(|e| {
-            HttpError::InternalServerError(format!("Failed to create sources manager: {}", e))
-        })?;
+    let (sources_manager, _sources_tmp) = project_sources_manager(&state).await?;
 
     // Clear the cache
     sources_manager.clear_cache().await;
@@ -419,7 +412,7 @@ pub async fn list_skill_versions(
         }))
     };
 
-    let repo_manager = get_repository_manager(&state.project_file_path);
+    let repo_manager = get_repository_manager(&state.project_file_path)?;
     let (sources_manager, _sources_tmp) = match get_sources_manager_from_repos(&repo_manager).await
     {
         Ok(pair) => pair,
@@ -569,13 +562,10 @@ pub async fn serve_index_file(
 
     // Read the index file (use canonical path)
     match tokio::fs::read_to_string(&canonical_index_path).await {
-        Ok(content) => Ok(axum::response::Response::builder()
-            .status(axum::http::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(axum::body::Body::from(content))
-            .map_err(|e| {
-                HttpError::InternalServerError(format!("Failed to build response: {}", e))
-            })?),
+        Ok(content) => Ok(axum::response::IntoResponse::into_response((
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            content,
+        ))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(HttpError::NotFound(format!(
             "Index file not found for skill: {}",
             skill_id

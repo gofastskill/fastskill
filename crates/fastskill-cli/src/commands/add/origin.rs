@@ -534,9 +534,8 @@ fn build_explicit_origin(source: &SkillSource, args: &AddArgs) -> CliResult<Orig
                 .map_err(|error| {
                     CliError::Config(format!("Invalid version constraint: {error}"))
                 })?;
-            let manager = RepositoryManager::from_definitions(
-                crate::config::load_repositories_from_project()?,
-            );
+            let manager =
+                RepositoryManager::from_definitions(crate::config::load_resolution_repositories()?);
             let repository = if let Some(repository) = &args.repository {
                 manager.get_repository(repository).ok_or_else(|| {
                     CliError::Config(format!("Repository '{repository}' is not configured"))

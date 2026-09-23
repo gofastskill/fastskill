@@ -1843,11 +1843,11 @@ async fn registry_skill_versions_populated_and_sorted_descending() {
 
 // ---- registry index (list_index_skills) ----
 
-async fn state_with_registry(registry: &TempDir) -> AppState {
+async fn state_with_registry(registry: &std::path::Path) -> AppState {
     let storage = TempDir::new().unwrap();
     let store = skills_root(&storage);
     write_skill(&store, "alpha-skill", "Alpha Skill", "First");
-    let service = make_service(store, Some(registry.path().to_path_buf())).await;
+    let service = make_service(store, Some(registry.to_path_buf())).await;
     // Skills are already indexed in memory; the storage temp dir is no longer needed.
     drop(storage);
     AppState::new(service).unwrap()
@@ -1888,7 +1888,7 @@ async fn index_skills_no_registry_configured_is_404() {
 async fn index_skills_lists_seeded() {
     let registry = TempDir::new().unwrap();
     seed_registry(registry.path(), "acme/widget", "1.0.0");
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, body) = do_get(state, "/registry/index/skills").await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains("acme/widget"));
@@ -1897,7 +1897,7 @@ async fn index_skills_lists_seeded() {
 #[tokio::test]
 async fn index_skills_empty_scope_is_400() {
     let registry = TempDir::new().unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(state, "/registry/index/skills?scope=").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -1905,7 +1905,7 @@ async fn index_skills_empty_scope_is_400() {
 #[tokio::test]
 async fn index_skills_scope_with_separator_is_400() {
     let registry = TempDir::new().unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(state, "/registry/index/skills?scope=a%2Fb").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -1913,7 +1913,7 @@ async fn index_skills_scope_with_separator_is_400() {
 #[tokio::test]
 async fn index_skills_scope_with_dotdot_is_400() {
     let registry = TempDir::new().unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(state, "/registry/index/skills?scope=..").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -1921,7 +1921,7 @@ async fn index_skills_scope_with_dotdot_is_400() {
 #[tokio::test]
 async fn index_skills_scope_with_bad_char_is_400() {
     let registry = TempDir::new().unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(state, "/registry/index/skills?scope=bad%21name").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -1930,7 +1930,7 @@ async fn index_skills_scope_with_bad_char_is_400() {
 async fn index_skills_valid_scope_and_flags_ok() {
     let registry = TempDir::new().unwrap();
     seed_registry(registry.path(), "acme/widget", "1.0.0");
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(
         state,
         "/registry/index/skills?scope=acme&all_versions=true&include_pre_release=1",
@@ -1959,7 +1959,7 @@ async fn serve_index_file_success() {
         "{\"name\":\"testorg/serve-skill\"}",
     )
     .unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, body) = do_get(state, "/index/testorg/serve-skill").await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(body.contains("serve-skill"));
@@ -1969,7 +1969,56 @@ async fn serve_index_file_success() {
 async fn serve_index_file_missing_is_404() {
     let registry = TempDir::new().unwrap();
     fs::create_dir_all(registry.path().join("testorg")).unwrap();
-    let state = state_with_registry(&registry).await;
+    let state = state_with_registry(registry.path()).await;
     let (status, _b) = do_get(state, "/index/testorg/ghost").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn serve_index_file_missing_registry_root_is_500() {
+    let registry = TempDir::new().unwrap();
+    let state = state_with_registry(&registry.path().join("absent")).await;
+    let (status, body) = do_get(state, "/index/testorg/widget").await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "body: {body}");
+    assert!(body.contains("Failed to canonicalize registry path"));
+}
+
+// Walking through a regular file is ENOTDIR on Unix; Windows reports NotFound.
+#[cfg(unix)]
+#[tokio::test]
+async fn serve_index_file_through_a_file_is_500() {
+    let registry = TempDir::new().unwrap();
+    fs::write(registry.path().join("testorg"), "not a directory").unwrap();
+    let state = state_with_registry(registry.path()).await;
+    let (status, body) = do_get(state, "/index/testorg/widget").await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "body: {body}");
+    assert!(body.contains("Failed to canonicalize index path"));
+}
+
+#[tokio::test]
+async fn serve_index_file_directory_is_500() {
+    let registry = TempDir::new().unwrap();
+    fs::create_dir_all(registry.path().join("testorg/widget")).unwrap();
+    let state = state_with_registry(registry.path()).await;
+    let (status, body) = do_get(state, "/index/testorg/widget").await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "body: {body}");
+    assert!(body.contains("Failed to read index file"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn serve_index_file_symlink_out_of_the_index_is_400() {
+    let registry = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    fs::write(outside.path().join("secret"), "{}").unwrap();
+    fs::create_dir_all(registry.path().join("testorg")).unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("secret"),
+        registry.path().join("testorg/widget"),
+    )
+    .unwrap();
+    let state = state_with_registry(registry.path()).await;
+    let (status, body) = do_get(state, "/index/testorg/widget").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "body: {body}");
+    assert!(body.contains("Invalid skill ID"));
 }
