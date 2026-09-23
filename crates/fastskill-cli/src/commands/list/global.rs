@@ -7,6 +7,7 @@ use fastskill_core::{FastSkillService, OutputFormat};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::output::ListRow;
+use super::status::ReconciliationStatus;
 
 pub(super) async fn execute_global_list(
     service: &FastSkillService,
@@ -75,11 +76,11 @@ pub(super) async fn execute_global_list(
         let mutable = locked
             .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));
         let reconciliation = if locked.is_some() && !selected {
-            "excluded"
+            ReconciliationStatus::Excluded
         } else {
             reconcile(service, &id, locked, actual, mutable)
         };
-        if args.check && !matches!(reconciliation, "ok" | "excluded") {
+        if args.check && !reconciliation.is_settled() {
             failures.push(format!("{id}: {reconciliation}"));
         }
         let (source_path, source_type) = locked
@@ -109,7 +110,7 @@ pub(super) async fn execute_global_list(
             desired_constraint: locked.map(|entry| origin_location_label(&entry.origin)),
             locked_version: locked.map(|entry| entry.resolved.version.clone()),
             actual_version: actual.map(|skill| skill.version.clone()),
-            reconciliation: reconciliation.to_string(),
+            reconciliation,
             owners: locked.map_or_else(Vec::new, |_| global_owners(&lock, &id)),
             groups: locked.map(|entry| entry.groups.clone()).unwrap_or_default(),
             mutable,
@@ -183,25 +184,25 @@ fn reconcile(
     locked: Option<&fastskill_core::core::lock::GlobalLockedSkillEntry>,
     actual: Option<&fastskill_core::SkillDefinition>,
     mutable: bool,
-) -> &'static str {
+) -> ReconciliationStatus {
     match (locked, actual) {
-        (Some(_), None) => "missing-content",
+        (Some(_), None) => ReconciliationStatus::MissingContent,
         (Some(locked), Some(actual)) if locked.resolved.version != actual.version => {
-            "revision-mismatch"
+            ReconciliationStatus::RevisionMismatch
         }
-        (Some(_), Some(_)) if mutable => "ok",
+        (Some(_), Some(_)) if mutable => ReconciliationStatus::Ok,
         (Some(locked), Some(_)) => match &locked.resolved.checksum {
             Some(expected) => {
                 match managed_tree_digest(&service.config().skill_storage_path.join(id)) {
-                    Ok(actual) if &actual == expected => "ok",
-                    Ok(_) => "content-mismatch",
-                    Err(_) => "integrity-error",
+                    Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
+                    Ok(_) => ReconciliationStatus::ContentMismatch,
+                    Err(_) => ReconciliationStatus::IntegrityError,
                 }
             }
-            None => "insufficient-integrity",
+            None => ReconciliationStatus::InsufficientIntegrity,
         },
-        (None, Some(_)) => "extraneous",
-        (None, None) => "ok",
+        (None, Some(_)) => ReconciliationStatus::Extraneous,
+        (None, None) => ReconciliationStatus::Ok,
     }
 }
 
@@ -302,7 +303,7 @@ mod tests {
                 None,
                 false
             ),
-            "missing-content"
+            ReconciliationStatus::MissingContent
         );
         assert_eq!(
             reconcile(
@@ -312,7 +313,7 @@ mod tests {
                 Some(&actual),
                 false
             ),
-            "revision-mismatch"
+            ReconciliationStatus::RevisionMismatch
         );
         assert_eq!(
             reconcile(
@@ -322,7 +323,7 @@ mod tests {
                 Some(&actual),
                 true
             ),
-            "ok"
+            ReconciliationStatus::Ok
         );
         let digest = managed_tree_digest(&installed).unwrap();
         assert_eq!(
@@ -333,7 +334,7 @@ mod tests {
                 Some(&actual),
                 false
             ),
-            "ok"
+            ReconciliationStatus::Ok
         );
         assert_eq!(
             reconcile(
@@ -343,7 +344,7 @@ mod tests {
                 Some(&actual),
                 false
             ),
-            "content-mismatch"
+            ReconciliationStatus::ContentMismatch
         );
         assert_eq!(
             reconcile(
@@ -353,7 +354,7 @@ mod tests {
                 Some(&actual),
                 false
             ),
-            "integrity-error"
+            ReconciliationStatus::IntegrityError
         );
         assert_eq!(
             reconcile(
@@ -363,13 +364,16 @@ mod tests {
                 Some(&actual),
                 false
             ),
-            "insufficient-integrity"
+            ReconciliationStatus::InsufficientIntegrity
         );
         assert_eq!(
             reconcile(&service, "demo", None, Some(&actual), false),
-            "extraneous"
+            ReconciliationStatus::Extraneous
         );
-        assert_eq!(reconcile(&service, "demo", None, None, false), "ok");
+        assert_eq!(
+            reconcile(&service, "demo", None, None, false),
+            ReconciliationStatus::Ok
+        );
     }
 
     #[tokio::test]

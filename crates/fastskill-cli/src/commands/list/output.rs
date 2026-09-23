@@ -1,3 +1,4 @@
+use super::status::ReconciliationStatus;
 use fastskill_core::OutputFormat;
 
 /// One reconciled list row. The lifecycle-only fields live at the CLI edge so
@@ -19,7 +20,7 @@ pub(super) struct ListRow {
     pub desired_constraint: Option<String>,
     pub locked_version: Option<String>,
     pub actual_version: Option<String>,
-    pub reconciliation: String,
+    pub reconciliation: ReconciliationStatus,
     pub owners: Vec<String>,
     pub groups: Vec<String>,
     pub mutable: bool,
@@ -171,7 +172,7 @@ fn format_xml(rows: &[ListRow], details: bool) -> String {
         if details {
             xml.push_str(&format!(
                 "    <reconciliation>{}</reconciliation>\n",
-                fastskill_core::output::escape_xml(&row.reconciliation)
+                fastskill_core::output::escape_xml(row.reconciliation.as_str())
             ));
         }
         for (tag, value) in [
@@ -215,13 +216,14 @@ fn flags(row: &ListRow) -> String {
         parts.push("missing from manifest");
     }
     let reconciliation_already_shown = matches!(
-        row.reconciliation.as_str(),
-        "missing-lock" if row.missing_from_lock
+        row.reconciliation,
+        ReconciliationStatus::MissingLock if row.missing_from_lock
     ) || matches!(
-        row.reconciliation.as_str(),
-        "missing-content" if row.missing_from_folder
-    ) || row.reconciliation == "extraneous" && row.extraneous;
-    if row.reconciliation != "ok" && !reconciliation_already_shown {
+        row.reconciliation,
+        ReconciliationStatus::MissingContent if row.missing_from_folder
+    ) || row.reconciliation == ReconciliationStatus::Extraneous
+        && row.extraneous;
+    if row.reconciliation != ReconciliationStatus::Ok && !reconciliation_already_shown {
         parts.push(row.reconciliation.as_str());
     }
     if row.mutable {
@@ -261,7 +263,7 @@ mod tests {
             desired_constraint: Some("^1".to_string()),
             locked_version: Some("1.2.3".to_string()),
             actual_version: Some("1.2.3".to_string()),
-            reconciliation: "ok".to_string(),
+            reconciliation: ReconciliationStatus::Ok,
             owners: vec!["direct".to_string()],
             groups: vec!["default".to_string()],
             mutable: false,
@@ -307,13 +309,13 @@ mod tests {
         row.missing_from_folder = true;
         row.missing_from_lock = true;
         row.missing_from_manifest = true;
-        row.reconciliation = "constraint-mismatch".to_string();
+        row.reconciliation = ReconciliationStatus::IntentMismatch;
         row.mutable = true;
         row.override_active = true;
         row.extraneous = true;
         let table = format_table(std::slice::from_ref(&row), true);
         assert!(table.contains("missing from folder"));
-        assert!(table.contains("constraint-mismatch"));
+        assert!(table.contains("intent-mismatch"));
         assert!(table.contains("editable; override; extraneous"));
         assert!(format_grid(std::slice::from_ref(&row), false).contains("vunknown) [unknown]"));
         let xml = format_xml(&[row], false);
@@ -323,18 +325,18 @@ mod tests {
     #[test]
     fn duplicate_reconciliation_flags_are_not_rendered_twice() {
         for (reconciliation, folder, lock, extraneous) in [
-            ("missing-content", true, false, false),
-            ("missing-lock", false, true, false),
-            ("extraneous", false, false, true),
+            (ReconciliationStatus::MissingContent, true, false, false),
+            (ReconciliationStatus::MissingLock, false, true, false),
+            (ReconciliationStatus::Extraneous, false, false, true),
         ] {
             let mut row = row();
-            row.reconciliation = reconciliation.to_string();
+            row.reconciliation = reconciliation;
             row.missing_from_folder = folder;
             row.missing_from_lock = lock;
             row.extraneous = extraneous;
             let rendered = flags(&row);
             assert_eq!(
-                rendered.matches(reconciliation).count(),
+                rendered.matches(reconciliation.as_str()).count(),
                 usize::from(extraneous)
             );
         }
