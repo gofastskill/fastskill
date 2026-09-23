@@ -510,7 +510,7 @@ version = "3.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dee98b0db6a962de883bf5d20362dee4d7ca0d12fe39a7c6c73c844e1cd7c1f"
 dependencies = [
- "darling 0.20.11",
+ "darling 0.23.0",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -1472,6 +1472,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "predicates",
+ "proptest",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
@@ -2123,7 +2124,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -3229,6 +3230,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "proptest"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b45fcc2344c680f5025fe57779faef368840d0bd1f42f216291f0dc4ace4744"
+dependencies = [
+ "bit-set",
+ "bit-vec",
+ "bitflags 2.11.1",
+ "num-traits",
+ "rand 0.9.4",
+ "rand_chacha 0.9.0",
+ "rand_xorshift",
+ "regex-syntax",
+ "rusty-fork",
+ "tempfile",
+ "unarray",
+]
+
+[[package]]
+name = "quick-error"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3250,7 +3276,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -3288,7 +3314,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -3438,6 +3464,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
 dependencies = [
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "rand_xorshift"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
+dependencies = [
+ "rand_core 0.9.5",
 ]
 
 [[package]]
@@ -3864,6 +3899,18 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+
+[[package]]
+name = "rusty-fork"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc6bf79ff24e648f6da1f8d1f011e9cac26491b619e6b9280f2b47f1774e6ee2"
+dependencies = [
+ "fnv",
+ "quick-error",
+ "tempfile",
+ "wait-timeout",
+]
 
 [[package]]
 name = "ryu"
@@ -4880,6 +4927,12 @@ name = "ucd-trie"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+
+[[package]]
+name = "unarray"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "unicase"
