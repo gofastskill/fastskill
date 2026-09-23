@@ -14,7 +14,6 @@ pub mod cache;
 pub mod change_detection;
 pub mod context_resolver;
 pub mod dependencies;
-pub mod dependency_resolver;
 pub mod embedding;
 pub mod frontmatter;
 pub mod global_ownership;
@@ -68,7 +67,6 @@ pub use change_detection::{
 };
 // dependencies
 pub use dependencies::{Dependency, DependencyError, DependencyGraph};
-pub use dependency_resolver::{DependencyResolutionError, DependencyResolver, SkillInstallItem};
 
 // embedding
 pub use embedding::{EmbeddingService, OpenAIEmbeddingService};
