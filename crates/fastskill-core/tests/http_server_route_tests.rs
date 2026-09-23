@@ -152,55 +152,88 @@ async fn static_assets_and_dashboard_and_index_mount() {
 // build_cors_layer branch coverage
 // ---------------------------------------------------------------------------
 
-#[test]
-fn cors_wildcard_origin_falls_back_to_deny_all() {
-    // SEC-10: "*" combined with credentials is a foot-gun -> deny all.
-    let config = ServiceConfig {
+fn cors_config(origins: &[&str], headers: &[&str]) -> ServiceConfig {
+    ServiceConfig {
         http_server: Some(HttpServerConfig {
-            allowed_origins: vec!["*".to_string()],
-            allowed_headers: vec!["Content-Type".to_string()],
+            allowed_origins: origins.iter().map(|o| o.to_string()).collect(),
+            allowed_headers: headers.iter().map(|h| h.to_string()).collect(),
         }),
         ..Default::default()
-    };
-    let _ = build_cors_layer(&config);
+    }
 }
 
 #[test]
-fn cors_invalid_origin_value_falls_back() {
-    let config = ServiceConfig {
-        http_server: Some(HttpServerConfig {
-            // Newline is not a valid header value -> parse_origins errors.
-            allowed_origins: vec!["https://ok.com".to_string(), "bad\norigin".to_string()],
-            allowed_headers: vec!["Content-Type".to_string()],
-        }),
-        ..Default::default()
-    };
-    let _ = build_cors_layer(&config);
+fn cors_wildcard_origin_is_refused() {
+    // SEC-10: "*" combined with credentials never allows anything.
+    let err = build_cors_layer(&cors_config(&["*"], &["Content-Type"])).unwrap_err();
+    assert!(err.contains("cannot contain \"*\""), "{err}");
 }
 
 #[test]
-fn cors_invalid_header_name_uses_fallback_headers() {
-    let config = ServiceConfig {
-        http_server: Some(HttpServerConfig {
-            allowed_origins: vec!["https://ok.com".to_string()],
-            // Space/newline is not a valid header name -> parse_headers errors.
-            allowed_headers: vec!["bad header\n".to_string()],
-        }),
-        ..Default::default()
-    };
-    let _ = build_cors_layer(&config);
+fn cors_origins_a_browser_never_sends_are_refused() {
+    let err = build_cors_layer(&cors_config(
+        &[
+            "https://ok.com",
+            "https://ok.com/",
+            "https://ok.com/app",
+            "ok.com",
+            "ftp://ok.com",
+            "https://",
+            "bad\norigin",
+        ],
+        &["Content-Type"],
+    ))
+    .unwrap_err();
+    assert!(err.contains("[tool.fastskill.server]"), "{err}");
+    for bad in [
+        "https://ok.com/,",
+        "https://ok.com/app",
+        "ok.com",
+        "ftp://ok.com",
+        "https://,",
+    ] {
+        assert!(err.contains(bad), "missing {bad:?} in {err}");
+    }
+    assert!(!err.contains("https://ok.com, "), "{err}");
+}
+
+#[test]
+fn cors_invalid_header_name_is_refused() {
+    let err = build_cors_layer(&cors_config(&["https://ok.com"], &["bad header"])).unwrap_err();
+    assert!(err.contains("allowed_headers"), "{err}");
+    assert!(err.contains("bad header"), "{err}");
+}
+
+#[test]
+fn cors_every_problem_is_reported_at_once() {
+    let err = build_cors_layer(&cors_config(&["*", "ok.com"], &["bad header"])).unwrap_err();
+    assert!(err.contains("\"*\""), "{err}");
+    assert!(err.contains("ok.com"), "{err}");
+    assert!(err.contains("bad header"), "{err}");
+}
+
+#[tokio::test]
+async fn serve_refuses_to_start_with_an_invalid_cors_config() {
+    let storage = TempDir::new().unwrap();
+    let mut config = cors_config(&["https://ok.com/"], &["Content-Type"]);
+    config.skill_storage_path = storage.path().to_path_buf();
+    let mut svc = FastSkillService::new(config).await.unwrap();
+    svc.initialize().await.unwrap();
+    let err = FastSkillServer::new(Arc::new(svc), "127.0.0.1", 0)
+        .serve()
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("https://ok.com/"), "{err}");
 }
 
 #[test]
 fn cors_valid_origins_and_headers_credentialed() {
-    let config = ServiceConfig {
-        http_server: Some(HttpServerConfig {
-            allowed_origins: vec!["https://a.com".to_string(), "https://b.com".to_string()],
-            allowed_headers: vec!["X-Custom".to_string(), "Authorization".to_string()],
-        }),
-        ..Default::default()
-    };
-    let _ = build_cors_layer(&config);
+    let _layer = build_cors_layer(&cors_config(
+        &["https://a.com", "http://localhost:3000"],
+        &["X-Custom", "Authorization"],
+    ))
+    .unwrap();
 }
 
 // ---------------------------------------------------------------------------

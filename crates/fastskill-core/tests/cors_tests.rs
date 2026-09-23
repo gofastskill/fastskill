@@ -23,7 +23,7 @@ fn test_build_cors_layer_no_config() {
     // When no server config is present, should deny all origins
     let config = fastskill_core::ServiceConfig::default();
 
-    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
+    let _layer = fastskill_core::http::server::build_cors_layer(&config).unwrap();
 
     // We can't easily test the CORS layer internals, but we verified it compiles
     // and logs a warning about no config found
@@ -41,7 +41,7 @@ fn test_build_cors_layer_empty_origins() {
         ..Default::default()
     };
 
-    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
+    let _layer = fastskill_core::http::server::build_cors_layer(&config).unwrap();
 
     // Verified it compiles
     assert!(true);
@@ -61,7 +61,7 @@ fn test_build_cors_layer_with_origins() {
         ..Default::default()
     };
 
-    let _cors_layer = fastskill_core::http::server::build_cors_layer(&config);
+    let _layer = fastskill_core::http::server::build_cors_layer(&config).unwrap();
 
     // Verified it compiles
     assert!(true);

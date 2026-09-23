@@ -87,62 +87,27 @@ fn build_default_cors_layer() -> CorsLayer {
     CorsLayer::new()
 }
 
-/// Parse origin strings to HeaderValues
-fn parse_origins(origins: &[String]) -> Result<Vec<HeaderValue>, String> {
-    origins
-        .iter()
-        .map(|origin| {
-            HeaderValue::from_str(origin)
-                .map_err(|e| format!("Invalid origin header value '{}': {}", origin, e))
-        })
-        .collect()
-}
-
-/// Parse header strings to HeaderNames
-fn parse_headers(headers: &[String]) -> Result<Vec<HeaderName>, String> {
-    headers
-        .iter()
-        .map(|header| {
-            HeaderName::from_str(header)
-                .map_err(|e| format!("Invalid header name '{}': {}", header, e))
-        })
-        .collect()
+/// A browser `Origin` is `scheme://host[:port]` and nothing else, so an entry
+/// with a path, a trailing slash or another scheme can never match a request.
+fn is_browser_origin(origin: &str) -> bool {
+    let after_scheme = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"));
+    matches!(after_scheme, Some(host) if !host.is_empty() && !host.contains('/'))
+        && HeaderValue::from_str(origin).is_ok()
 }
 
 /// Build CORS layer with configured origins and headers
 fn build_configured_cors_layer(
     origin_header_values: Vec<HeaderValue>,
+    header_names: Vec<HeaderName>,
     allowed_origins: &[String],
-    allowed_headers: &[String],
 ) -> CorsLayer {
     info!(
         "Configuring CORS for {} origins: {}",
         origin_header_values.len(),
         allowed_origins.join(", ")
     );
-
-    // SEC-10: never combine a wildcard origin with credentialed CORS. A literal
-    // "*" in the origin list is inert for browsers when credentials are on
-    // (they reject `*` + credentials), so this configuration is a foot-gun that
-    // silently doesn't work. Fail loudly and fall back to deny-all instead.
-    if allowed_origins.iter().any(|o| o == "*") {
-        tracing::error!(
-            "CORS allowed_origins contains \"*\" which cannot be combined with credentials; \
-             denying all origins. Configure explicit origins instead of \"*\"."
-        );
-        return build_default_cors_layer();
-    }
-
-    let header_names = match parse_headers(allowed_headers) {
-        Ok(values) => values,
-        Err(e) => {
-            tracing::error!("Failed to build CORS headers: {}", e);
-            return CorsLayer::new()
-                .allow_methods(get_allowed_methods())
-                .allow_origin(AllowOrigin::list(origin_header_values))
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
-        }
-    };
 
     CorsLayer::new()
         .allow_methods(get_allowed_methods())
@@ -151,34 +116,82 @@ fn build_configured_cors_layer(
         .allow_credentials(true)
 }
 
-/// Build CORS layer from service configuration
-pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> CorsLayer {
+/// Build CORS layer from service configuration.
+///
+/// No `[tool.fastskill.server]` or an empty origin list denies every origin.
+/// An entry that can never work is refused rather than skipped, so a typo
+/// stops `serve` instead of silently locking the browser out.
+pub fn build_cors_layer(config: &crate::core::service::ServiceConfig) -> Result<CorsLayer, String> {
     let http_config = match config.http_server.as_ref() {
         None => {
             info!("No CORS configuration found - denying all origins");
-            return build_default_cors_layer();
+            return Ok(build_default_cors_layer());
         }
         Some(cfg) => cfg,
     };
 
     if http_config.allowed_origins.is_empty() {
         info!("Empty CORS allowed_origins - denying all origins");
-        return build_default_cors_layer();
+        return Ok(build_default_cors_layer());
     }
 
-    let origin_header_values = match parse_origins(&http_config.allowed_origins) {
-        Ok(values) => values,
-        Err(e) => {
-            tracing::error!("Failed to build CORS origins: {}", e);
-            return build_default_cors_layer();
-        }
-    };
+    let mut problems = Vec::new();
+    // SEC-10: browsers reject a wildcard origin on credentialed CORS, so "*"
+    // would never allow anything.
+    if http_config.allowed_origins.iter().any(|o| o == "*") {
+        problems.push(
+            "allowed_origins cannot contain \"*\" because the server sends credentialed CORS; \
+             list each origin instead"
+                .to_string(),
+        );
+    }
+    let bad_origins: Vec<&str> = http_config
+        .allowed_origins
+        .iter()
+        .filter(|o| o.as_str() != "*" && !is_browser_origin(o))
+        .map(String::as_str)
+        .collect();
+    if !bad_origins.is_empty() {
+        problems.push(format!(
+            "allowed_origins entries must look like https://host or http://host:port, \
+             with no path or trailing slash: {}",
+            bad_origins.join(", ")
+        ));
+    }
+    let bad_headers: Vec<&str> = http_config
+        .allowed_headers
+        .iter()
+        .filter(|h| HeaderName::from_str(h).is_err())
+        .map(String::as_str)
+        .collect();
+    if !bad_headers.is_empty() {
+        problems.push(format!(
+            "allowed_headers entries are not valid header names: {}",
+            bad_headers.join(", ")
+        ));
+    }
+    if !problems.is_empty() {
+        return Err(format!(
+            "[tool.fastskill.server] is invalid: {}",
+            problems.join("; ")
+        ));
+    }
 
-    build_configured_cors_layer(
+    let origin_header_values = http_config
+        .allowed_origins
+        .iter()
+        .filter_map(|o| HeaderValue::from_str(o).ok())
+        .collect();
+    let header_names = http_config
+        .allowed_headers
+        .iter()
+        .filter_map(|h| HeaderName::from_str(h).ok())
+        .collect();
+    Ok(build_configured_cors_layer(
         origin_header_values,
+        header_names,
         &http_config.allowed_origins,
-        &http_config.allowed_headers,
-    )
+    ))
 }
 
 /// FastSkill HTTP server
@@ -382,7 +395,7 @@ impl FastSkillServer {
         // Console UI served as root fallback
         let ui_router = Self::create_ui_routes().with_state(state.clone());
 
-        let cors_layer = build_cors_layer(self.service.config());
+        let cors_layer = build_cors_layer(self.service.config())?;
 
         let server = ApiServerBuilder::new()
             .version(ApiVersion {
