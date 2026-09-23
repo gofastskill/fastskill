@@ -1,12 +1,12 @@
 # skill search
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -27,20 +27,20 @@ to search only installed skills.
 
 ## Options
 
-| Option                  | Description                                                        | Default                         |
-| ----------------------- | ------------------------------------------------------------------ | ------------------------------- |
-| `<QUERY>`               | Required search text.                                              | —                               |
-| `--local`               | Search installed skills.                                           | `false`                         |
-| `--remote`              | Search configured catalogs.                                        | `true` when `--local` is absent |
-| `--repository <NAME>`   | Restrict remote search to one configured repository.               | all repositories                |
-| `-l, --limit <NUMBER>`  | Return between 1 and 1,000 results.                                | `10`                            |
-| `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`.                          | `table`                         |
-| `--json`                | Shorthand for `--format json`; mutually exclusive with `--format`. | `false`                         |
-| `--embedding <MODE>`    | Local search mode: `true`, `false`, or `auto`.                     | `auto`                          |
-| `--paths`               | Return resolved paths as JSON; requires `--local`.                 | `false`                         |
-| `--content <MODE>`      | Include `none`, `preview`, or `full`; requires `--local --paths`.  | `none`                          |
-| `--skills-dir <PATH>`   | Override the installation directory for this invocation.           | project setting                 |
-| `--global`              | Use the global skills directory.                                   | `false`                         |
+| Option                  | Description                                                                                    | Default                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| `<QUERY>`               | Required search text.                                                                          | —                               |
+| `--local`               | Search installed skills.                                                                       | `false`                         |
+| `--remote`              | Search configured catalogs.                                                                    | `true` when `--local` is absent |
+| `--repository <NAME>`   | Restrict remote search to one configured repository.                                           | all repositories                |
+| `-l, --limit <NUMBER>`  | Return between 1 and 1,000 results.                                                            | `10`                            |
+| `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`.                                                      | `table`                         |
+| `--json`                | Shorthand for `--format json`; mutually exclusive with `--format`.                             | `false`                         |
+| `--embedding <MODE>`    | Local search mode: `true`, `false`, or `auto`. Requires `--local`; rejected for remote search. | `auto`                          |
+| `--paths`               | Return resolved paths as JSON; requires `--local`.                                             | `false`                         |
+| `--content <MODE>`      | Include `none`, `preview`, or `full`; requires `--local --paths`.                              | `none`                          |
+| `--skills-dir <PATH>`   | Override the installation directory for this invocation.                                       | project setting                 |
+| `--global`              | Use the global skills directory.                                                               | `false`                         |
 
 ## Remote search
 

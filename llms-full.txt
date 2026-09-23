@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -133,13 +133,13 @@ See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference
 
 # FastSkill
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -246,13 +246,13 @@ Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/o
 
 # Install FastSkill
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -371,13 +371,13 @@ Continue with [your first skill](/quickstart).
 
 # Install your first skill
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/quickstart
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -462,13 +462,13 @@ restoration. For a portable artifact, use a [team bundle](/cli-reference/bundle-
 
 # Troubleshooting
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -706,13 +706,13 @@ Include:
 
 # Understand FastSkill
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -749,13 +749,13 @@ Start with [your first skill](/quickstart). Continue with
 
 # Bundle commands
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -888,13 +888,13 @@ tools unless it starts with `fastskill mcp serve --enable-write`.
 
 # cache Command
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -996,13 +996,13 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 # Discover and inspect skills
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -1044,13 +1044,13 @@ and [repository reference](/cli-reference/repository-command) for catalog operat
 
 # eval Command
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/eval-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -1321,13 +1321,13 @@ A case whose every trial errored is named in the output, and a metric that match
 
 # project init
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -1666,13 +1666,13 @@ Use `fastskill project init --yes` to:
 
 # project install
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -2155,13 +2155,13 @@ Keyword search with `--local --embedding false` works without an index.
 
 # optimization commands
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/optimize-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -2262,13 +2262,13 @@ fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md
 
 # CLI Reference Overview
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -2593,13 +2593,13 @@ Commands can change installed skills and manifest files. Try changes on a copy o
 
 # index rebuild
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -2645,13 +2645,6 @@ fastskill index rebuild --skills-dir .claude/skills/ --force
 * After significant content changes
 * When embeddings seem outdated
 * To rebuild corrupted index
-
-### --max-concurrent `&lt;NUMBER&gt;`
-
-This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
-`index rebuild` embeds skills **sequentially**, one at a time. Passing a value does not change
-indexing speed or the number of concurrent API requests.
-
 
 ## Configuration Requirements
 
@@ -3074,13 +3067,13 @@ fastskill skill list --skills-dir .claude/skills/
 
 # repo commands
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -3645,13 +3638,13 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 
 # skill search
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -3672,20 +3665,20 @@ to search only installed skills.
 
 ## Options
 
-| Option                  | Description                                                        | Default                         |
-| ----------------------- | ------------------------------------------------------------------ | ------------------------------- |
-| `<QUERY>`               | Required search text.                                              | —                               |
-| `--local`               | Search installed skills.                                           | `false`                         |
-| `--remote`              | Search configured catalogs.                                        | `true` when `--local` is absent |
-| `--repository <NAME>`   | Restrict remote search to one configured repository.               | all repositories                |
-| `-l, --limit <NUMBER>`  | Return between 1 and 1,000 results.                                | `10`                            |
-| `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`.                          | `table`                         |
-| `--json`                | Shorthand for `--format json`; mutually exclusive with `--format`. | `false`                         |
-| `--embedding <MODE>`    | Local search mode: `true`, `false`, or `auto`.                     | `auto`                          |
-| `--paths`               | Return resolved paths as JSON; requires `--local`.                 | `false`                         |
-| `--content <MODE>`      | Include `none`, `preview`, or `full`; requires `--local --paths`.  | `none`                          |
-| `--skills-dir <PATH>`   | Override the installation directory for this invocation.           | project setting                 |
-| `--global`              | Use the global skills directory.                                   | `false`                         |
+| Option                  | Description                                                                                    | Default                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| `<QUERY>`               | Required search text.                                                                          | —                               |
+| `--local`               | Search installed skills.                                                                       | `false`                         |
+| `--remote`              | Search configured catalogs.                                                                    | `true` when `--local` is absent |
+| `--repository <NAME>`   | Restrict remote search to one configured repository.                                           | all repositories                |
+| `-l, --limit <NUMBER>`  | Return between 1 and 1,000 results.                                                            | `10`                            |
+| `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`.                                                      | `table`                         |
+| `--json`                | Shorthand for `--format json`; mutually exclusive with `--format`.                             | `false`                         |
+| `--embedding <MODE>`    | Local search mode: `true`, `false`, or `auto`. Requires `--local`; rejected for remote search. | `auto`                          |
+| `--paths`               | Return resolved paths as JSON; requires `--local`.                                             | `false`                         |
+| `--content <MODE>`      | Include `none`, `preview`, or `full`; requires `--local --paths`.                              | `none`                          |
+| `--skills-dir <PATH>`   | Override the installation directory for this invocation.                                       | project setting                 |
+| `--global`              | Use the global skills directory.                                                               | `false`                         |
 
 ## Remote search
 
@@ -3755,13 +3748,13 @@ search, including no matches, and nonzero for invalid input or incomplete reposi
 
 # server serve
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -3895,13 +3888,13 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 # Skill and project commands
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4079,13 +4072,13 @@ suggestion.
 
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4197,13 +4190,13 @@ fastskill cli doctor --json
 
 # skill update
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/update-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4340,13 +4333,13 @@ state, reports the failed target, and exits nonzero.
 
 # Init Command
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/configuration/init-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4582,13 +4575,13 @@ jobs:
 
 # Cluster and Portfolio Analysis
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/evals-quality/cluster-analysis
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4655,13 +4648,13 @@ Use this regularly to keep catalog maintenance costs low.
 
 # Evals and Quality Overview
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4721,13 +4714,13 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 
 # Run Evals
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/evals-quality/run-evals
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -4796,13 +4789,13 @@ fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/code
 
 # Eval Setup
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5091,13 +5084,13 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 # Advanced Patterns
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5195,13 +5188,13 @@ plus `--global` to control what gets installed where.
 
 # Integration Tutorials
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/examples/integration-tutorials
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5302,13 +5295,13 @@ and HTTP API are the surface.
 
 # Documentation and tools for agents
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/integration/agents
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5368,13 +5361,13 @@ The server exposes read-only tools by default. Mutating tools require
 
 # Claude Code Integration
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5483,13 +5476,13 @@ See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) 
 
 # Cursor Integration
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/integration/cursor-integration
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5643,13 +5636,13 @@ See the [agent’s skill documentation](https://cursor.com/docs/skills) for nati
 
 # Configuration Reference
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/optimize/configuration
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5851,13 +5844,13 @@ confirmed by running the binary against deliberately broken configs:
 
 # Skill Optimization Overview
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -5927,13 +5920,13 @@ Each training step:
 
 # Inspecting and Exporting Results
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/optimize/results
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6159,13 +6152,13 @@ A `history.json` record looks like:
 
 # Running and Monitoring
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6353,13 +6346,13 @@ The run directory is safe to copy, archive, or share. Resume and inspect command
 
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6519,13 +6512,13 @@ Once you have your suite and checks files ready, write the `optimize.toml` confi
 
 # Context Resolution API
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6600,13 +6593,13 @@ the `limit`, and the embedding index — not by a configurable runtime cache.
 
 # Loading Strategies
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6682,13 +6675,13 @@ covers essentially all resolution performance and quality concerns.
 
 # Registry Index System
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/index-system
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -6852,13 +6845,13 @@ Skills are always stored with an organization prefix:
 
 # Marketplace.json Format
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7084,13 +7077,13 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 
 # Sources and catalogs
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/overview
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7133,13 +7126,13 @@ and [marketplace.json](/registry/marketplace-json) for catalog authoring.
 
 # Choose a distribution model
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7183,13 +7176,13 @@ to agents. See the [security model](/security/model).
 
 # Configure skill sources
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7329,13 +7322,13 @@ For sharing an already installed set without access to its original sources, use
 
 # Local browser console
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7385,13 +7378,13 @@ For the HTTP contract, health checks, and server flags, see
 
 # Security Best Practices
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7459,13 +7452,13 @@ that front an exposed instance.
 
 # Security Model
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/security/model
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7566,13 +7559,13 @@ network policy, secrets management).
 
 # Manifests, locks, and scope
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7700,13 +7693,13 @@ project configuration controls where consumers install it. See
 
 # Reconcile project skill state
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7872,13 +7865,13 @@ checks.
 
 # Validate a skill
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -7931,13 +7924,13 @@ for missing, changed, conflicting, and unverifiable installations.
 
 # Debugging Guide
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -8003,13 +7996,13 @@ Start with `fastskill cli doctor` to confirm the environment, then re-run the fa
 
 # Testing Framework
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/testing/framework
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -8074,13 +8067,13 @@ Start by pinning down what "good" looks like in your `checks.toml`, then iterate
 
 # MCP Tool Calling
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 

@@ -1,12 +1,12 @@
 # index rebuild
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
@@ -52,13 +52,6 @@ fastskill index rebuild --skills-dir .claude/skills/ --force
 * After significant content changes
 * When embeddings seem outdated
 * To rebuild corrupted index
-
-### --max-concurrent `&lt;NUMBER&gt;`
-
-This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
-`index rebuild` embeds skills **sequentially**, one at a time. Passing a value does not change
-indexing speed or the number of concurrent API requests.
-
 
 ## Configuration Requirements
 

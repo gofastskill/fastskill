@@ -1,12 +1,12 @@
 # Loading Strategies
 
-FastSkill 0.9.245
+FastSkill 0.9.246
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Release revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
-Documentation revision: 8f0af7bbb1c64bf513cbefaf0ed1e782fe8a79df
+Documentation revision: 2b2672fc852933d9a91bb0c7a8f76577e7aef5ed
 
 
 
