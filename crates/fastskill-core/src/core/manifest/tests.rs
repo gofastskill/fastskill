@@ -739,3 +739,36 @@ fn unserializable_local_paths_do_not_replace_existing_manifests() {
     ));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "original manifest");
 }
+
+#[test]
+fn unknown_keys_under_tool_fastskill_are_refused() {
+    let error = SkillProjectToml::from_toml_str(
+        "[dependencies]\n\n[tool.fastskill]\nskip_transitiv = true\n\n[tool.fastskill.eval]\nprompts = \"p.csv\"\ntrials = 3\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("tool.fastskill.skip_transitiv"), "{error}");
+    assert!(error.contains("tool.fastskill.eval.trials"), "{error}");
+}
+
+#[test]
+fn unknown_keys_in_flattened_repository_entries_are_refused() {
+    let error = SkillProjectToml::from_toml_str(
+        "[dependencies]\n\n[[tool.fastskill.repositories]]\nname = \"team\"\ntype = \"git-marketplace\"\npriority = 0\nurl = \"https://example.test/skills.git\"\nbrnach = \"release\"\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("tool.fastskill.repositories.0.brnach"),
+        "{error}"
+    );
+}
+
+#[test]
+fn tables_outside_tool_fastskill_stay_permissive() {
+    let project = SkillProjectToml::from_toml_str(
+        "future_key = 1\n[dependencies]\n\n[tool.other]\nanything = true\n\n[tool.fastskill]\nskills_directory = \".skills\"\nmanifests = {}\n\n[bundles.team]\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    assert!(project.tool.unwrap().fastskill.is_some());
+}

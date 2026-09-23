@@ -21,6 +21,10 @@ Use the [quickstart](/quickstart) to create this local source. `skill add` write
 dependency and installs it. Editing the manifest manually requires a subsequent
 `project install` to apply it.
 
+FastSkill refuses a manifest with a key it does not recognise under
+`[tool.fastskill]`, so a misspelt setting fails loudly instead of being ignored.
+Other tables, such as `[tool.<other-tool>]`, are left alone and kept on save.
+
 ## Manifest composition
 
 Reference a reusable team Manifest without copying its dependencies:

@@ -100,7 +100,7 @@ mod tests {
         let path = temporary.path().join("skill-project.toml");
         std::fs::write(
             &path,
-            "[dependencies]\nold = \"1.0.0\"\n[bundles.team]\nversion = \"1.0.0\"\nartifact = \"team.zip\"\n[extension]\nvalue = \"keep\"\n[tool.fastskill]\nskills_directory = \"skills\"\n[tool.fastskill.extension]\nflag = true\n",
+            "[dependencies]\nold = \"1.0.0\"\n[bundles.team]\nversion = \"1.0.0\"\nartifact = \"team.zip\"\n[extension]\nvalue = \"keep\"\n[tool.fastskill]\nskills_directory = \"skills\"\n[tool.other]\nflag = true\n",
         )
         .unwrap();
         let mut project = SkillProjectToml::load_from_file(&path).unwrap();
@@ -117,7 +117,7 @@ mod tests {
         assert!(saved.contains("[extension]"), "{saved}");
         assert!(saved.contains("value = \"keep\""), "{saved}");
         assert!(saved.contains("[bundles.team]"), "{saved}");
-        assert!(saved.contains("[tool.fastskill.extension]"), "{saved}");
+        assert!(saved.contains("[tool.other]"), "{saved}");
         assert!(saved.contains("flag = true"), "{saved}");
         let value: toml::Value = toml::from_str(&saved).unwrap();
         assert!(value["dependencies"].get("old").is_none());
