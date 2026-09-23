@@ -110,9 +110,9 @@ pub async fn get_skill(
 /// `SKILL.md` (spec 003 §5 / Phase 3 §Q4). Always mounted on the read router
 /// (not write-gated). PATH-CONFINEMENT is a hard requirement here: the
 /// resolved file must canonicalize to somewhere inside the canonicalized
-/// skills directory, or the request is rejected — this endpoint must never
-/// become a directory-traversal primitive, even though `serve` itself is not a
-/// security boundary (ADR-0003).
+/// skills directory, except for the exact target of an installed editable
+/// symlink. This endpoint must never become a directory-traversal primitive,
+/// even though `serve` itself is not a security boundary (ADR-0003).
 pub async fn get_skill_content(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
@@ -137,17 +137,35 @@ pub async fn get_skill_content(
     };
 
     let confined =
-        crate::security::path::validate_path_within_root(&candidate, &state.skills_directory)
-            .map_err(|e| match e {
-                crate::security::path::PathSecurityError::EscapesRoot(msg)
-                | crate::security::path::PathSecurityError::TraversalAttempt(msg)
-                | crate::security::path::PathSecurityError::InvalidComponent(msg) => {
-                    HttpError::BadRequest(msg)
+        match crate::security::path::validate_path_within_root(&candidate, &state.skills_directory)
+        {
+            Ok(path) => path,
+            Err(escape_error) => {
+                // Editable origins are authoritative managed state. Permit only
+                // their exact SKILL.md target; the route ID is never used to
+                // construct or open a path.
+                let editable_target = editable_skill_target(&skill, &candidate);
+                let candidate_target = candidate.canonicalize().ok();
+                match (editable_target, candidate_target) {
+                    (Some(editable), Some(candidate)) if editable == candidate => candidate,
+                    _ => {
+                        return Err(match escape_error {
+                            crate::security::path::PathSecurityError::EscapesRoot(msg)
+                            | crate::security::path::PathSecurityError::TraversalAttempt(msg)
+                            | crate::security::path::PathSecurityError::InvalidComponent(msg) => {
+                                HttpError::BadRequest(msg)
+                            }
+                            crate::security::path::PathSecurityError::CanonicalizationFailed(_) => {
+                                HttpError::NotFound(format!(
+                                    "Skill file not found on disk: {}",
+                                    skill_id
+                                ))
+                            }
+                        });
+                    }
                 }
-                crate::security::path::PathSecurityError::CanonicalizationFailed(_) => {
-                    HttpError::NotFound(format!("Skill file not found on disk: {}", skill_id))
-                }
-            })?;
+            }
+        };
 
     let content = tokio::fs::read_to_string(&confined)
         .await
@@ -181,6 +199,22 @@ pub async fn get_skill_content(
         format: format.as_str().to_string(),
         content: rendered_content,
     })))
+}
+
+fn editable_skill_target(
+    skill: &crate::core::skill_manager::SkillDefinition,
+    candidate: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    let Origin::Local {
+        path,
+        editable: true,
+    } = &skill.origin
+    else {
+        return None;
+    };
+    let expected = path.join("SKILL.md").canonicalize().ok()?;
+    let candidate = candidate.canonicalize().ok()?;
+    (candidate == expected).then_some(candidate)
 }
 
 /// Render `SKILL.md` Markdown to sanitized HTML (spec 003 v2 / Phase 4 §5
@@ -486,6 +520,68 @@ mod tests {
         )
         .await
         .is_ok());
+
+        #[cfg(unix)]
+        {
+            let editable = root.path().join("editable-source");
+            std::fs::create_dir(&editable).unwrap();
+            std::fs::write(editable.join("SKILL.md"), "# editable").unwrap();
+            std::fs::remove_dir_all(state.skills_directory.join("demo")).unwrap();
+            std::os::unix::fs::symlink(&editable, state.skills_directory.join("demo")).unwrap();
+            definition.skill_file = editable.join("SKILL.md");
+            definition.origin = Origin::Local {
+                path: editable.clone(),
+                editable: true,
+            };
+            service
+                .skill_manager()
+                .force_register_skill(definition.clone())
+                .await
+                .unwrap();
+            let response = get_skill_content(
+                State(state.clone()),
+                Path("demo".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.0.data.unwrap().content, "# editable");
+
+            let scoped_source = root.path().join("scoped-editable-source");
+            std::fs::create_dir(&scoped_source).unwrap();
+            std::fs::write(scoped_source.join("SKILL.md"), "# scoped editable").unwrap();
+            std::fs::create_dir(state.skills_directory.join("team")).unwrap();
+            std::os::unix::fs::symlink(
+                &scoped_source,
+                state.skills_directory.join("team/reviewer"),
+            )
+            .unwrap();
+            let scoped_id = SkillId::new("team/reviewer".to_string()).unwrap();
+            let mut scoped_definition = SkillDefinition::new(
+                scoped_id,
+                "reviewer".to_string(),
+                "reviewer".to_string(),
+                "1.0.0".to_string(),
+                Origin::Local {
+                    path: scoped_source.clone(),
+                    editable: true,
+                },
+            );
+            scoped_definition.skill_file = scoped_source.join("SKILL.md");
+            service
+                .skill_manager()
+                .force_register_skill(scoped_definition)
+                .await
+                .unwrap();
+            let response = get_skill_content(
+                State(state.clone()),
+                Path("team/reviewer".to_string()),
+                Query(ContentQuery::default()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.0.data.unwrap().content, "# scoped editable");
+        }
 
         let outside = root.path().join("outside.md");
         std::fs::write(&outside, "outside").unwrap();

@@ -26,6 +26,43 @@ pub fn to_hex_lower(bytes: &[u8]) -> String {
     s
 }
 
+/// Normalize package file permissions to portable regular-file modes.
+/// Archives preserve only whether a file is executable; setuid/setgid/sticky
+/// and host-specific permission details never cross the package boundary.
+pub(crate) fn package_file_mode(path: &Path) -> io::Result<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(path)?.permissions().mode();
+        Ok(if mode & 0o111 == 0 { 0o644 } else { 0o755 })
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(0o644)
+    }
+}
+
+/// Apply the normalized executable bit from a ZIP entry on platforms that
+/// support POSIX execution permissions.
+pub(crate) fn apply_package_file_mode(path: &Path, archive_mode: Option<u32>) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = if archive_mode.unwrap_or(0) & 0o111 == 0 {
+            0o644
+        } else {
+            0o755
+        };
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, archive_mode);
+        Ok(())
+    }
+}
+
 /// Write `bytes` to `path` atomically: write to a **per-writer unique** temp file
 /// in the same directory → sync → atomic rename over `path`.
 ///

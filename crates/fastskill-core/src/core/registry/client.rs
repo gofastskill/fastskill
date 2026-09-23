@@ -92,6 +92,16 @@ impl RegistryClient {
         )
     }
 
+    fn download_uses_registry_origin(&self, download_url: &str) -> bool {
+        let Ok(registry) = reqwest::Url::parse(&self.config.index_url) else {
+            return false;
+        };
+        let Ok(download) = reqwest::Url::parse(download_url) else {
+            return false;
+        };
+        registry.origin() == download.origin()
+    }
+
     /// Get skill information from registry
     /// Returns all versions for the skill (reads single file with newline-delimited JSON)
     pub async fn get_skill(&self, name: &str) -> Result<Vec<IndexEntry>, ServiceError> {
@@ -247,10 +257,12 @@ impl RegistryClient {
         let mut request = self.client.get(&entry.download_url);
 
         // Add authentication if available
-        if let Some(ref auth) = self.auth {
-            if auth.is_configured() {
-                if let Ok(header_value) = auth.get_auth_header() {
-                    request = request.header("Authorization", header_value);
+        if self.download_uses_registry_origin(&entry.download_url) {
+            if let Some(ref auth) = self.auth {
+                if auth.is_configured() {
+                    if let Ok(header_value) = auth.get_auth_header() {
+                        request = request.header("Authorization", header_value);
+                    }
                 }
             }
         }
@@ -553,6 +565,69 @@ mod tests {
         let client = RegistryClient::new(config_for(&server.uri(), None)).unwrap();
         let bytes = client.download("d", "1.0.0").await.unwrap();
         assert_eq!(bytes, payload);
+    }
+
+    #[tokio::test]
+    async fn download_scopes_registry_auth_to_the_registry_origin() {
+        std::env::set_var("FASTSKILL_CROSS_ORIGIN_PAT", "test-token");
+        let registry = MockServer::start().await;
+        let artifact = MockServer::start().await;
+        let payload = b"skill-package-bytes";
+        let cksum = format!(
+            "sha256:{}",
+            crate::utils::to_hex_lower(&sha2::Sha256::digest(payload))
+        );
+        let entries = vec![make_entry(
+            "d",
+            "1.0.0",
+            &format!("{}/dl", artifact.uri()),
+            &cksum,
+        )];
+        mount_index(&registry, "d", &entries).await;
+        Mock::given(method("GET"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&artifact)
+            .await;
+        let client = RegistryClient::new(config_for(
+            &registry.uri(),
+            Some(AuthConfig::Pat {
+                env_var: "FASTSKILL_CROSS_ORIGIN_PAT".to_string(),
+            }),
+        ))
+        .unwrap();
+
+        assert_eq!(client.download("d", "1.0.0").await.unwrap(), payload);
+        let requests = artifact.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(!requests[0]
+            .headers
+            .keys()
+            .any(|name| name.as_str().eq_ignore_ascii_case("authorization")));
+
+        let same_origin_entries = vec![make_entry(
+            "same",
+            "1.0.0",
+            &format!("{}/same-dl", registry.uri()),
+            &cksum,
+        )];
+        mount_index(&registry, "same", &same_origin_entries).await;
+        Mock::given(method("GET"))
+            .and(path("/same-dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.to_vec()))
+            .mount(&registry)
+            .await;
+        assert_eq!(client.download("same", "1.0.0").await.unwrap(), payload);
+        let requests = registry.received_requests().await.unwrap();
+        let artifact_request = requests
+            .iter()
+            .find(|request| request.url.path() == "/same-dl")
+            .unwrap();
+        assert!(artifact_request
+            .headers
+            .keys()
+            .any(|name| name.as_str().eq_ignore_ascii_case("authorization")));
+        std::env::remove_var("FASTSKILL_CROSS_ORIGIN_PAT");
     }
 
     #[tokio::test]

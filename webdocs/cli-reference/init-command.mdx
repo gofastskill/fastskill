@@ -128,13 +128,15 @@ example-skill = { origin = { type = "git", url = "https://github.com/user/exampl
 
 ## Skill ID Detection
 
-The skill ID is automatically derived from the current directory name:
+For an existing skill, the skill ID is preserved from `SKILL.md`: `metadata.id` when present,
+otherwise `name`. The directory name is used only when initializing a project without a
+`SKILL.md`:
 
 ```bash
-# In directory: /path/to/my-skill
-# → Skill ID: my-skill
+# In directory: /path/to/source-folder
+# SKILL.md contains: name: my-skill
 
-cd my-skill
+cd source-folder
 fastskill project init
 # Creates: [metadata] id = "my-skill"
 ```

@@ -9,7 +9,7 @@ pub use client::{CratesRegistryClient, RepositoryClient, RepositoryClientError};
 use crate::core::service::ServiceError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -269,9 +269,9 @@ impl RepositoryManager {
         }
 
         // Save the project file
-        project.save_to_file(&self.config_path).map_err(|e| {
-            ServiceError::Custom(format!("Failed to save skill-project.toml: {}", e))
-        })?;
+        crate::core::project_state::save_project_preserving(&self.config_path, &project).map_err(
+            |e| ServiceError::Custom(format!("Failed to save skill-project.toml: {}", e)),
+        )?;
 
         Ok(())
     }
@@ -405,12 +405,24 @@ impl RepositoryManager {
         }
 
         // Create new client
-        let repo = self
+        let mut repo = self
             .repositories
             .get(name)
-            .ok_or_else(|| ServiceError::Custom(format!("Repository '{}' not found", name)))?;
+            .ok_or_else(|| ServiceError::Custom(format!("Repository '{}' not found", name)))?
+            .clone();
 
-        let client_arc = client::create_client(repo).await?;
+        if let RepositoryConfig::Local { path } = &mut repo.config {
+            if path.is_relative() {
+                let base = self
+                    .config_path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                *path = base.join(&*path);
+            }
+        }
+
+        let client_arc = client::create_client(&repo).await?;
 
         // Cache it
         let mut clients = self.clients.write().await;
@@ -638,6 +650,34 @@ mod refresh_index_tests {
                 ..
             } if tag == "v1.2.0"
         ));
+    }
+
+    #[test]
+    fn project_manifest_repository_save_preserves_bundle_and_extension_tables() {
+        let project = TempDir::new().unwrap();
+        let manifest_path = project.path().join("skill-project.toml");
+        std::fs::write(
+            &manifest_path,
+            "schema_version = \"2\"\n[dependencies]\n[bundle]\nformat = \"fastskill-bundle-v1\"\nid = \"team\"\nversion = \"1.0.0\"\n[bundle.members.demo]\n[bundles.installed]\nversion = \"1.0.0\"\nartifact = \"team.zip\"\n[extension]\nkeep = true\n",
+        )
+        .unwrap();
+        let mut manager = RepositoryManager::new(manifest_path.clone());
+        manager
+            .add_repository(
+                "local".to_string(),
+                local_repo("local", project.path().join("catalog")),
+            )
+            .unwrap();
+
+        manager.save().unwrap();
+
+        let saved = std::fs::read_to_string(manifest_path).unwrap();
+        assert!(saved.contains("[bundle]"), "{saved}");
+        assert!(saved.contains("[bundle.members.demo]"), "{saved}");
+        assert!(saved.contains("[bundles.installed]"), "{saved}");
+        assert!(saved.contains("[extension]"), "{saved}");
+        assert!(saved.contains("keep = true"), "{saved}");
+        assert!(saved.contains("[[tool.fastskill.repositories]]"), "{saved}");
     }
 
     #[tokio::test]

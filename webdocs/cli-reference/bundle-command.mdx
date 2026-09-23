@@ -7,7 +7,8 @@ description: Build, install, update, and restore self-contained project exports.
 
 Bundles turn a skill project into one versioned ZIP. The artifact contains every declared skill,
 its installed dependency closure, resource files, and content digests. A recipient can
-install it without access to the original repositories.
+install it without access to the original repositories. On Unix systems, executable files remain
+executable after bundle installation; other permission bits are normalized for portability.
 
 ## Build a bundle
 

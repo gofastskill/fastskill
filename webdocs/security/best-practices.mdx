@@ -39,6 +39,10 @@ protection comes from *how you run and expose it*.
 
 - **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
   manager. Commit `skill-project.toml`; keep the token value out of the repo.
+- **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT to
+  index and artifact URLs only when they have the same scheme, host, and port as `index_url`.
+  Use a pre-signed URL or separately authenticated delivery layer when artifacts are hosted on
+  another origin.
 - **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
   embedding-based features silently skip rather than failing — but do not paste the key into config
   or version control.

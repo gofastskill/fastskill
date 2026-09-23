@@ -135,6 +135,7 @@ impl ZipHandler {
             })?;
 
             let entry_name = file.name().to_string();
+            let archive_mode = file.unix_mode();
 
             // Determine directory-ness from the raw zip entry (BUG-11), not the
             // normalized PathBuf which never retains a trailing slash. In zip 0.6.x
@@ -238,6 +239,9 @@ impl ZipHandler {
                     )));
                 }
                 total_uncompressed = total_uncompressed.saturating_add(written);
+                drop(outfile);
+                crate::utils::apply_package_file_mode(&outpath, archive_mode)
+                    .map_err(ServiceError::Io)?;
                 // Now canonicalize the file path to validate
                 outpath.canonicalize().map_err(|e| {
                     ServiceError::Io(io::Error::new(
@@ -311,6 +315,51 @@ mod tests {
         assert!(extract_dir.path().join("SKILL.md").exists());
         assert!(extract_dir.path().join("README.md").exists());
         assert!(extract_dir.path().join("src/main.rs").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extraction_restores_normalized_executable_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let zip_path = temp_dir.path().join("executable.zip");
+        let mut zip = ZipWriter::new(File::create(&zip_path).unwrap());
+        zip.start_file(
+            "scripts/run.sh",
+            SimpleFileOptions::default().unix_permissions(0o755),
+        )
+        .unwrap();
+        zip.write_all(b"#!/bin/sh\n").unwrap();
+        zip.start_file(
+            "SKILL.md",
+            SimpleFileOptions::default().unix_permissions(0o644),
+        )
+        .unwrap();
+        zip.write_all(b"skill").unwrap();
+        zip.finish().unwrap();
+        let extract_dir = TempDir::new().unwrap();
+
+        ZipHandler::new()
+            .unwrap()
+            .extract_to_dir(&zip_path, extract_dir.path())
+            .unwrap();
+
+        assert_eq!(
+            std::fs::metadata(extract_dir.path().join("scripts/run.sh"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+        assert_eq!(
+            std::fs::metadata(extract_dir.path().join("SKILL.md"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o644
+        );
     }
 
     #[test]
