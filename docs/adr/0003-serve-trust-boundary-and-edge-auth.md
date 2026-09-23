@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted; amended by [ADR-0016](0016-hub-mode-is-a-security-boundary.md) (proposed) for Hub mode
 
 ## Context & decision
 
