@@ -1,12 +1,12 @@
 # Manifests, locks, and scope
 
-FastSkill 0.9.252
+FastSkill 0.9.253
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+Release revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
 
-Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+Documentation revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
 
 
 
@@ -50,6 +50,16 @@ shared-filesystem origins normally.
 `project install` resolves all composed roots into the consuming project's `skills.lock`. Repeated
 identical declarations are deduplicated. Missing files, cycles, or different origins/groups for the
 same skill ID are errors and stop installation before managed state changes.
+
+A composed Manifest's `[[tool.fastskill.repositories]]` join the consuming project's for
+resolution, so a shared `repository` origin finds the catalog its own Manifest names. A local
+repository `path` is relative to the Manifest that declares it. When two Manifests define the same
+repository name differently, installation stops and asks you to rename one; identical definitions
+are merged. `fastskill repo` commands list and edit only the project's own repositories.
+
+Only dependencies and repositories are taken from a composed Manifest. Its `skills_directory`,
+`[tool.fastskill.eval]` and `[tool.fastskill.server]` are ignored on purpose: those settings belong
+to the consuming project.
 
 Manifest composition is supported in author-controlled project manifests. Installed or fetched
 skill packages must declare dependencies directly; their manifest references are rejected before

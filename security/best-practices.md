@@ -1,12 +1,12 @@
 # Security Best Practices
 
-FastSkill 0.9.252
+FastSkill 0.9.253
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+Release revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
 
-Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+Documentation revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
 
 
 
