@@ -268,10 +268,12 @@ impl RepositoryManager {
             }
         }
 
-        // Save the project file
-        project.save_to_file(&self.config_path).map_err(|e| {
-            ServiceError::Custom(format!("Failed to save skill-project.toml: {}", e))
-        })?;
+        // Save the project file. Preserve tables the typed model does not
+        // own ([bundles], [overrides], extensions); a plain re-serialization
+        // would drop them.
+        crate::core::project_state::save_project_preserving(&self.config_path, &project).map_err(
+            |e| ServiceError::Custom(format!("Failed to save skill-project.toml: {}", e)),
+        )?;
 
         Ok(())
     }
