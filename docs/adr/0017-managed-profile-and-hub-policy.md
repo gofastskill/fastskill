@@ -41,7 +41,8 @@ runtime.
    Presets requiring different content for one skill id is an ownership conflict. It is reported
    to the user and admins, never resolved by guessing.
 3. **The Hub policy is signed and can expire.** For each user the Hub issues a policy containing:
-   - the resolved profile (skill id and digest)
+   - the resolved profile (skill id and digest, which the Hub API also exposes as a
+     `@sha256:` resource name)
    - the approved digests visible to the user
    - blocked digests with advisories
    - the org origin restriction
@@ -100,6 +101,8 @@ runtime.
    - unmanaged editable content
 
    Prompts, conversation content and skill usage are never collected by this mechanism.
+   Inventory is Hub data that admins query, not telemetry. It doesn't travel through the
+   OpenTelemetry pipeline that carries the Hub's operational signals (Rudaia C3).
 
 ## Consequences
 
@@ -118,6 +121,9 @@ runtime.
 - **Documentation updates.** CONTEXT.md gains Hub, Managed profile, Hub policy, Agent target,
   managed store, quarantine, publisher scope ownership, inventory report, and the two policy
   reconciliation statuses.
+- **Organization.** "Organization" in this ADR means the one organization a Hub deployment
+  serves. In the Rudaia deployment that is a Rudaia account. Rudaia's product-level
+  "organizations" (Keycloak Organizations in a product's end-user realm) are unrelated.
 - **Naming.** cli-framework's auto-registered `config profile` names a *configuration* profile.
   The glossary MUST call this ADR's concept "Managed profile" or "skill profile" in prose, and
   the `profile` command namespace refers only to it.

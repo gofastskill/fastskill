@@ -17,6 +17,14 @@ It builds on:
 - [ADR-0005](../docs/adr/0005-install-seam-and-origin-model.md): the install seam.
 - The preset vocabulary in [team-skill-presets](../docs/requirements/team-skill-presets.md).
 
+It is aligned with the Rudaia platform (aroff/rudaia, `specs/concept.md` and
+`specs/contracts.md`, both 2026-09-23). There, fastskill is **Rudaia Skills**, the pilot
+primitive at `skills.rudaia.com`, and it must pass Rudaia Contracts v0.1 C1 to C4 (identity,
+resource names, telemetry, HTTP API). The Hub is that pilot. FastSkill stays a general
+product: every Rudaia-specific value below (issuers, audience, claim paths, host, product
+title) is configuration, so another organization can run the Hub against its own identity
+provider.
+
 MUST, MUST NOT, SHOULD and MAY express requirement strength.
 
 ## Problem Statement
@@ -55,6 +63,10 @@ behind a `hub` build feature and shipped as a separate release file and containe
 
 It serves a web **portal**: a catalog for everyone, plus an admin area for curation, approval,
 fleet visibility and audit.
+
+The first deployment is Rudaia Skills at `skills.rudaia.com`. It trusts the `rudaia` Keycloak
+realm and the Rudaia Agent STS, names its resources with Rudaia resource names (rrn), and
+exports OpenTelemetry to the platform Collector.
 
 On each machine the existing CLI stays the only client:
 
@@ -199,8 +211,9 @@ four milestones:
 
 ### Organization admin
 
-48. As an org admin, I want to connect the Hub to our identity provider with a configurable groups
-    claim, so that Keycloak today and another identity provider later work without code changes.
+48. As an org admin, I want to connect the Hub to our identity provider with configurable
+    issuers, audience and groups claim, so that the `rudaia` realm today and another identity
+    provider later work without code changes.
 49. As an org admin, I want to map identity provider groups to Hub roles (`user`, `author`,
     `team-maintainer`, `security-approver`, `org-admin`), so that permissions follow our
     directory.
@@ -250,6 +263,21 @@ four milestones:
     is needed for skills to appear.
 67. As an agent runtime, I want the SessionStart hook to exit successfully and quickly when the
     Hub is unreachable, so that a Hub outage never stops a session from starting.
+68. As an agent acting in a Rudaia agent run, I want to read the catalog and download approved
+    content with an Agent STS token whose capabilities cover it, so that agents get skills
+    without borrowing a person's or a workload's credentials.
+
+### Rudaia platform
+
+69. As a Rudaia platform operator, I want the Hub to pass the Rudaia conformance kit for C1 to
+    C4, so that it can be listed in the catalog as the Rudaia Skills primitive.
+70. As a Rudaia platform operator, I want the Hub's traces and metrics in the platform Collector
+    with the standard Rudaia resource and request attributes, so that Hub requests appear in the
+    same dashboards and traces as every other primitive.
+71. As another Rudaia primitive, I want every Hub resource to carry its resource name (rrn), so
+    that I can reference a skill or a pinned digest without knowing Hub internals.
+72. As a developer already signed in with `rudaia login`, I want FastSkill to reuse the shared
+    Rudaia token cache, so that I don't sign in twice.
 
 ## Implementation Decisions
 
@@ -277,19 +305,54 @@ four milestones:
   - **Hub side:** bearer-token validation for the API, and the browser cookie session for the
     portal.
 - The CLI registers `cli-framework-oidc` as its token provider, which gives it the
-  `auth login|logout|status|token` commands.
+  `auth login|logout|status|token` commands. When the shared Rudaia token cache written by
+  `rudaia login` holds a valid token for the Hub's issuer and audience, the CLI uses it instead
+  of running its own login (Rudaia C6.2). `auth login` stays for everyone else.
 - Stored credentials use cli-framework's `SecretStore`: the OS-keychain backend where available,
   the 0600 file store otherwise.
-- **Upstream change (M0):** `cli-framework-oidc` gains a configurable **groups claim path**.
-  Today it reads roles only from Keycloak's `realm_access.roles`. The Hub resolves both team
-  membership and roles from that configured claim. Assigning users to groups manually in the Hub
-  is deferred.
-- **Roles** are `user`, `author`, `team-maintainer`, `security-approver` and `org-admin`. Each is
-  granted by a configured mapping from identity provider group to role. A team maintainer's
-  rights are limited to the publisher scopes owned by the teams they maintain.
-- **Deployment:** Keycloak, with one confidential client for the portal and one public client
-  for the CLI, both in the existing realm. Both are provisioned declaratively through the
-  platform `product-bundle`.
+- **Trusted issuers and audience** (Rudaia C1.1, C1.2):
+  - The Hub accepts bearer tokens from a configured list of issuers and rejects every other
+    issuer with `401`.
+  - The Rudaia deployment trusts exactly the `rudaia` realm
+    (`https://auth.faseinfra.net/realms/rudaia`) and the Agent STS (`https://api.rudaia.com`).
+  - Every token MUST carry the configured audience, `rudaia:skills` in the Rudaia deployment.
+  - Issuers and audience are read from configuration, never from constants.
+- **Upstream changes (M0)** land in cli-framework, not in FastSkill:
+  - `cli-framework-oidc` validates tokens from several issuers. Rudaia ADR-0004 already commits
+    to this change.
+  - `cli-framework-oidc` gains a configurable **groups claim path**. Today it reads roles only
+    from Keycloak's `realm_access.roles`.
+  - The shared Rudaia authorization and resource-name libraries (Rudaia C1.4, C2.6).
+- **Two layers of authorization:**
+  1. **Platform gate** (Rudaia C1.4, the shared authorization library). A human or workload needs
+     a coarse role on the Hub's scope, read from the `rudaia.roles` claim. Proposed role →
+     action matrix for the Hub, which feeds the open v0.2 contracts item:
+     - `viewer`: read the catalog and the caller's own profile.
+     - `developer`: also sync, submit inventory, submit requests, and change their own
+       Permitted additions.
+     - `admin`: also every admin route.
+     - `service`: what the workload's descriptor grants. CI service logins normally get
+       catalog reads and downloads.
+  2. **Hub governance roles** (`author`, `team-maintainer`, `security-approver`, `org-admin`).
+     Each is granted by a configured mapping from the groups claim to a role. These roles refine
+     what a caller may do inside the platform gate:
+     - `author`: requires `developer`.
+     - `team-maintainer` and `security-approver`: require `developer`.
+     - `org-admin`: requires `admin`.
+
+     A team maintainer's rights are limited to the publisher scopes owned by the teams they
+     maintain. Assigning users to groups manually in the Hub is deferred.
+  - **Agent principals** (Agent STS tokens) are allowed only through capabilities of the form
+    `skills:<action>:<rrn pattern>`. In v1 the only agent actions are `read` (catalog and index)
+    and `download` (content by digest). Profile, inventory, request and admin routes refuse
+    agents.
+  - A deployment without a Rudaia issuer (another organization's identity provider) turns off
+    the platform gate. The governance roles then map directly from groups, with `user` as the
+    baseline role.
+- **Deployment:** Keycloak `rudaia` realm, with one confidential client for the portal and one
+  public client for the CLI. Both have an audience mapper for `rudaia:skills` and a groups
+  mapper. Both are provisioned declaratively in the platform GitOps repository, like the realm's
+  other clients.
 
 ### Managed configuration of the CLI
 
@@ -316,6 +379,19 @@ four milestones:
 
 ### Hub domain model
 
+- **Organization and tenancy:** one Hub deployment serves one organization. In Rudaia terms
+  (ADR-0002), the organization is an **account**, `aroff` today, and the Hub's resources sit in
+  one configured **product scope**. Teams are identity provider groups, not Rudaia products.
+  Whether team scopes should become product scopes is an open item (Further Notes).
+- **Resource names** (Rudaia C2): the Hub keeps its internal ids. At its edges (API responses,
+  telemetry, audit exports, capabilities) it renders
+  `rrn:skills:<account>:<scope>:<kind>/<id>[@ref]` using the shared cli-framework library.
+  - Catalog entries are `skill/<publisher scope>/<name>`, pinned `@<version>` or
+    `@sha256:<digest>`. A `@sha256:` reference is verified against content before use, which the
+    ADR-0014 digest already guarantees.
+  - The other kinds the Hub owns are declared in its `primitive:` block: `skill`, `scorecard`,
+    `preset`, `request`, `machine`, `advisory` and `audit-event`.
+  - New internal ids are ULIDs.
 - **Catalog entry:** a skill identity plus a version, bound to exactly one **content digest**
   (ADR-0014). It also records:
   - publisher scope
@@ -390,13 +466,26 @@ four milestones:
 ### Wire contracts
 
 - **Registry index protocol:** unchanged. The Hub serves the existing per-skill NDJSON registry
-  index (one line per version, with `cksum` and `yanked`) for the catalog visible to the caller,
-  and downloads by digest.
+  index (one line per version, with `cksum` and `yanked`) beneath a `/v1` base path, for the
+  catalog visible to the caller, and downloads by digest.
   - `blocked` content is served with `yanked = true`.
   - FastSkill versions without Hub support can use the Hub as an `http-registry` repository with
     a bearer token.
-- **Hub API:** a versioned route group separate from the existing `/api/v1` local routes. Every
-  route requires a valid bearer token or portal session. Resource groups:
+- **Hub API** (Rudaia C4): public routes live under `/v1`, separate from the existing
+  `/api/v1` local routes.
+  - Hub mode does not mount the local `/api` routes or the local dashboard.
+  - Its surfaces are `/v1` (the Hub API, and the registry index beneath it), `/healthz` and
+    `/readyz` without auth, and the portal.
+  - It serves an OpenAPI 3.1 document at `/v1/openapi.json`.
+  - Errors are `application/problem+json` carrying a stable `code` and a `trace_id`.
+  - Lists paginate with `limit` and `page_token` and return `next_page_token`. Offset
+    pagination is not used.
+  - Every resource carries its `rrn`.
+  - Request submission and inventory reports accept an `Idempotency-Key`.
+  - Every `/v1` route requires a valid bearer token or portal session. No anonymous reads are
+    declared (Rudaia C1.6). Missing or invalid tokens get `401`; forbidden actions get `403`.
+
+  Resource groups:
   - **Profile:**
     - read my resolved Managed profile and signed Hub policy (ETag revalidation)
     - add or remove my Permitted additions
@@ -490,10 +579,33 @@ four milestones:
 ### Search
 
 - The Hub keeps one semantic index over catalog entries, using an OpenAI-compatible embedding
-  endpoint configured to go through the organization's LLM gateway.
+  endpoint configured to go through the organization's LLM gateway. In Rudaia that gateway is
+  Rudaia Models (LiteLLM). The Hub is a workload holding a long-lived virtual key in OpenBao, as
+  Rudaia ADR-0009 describes.
 - Plain text search is always available and serves as the fallback.
 - Results are filtered by caller visibility before ranking.
 - When connected, `skill search` without `--local` queries the Hub.
+
+### Telemetry (Rudaia C3, C5)
+
+- The Hub exports OTLP to the configured Collector through cli-framework's `telemetry`
+  feature. In Rudaia that is the platform Collector, and the namespace carries the
+  `faseinfra.net/otlp-access=true` label.
+- **Resource attributes:**
+  - `service.name`: configurable, `rudaia-skills` in the Rudaia deployment
+  - `service.version`
+  - `rudaia.primitive=skills`
+  - `rudaia.contracts.version=0.1`
+- **Request attributes:** every server span carries the Rudaia request attributes (account,
+  product, env, principal, principal kind, and run for agents), set by the authorization library.
+- The Hub propagates W3C `traceparent` on outgoing calls, including embedding calls. The CLI
+  sends one with its Hub requests, so a sync appears as one trace.
+- **Usage records** (SHOULD): one `rudaia.usage` log record per sync and per content download.
+  - Meters: `skills.syncs` and `skills.downloads`, declared in the `primitive:` block.
+  - Each record's idempotency key is stable per fact.
+- **Inventory reports are not telemetry.** They are Hub data that admins query, stored in the
+  Hub and kept to the fields ADR-0017 allows. The OTel pipeline carries the Hub's operational
+  signals only, never inventory contents, prompts or skill contents.
 
 ### Portal
 
@@ -503,8 +615,9 @@ four milestones:
   area is shown and served only to admin roles, and the server enforces the same checks.
 - **Look:** built on the Rudaia design system. In M0, Rudaia gains a component package
   (components, tokens, Tailwind preset) with proper entry points. The Hub consumes it as a pnpm
-  git dependency pinned to a commit. The portal is branded "FastSkill Hub" and styled with
-  Rudaia, in light and dark themes.
+  git dependency pinned to a commit. The portal is styled with Rudaia, in light and dark themes.
+  Its product title is configuration: "FastSkill Hub" by default, and "Rudaia Skills" in the
+  Rudaia deployment.
 - **End-user pages:**
   - catalog and search
   - skill detail
@@ -521,16 +634,32 @@ four milestones:
   - role mapping
   - audit log with export
 
-### Deployment (first deployment, for internal use)
+### Deployment (first deployment: Rudaia Skills)
 
-- The Hub runs as a `product-bundle` in the platform GitOps repository on the internal cluster,
-  backed by cluster Postgres and S3-compatible storage.
-- It's reachable only on the tailnet in v1. Public ingress is deferred.
+- The Hub runs as a service in the platform GitOps repository on the Rudaia cluster, backed by
+  cluster Postgres and S3-compatible storage.
+- Its service descriptor carries the Rudaia `primitive:` block:
+  - `name: skills`
+  - `title: Rudaia Skills`
+  - `contracts: "0.1"`
+  - `host: skills.rudaia.com`
+  - `openapi: /v1/openapi.json`
+  - the kinds listed in the domain model
+  - no anonymous reads
+  - the two meters
+- It's served publicly at `https://skills.rudaia.com` (Rudaia C4.7), through its own Ingress and
+  a publicly trusted certificate. Every route except health checks requires identity, so public
+  exposure doesn't mean anonymous access.
+- Following Rudaia ADR-0008, the deployment's declaration lives in git. The Hub's own state
+  (catalog, approvals, Presets, inventory, audit) lives in its database.
 
 ### Milestones
 
 - **M0, foundations** (the two ADRs are drafted in this PR):
-  - groups-claim support in `cli-framework-oidc`
+  - groups-claim and multi-issuer support in `cli-framework-oidc`
+  - the shared Rudaia authorization and resource-name libraries in cli-framework, which are
+    Rudaia M1 deliverables that the Hub consumes rather than builds
+  - the `rudaia` realm clients for the Hub
   - the Rudaia component package
   - ADR-0016 and ADR-0017
   - CONTEXT.md glossary additions: Hub, Managed profile, Hub policy, Agent target, managed
@@ -541,9 +670,11 @@ four milestones:
   - OIDC login (CLI and portal)
   - tracked-repository import
   - registry index serving
-  - catalog and search API
+  - catalog and search API, with the C4 conventions and resource names
+  - OTLP telemetry with the Rudaia attributes
   - the portal catalog, skill pages and search
-  - deployment
+  - deployment at `skills.rudaia.com`, passing the Rudaia conformance kit. This is the Rudaia
+    pilot exit criterion.
 - **M2, visibility:**
   - `profile sync|status|hook-install`
   - Agent targets, the managed store and links
@@ -591,9 +722,21 @@ four milestones:
     session. They cover the main flows (browse, add to profile, approve, block) and run axe in
     light and dark themes.
   - These tests stay thin, because behavior is already covered at seam 1.
+- **Rudaia contract checks at seam 1:**
+  - `401` as problem+json for a missing token, a foreign issuer and a wrong audience
+  - `403` for roles on another product scope, and for an agent token without a matching
+    capability
+  - `rrn` on every listed resource
+  - `/healthz`, `/readyz` and `/v1/openapi.json`
+  - the Rudaia span attributes, captured with an in-memory exporter
+- **Conformance kit:** once the Rudaia conformance kit image exists, CI also runs it against a
+  seam-2 Hub. The in-repo checks above remain, so the kit is a second opinion rather than the
+  only guard.
 - **Identity provider stand-in:**
   - `cli-framework-oidc`'s `test-support` feature synthesizes an issuer (a wiremock discovery
     and JWKS endpoint) and mints ES256 tokens with chosen claims, including the groups claim.
+  - Tests use two synthesized issuers, one standing in for the realm and one for the Agent
+    STS, plus a third, untrusted issuer.
   - One optional test against a real Keycloak MAY exist behind an opt-in flag, as in that crate's
     own Keycloak end-to-end test.
 - **Prior art:**
@@ -621,8 +764,11 @@ four milestones:
 - Enforcing policy inside agent runtimes. It's documented as a device-management setup, not
   implemented.
 - Scanning every project on a machine. Only the current project is checked, at sync.
-- Multi-organization SaaS, white-label branding, public internet exposure, SAML, and identity
-  providers without OIDC.
+- Multi-organization SaaS (one deployment serving several Rudaia accounts), white-label
+  branding beyond the product title, SAML, and identity providers without OIDC.
+- Anonymous access of any kind, including public skill metadata.
+- Rudaia Packages: generalizing the engine over package types other than skills (Rudaia
+  ADR-0012). The Hub is Rudaia Skills only.
 - Agent targets beyond Claude Code and Cursor. The target model allows more, but none are built
   in v1.
 - Changing the behavior of `server serve` without `--hub`, of `mcp serve`, or of any command when
@@ -654,6 +800,25 @@ four milestones:
   `config-service`'s default admin rule, which today checks `realm_access.roles` for
   `config-admin`, configurable in practice. The Hub's admin role mapping and that rule SHOULD
   come from one setting.
+- **Open items from the Rudaia alignment:**
+  - **The catalog and the control plane.** Rudaia's control plane (`aroff/rudaia-control`)
+    serves a catalog of *primitives and products* read from git (Rudaia ADR-0008). The Hub's
+    catalog of *skill contents* and approvals stays in the Hub. Whether control-plane views
+    (usage, principals) should link to Hub resources by rrn is left for when the control plane
+    exists.
+  - **Governance in git.** Rudaia's GitOps discipline might want the slow-changing Hub settings
+    in git: publisher-scope ownership, tracked repositories, the group → role mapping. In v1
+    they live in the Hub with an audit trail. Moving them to git would be a later ADR.
+  - **Teams versus product scopes.** Hub teams are identity provider groups. If Rudaia products
+    turn out to be the natural teams, a team Preset could key on a product scope instead of a
+    group.
+  - **The role → action matrix** above is this PRD's proposal for the open Rudaia v0.2 item.
+  - **Agent STS availability.** Agent tokens depend on the control plane's STS, which isn't
+    built yet. The Hub still accepts only the realm issuer until the STS exists. Its
+    configuration already takes a list of issuers.
+  - **The issuer migration.** The `rudaia` realm issuer moves from `auth.faseinfra.net` to a
+    Rudaia hostname in a later, planned migration. The Hub needs only a configuration change for
+    that, and so does the CLI's Managed config file.
 - **Relationship to presets:** this PRD turns the deferred "organization/team preset inheritance"
   in team-skill-presets Q18 into a Hub-resolved union, without changing bundle semantics. Bundles
   remain a project-level artifact and can be catalog entries of their own in a later milestone.
