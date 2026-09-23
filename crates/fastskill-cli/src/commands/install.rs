@@ -394,16 +394,11 @@ async fn execute_install_inner(
     let roots = project
         .to_skill_entries(manifest_dir)
         .map_err(|error| CliError::Config(format!("Failed to parse dependencies: {error}")))?;
-    let (config_depth, config_skip_transitive) = project
-        .tool
-        .as_ref()
-        .and_then(|tool| tool.fastskill.as_ref())
-        .map(|config| (config.install_depth, config.skip_transitive))
-        .unwrap_or((5, false));
+    let settings = plan::InstallSettings::from_project(&project);
     let max_levels = args
         .depth
         .map(|depth| u32::try_from(depth).expect("depth validated above"))
-        .unwrap_or(config_depth);
+        .unwrap_or(settings.max_levels);
 
     let prepared = match plan::prepare(
         planning_service,
@@ -414,7 +409,7 @@ async fn execute_install_inner(
             only: args.only.as_deref(),
             without: args.without.as_deref(),
             max_levels,
-            skip_transitive: config_skip_transitive,
+            skip_transitive: settings.skip_transitive,
             strict: args.lock,
             offline: args.offline,
         },

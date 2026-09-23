@@ -355,17 +355,13 @@ async fn execute_update_project(
     let manifest_dir = project_file_path
         .parent()
         .unwrap_or(std::path::Path::new("."));
-    let max_levels = project
-        .tool
-        .as_ref()
-        .and_then(|tool| tool.fastskill.as_ref())
-        .map_or(5, |config| config.install_depth);
+    let settings = crate::commands::install::plan::InstallSettings::from_project(&project);
     let (prepared, previews) = crate::commands::install::change::prepare_changes(
         &service,
         &lock_path,
         manifest_dir,
         change_roots,
-        max_levels,
+        settings,
         args.offline,
         args.dry_run || args.check,
     )

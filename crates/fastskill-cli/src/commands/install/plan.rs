@@ -1,7 +1,7 @@
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::install::PreparedSkill;
 use fastskill_core::core::lock::ProjectSkillsLock;
-use fastskill_core::core::manifest::SkillEntry;
+use fastskill_core::core::manifest::{SkillEntry, SkillProjectToml};
 use fastskill_core::core::origin::Origin;
 use fastskill_core::FastSkillService;
 use std::collections::{BTreeSet, HashMap};
@@ -15,6 +15,48 @@ pub(super) struct InstallSelection<'a> {
     pub skip_transitive: bool,
     pub strict: bool,
     pub offline: bool,
+}
+
+/// `[tool.fastskill]` settings that shape every plan built by install, add and update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InstallSettings {
+    pub max_levels: u32,
+    pub skip_transitive: bool,
+}
+
+impl InstallSettings {
+    pub(crate) fn from_project(project: &SkillProjectToml) -> Self {
+        project
+            .tool
+            .as_ref()
+            .and_then(|tool| tool.fastskill.as_ref())
+            .map_or(
+                Self {
+                    max_levels: 5,
+                    skip_transitive: false,
+                },
+                |config| Self {
+                    max_levels: config.install_depth,
+                    skip_transitive: config.skip_transitive,
+                },
+            )
+    }
+}
+
+/// `skip_transitive` declares that no selected skill needs another skill. A plan
+/// that would pull in a dependency breaks that declaration; refuse it rather than
+/// install an incomplete set.
+pub(super) fn reject_transitive(skip_transitive: bool, planned: &[PlannedSkill]) -> CliResult<()> {
+    if !skip_transitive {
+        return Ok(());
+    }
+    match planned.iter().find(|skill| !skill.dependencies.is_empty()) {
+        Some(skill) => Err(CliError::Config(format!(
+            "{} has required dependencies; skip_transitive cannot produce a complete installation",
+            skill.prepared.id()
+        ))),
+        None => Ok(()),
+    }
 }
 
 pub(crate) struct InstallReport {
@@ -219,13 +261,13 @@ pub(super) async fn prepare(
             service,
             fresh_roots,
             selection.max_levels,
-            selection.skip_transitive,
             selection.offline,
         )
         .await?;
         refreshed_repositories = refreshed;
         merge_plans(&mut planned, fresh)?;
     }
+    reject_transitive(selection.skip_transitive, &planned)?;
     let roots: Vec<String> = newly_covered.into_iter().collect();
     Ok(PreparedInstallPlan {
         planned,
@@ -505,7 +547,6 @@ async fn prepare_fresh(
     service: &FastSkillService,
     mut roots: Vec<SkillEntry>,
     max_levels: u32,
-    skip_transitive: bool,
     offline: bool,
 ) -> CliResult<(Vec<PlannedSkill>, Vec<String>)> {
     roots.sort_by(|left, right| left.id.cmp(&right.id));
@@ -527,18 +568,6 @@ async fn prepare_fresh(
     )
     .await
     .map_err(CliError::Service)?;
-    if skip_transitive {
-        if let Some(candidate) = resolution
-            .candidates
-            .iter()
-            .find(|candidate| !candidate.dependencies.is_empty())
-        {
-            return Err(CliError::Config(format!(
-                "{} has required dependencies; skip_transitive cannot produce a complete installation",
-                candidate.prepared.id()
-            )));
-        }
-    }
     Ok((
         planned_from_resolution(resolution.candidates),
         resolution.refreshed_repositories,

@@ -45,11 +45,7 @@ pub(super) async fn add_project_skills(
     let lock_path = manifest_dir.join("skills.lock");
     let project = SkillProjectToml::load_from_file(&project_file)
         .map_err(|error| CliError::Config(format!("Failed to load skill-project.toml: {error}")))?;
-    let max_levels = project
-        .tool
-        .as_ref()
-        .and_then(|tool| tool.fastskill.as_ref())
-        .map_or(5, |config| config.install_depth);
+    let settings = crate::commands::install::plan::InstallSettings::from_project(&project);
     let declared = project
         .dependencies
         .as_ref()
@@ -96,7 +92,7 @@ pub(super) async fn add_project_skills(
         &lock_path,
         manifest_dir,
         roots(),
-        max_levels,
+        settings,
         offline,
         dry_run || isolated_preflight,
     )
@@ -119,7 +115,7 @@ pub(super) async fn add_project_skills(
             &lock_path,
             manifest_dir,
             roots(),
-            max_levels,
+            settings,
             offline,
             false,
         )
