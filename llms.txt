@@ -1,9 +1,9 @@
-# FastSkill 0.9.250
+# FastSkill 0.9.251
 
 Documentation for the current release only.
 
-Release revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
-Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
+Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
 
 ## Pages
 
@@ -13,7 +13,6 @@ Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
 - [Install your first skill](https://docs.gofastskill.com/quickstart.md): Install a local skill, verify it, and make it available to an agent without an API key.
 - [Troubleshooting](https://docs.gofastskill.com/troubleshooting.md): Diagnose and fix common FastSkill issues: lock files, embedding search, installs, and environment problems.
 - [Understand FastSkill](https://docs.gofastskill.com/welcome.md): Skills, projects, locks, and bundles in one workflow.
-- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Bundle commands](https://docs.gofastskill.com/cli-reference/bundle-command.md): Build, install, update, and restore self-contained project exports.
 - [cache Command](https://docs.gofastskill.com/cli-reference/cache-command.md): Inspect and reclaim the on-disk skill content cache with fastskill cache.
 - [Discover and inspect skills](https://docs.gofastskill.com/cli-reference/discovery-commands.md): Find a catalog result, inspect its origin, and install it explicitly.
@@ -29,12 +28,13 @@ Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
 - [Skill and project commands](https://docs.gofastskill.com/cli-reference/skill-commands.md): Add, remove, update, list, read, and search skills through explicit namespaces.
 - [Marketplace, analysis, and CLI tools](https://docs.gofastskill.com/cli-reference/tooling-commands.md): CLI reference for fastskill marketplace, fastskill analysis, and fastskill cli doctor.
 - [skill update](https://docs.gofastskill.com/cli-reference/update-command.md): Resolve and apply deliberate changes from recorded skill origins.
-- [Advanced Patterns](https://docs.gofastskill.com/examples/advanced-patterns.md): Analyze overlap, optimize skills, filter project groups, and manage editable and global skills.
-- [Integration Tutorials](https://docs.gofastskill.com/examples/integration-tutorials.md): Connect FastSkill to agents and pipelines: MCP into Claude Code and Cursor, the serve HTTP API, and locked installs in CI.
+- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Cluster and Portfolio Analysis](https://docs.gofastskill.com/evals-quality/cluster-analysis.md): Analyze skill quality at portfolio level using cluster, matrix, and duplicate detection.
 - [Evals and Quality Overview](https://docs.gofastskill.com/evals-quality/overview.md): How FastSkill quality workflows fit together: validate, run evals, score, and cluster analysis.
 - [Run Evals](https://docs.gofastskill.com/evals-quality/run-evals.md): Operational guide for running, reporting, and scoring FastSkill eval suites.
 - [Eval Setup](https://docs.gofastskill.com/evals-quality/setup.md): Author an eval suite: the [tool.fastskill.eval] manifest table, the prompts CSV, and the checks TOML schema.
+- [Advanced Patterns](https://docs.gofastskill.com/examples/advanced-patterns.md): Analyze overlap, optimize skills, filter project groups, and manage editable and global skills.
+- [Integration Tutorials](https://docs.gofastskill.com/examples/integration-tutorials.md): Connect FastSkill to agents and pipelines: MCP into Claude Code and Cursor, the serve HTTP API, and locked installs in CI.
 - [Documentation and tools for agents](https://docs.gofastskill.com/integration/agents.md): Retrieve current FastSkill documentation as Markdown and use the CLI or MCP safely.
 - [Claude Code Integration](https://docs.gofastskill.com/integration/claude-code-integration.md): Integrate FastSkill with Claude Code for intelligent skill discovery.
 - [Cursor Integration](https://docs.gofastskill.com/integration/cursor-integration.md): Integrate FastSkill with Cursor IDE for intelligent skill discovery and tool recommendations.
@@ -51,13 +51,13 @@ Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
 - [Choose a distribution model](https://docs.gofastskill.com/registry/repository-architecture.md): Decide between direct sources, catalogs, and self-contained team bundles.
 - [Configure skill sources](https://docs.gofastskill.com/registry/sources.md): Add skills from Git and configure local, Git marketplace, HTTP, and ZIP catalogs.
 - [Local browser console](https://docs.gofastskill.com/registry/web-ui.md): Inspect installed skills and manage a project through the optional HTTP server.
+- [Manifests, locks, and scope](https://docs.gofastskill.com/skill-management/manifest-system.md): Declare sources and understand what FastSkill restores for a project or user.
+- [Reconcile project skill state](https://docs.gofastskill.com/skill-management/reconciliation.md): Compare declared, locked, and installed skill state and enforce it in CI.
+- [Validate a skill](https://docs.gofastskill.com/skill-management/validation.md): Check skill structure and installed state before an agent uses it.
 - [Security Best Practices](https://docs.gofastskill.com/security/best-practices.md): Operational guidance for running FastSkill safely: read-only serve, auth proxies, PAT env-var indirection, and locked CI installs.
 - [Security Model](https://docs.gofastskill.com/security/model.md): How FastSkill treats trust boundaries: read-only-by-default serve, no in-app auth, env-var token indirection, and reproducible locked installs.
 - [Debugging Guide](https://docs.gofastskill.com/testing/debugging.md): Diagnose FastSkill setup and behavior with `fastskill cli doctor` and `--verbose` output.
 - [Testing Framework](https://docs.gofastskill.com/testing/framework.md): Test your skills with `fastskill eval` — validate configuration, run prompts against an agent, and score the results.
-- [Manifests, locks, and scope](https://docs.gofastskill.com/skill-management/manifest-system.md): Declare sources and understand what FastSkill restores for a project or user.
-- [Reconcile project skill state](https://docs.gofastskill.com/skill-management/reconciliation.md): Compare declared, locked, and installed skill state and enforce it in CI.
-- [Validate a skill](https://docs.gofastskill.com/skill-management/validation.md): Check skill structure and installed state before an agent uses it.
 - [MCP Tool Calling](https://docs.gofastskill.com/tool-calling/development.md): Expose FastSkill to agents as MCP tools with `fastskill mcp serve` (read-only by default, `--enable-write` to allow mutation), and wire them into Claude Code, Cursor, and other agents with `fastskill mcp install`.
 
 ## Complete documentation

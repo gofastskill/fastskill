@@ -1,12 +1,12 @@
 # Configure skill sources
 
-FastSkill 0.9.250
+FastSkill 0.9.251
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
+Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
 
-Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
+Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
 
 
 
