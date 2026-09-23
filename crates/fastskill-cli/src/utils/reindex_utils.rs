@@ -114,7 +114,6 @@ pub async fn maybe_auto_reindex(
     let args = crate::commands::reindex::ReindexArgs {
         skills_dir: None,
         force: false,
-        max_concurrent: 5,
         progress: false,
         no_progress: true,
     };

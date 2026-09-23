@@ -43,7 +43,7 @@ pub struct SearchArgs {
     pub json: bool,
 
     /// Use embedding search: true, false, or auto
-    /// Only applies to local search; ignored for remote search
+    /// Only valid with --local; rejected for remote search
     pub embedding: Option<String>,
 
     /// Skills directory path (overrides default discovery)
@@ -151,7 +151,7 @@ impl IntoCommandSpec for SearchArgs {
                     name: "embedding",
                     long: Some("embedding"),
                     short: None,
-                    help: "Use embedding search: true, false, or auto",
+                    help: "Use embedding search (requires --local): true, false, or auto",
                     kind: ArgKind::Option,
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
@@ -412,6 +412,12 @@ fn validate_search_args(args: &SearchArgs) -> CliResult<()> {
         ));
     }
 
+    if args.embedding.is_some() && !args.local {
+        return Err(CliError::Config(
+            "--embedding requires --local; remote search does not use embeddings".to_string(),
+        ));
+    }
+
     if args.paths && !args.local {
         return Err(CliError::Config(
             "--paths requires --local; use 'fastskill skill search --local --paths <query>'"
@@ -651,6 +657,26 @@ mod tests {
 
         let result = validate_search_args(&args);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_search_args_rejects_embedding_for_remote() {
+        let args = SearchArgs {
+            query: "test".to_string(),
+            local: false,
+            remote: false,
+            repository: None,
+            limit: 10,
+            format: None,
+            json: false,
+            embedding: Some("true".to_string()),
+            skills_dir: None,
+            paths: false,
+            content: None,
+        };
+
+        let error = validate_search_args(&args).unwrap_err();
+        assert!(error.to_string().contains("--embedding requires --local"));
     }
 
     #[test]

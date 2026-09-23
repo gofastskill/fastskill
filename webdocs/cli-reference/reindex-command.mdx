@@ -46,14 +46,6 @@ fastskill index rebuild --skills-dir .claude/skills/ --force
 - When embeddings seem outdated
 - To rebuild corrupted index
 
-### --max-concurrent `&lt;NUMBER&gt;`
-
-<Callout type="warning">
-This flag is currently a **no-op**. It is accepted for compatibility but has no effect:
-`index rebuild` embeds skills **sequentially**, one at a time. Passing a value does not change
-indexing speed or the number of concurrent API requests.
-</Callout>
-
 ## Configuration Requirements
 
 ### 1. Embedding Configuration

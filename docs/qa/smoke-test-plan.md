@@ -369,7 +369,7 @@ embedding_model = "text-embedding-3-small"
 |---|---|---|---|---|---|
 | 8.1 | `fastskill cli doctor` | `embedding_config` = Pass ("configuration found"); `api_key` = Pass ("OPENAI_API_KEY is set"). | 🤖 | doctor | ☐P ☐F ☐G |
 | 8.2 | `fastskill --skills-dir "$SKILLS_DIR" index rebuild` | Actually builds the index (not skipped), exit 0, reports a count. | 🤖 | configuration | ☐P ☐F ☐G |
-| 8.3 | `fastskill --skills-dir "$SKILLS_DIR" skill search "edit documents" --embedding true` | Returns semantically-ranked results, exit 0. | 🧑 | search-command | ☐P ☐F ☐G |
+| 8.3 | `fastskill --skills-dir "$SKILLS_DIR" skill search --local "edit documents" --embedding true` | Returns semantically-ranked results, exit 0. | 🧑 | search-command | ☐P ☐F ☐G |
 | 8.4 | `fastskill --skills-dir "$SKILLS_DIR" analysis matrix` | Pairwise similarity output, exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
 | 8.5 | `fastskill --skills-dir "$SKILLS_DIR" analysis duplicates` | Duplicate/near-duplicate pairs (or none), exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
 | 8.6 | `fastskill --skills-dir "$SKILLS_DIR" analysis cluster --num-clusters 2` | Clusters the skills, exit 0. | 🤖 | analysis | ☐P ☐F ☐G |
@@ -386,13 +386,13 @@ embedding_model = "<model your gateway serves>"
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
 | 8.8 | `fastskill --skills-dir "$SKILLS_DIR" index rebuild` | Reindex succeeds **against the gateway** — confirm via gateway logs that the request hit `<gateway>/v1/embeddings`. **This is the real proof the override works.** | 🧑 | embedding.rs | ☐P ☐F ☐G |
-| 8.9 | `fastskill --skills-dir "$SKILLS_DIR" skill search "edit documents" --embedding true` | Semantic results via the gateway, exit 0. | 🧑 | — | ☐P ☐F ☐G |
+| 8.9 | `fastskill --skills-dir "$SKILLS_DIR" skill search --local "edit documents" --embedding true` | Semantic results via the gateway, exit 0. | 🧑 | — | ☐P ☐F ☐G |
 
 **Variant C — graceful skip (no provider).** Temporarily unset the key:
 | # | Command | Expected observable | Mode | Src | Result |
 |---|---|---|---|---|---|
 | 8.10 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" index rebuild` | "Reindex skipped: … Run 'fastskill cli doctor' …", **exit 0**. | 🧑 | reindex | ☐P ☐F ☐G |
-| 8.11 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" skill search "x"` (no `--embedding`) | Falls back to text/fuzzy search, exit 0. | 🧑 | search local | ☐P ☐F ☐G |
+| 8.11 | `OPENAI_API_KEY= fastskill --skills-dir "$SKILLS_DIR" skill search --local "x"` (no `--embedding`) | Falls back to text/fuzzy search, exit 0. | 🧑 | search local | ☐P ☐F ☐G |
 
 ### Section 9 — Eval
 

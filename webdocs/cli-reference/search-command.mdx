@@ -29,7 +29,7 @@ to search only installed skills.
 | `-l, --limit <NUMBER>` | Return between 1 and 1,000 results. | `10` |
 | `-f, --format <FORMAT>` | Render `table`, `json`, `grid`, or `xml`. | `table` |
 | `--json` | Shorthand for `--format json`; mutually exclusive with `--format`. | `false` |
-| `--embedding <MODE>` | Local search mode: `true`, `false`, or `auto`. | `auto` |
+| `--embedding <MODE>` | Local search mode: `true`, `false`, or `auto`. Requires `--local`; rejected for remote search. | `auto` |
 | `--paths` | Return resolved paths as JSON; requires `--local`. | `false` |
 | `--content <MODE>` | Include `none`, `preview`, or `full`; requires `--local --paths`. | `none` |
 | `--skills-dir <PATH>` | Override the installation directory for this invocation. | project setting |
