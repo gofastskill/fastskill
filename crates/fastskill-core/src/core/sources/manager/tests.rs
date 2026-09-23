@@ -462,7 +462,7 @@ async fn marketplace_lookup_rejects_unknown_and_local_sources() {
 }
 
 #[test]
-fn repository_conversion_keeps_supported_types_auth_and_priority() {
+fn repository_conversion_keeps_supported_types_and_priority() {
     fn definition(
         name: &str,
         repo_type: RepositoryType,
@@ -490,9 +490,7 @@ fn repository_conversion_keeps_supported_types_auth_and_priority() {
                 tag: None,
             },
             3,
-            Some(RepositoryAuth::Pat {
-                env_var: "TOKEN".to_string(),
-            }),
+            None,
         ),
         definition(
             "zip",
@@ -501,9 +499,7 @@ fn repository_conversion_keeps_supported_types_auth_and_priority() {
                 base_url: "https://example.test/skills".to_string(),
             },
             2,
-            Some(RepositoryAuth::Pat {
-                env_var: "ZIP_TOKEN".to_string(),
-            }),
+            None,
         ),
         definition(
             "local",
@@ -523,15 +519,6 @@ fn repository_conversion_keeps_supported_types_auth_and_priority() {
             0,
             None,
         ),
-        definition(
-            "mismatched",
-            RepositoryType::GitMarketplace,
-            RepositoryConfig::ZipUrl {
-                base_url: "https://example.test/mismatch".to_string(),
-            },
-            4,
-            None,
-        ),
     ]);
 
     let sources = SourcesManager::from_repositories(&repositories)
@@ -549,16 +536,13 @@ fn repository_conversion_keeps_supported_types_auth_and_priority() {
         &sources.get_source("git").unwrap().source,
         SourceConfig::Git {
             branch: Some(branch),
-            auth: Some(SourceAuth::Pat { env_var }),
+            auth: None,
             ..
-        } if branch == "release" && env_var == "TOKEN"
+        } if branch == "release"
     ));
     assert!(matches!(
         &sources.get_source("zip").unwrap().source,
-        SourceConfig::ZipUrl {
-            auth: Some(SourceAuth::Pat { env_var }),
-            ..
-        } if env_var == "ZIP_TOKEN"
+        SourceConfig::ZipUrl { auth: None, .. }
     ));
 
     let unsupported = RepositoryManager::from_definitions(vec![definition(
@@ -573,6 +557,65 @@ fn repository_conversion_keeps_supported_types_auth_and_priority() {
     assert!(SourcesManager::from_repositories(&unsupported)
         .unwrap()
         .is_none());
+}
+
+#[test]
+fn repository_conversion_rejects_settings_that_would_be_ignored() {
+    fn rejected(
+        repo_type: RepositoryType,
+        config: RepositoryConfig,
+        auth: Option<RepositoryAuth>,
+    ) -> String {
+        let repositories = RepositoryManager::from_definitions(vec![RepositoryDefinition {
+            name: "bad".to_string(),
+            repo_type,
+            priority: 0,
+            config,
+            auth,
+            storage: None,
+        }]);
+        match SourcesManager::from_repositories(&repositories) {
+            Err(SourcesError::InvalidRepository(message)) => message,
+            other => panic!(
+                "expected InvalidRepository, got {:?}",
+                other.map(|sources| sources.is_some())
+            ),
+        }
+    }
+    let token = || {
+        Some(RepositoryAuth::Pat {
+            env_var: "TOKEN".to_string(),
+        })
+    };
+
+    let git_auth = rejected(
+        RepositoryType::GitMarketplace,
+        RepositoryConfig::GitMarketplace {
+            url: "https://github.com/acme/skills".to_string(),
+            branch: None,
+            tag: None,
+        },
+        token(),
+    );
+    assert!(git_auth.contains("auth"), "{git_auth}");
+
+    let zip_auth = rejected(
+        RepositoryType::ZipUrl,
+        RepositoryConfig::ZipUrl {
+            base_url: "https://example.test/skills".to_string(),
+        },
+        token(),
+    );
+    assert!(zip_auth.contains("pre-signed URL"), "{zip_auth}");
+
+    let mismatched = rejected(
+        RepositoryType::GitMarketplace,
+        RepositoryConfig::ZipUrl {
+            base_url: "https://example.test/mismatch".to_string(),
+        },
+        None,
+    );
+    assert!(mismatched.contains("zip_url"), "{mismatched}");
 }
 
 #[tokio::test]

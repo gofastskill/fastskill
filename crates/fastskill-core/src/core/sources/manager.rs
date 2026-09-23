@@ -93,14 +93,9 @@ fn reject_configured_git_auth(
     auth: &Option<SourceAuth>,
 ) -> Result<(), SourcesError> {
     if auth.is_some() {
-        return Err(SourcesError::Git(format!(
-            "Source '{source_name}' has `auth` configured, but git sources authenticate via \
-             the system git credential helper or SSH agent, not via an `auth` block -- \
-             fastskill does not inject PAT/basic credentials into git operations. Remove \
-             `auth` from this source and either: (1) configure a git credential helper (e.g. \
-             `git config credential.helper store`, or `gh auth login`), or (2) use an SSH \
-             remote (e.g. `git@github.com:org/repo.git`) with a key loaded in your SSH agent."
-        )));
+        return Err(SourcesError::Git(
+            crate::core::repository::validation::git_auth_unsupported(source_name),
+        ));
     }
     Ok(())
 }
@@ -119,13 +114,9 @@ fn reject_configured_zip_url_auth(
     auth: &Option<SourceAuth>,
 ) -> Result<(), SourcesError> {
     if auth.is_some() {
-        return Err(SourcesError::ZipUrl(format!(
-            "Source '{source_name}' has `auth` configured, but zip-url sources fetch via a \
-             plain HTTP GET and do not support an `auth` block -- fastskill does not inject \
-             PAT/basic credentials into zip-url requests. Remove `auth` from this source and \
-             use a pre-signed URL instead (e.g. an S3 or GCS presigned URL), which embeds the \
-             credential in the URL itself and needs no separate `auth` configuration."
-        )));
+        return Err(SourcesError::ZipUrl(
+            crate::core::repository::validation::zip_url_auth_unsupported(source_name),
+        ));
     }
     Ok(())
 }
@@ -807,6 +798,9 @@ impl SourcesManager {
         use crate::core::repository::{RepositoryConfig, RepositoryType};
 
         let repos = repo_manager.list_repositories();
+        for repo in &repos {
+            repo.validate().map_err(SourcesError::InvalidRepository)?;
+        }
 
         let source_defs: Vec<SourceDefinition> = repos
             .into_iter()

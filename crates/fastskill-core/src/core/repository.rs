@@ -3,6 +3,7 @@
 //! This module provides a unified repositories.toml configuration for all repository types.
 
 pub mod client;
+pub(crate) mod validation;
 
 pub use client::{CratesRegistryClient, RepositoryClient, RepositoryClientError};
 
