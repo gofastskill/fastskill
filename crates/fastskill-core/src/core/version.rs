@@ -173,6 +173,11 @@ pub fn newest_version(versions: &[String]) -> Option<String> {
 }
 
 #[cfg(test)]
+#[path = "version_properties.rs"]
+#[allow(clippy::unwrap_used)]
+mod properties;
+
+#[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;

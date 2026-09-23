@@ -96,6 +96,7 @@ wiremock = "0.5"
 insta = "1.47"
 assert_cmd = "2.2"
 predicates = "3.0"
+proptest = "1.11"
 
 [features]
 default = ["filesystem-storage"]
