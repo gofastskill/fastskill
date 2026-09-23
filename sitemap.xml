@@ -133,6 +133,12 @@
 <loc>https://docs.gofastskill.com/registry/web-ui</loc>
 </url>
 <url>
+<loc>https://docs.gofastskill.com/security/best-practices</loc>
+</url>
+<url>
+<loc>https://docs.gofastskill.com/security/model</loc>
+</url>
+<url>
 <loc>https://docs.gofastskill.com/skill-management/manifest-system</loc>
 </url>
 <url>
@@ -140,12 +146,6 @@
 </url>
 <url>
 <loc>https://docs.gofastskill.com/skill-management/validation</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/security/best-practices</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/security/model</loc>
 </url>
 <url>
 <loc>https://docs.gofastskill.com/testing/debugging</loc>

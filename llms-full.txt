@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -133,13 +133,13 @@ See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference
 
 # FastSkill
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -246,13 +246,13 @@ Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/o
 
 # Install FastSkill
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -371,13 +371,13 @@ Continue with [your first skill](/quickstart).
 
 # Install your first skill
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/quickstart
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -462,13 +462,13 @@ restoration. For a portable artifact, use a [team bundle](/cli-reference/bundle-
 
 # Troubleshooting
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -706,13 +706,13 @@ Include:
 
 # Understand FastSkill
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -749,13 +749,13 @@ Start with [your first skill](/quickstart). Continue with
 
 # Bundle commands
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -889,13 +889,13 @@ tools unless it starts with `fastskill mcp serve --enable-write`.
 
 # cache Command
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -997,13 +997,13 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 # Discover and inspect skills
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -1045,13 +1045,13 @@ and [repository reference](/cli-reference/repository-command) for catalog operat
 
 # eval Command
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/eval-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -1322,13 +1322,13 @@ A case whose every trial errored is named in the output, and a metric that match
 
 # project init
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -1669,13 +1669,13 @@ Use `fastskill project init --yes` to:
 
 # project install
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -2158,13 +2158,13 @@ Keyword search with `--local --embedding false` works without an index.
 
 # optimization commands
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/optimize-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -2265,13 +2265,13 @@ fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md
 
 # CLI Reference Overview
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -2596,13 +2596,13 @@ Commands can change installed skills and manifest files. Try changes on a copy o
 
 # index rebuild
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -3070,13 +3070,13 @@ fastskill skill list --skills-dir .claude/skills/
 
 # repo commands
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -3641,13 +3641,13 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 
 # skill search
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -3751,13 +3751,13 @@ search, including no matches, and nonzero for invalid input or incomplete reposi
 
 # server serve
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -3891,13 +3891,13 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 # Skill and project commands
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4075,13 +4075,13 @@ suggestion.
 
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4193,13 +4193,13 @@ fastskill cli doctor --json
 
 # skill update
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/cli-reference/update-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4336,13 +4336,13 @@ state, reports the failed target, and exits nonzero.
 
 # Init Command
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/configuration/init-command
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4578,13 +4578,13 @@ jobs:
 
 # Cluster and Portfolio Analysis
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/evals-quality/cluster-analysis
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4651,13 +4651,13 @@ Use this regularly to keep catalog maintenance costs low.
 
 # Evals and Quality Overview
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4717,13 +4717,13 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 
 # Run Evals
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/evals-quality/run-evals
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -4792,13 +4792,13 @@ fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/code
 
 # Eval Setup
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5087,13 +5087,13 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 # Advanced Patterns
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5191,13 +5191,13 @@ plus `--global` to control what gets installed where.
 
 # Integration Tutorials
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/examples/integration-tutorials
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5298,13 +5298,13 @@ and HTTP API are the surface.
 
 # Documentation and tools for agents
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/integration/agents
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5364,13 +5364,13 @@ The server exposes read-only tools by default. Mutating tools require
 
 # Claude Code Integration
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5479,13 +5479,13 @@ See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) 
 
 # Cursor Integration
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/integration/cursor-integration
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5639,13 +5639,13 @@ See the [agent’s skill documentation](https://cursor.com/docs/skills) for nati
 
 # Configuration Reference
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/optimize/configuration
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5847,13 +5847,13 @@ confirmed by running the binary against deliberately broken configs:
 
 # Skill Optimization Overview
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -5923,13 +5923,13 @@ Each training step:
 
 # Inspecting and Exporting Results
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/optimize/results
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6155,13 +6155,13 @@ A `history.json` record looks like:
 
 # Running and Monitoring
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6349,13 +6349,13 @@ The run directory is safe to copy, archive, or share. Resume and inspect command
 
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6515,13 +6515,13 @@ Once you have your suite and checks files ready, write the `optimize.toml` confi
 
 # Context Resolution API
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6596,13 +6596,13 @@ the `limit`, and the embedding index — not by a configurable runtime cache.
 
 # Loading Strategies
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6678,13 +6678,13 @@ covers essentially all resolution performance and quality concerns.
 
 # Registry Index System
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/index-system
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -6848,13 +6848,13 @@ Skills are always stored with an organization prefix:
 
 # Marketplace.json Format
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7080,13 +7080,13 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 
 # Sources and catalogs
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/overview
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7129,13 +7129,13 @@ and [marketplace.json](/registry/marketplace-json) for catalog authoring.
 
 # Choose a distribution model
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7179,13 +7179,13 @@ to agents. See the [security model](/security/model).
 
 # Configure skill sources
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7329,13 +7329,13 @@ For sharing an already installed set without access to its original sources, use
 
 # Local browser console
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7383,15 +7383,201 @@ For the HTTP contract, health checks, and server flags, see
 
 ---
 
+# Security Best Practices
+
+FastSkill 0.9.252
+
+Source: https://docs.gofastskill.com/security/best-practices
+
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+
+
+
+## Overview
+
+These are the concrete, source-backed practices for operating FastSkill safely. They follow directly
+from the [security model](/security/model): FastSkill is a package manager with no in-app auth, so
+protection comes from *how you run and expose it*.
+
+## Running `fastskill server serve`
+
+* **Expose read-only.** For a browsable UI or REST view over your skills, run `fastskill server serve`
+  **without** `--enable-write`. Every mutation endpoint returns HTTP 403, so an exposed instance
+  cannot install, update, delete, reindex, or refresh anything.
+* **Only pass `--enable-write` when you mean it.** Enable writes for local skill management from the
+  browser/API — ideally on `localhost` only. Do not combine `--enable-write` with an open,
+  unfronted port.
+* **Front an exposed port with an authenticating proxy.** `server serve` enforces no authentication of its
+  own and is *not* a security boundary. If the port is reachable off your machine, put a reverse
+  proxy or sidecar in front that owns authentication, and make sure the app port is not directly
+  reachable. Binding a non-loopback address is fine and expected behind such a proxy.
+* **Use the health probes for orchestration**, not for security: `GET /healthz` (liveness) and
+  `GET /readyz` (readiness).
+
+## Repository credentials
+
+* **Use PAT env-var indirection.** Reference tokens by environment variable in
+  `skill-project.toml`, never inline:
+
+  ```toml
+  [[tool.fastskill.repositories]]
+  name = "team-registry"
+  type = "http-registry"
+  index_url = "https://registry.example.com/index.json"
+  auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
+  ```
+
+* **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
+  manager. Commit `skill-project.toml`; keep the token value out of the repo.
+
+* **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT to
+  index and artifact URLs only when they have the same scheme, host, and port as `index_url`.
+  Use a pre-signed URL or separately authenticated delivery layer when artifacts are hosted on
+  another origin.
+
+* **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
+  embedding-based features silently skip rather than failing — but do not paste the key into config
+  or version control.
+
+## Reproducible installs in CI
+
+* **Commit `skill-project.toml` and `skills.lock`.**
+* **Use `fastskill project install --lock` in CI** so builds install the exact locked versions rather than
+  re-resolving. This makes installs reproducible and verifiable across environments. See the
+  [cheatsheet](/cheatsheet) for the full manifest workflow.
+
+## Verify configuration
+
+Run `fastskill cli doctor` (add `--json` for machine output) to confirm the skills directory,
+`skill-project.toml`, embedding configuration, `OPENAI_API_KEY`, and auth token are set up as
+expected before deploying. See [Debugging](/testing/debugging).
+
+FastSkill deliberately has **no audit-logging feature** and **no in-app auth** — do not rely on it
+for either. Request logging, authentication, and network policy belong to the proxy and platform
+that front an exposed instance.
+
+
+
+---
+
+# Security Model
+
+FastSkill 0.9.252
+
+Source: https://docs.gofastskill.com/security/model
+
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+
+
+
+## Overview
+
+FastSkill is a skill **package manager**, not a runtime. It installs, indexes, and serves skill
+directories; it does **not** execute skills, so there is no sandbox, no resource governor, and no
+per-request audit log to speak of. Its security model is about two things: what the `fastskill server serve`
+HTTP surface lets a caller do, and how repository credentials are handled.
+
+## `fastskill server serve` is read-only by default
+
+Per ADR-0003, `fastskill server serve` mounts **only read endpoints** unless you start it with
+`--enable-write`. Reads (list/get skills, `POST /api/v1/search`, `POST /api/v1/resolve`,
+`GET /api/v1/status`, registry browse, manifest reads, the dashboard) are always available.
+
+Every state-changing endpoint — install, update, delete, reindex, registry refresh, manifest
+writes — returns **HTTP 403** when writes are disabled:
+
+```
+HTTP 403 Forbidden
+{
+  "success": false,
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "write operations disabled; start server with --enable-write",
+    "details": null
+  }
+}
+```
+
+"Anything that is not a pure read is gated" — reindex and registry refresh are included because they
+are side-effecting (disk, network, embedding-API cost), not just because they are destructive. This
+is one switch: `--enable-write` enables all mutations at once. See the
+[`server serve` reference](/cli-reference/serve-command).
+
+## `server serve` is not a security boundary
+
+FastSkill enforces **no authentication of its own**. There is no token endpoint, and API routes
+require no `Authorization` or `x-api-key` header. It handles no identity and no per-user
+authorization by design.
+
+* **Run it local-first.** The default bind is `localhost` — a single operator viewing their own
+  skills on their own machine.
+* **Front it with an authenticating proxy if you expose it.** If the port is reachable on a shared
+  or untrusted network, put a reverse proxy or sidecar in front that owns request authentication,
+  and ensure the app port is not directly reachable. FastSkill will not police the bind address for
+  you, and binding a non-loopback address is the normal, expected configuration behind such a proxy.
+
+Combined with the read-only default, an exposed instance started **without** `--enable-write` cannot
+be used to mutate state even before the proxy is considered. Reaching a destructive endpoint
+unauthenticated requires the operator to have *both* enabled writes *and* exposed the port with no
+fronting proxy — a deliberate double opt-out.
+
+A read-only exposed instance still **discloses skill data** to anyone who reaches it. That is the
+operator's call when they open the port; it is a disclosure consideration, not a mutation risk.
+
+
+## Repository credentials: env-var indirection
+
+HTTP registries can authenticate with a **PAT referenced by environment variable**.
+Git sources use system Git credentials. Tokens are not written into the manifest:
+
+```toml
+[[tool.fastskill.repositories]]
+name = "team-registry"
+priority = 0
+type = "http-registry"
+index_url = "https://registry.example.com/index.json"
+auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
+```
+
+FastSkill reads the token from `TEAM_REGISTRY_TOKEN` at runtime. Commit `skill-project.toml`; keep
+the token in your shell profile, CI secrets, or a secrets manager. Never commit a plaintext token.
+
+## Reproducible, verifiable installs
+
+`fastskill project install` resolves the manifest and writes a lockfile (`skills.lock`, or
+`global-skills.lock` with `--global`). `fastskill project install --lock` installs the **exact** versions
+recorded in the lock, giving reproducible and verifiable installs for CI and locked environments.
+Commit both `skill-project.toml` and `skills.lock`.
+
+## What FastSkill does not provide
+
+To set expectations honestly, FastSkill has **no**:
+
+* sandboxed execution environment (it does not run skills),
+* resource limits or execution monitoring,
+* built-in request audit log,
+* in-app authentication, identity, or per-user authorization.
+
+For deployed exposure, those responsibilities live in the surrounding infrastructure (proxy,
+network policy, secrets management).
+
+
+
+---
+
 # Manifests, locks, and scope
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7523,13 +7709,13 @@ project configuration controls where consumers install it. See
 
 # Reconcile project skill state
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7695,13 +7881,13 @@ checks.
 
 # Validate a skill
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -7752,201 +7938,15 @@ for missing, changed, conflicting, and unverifiable installations.
 
 ---
 
-# Security Best Practices
-
-FastSkill 0.9.251
-
-Source: https://docs.gofastskill.com/security/best-practices
-
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
-
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
-
-
-
-## Overview
-
-These are the concrete, source-backed practices for operating FastSkill safely. They follow directly
-from the [security model](/security/model): FastSkill is a package manager with no in-app auth, so
-protection comes from *how you run and expose it*.
-
-## Running `fastskill server serve`
-
-* **Expose read-only.** For a browsable UI or REST view over your skills, run `fastskill server serve`
-  **without** `--enable-write`. Every mutation endpoint returns HTTP 403, so an exposed instance
-  cannot install, update, delete, reindex, or refresh anything.
-* **Only pass `--enable-write` when you mean it.** Enable writes for local skill management from the
-  browser/API — ideally on `localhost` only. Do not combine `--enable-write` with an open,
-  unfronted port.
-* **Front an exposed port with an authenticating proxy.** `server serve` enforces no authentication of its
-  own and is *not* a security boundary. If the port is reachable off your machine, put a reverse
-  proxy or sidecar in front that owns authentication, and make sure the app port is not directly
-  reachable. Binding a non-loopback address is fine and expected behind such a proxy.
-* **Use the health probes for orchestration**, not for security: `GET /healthz` (liveness) and
-  `GET /readyz` (readiness).
-
-## Repository credentials
-
-* **Use PAT env-var indirection.** Reference tokens by environment variable in
-  `skill-project.toml`, never inline:
-
-  ```toml
-  [[tool.fastskill.repositories]]
-  name = "team-registry"
-  type = "http-registry"
-  index_url = "https://registry.example.com/index.json"
-  auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
-  ```
-
-* **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
-  manager. Commit `skill-project.toml`; keep the token value out of the repo.
-
-* **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT to
-  index and artifact URLs only when they have the same scheme, host, and port as `index_url`.
-  Use a pre-signed URL or separately authenticated delivery layer when artifacts are hosted on
-  another origin.
-
-* **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
-  embedding-based features silently skip rather than failing — but do not paste the key into config
-  or version control.
-
-## Reproducible installs in CI
-
-* **Commit `skill-project.toml` and `skills.lock`.**
-* **Use `fastskill project install --lock` in CI** so builds install the exact locked versions rather than
-  re-resolving. This makes installs reproducible and verifiable across environments. See the
-  [cheatsheet](/cheatsheet) for the full manifest workflow.
-
-## Verify configuration
-
-Run `fastskill cli doctor` (add `--json` for machine output) to confirm the skills directory,
-`skill-project.toml`, embedding configuration, `OPENAI_API_KEY`, and auth token are set up as
-expected before deploying. See [Debugging](/testing/debugging).
-
-FastSkill deliberately has **no audit-logging feature** and **no in-app auth** — do not rely on it
-for either. Request logging, authentication, and network policy belong to the proxy and platform
-that front an exposed instance.
-
-
-
----
-
-# Security Model
-
-FastSkill 0.9.251
-
-Source: https://docs.gofastskill.com/security/model
-
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
-
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
-
-
-
-## Overview
-
-FastSkill is a skill **package manager**, not a runtime. It installs, indexes, and serves skill
-directories; it does **not** execute skills, so there is no sandbox, no resource governor, and no
-per-request audit log to speak of. Its security model is about two things: what the `fastskill server serve`
-HTTP surface lets a caller do, and how repository credentials are handled.
-
-## `fastskill server serve` is read-only by default
-
-Per ADR-0003, `fastskill server serve` mounts **only read endpoints** unless you start it with
-`--enable-write`. Reads (list/get skills, `POST /api/v1/search`, `POST /api/v1/resolve`,
-`GET /api/v1/status`, registry browse, manifest reads, the dashboard) are always available.
-
-Every state-changing endpoint — install, update, delete, reindex, registry refresh, manifest
-writes — returns **HTTP 403** when writes are disabled:
-
-```
-HTTP 403 Forbidden
-{
-  "success": false,
-  "error": {
-    "code": "FORBIDDEN",
-    "message": "write operations disabled; start server with --enable-write",
-    "details": null
-  }
-}
-```
-
-"Anything that is not a pure read is gated" — reindex and registry refresh are included because they
-are side-effecting (disk, network, embedding-API cost), not just because they are destructive. This
-is one switch: `--enable-write` enables all mutations at once. See the
-[`server serve` reference](/cli-reference/serve-command).
-
-## `server serve` is not a security boundary
-
-FastSkill enforces **no authentication of its own**. There is no token endpoint, and API routes
-require no `Authorization` or `x-api-key` header. It handles no identity and no per-user
-authorization by design.
-
-* **Run it local-first.** The default bind is `localhost` — a single operator viewing their own
-  skills on their own machine.
-* **Front it with an authenticating proxy if you expose it.** If the port is reachable on a shared
-  or untrusted network, put a reverse proxy or sidecar in front that owns request authentication,
-  and ensure the app port is not directly reachable. FastSkill will not police the bind address for
-  you, and binding a non-loopback address is the normal, expected configuration behind such a proxy.
-
-Combined with the read-only default, an exposed instance started **without** `--enable-write` cannot
-be used to mutate state even before the proxy is considered. Reaching a destructive endpoint
-unauthenticated requires the operator to have *both* enabled writes *and* exposed the port with no
-fronting proxy — a deliberate double opt-out.
-
-A read-only exposed instance still **discloses skill data** to anyone who reaches it. That is the
-operator's call when they open the port; it is a disclosure consideration, not a mutation risk.
-
-
-## Repository credentials: env-var indirection
-
-HTTP registries can authenticate with a **PAT referenced by environment variable**.
-Git sources use system Git credentials. Tokens are not written into the manifest:
-
-```toml
-[[tool.fastskill.repositories]]
-name = "team-registry"
-priority = 0
-type = "http-registry"
-index_url = "https://registry.example.com/index.json"
-auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
-```
-
-FastSkill reads the token from `TEAM_REGISTRY_TOKEN` at runtime. Commit `skill-project.toml`; keep
-the token in your shell profile, CI secrets, or a secrets manager. Never commit a plaintext token.
-
-## Reproducible, verifiable installs
-
-`fastskill project install` resolves the manifest and writes a lockfile (`skills.lock`, or
-`global-skills.lock` with `--global`). `fastskill project install --lock` installs the **exact** versions
-recorded in the lock, giving reproducible and verifiable installs for CI and locked environments.
-Commit both `skill-project.toml` and `skills.lock`.
-
-## What FastSkill does not provide
-
-To set expectations honestly, FastSkill has **no**:
-
-* sandboxed execution environment (it does not run skills),
-* resource limits or execution monitoring,
-* built-in request audit log,
-* in-app authentication, identity, or per-user authorization.
-
-For deployed exposure, those responsibilities live in the surrounding infrastructure (proxy,
-network policy, secrets management).
-
-
-
----
-
 # Debugging Guide
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -8012,13 +8012,13 @@ Start with `fastskill cli doctor` to confirm the environment, then re-run the fa
 
 # Testing Framework
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/testing/framework
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 
@@ -8083,13 +8083,13 @@ Start by pinning down what "good" looks like in your `checks.toml`, then iterate
 
 # MCP Tool Calling
 
-FastSkill 0.9.251
+FastSkill 0.9.252
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 
 

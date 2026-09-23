@@ -1,9 +1,9 @@
-# FastSkill 0.9.251
+# FastSkill 0.9.252
 
 Documentation for the current release only.
 
-Release revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
-Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
+Release revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
+Documentation revision: 82f73695400b8f8aa19ead9addd7cb78d8a99e2d
 
 ## Pages
 
@@ -51,11 +51,11 @@ Documentation revision: 8242efde4a1ceff93fddfaa45abd9068acb0ce5c
 - [Choose a distribution model](https://docs.gofastskill.com/registry/repository-architecture.md): Decide between direct sources, catalogs, and self-contained team bundles.
 - [Configure skill sources](https://docs.gofastskill.com/registry/sources.md): Add skills from Git and configure local, Git marketplace, HTTP, and ZIP catalogs.
 - [Local browser console](https://docs.gofastskill.com/registry/web-ui.md): Inspect installed skills and manage a project through the optional HTTP server.
+- [Security Best Practices](https://docs.gofastskill.com/security/best-practices.md): Operational guidance for running FastSkill safely: read-only serve, auth proxies, PAT env-var indirection, and locked CI installs.
+- [Security Model](https://docs.gofastskill.com/security/model.md): How FastSkill treats trust boundaries: read-only-by-default serve, no in-app auth, env-var token indirection, and reproducible locked installs.
 - [Manifests, locks, and scope](https://docs.gofastskill.com/skill-management/manifest-system.md): Declare sources and understand what FastSkill restores for a project or user.
 - [Reconcile project skill state](https://docs.gofastskill.com/skill-management/reconciliation.md): Compare declared, locked, and installed skill state and enforce it in CI.
 - [Validate a skill](https://docs.gofastskill.com/skill-management/validation.md): Check skill structure and installed state before an agent uses it.
-- [Security Best Practices](https://docs.gofastskill.com/security/best-practices.md): Operational guidance for running FastSkill safely: read-only serve, auth proxies, PAT env-var indirection, and locked CI installs.
-- [Security Model](https://docs.gofastskill.com/security/model.md): How FastSkill treats trust boundaries: read-only-by-default serve, no in-app auth, env-var token indirection, and reproducible locked installs.
 - [Debugging Guide](https://docs.gofastskill.com/testing/debugging.md): Diagnose FastSkill setup and behavior with `fastskill cli doctor` and `--verbose` output.
 - [Testing Framework](https://docs.gofastskill.com/testing/framework.md): Test your skills with `fastskill eval` — validate configuration, run prompts against an agent, and score the results.
 - [MCP Tool Calling](https://docs.gofastskill.com/tool-calling/development.md): Expose FastSkill to agents as MCP tools with `fastskill mcp serve` (read-only by default, `--enable-write` to allow mutation), and wire them into Claude Code, Cursor, and other agents with `fastskill mcp install`.
