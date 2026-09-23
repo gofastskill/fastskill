@@ -14,14 +14,50 @@ use tracing::debug;
 
 /// Load repositories from skill-project.toml [tool.fastskill.repositories]
 /// Returns empty vector if skill-project.toml not found or no repositories configured
+///
+/// Only the project's own entries: `repo add`/`update`/`remove` save this list
+/// back, and must never copy a composed Manifest's repositories into it.
 pub fn load_repositories_from_project() -> CliResult<Vec<RepositoryDefinition>> {
+    let Some((project, _)) = load_current_project()? else {
+        return Ok(Vec::new());
+    };
+    let repositories = project
+        .tool
+        .and_then(|t| t.fastskill)
+        .and_then(|f| f.repositories)
+        .unwrap_or_default();
+    Ok(repositories
+        .into_iter()
+        .map(convert_repository_definition)
+        .collect())
+}
+
+/// Repositories that resolve dependency origins: the project's own plus those
+/// of every Manifest it composes through [tool.fastskill.manifests], so a
+/// composed repository origin finds the catalog its own Manifest names.
+pub fn load_resolution_repositories() -> CliResult<Vec<RepositoryDefinition>> {
+    let Some((project, project_path)) = load_current_project()? else {
+        return Ok(Vec::new());
+    };
+    let project_dir = project_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    Ok(project
+        .composed_repositories(project_dir)
+        .map_err(CliError::Config)?
+        .into_iter()
+        .map(convert_repository_definition)
+        .collect())
+}
+
+/// The skill-project.toml found from the current directory, if any.
+fn load_current_project() -> CliResult<Option<(SkillProjectToml, PathBuf)>> {
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
 
-    // Try to find skill-project.toml
     let project_file = project::resolve_project_file(&current_dir);
     if !project_file.found {
-        return Ok(Vec::new()); // No skill-project.toml found
+        return Ok(None);
     }
     let project_path = project_file.path;
 
@@ -32,20 +68,7 @@ pub fn load_repositories_from_project() -> CliResult<Vec<RepositoryDefinition>> 
             e
         ))
     })?;
-
-    // Extract repositories from [tool.fastskill]
-    let repositories = project
-        .tool
-        .and_then(|t| t.fastskill)
-        .and_then(|f| f.repositories)
-        .unwrap_or_default();
-
-    // Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
-    let converted_repos = repositories
-        .into_iter()
-        .map(convert_repository_definition)
-        .collect();
-    Ok(converted_repos)
+    Ok(Some((project, project_path)))
 }
 
 /// Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
@@ -237,8 +260,9 @@ pub fn create_service_config(
 /// Inject the CLI-edge dependencies the core install/reindex seams need (ADR-0005):
 /// an embedding provider (only ever constructed here, where the API key is loaded)
 /// and a repository manager (resolved from the project's
-/// `[tool.fastskill.repositories]`). Core never loads the key or reads the repos
-/// config itself — only the edge (CLI/serve) does.
+/// `[tool.fastskill.repositories]` and those of the Manifests it composes).
+/// Core never loads the key or reads the repos config itself — only the edge
+/// (CLI/serve) does.
 ///
 /// Mirrors the construction `add_from_registry` already did inline: load
 /// repositories → `RepositoryManager::from_definitions`. When no `OPENAI_API_KEY`
@@ -255,7 +279,7 @@ pub fn inject_edge_services(mut service: FastSkillService) -> CliResult<FastSkil
         }
     }
 
-    let repositories = load_repositories_from_project()?;
+    let repositories = load_resolution_repositories()?;
     let repo_manager = RepositoryManager::from_definitions(repositories);
     service = service.with_repository_manager(Arc::new(repo_manager));
 
