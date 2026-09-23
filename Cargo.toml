@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.9.252"
+version = "0.9.253"
 edition = "2021"
 authors = ["aroff"]
 license = "Apache-2.0"
