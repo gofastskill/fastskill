@@ -19,6 +19,9 @@
 <loc>https://docs.gofastskill.com/welcome</loc>
 </url>
 <url>
+<loc>https://docs.gofastskill.com/configuration/init-command</loc>
+</url>
+<url>
 <loc>https://docs.gofastskill.com/cli-reference/bundle-command</loc>
 </url>
 <url>
@@ -62,9 +65,6 @@
 </url>
 <url>
 <loc>https://docs.gofastskill.com/cli-reference/update-command</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/configuration/init-command</loc>
 </url>
 <url>
 <loc>https://docs.gofastskill.com/examples/advanced-patterns</loc>
@@ -139,6 +139,12 @@
 <loc>https://docs.gofastskill.com/security/model</loc>
 </url>
 <url>
+<loc>https://docs.gofastskill.com/testing/debugging</loc>
+</url>
+<url>
+<loc>https://docs.gofastskill.com/testing/framework</loc>
+</url>
+<url>
 <loc>https://docs.gofastskill.com/skill-management/manifest-system</loc>
 </url>
 <url>
@@ -146,12 +152,6 @@
 </url>
 <url>
 <loc>https://docs.gofastskill.com/skill-management/validation</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/testing/debugging</loc>
-</url>
-<url>
-<loc>https://docs.gofastskill.com/testing/framework</loc>
 </url>
 <url>
 <loc>https://docs.gofastskill.com/tool-calling/development</loc>

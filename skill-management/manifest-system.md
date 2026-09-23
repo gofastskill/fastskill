@@ -1,12 +1,12 @@
 # Manifests, locks, and scope
 
-FastSkill 0.9.249
+FastSkill 0.9.250
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: 629b7053e89bd230493ddfc3b449dd09725cf0ce
+Release revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
 
-Documentation revision: 629b7053e89bd230493ddfc3b449dd09725cf0ce
+Documentation revision: 98b75151bba19f2131ab4223f72f0d3befbde3d4
 
 
 
@@ -27,6 +27,10 @@ skills_directory = ".claude/skills"
 Use the [quickstart](/quickstart) to create this local source. `skill add` writes a
 dependency and installs it. Editing the manifest manually requires a subsequent
 `project install` to apply it.
+
+FastSkill refuses a manifest with a key it does not recognise under
+`[tool.fastskill]`, so a misspelt setting fails loudly instead of being ignored.
+Other tables, such as `[tool.<other-tool>]`, are left alone and kept on save.
 
 ## Manifest composition
 
