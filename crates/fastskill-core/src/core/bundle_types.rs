@@ -56,10 +56,26 @@ pub struct BundleInstallPreview {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BundleManifestTables {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "skill_id_keys")]
     pub(crate) bundles: BTreeMap<String, BundleDependency>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "skill_id_keys")]
     pub(crate) overrides: BTreeMap<String, BundleOverrideDeclaration>,
+}
+
+/// Table keys here name directories under the skills directory, so each must be
+/// a skill id — `[overrides."../victim"]` would otherwise reach outside it.
+fn skill_id_keys<'de, D, V>(deserializer: D) -> Result<BTreeMap<String, V>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    let table = BTreeMap::<String, V>::deserialize(deserializer)?;
+    for key in table.keys() {
+        SkillId::new(key.clone()).map_err(|error| {
+            serde::de::Error::custom(format!("'{key}' is not a valid skill id: {error}"))
+        })?;
+    }
+    Ok(table)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

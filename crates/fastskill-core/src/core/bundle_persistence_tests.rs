@@ -686,3 +686,75 @@ fn descriptor_and_declaration_parsers_report_typed_and_editing_errors() {
     fs::write(&manifest, "invalid = [").unwrap();
     assert!(save_bundle_declarations(&manifest, &BTreeMap::new(), &BTreeMap::new()).is_err());
 }
+
+/// A directory beside the skills directory that a crafted id tries to reach.
+fn victim(root: &Path) -> PathBuf {
+    let victim = root.join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), "precious").unwrap();
+    victim
+}
+
+#[test]
+fn an_override_id_that_leaves_the_skills_directory_is_refused_before_restore() {
+    let (root, service, source) = override_fixture();
+    let victim = victim(root.path());
+    let origin = source.canonicalize().unwrap().display().to_string();
+    fs::write(
+        root.path().join("skill-project.toml"),
+        format!("[overrides.\"../victim\"]\norigin = {origin:?}\n"),
+    )
+    .unwrap();
+    let mut lock = ProjectSkillsLock::load_from_file(&root.path().join("skills.lock")).unwrap();
+    lock.overrides.push(ProjectLockedPersonalOverride {
+        id: "../victim".to_string(),
+        origin,
+        digest: digest_directory(&source).unwrap(),
+    });
+    lock.save_to_file(&root.path().join("skills.lock")).unwrap();
+
+    let error = restore_personal_overrides(&service)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("../victim"), "{error}");
+    assert_eq!(
+        fs::read_to_string(victim.join("keep.txt")).unwrap(),
+        "precious"
+    );
+}
+
+#[test]
+fn a_bundle_member_id_that_leaves_the_skills_directory_is_refused_before_removal() {
+    let (root, service, _source) = override_fixture();
+    let victim = victim(root.path());
+    let mut lock = ProjectSkillsLock::load_from_file(&root.path().join("skills.lock")).unwrap();
+    lock.bundles[0].members.push(ProjectLockedBundleMember {
+        id: "../victim".to_string(),
+        digest: digest_directory(&victim).unwrap(),
+        overridable: false,
+    });
+    lock.save_to_file(&root.path().join("skills.lock")).unwrap();
+
+    let error = service.remove("team").unwrap_err().to_string();
+
+    assert!(error.contains("../victim"), "{error}");
+    assert!(victim.join("keep.txt").is_file());
+}
+
+#[test]
+fn a_manifest_override_key_that_is_not_a_skill_id_is_refused() {
+    let (root, service, source) = override_fixture();
+    fs::write(
+        root.path().join("skill-project.toml"),
+        format!(
+            "[overrides.\"../victim\"]\norigin = {:?}\n",
+            source.display().to_string()
+        ),
+    )
+    .unwrap();
+
+    let error = service.load_project_state().unwrap_err().to_string();
+
+    assert!(error.contains("../victim"), "{error}");
+}
