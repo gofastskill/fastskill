@@ -8,4 +8,4 @@ We chose this boundary over expanding FastSkill into an application and multi-cl
 
 Initial artifact publishing uses existing CI or storage tooling. FastSkill builds bundles and installs local ZIPs or public HTTPS artifacts; existing authenticated tools obtain private artifacts before local installation. This avoids coupling the bundle format and installer to cloud-specific login and upload mechanisms.
 
-This decision assigns product responsibilities. Managed launch is optional future work. Preset composition, session verification, and fleet rollout mechanisms are not settled by this ADR.
+This decision assigns product responsibilities. Managed launch is optional future work. Preset composition, session verification, and fleet rollout mechanisms are not settled by this ADR. [ADR-0016](0016-machines-follow-a-signed-managed-state.md) later settles fleet rollout.
