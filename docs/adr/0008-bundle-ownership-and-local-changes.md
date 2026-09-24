@@ -43,3 +43,22 @@ The local [state and ownership PRD](../../specs/lifecycle-state-and-ownership-pr
 defines the removal and override acceptance cases. These are required semantics;
 the September 2026 lifecycle implementation applies them to ordinary skill, bundle,
 HTTP, and MCP paths.
+
+## Amendment by ADR-0016 (2026-09-24)
+
+[ADR-0016](./0016-machines-follow-a-signed-managed-state.md) changes how local modifications
+are resolved for managed deployments only: the managed store, and the Agent target entries in
+FastSkill's ownership record.
+
+For those entries, `managed apply` doesn't stop and ask. It runs unattended, often from a
+session-start hook, and a managed state is the explicit decision. A locally modified entry is
+quarantined before it is replaced or removed, so nothing is silently overwritten or deleted.
+The user recovers the modification from quarantine.
+
+Content that FastSkill doesn't own is never replaced to make room for a managed skill. That
+includes an unrecorded folder in an Agent target and anything in a project skills directory.
+The one exception is content whose digest the managed state blocks (ADR-0016 decisions 10 and
+11).
+
+Everything else in this ADR is unchanged. Project bundles, individual requirements, overrides
+and the Lock keep the stop-and-request-explicit-resolution contract.

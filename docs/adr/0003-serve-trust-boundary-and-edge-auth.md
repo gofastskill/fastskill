@@ -126,3 +126,23 @@ their complete namespaced command paths. The exposure decision here is unchanged
 - *Two-tier write flags (ordinary writes vs. destructive delete/upgrade)* — rejected: a permission
   matrix is more surface than a lightweight tool warrants; one boolean the operator can reason
   about is better.
+
+## Amendment by ADR-0016 (2026-09-24)
+
+[ADR-0016](./0016-machines-follow-a-signed-managed-state.md) narrows decision 1 on the outbound
+side only. As a client, the CLI may run a credential command named in trusted configuration and
+send the token it prints to a configured managed source's origin. ADR-0016 decision 6 gives the
+exact rules: no shell, a timeout, bounded output, same-origin only, and no downgrade on redirect.
+
+What stays true:
+
+- FastSkill never obtains, refreshes, stores, logs or inspects a token. It holds one only for
+  the duration of one command run.
+- FastSkill accepts no token inbound. `server serve` and `mcp serve` still authenticate no one
+  and authorize nothing per user. The edge remains the only inbound boundary.
+- Verifying a managed state's signature against pinned keys is an integrity check on content.
+  It is not identity.
+
+`managed enroll`, `managed apply` and `managed unenroll` are write operations under the
+capability gate. When exposed through `server serve` or `mcp serve`, they require
+`--enable-write`, like every other write. `managed status` is a read operation.
