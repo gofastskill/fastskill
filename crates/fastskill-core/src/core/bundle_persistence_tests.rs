@@ -35,7 +35,7 @@ fn override_fixture() -> (TempDir, BundleService, PathBuf) {
     )
     .unwrap();
     fs::write(root.path().join("skill-project.toml"), "").unwrap();
-    let packaged_digest = digest_directory(&packaged).unwrap();
+    let packaged_digest = content_digest(&packaged).unwrap();
     let mut lock = ProjectSkillsLock::new_empty();
     lock.bundles.push(ProjectLockedBundleEntry {
         id: "team".to_string(),
@@ -501,19 +501,19 @@ fn directory_helpers_stage_replacements_and_refuse_non_directories() {
 fn digest_and_copy_reject_links_inside_managed_content() {
     let root = TempDir::new().unwrap();
     let source = root.path().join("source");
-    assert!(digest_directory(&root.path().join("missing")).is_err());
+    assert!(content_digest(&root.path().join("missing")).is_err());
     fs::create_dir_all(&source).unwrap();
     fs::write(source.join("SKILL.md"), "demo").unwrap();
     std::os::unix::fs::symlink(source.join("SKILL.md"), source.join("linked")).unwrap();
     assert!(matches!(
-        digest_directory(&source),
+        content_digest(&source),
         Err(ServiceError::Validation(_))
     ));
     assert!(matches!(
         copy_directory(&source, &root.path().join("copy")),
         Err(ServiceError::Validation(_))
     ));
-    assert!(digest_directory(&root.path().join("missing")).is_err());
+    assert!(content_digest(&root.path().join("missing")).is_err());
 }
 
 #[test]
@@ -708,7 +708,7 @@ fn an_override_id_that_leaves_the_skills_directory_is_refused_before_restore() {
     lock.overrides.push(ProjectLockedPersonalOverride {
         id: "../victim".to_string(),
         origin,
-        digest: digest_directory(&source).unwrap(),
+        digest: content_digest(&source).unwrap(),
     });
     lock.save_to_file(&root.path().join("skills.lock")).unwrap();
 
@@ -730,7 +730,7 @@ fn a_bundle_member_id_that_leaves_the_skills_directory_is_refused_before_removal
     let mut lock = ProjectSkillsLock::load_from_file(&root.path().join("skills.lock")).unwrap();
     lock.bundles[0].members.push(ProjectLockedBundleMember {
         id: "../victim".to_string(),
-        digest: digest_directory(&victim).unwrap(),
+        digest: content_digest(&victim).unwrap(),
         overridable: false,
     });
     lock.save_to_file(&root.path().join("skills.lock")).unwrap();

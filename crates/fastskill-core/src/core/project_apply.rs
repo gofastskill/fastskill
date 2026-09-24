@@ -1,6 +1,7 @@
 //! Transactional application of a verified project dependency plan.
 
 use crate::core::contained_path::{remove_contained, ContainedPath};
+use crate::core::content_digest::{all_match, content_digest_matches, recorded_digests_conflict};
 use crate::core::install::PreparedSkill;
 use crate::core::lifecycle_transaction::LifecycleTransaction;
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
@@ -590,7 +591,7 @@ fn validate_bundle_ownership(
                 } else {
                     member.digest.as_str()
                 };
-                if candidate.prepared.resolved().checksum.as_deref() != Some(expected) {
+                if !candidate.prepared.checksum_matches(expected)? {
                     return Err(ServiceError::InvalidOperation(format!(
                         "individual skill '{}' conflicts with installed bundle '{}'",
                         member.id, bundle.id
@@ -631,8 +632,7 @@ fn validate_installed_content(
                     "personal override '{id}' is no longer permitted by every bundle owner"
                 )));
             }
-            let actual = crate::core::install::content_digest(&installed)?;
-            if actual != active_override.digest {
+            if !content_digest_matches(&active_override.digest, &installed)? {
                 return Err(ServiceError::InvalidOperation(format!(
                     "installed skill '{id}' was modified; restore or remove local edits before changing managed state"
                 )));
@@ -656,19 +656,16 @@ fn validate_installed_content(
                 .filter(|member| member.id == *id)
                 .map(|member| member.digest.as_str()),
         );
-        if expected.windows(2).any(|pair| pair[0] != pair[1]) {
+        if recorded_digests_conflict(expected.iter().copied()) {
             return Err(ServiceError::InvalidOperation(format!(
                 "installed skill '{id}' has conflicting recorded ownership digests"
             )));
         }
-        if let Some(expected) = expected.first() {
-            let actual = crate::core::install::content_digest(&installed)?;
-            if actual != **expected {
-                return Err(ServiceError::InvalidOperation(format!(
-                    "installed skill '{}' was modified; restore or remove local edits before changing managed state",
-                    id
-                )));
-            }
+        if !expected.is_empty() && !all_match(&expected, &installed)? {
+            return Err(ServiceError::InvalidOperation(format!(
+                "installed skill '{}' was modified; restore or remove local edits before changing managed state",
+                id
+            )));
         }
     }
     Ok(())

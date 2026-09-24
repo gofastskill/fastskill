@@ -2,6 +2,7 @@ use super::*;
 use fastskill_core::core::lock::{
     ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectLockedPersonalOverride,
 };
+use fastskill_core::core::project_removal::managed_tree_digest;
 use serde_json::Value;
 
 struct ProjectFixture {

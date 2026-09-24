@@ -4,10 +4,12 @@ use crate::core::bundle::{
     BundleManifestTables, BundleOverridePreview, BundleService, PreparedBundle,
 };
 use crate::core::bundle_persistence::{
-    digest_directory, replace_skill_directory, save_bundle_declarations, BundleOverrideDeclaration,
-    BundleTransaction,
+    replace_skill_directory, save_bundle_declarations, BundleOverrideDeclaration, BundleTransaction,
 };
 use crate::core::contained_path::ContainedPath;
+use crate::core::content_digest::{
+    content_digest_matches, recorded_digests_conflict, upgraded_digest,
+};
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
 use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
 use crate::core::origin::{Origin, Resolved};
@@ -83,7 +85,7 @@ pub(crate) fn retain_final_personal_overrides(
         promotions.push(Promotion {
             id: override_entry.id.clone(),
             origin,
-            digest: override_entry.digest.clone(),
+            digest: upgraded_digest(&override_entry.digest, Path::new(&override_entry.origin))?,
             name,
             version,
             required_dependencies,
@@ -263,7 +265,7 @@ pub(crate) fn reset_personal_override(
         }
     };
     let packaged = match prepared.members.get(id) {
-        Some(packaged) if packaged.digest == packaged_digest => packaged,
+        Some(packaged) if packaged.digest.matches(&packaged_digest) => packaged,
         Some(_) => {
             state_guard.recovered()?;
             return Err(ServiceError::Config(format!(
@@ -280,14 +282,15 @@ pub(crate) fn reset_personal_override(
         }
     };
     if installed.as_path().exists() {
-        let installed_digest = match digest_directory(installed.as_path()) {
-            Ok(digest) => digest,
+        let unchanged = match content_digest_matches(&expected_override.digest, installed.as_path())
+        {
+            Ok(unchanged) => unchanged,
             Err(error) => {
                 state_guard.recovered()?;
                 return Err(error);
             }
         };
-        if installed_digest != expected_override.digest {
+        if !unchanged {
             state_guard.recovered()?;
             return Err(ServiceError::InvalidOperation(format!(
                 "Skill '{id}' changed while the reset was prepared; retry"
@@ -386,7 +389,7 @@ fn prepare_reset(
     };
     let (artifact, packaged_digest) = agreed_owner_selection(service, &lock, id)?;
     let installed = service.skills_directory.join(id);
-    if installed.exists() && digest_directory(&installed)? != expected_override.digest {
+    if installed.exists() && !content_digest_matches(&expected_override.digest, &installed)? {
         return Err(ServiceError::InvalidOperation(format!(
             "Skill '{id}' is locally modified; FastSkill will not discard those edits while resetting the override"
         )));
@@ -398,7 +401,7 @@ fn prepare_reset(
             artifact.display()
         ))
     })?;
-    if packaged.digest != packaged_digest {
+    if !packaged.digest.matches(&packaged_digest) {
         return Err(ServiceError::Config(format!(
             "Cached bundle artifact '{}' does not match the locked contents for '{id}'",
             artifact.display()
@@ -451,10 +454,7 @@ fn agreed_owner_selection(
             "Personal override '{id}' has no retained bundle owner to restore"
         )));
     };
-    if owners
-        .iter()
-        .any(|(_, member)| member.digest != first_member.digest)
-    {
+    if recorded_digests_conflict(owners.iter().map(|(_, member)| member.digest.as_str())) {
         let bundles = owners
             .iter()
             .map(|(bundle, _)| bundle.id.as_str())

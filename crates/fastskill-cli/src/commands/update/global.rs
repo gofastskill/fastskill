@@ -4,9 +4,9 @@ use crate::config::create_service_config;
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
 use fastskill_core::core::contained_path::{remove_contained, ContainedPath};
+use fastskill_core::core::content_digest::content_digest_matches;
 use fastskill_core::core::install::PreparedSkill;
 use fastskill_core::core::lock::{global_lock_path, GlobalLockedSkillEntry, GlobalSkillsLock};
-use fastskill_core::core::project_removal::managed_tree_digest;
 use fastskill_core::core::resolution::{
     prepare_resolution, prepare_resolution_preview, ResolutionRoot,
 };
@@ -142,8 +142,7 @@ pub(crate) fn validate_global_replacement_content(
                 entry.id
             ))
         })?;
-        let actual = managed_tree_digest(&installed).map_err(CliError::Service)?;
-        if &actual != expected {
+        if !content_digest_matches(expected, &installed).map_err(CliError::Service)? {
             return Err(CliError::Config(format!(
                 "installed global skill '{}' was modified; restore or remove local edits before replacement",
                 entry.id
@@ -525,9 +524,9 @@ pub(super) async fn execute_update_global(
                 ));
                 continue;
             };
-            match managed_tree_digest(&installed) {
-                Ok(actual) if &actual == expected => {}
-                Ok(_) => {
+            match content_digest_matches(expected, &installed) {
+                Ok(true) => {}
+                Ok(false) => {
                     failures.push(format!(
                         "{}: installed content was modified; restore it before updating",
                         entry.id

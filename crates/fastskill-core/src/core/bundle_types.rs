@@ -3,7 +3,8 @@ use crate::core::bundle_archive::BundleArchiveLock;
 use crate::core::bundle_persistence::{
     parse_bundle_project, prepare_members, BundleOverrideDeclaration,
 };
-use crate::core::lock::ProjectLockedBundleEntry;
+use crate::core::content_digest::DigestForms;
+use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember};
 use crate::core::manifest::{DependencySpec, SkillProjectToml};
 use crate::core::service::{ServiceError, SkillId};
 use crate::storage::zip::ZipHandler;
@@ -146,7 +147,7 @@ pub(crate) struct PreparedBundle {
     _temporary: TempDir,
     pub(crate) descriptor: BundleDescriptor,
     pub(crate) members: BTreeMap<String, PreparedMember>,
-    pub(crate) release_digest: String,
+    pub(crate) release_digest: DigestForms,
 }
 
 impl PreparedBundle {
@@ -172,9 +173,9 @@ impl PreparedBundle {
         archive_lock.verify(&descriptor, &members)?;
         Ok(Self {
             _temporary: temporary,
+            release_digest: BundleArchiveLock::release_digests(&descriptor, &members),
             descriptor,
             members,
-            release_digest: archive_lock.release_digest().to_string(),
         })
     }
 
@@ -185,12 +186,13 @@ impl PreparedBundle {
         let members_match = expected.members.len() == self.members.len()
             && expected.members.iter().all(|locked| {
                 self.members.get(&locked.id).is_some_and(|member| {
-                    member.digest == locked.digest && member.overridable == locked.overridable
+                    member.digest.matches(&locked.digest)
+                        && member.overridable == locked.overridable
                 })
             });
         if self.descriptor.id != expected.id
             || self.descriptor.version != expected.version
-            || self.release_digest != expected.digest
+            || !self.release_digest.matches(&expected.digest)
             || !members_match
         {
             return Err(ServiceError::Validation(format!(
@@ -200,13 +202,47 @@ impl PreparedBundle {
         }
         Ok(())
     }
+
+    /// The Lock entry that records this release at `artifact`. A locked restore passes the
+    /// entry it verified as `recorded`, and its digests are kept as written, so restoring
+    /// from a Lock never changes it. Every other write records the current form.
+    pub(crate) fn lock_entry(
+        &self,
+        artifact: String,
+        recorded: Option<&ProjectLockedBundleEntry>,
+    ) -> ProjectLockedBundleEntry {
+        let recorded_member = |id: &str| {
+            recorded.and_then(|entry| entry.members.iter().find(|member| member.id == id))
+        };
+        ProjectLockedBundleEntry {
+            id: self.descriptor.id.clone(),
+            version: self.descriptor.version.clone(),
+            artifact,
+            digest: recorded.map_or_else(
+                || self.release_digest.current.clone(),
+                |entry| entry.digest.clone(),
+            ),
+            members: self
+                .members
+                .values()
+                .map(|member| ProjectLockedBundleMember {
+                    id: member.id.clone(),
+                    digest: recorded_member(&member.id).map_or_else(
+                        || member.digest.current.clone(),
+                        |locked| locked.digest.clone(),
+                    ),
+                    overridable: member.overridable,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedMember {
     pub(crate) id: String,
     pub(crate) source: PathBuf,
-    pub(crate) digest: String,
+    pub(crate) digest: DigestForms,
     pub(crate) overridable: bool,
 }
 

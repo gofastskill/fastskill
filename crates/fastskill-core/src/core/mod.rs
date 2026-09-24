@@ -13,6 +13,7 @@ pub(crate) mod bundle_types;
 pub mod cache;
 pub mod change_detection;
 pub mod contained_path;
+pub mod content_digest;
 pub mod context_resolver;
 pub mod dependencies;
 pub mod embedding;

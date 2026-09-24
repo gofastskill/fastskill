@@ -2,6 +2,7 @@ use super::*;
 use fastskill_core::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
 use fastskill_core::core::origin::GitRef;
 use fastskill_core::core::origin::Resolved;
+use fastskill_core::core::project_removal::managed_tree_digest;
 use fastskill_core::{FastSkillService, ServiceConfig};
 use std::fs;
 use tempfile::TempDir;

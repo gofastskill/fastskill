@@ -37,6 +37,8 @@ fastskill bundle build --output dist
 
 The result is `dist/notes-team-1.0.0.zip`. Its embedded identity, version, membership, and
 digests are authoritative, so renaming the download does not change the release.
+An artifact built by an earlier release, whose digests lack the `sha256-tree-v2:` prefix, still
+installs with a warning; rebuild it to record current-form digests.
 
 There is no `[bundle.members]` list to maintain. A source Manifest using the earlier `[bundle]`
 format remains buildable for migration, while all new bundles should use `[metadata]`.

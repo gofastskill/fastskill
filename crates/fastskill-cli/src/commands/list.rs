@@ -13,12 +13,12 @@ use cli_framework::command::{FromArgValueMap, IntoCommandSpec};
 use cli_framework::spec::arg_spec::{ArgKind, ArgSpec, ArgValueType, Cardinality};
 use cli_framework::spec::command_tree::CommandSpec;
 use cli_framework::spec::value::ArgValue;
+use fastskill_core::core::content_digest::{all_match, recorded_digests_conflict};
 use fastskill_core::core::lock::ProjectSkillsLock;
 use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::origin::Origin;
 use fastskill_core::core::ownership::ProjectOwnership;
 use fastskill_core::core::project::resolve_project_file;
-use fastskill_core::core::project_removal::managed_tree_digest;
 use fastskill_core::core::service::FastSkillService;
 use fastskill_core::OutputFormat;
 use std::collections::{HashMap, HashSet};
@@ -435,32 +435,22 @@ pub async fn execute_list(
                 } else if mutable {
                     ReconciliationStatus::Ok
                 } else if let Some(expected) = &locked.resolved.checksum {
-                    match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                        Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
-                        Ok(_) => ReconciliationStatus::ContentMismatch,
-                        Err(_) => ReconciliationStatus::IntegrityError,
-                    }
+                    content_status(&[expected], &service.config().skill_storage_path.join(&id))
                 } else {
                     ReconciliationStatus::InsufficientIntegrity
                 }
             } else if selected && (!bundle_members.is_empty() || override_entry.is_some()) {
-                let expected = override_entry
-                    .map(|entry| entry.digest.as_str())
-                    .or_else(|| bundle_members.first().map(|member| member.digest.as_str()));
-                let owners_agree = override_entry.is_some()
-                    || bundle_members
+                let expected: Vec<&str> = match override_entry {
+                    Some(entry) => vec![entry.digest.as_str()],
+                    None => bundle_members
                         .iter()
-                        .all(|member| Some(member.digest.as_str()) == expected);
-                match (owners_agree, expected) {
-                    (false, _) => ReconciliationStatus::OwnershipConflict,
-                    (true, Some(expected)) => {
-                        match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                            Ok(actual) if actual == expected => ReconciliationStatus::Ok,
-                            Ok(_) => ReconciliationStatus::ContentMismatch,
-                            Err(_) => ReconciliationStatus::IntegrityError,
-                        }
-                    }
-                    _ => ReconciliationStatus::InsufficientIntegrity,
+                        .map(|member| member.digest.as_str())
+                        .collect(),
+                };
+                if recorded_digests_conflict(expected.iter().copied()) {
+                    ReconciliationStatus::OwnershipConflict
+                } else {
+                    content_status(&expected, &service.config().skill_storage_path.join(&id))
                 }
             } else if let (Some(locked), Some(actual)) = (locked_entry, installed_map.get(&id)) {
                 if actual.version != locked.resolved.version {
@@ -468,11 +458,7 @@ pub async fn execute_list(
                 } else if mutable {
                     ReconciliationStatus::Ok
                 } else if let Some(expected) = &locked.resolved.checksum {
-                    match managed_tree_digest(&service.config().skill_storage_path.join(&id)) {
-                        Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
-                        Ok(_) => ReconciliationStatus::ContentMismatch,
-                        Err(_) => ReconciliationStatus::IntegrityError,
-                    }
+                    content_status(&[expected], &service.config().skill_storage_path.join(&id))
                 } else {
                     ReconciliationStatus::InsufficientIntegrity
                 }
@@ -542,6 +528,15 @@ pub async fn execute_list(
     clippy::panic,
     clippy::await_holding_lock
 )]
+/// Compare installed content with every recorded digest; a legacy digest is accepted.
+fn content_status(expected: &[&str], installed: &std::path::Path) -> ReconciliationStatus {
+    match all_match(expected, installed) {
+        Ok(true) => ReconciliationStatus::Ok,
+        Ok(false) => ReconciliationStatus::ContentMismatch,
+        Err(_) => ReconciliationStatus::IntegrityError,
+    }
+}
+
 #[cfg(test)]
 #[path = "list/tests.rs"]
 mod tests;

@@ -433,7 +433,8 @@ fn candidate_is_current(
             .zip(path.canonicalize().ok())
             .is_some_and(|(installed, source)| installed == source),
         _ => entry.resolved.checksum.as_ref().is_some_and(|expected| {
-            crate::core::install::content_digest(&installed).is_ok_and(|actual| &actual == expected)
+            crate::core::content_digest::content_digest_matches(expected, &installed)
+                .unwrap_or(false)
         }),
     }
 }

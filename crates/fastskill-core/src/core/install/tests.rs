@@ -765,6 +765,33 @@ async fn offline_preparation_restores_cached_repository_and_zip_artifacts() {
         restored.resolved().checksum.as_deref(),
         Some(checksum.as_str())
     );
+    // A Lock written before ADR-0017 pins the legacy form. It still verifies, and the
+    // prepared facts, which become the next Lock entry, carry the current form.
+    let legacy = crate::core::content_digest::legacy_content_digest(&cached).unwrap();
+    let legacy_expected = Resolved {
+        checksum: Some(legacy.clone()),
+        ..expected.clone()
+    };
+    let upgraded = service
+        .prepare_install_offline(repository_origin.clone(), "test-skill", &legacy_expected)
+        .await
+        .unwrap();
+    assert_eq!(
+        upgraded.resolved().checksum.as_deref(),
+        Some(checksum.as_str())
+    );
+    assert!(upgraded.checksum_matches(&legacy).unwrap());
+    assert!(upgraded.checksum_matches(&checksum).unwrap());
+    assert!(!upgraded.checksum_matches(&"0".repeat(64)).unwrap());
+    let tampered = Resolved {
+        checksum: Some("0".repeat(64)),
+        ..expected.clone()
+    };
+    let error = service
+        .prepare_install_offline(repository_origin.clone(), "test-skill", &tampered)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("locked checksum"), "{error}");
     let fresh = service
         .prepare_add_offline(repository_origin, Some("test-skill"))
         .await
@@ -1713,4 +1740,28 @@ fn plain_git_urls_pass_the_browser_url_guard() {
     ] {
         assert!(reject_github_tree_url(url).is_ok(), "{url} must be allowed");
     }
+}
+
+/// Two different trees must never share a content digest. A file's bytes used
+/// to be hashed without their length, so the boundary between one file and
+/// the next was not part of the digest.
+#[test]
+fn content_digest_distinguishes_file_boundaries() {
+    let root = TestTempDir::new().unwrap();
+    let split = write_valid_skill(root.path(), "split");
+    std::fs::write(split.join("a.bin"), b"head").unwrap();
+    std::fs::write(split.join("z.sh"), b"tail").unwrap();
+
+    let merged = write_valid_skill(root.path(), "merged");
+    let mut joined = b"head".to_vec();
+    joined.extend_from_slice(&(b"z.sh".len() as u64).to_be_bytes());
+    joined.extend_from_slice(b"z.sh");
+    joined.extend_from_slice(b"tail");
+    std::fs::write(merged.join("a.bin"), joined).unwrap();
+
+    assert_ne!(
+        content_digest(&split).unwrap(),
+        content_digest(&merged).unwrap(),
+        "a one-file tree and a two-file tree produced the same content digest"
+    );
 }

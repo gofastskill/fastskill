@@ -1,7 +1,6 @@
-use super::{format_source_info, origin_location_label, ListArgs};
+use super::{content_status, format_source_info, origin_location_label, ListArgs};
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::lock::{global_lock_path, GlobalSkillsLock};
-use fastskill_core::core::project_removal::managed_tree_digest;
 use fastskill_core::core::Origin;
 use fastskill_core::{FastSkillService, OutputFormat};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -193,11 +192,7 @@ fn reconcile(
         (Some(_), Some(_)) if mutable => ReconciliationStatus::Ok,
         (Some(locked), Some(_)) => match &locked.resolved.checksum {
             Some(expected) => {
-                match managed_tree_digest(&service.config().skill_storage_path.join(id)) {
-                    Ok(actual) if &actual == expected => ReconciliationStatus::Ok,
-                    Ok(_) => ReconciliationStatus::ContentMismatch,
-                    Err(_) => ReconciliationStatus::IntegrityError,
-                }
+                content_status(&[expected], &service.config().skill_storage_path.join(id))
             }
             None => ReconciliationStatus::InsufficientIntegrity,
         },
@@ -213,6 +208,7 @@ mod tests {
     use chrono::Utc;
     use fastskill_core::core::lock::GlobalLockedSkillEntry;
     use fastskill_core::core::origin::Resolved;
+    use fastskill_core::core::project_removal::managed_tree_digest;
     use fastskill_core::{ServiceConfig, SkillDefinition, SkillId};
     use std::path::Path;
     use tempfile::TempDir;

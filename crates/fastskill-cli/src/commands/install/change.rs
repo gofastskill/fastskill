@@ -295,8 +295,8 @@ fn candidate_matches_lock_and_install(
             .zip(source.canonicalize().ok())
             .is_some_and(|(installed, source)| installed == source),
         _ => entry.resolved.checksum.as_ref().is_some_and(|expected| {
-            fastskill_core::core::install::content_digest(&installed)
-                .is_ok_and(|actual| &actual == expected)
+            fastskill_core::core::content_digest::content_digest_matches(expected, &installed)
+                .unwrap_or(false)
         }),
     }
 }

@@ -8,11 +8,12 @@
 use crate::core::bundle_archive::{write_bundle_archive, BundleArchiveLock};
 use crate::core::bundle_build::prepare_bundle_build_manifest;
 use crate::core::bundle_persistence::{
-    apply_personal_override, digest_directory, parse_bundle_descriptor, prepare_members,
-    preview_personal_override, remove_skill_directory, replace_skill_directory,
-    save_bundle_declarations, BundleHistory, BundleTransaction,
+    apply_personal_override, parse_bundle_descriptor, prepare_members, preview_personal_override,
+    remove_skill_directory, replace_skill_directory, save_bundle_declarations, BundleHistory,
+    BundleTransaction,
 };
 use crate::core::contained_path::ContainedPath;
+use crate::core::content_digest::{content_digest, content_digest_matches, DigestForms};
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
 use crate::core::manifest::SkillProjectToml;
 use crate::core::ownership::ProjectOwnership;
@@ -365,7 +366,7 @@ impl BundleService {
 
         if let Some(installed) = &existing {
             if installed.version == prepared.descriptor.version
-                && installed.digest != prepared.release_digest
+                && !prepared.release_digest.matches(&installed.digest)
             {
                 return Err(ServiceError::Validation(format!(
                     "Bundle release '{}@{}' is immutable: its contents differ from the installed digest",
@@ -383,7 +384,7 @@ impl BundleService {
                             installed.id, installed.version, installed.id
                         )));
                     }
-                    if installed.digest == prepared.release_digest {
+                    if prepared.release_digest.matches(&installed.digest) {
                         return Ok(BundleApplyResult {
                             id: installed.id.clone(),
                             version: installed.version.clone(),
@@ -406,7 +407,7 @@ impl BundleService {
                     )));
                 }
                 if let Some(installed) = &existing {
-                    if installed.digest == prepared.release_digest
+                    if prepared.release_digest.matches(&installed.digest)
                         && self.bundle_members_match(installed, &lock)
                     {
                         return Ok(BundleApplyResult {
@@ -427,7 +428,7 @@ impl BundleService {
                 }
                 if let Some(installed) = &existing {
                     if installed.version == prepared.descriptor.version
-                        && installed.digest == prepared.release_digest
+                        && prepared.release_digest.matches(&installed.digest)
                         && self.bundle_members_match(installed, &lock)
                     {
                         return Ok(BundleApplyResult {
@@ -466,7 +467,7 @@ impl BundleService {
 
         let release_key = format!("{}@{}", prepared.descriptor.id, prepared.descriptor.version);
         if let Some(known_digest) = history.releases.get(&release_key) {
-            if known_digest != &prepared.release_digest {
+            if !prepared.release_digest.matches(known_digest) {
                 return Err(ServiceError::Validation(format!(
                     "Bundle release '{}' is immutable: its contents differ from the previously known digest",
                     release_key
@@ -477,21 +478,11 @@ impl BundleService {
         self.preflight_apply(&prepared, existing.as_ref(), &manifest, &lock)?;
         let changes = self.plan_changes(&prepared, existing.as_ref(), &manifest, &lock)?;
         let artifact_relative = self.artifact_relative(&prepared.descriptor)?;
-        let next = ProjectLockedBundleEntry {
-            id: prepared.descriptor.id.clone(),
-            version: prepared.descriptor.version.clone(),
-            artifact: artifact_relative.clone(),
-            digest: prepared.release_digest.clone(),
-            members: prepared
-                .members
-                .values()
-                .map(|member| ProjectLockedBundleMember {
-                    id: member.id.clone(),
-                    digest: member.digest.clone(),
-                    overridable: member.overridable,
-                })
-                .collect(),
+        let recorded = match mode {
+            ApplyMode::RestoreLocked { expected } => Some(expected),
+            _ => None,
         };
+        let next = prepared.lock_entry(artifact_relative.clone(), recorded);
         lock.bundles.retain(|bundle| bundle.id != next.id);
         lock.bundles.push(next);
         manifest.bundles.insert(
@@ -503,7 +494,7 @@ impl BundleService {
         );
         history
             .releases
-            .insert(release_key, prepared.release_digest.clone());
+            .insert(release_key, prepared.release_digest.current.clone());
 
         let changed_members: Vec<_> = changes
             .replacements
@@ -595,7 +586,7 @@ impl BundleService {
                 let needs_mutation = still_present
                     .then(|| prepared.members.get(&member.id))
                     .flatten()
-                    .is_none_or(|replacement| replacement.digest != member.digest)
+                    .is_none_or(|replacement| !replacement.digest.matches(&member.digest))
                     || !still_present;
                 if needs_mutation
                     && !self.has_other_owner(lock, &current.id, &member.id)
@@ -620,7 +611,10 @@ impl BundleService {
                 }
                 continue;
             }
-            if owners.iter().any(|owner| owner.digest != member.digest) {
+            if owners
+                .iter()
+                .any(|owner| !member.digest.matches(&owner.digest))
+            {
                 return Err(ServiceError::InvalidOperation(format!(
                     "Skill '{}' has conflicting contents required by another installed bundle",
                     member.id
@@ -632,7 +626,7 @@ impl BundleService {
                     .iter()
                     .find(|entry| entry.id == member.id)
                     .and_then(|entry| entry.resolved.checksum.as_deref());
-                if selected_digest.is_some_and(|digest| digest != member.digest) {
+                if selected_digest.is_some_and(|digest| !member.digest.matches(digest)) {
                     return Err(ServiceError::InvalidOperation(format!(
                         "Skill '{}' has conflicting contents required by individual root(s): {}",
                         member.id,
@@ -642,8 +636,8 @@ impl BundleService {
             }
             let destination = self.skills_directory.join(&member.id);
             if destination.exists() {
-                let actual = digest_directory(&destination)?;
-                if !individual_roots.is_empty() && actual != member.digest {
+                let actual = DigestForms::of_directory(&destination)?;
+                if !individual_roots.is_empty() && actual.current != member.digest.current {
                     return Err(ServiceError::InvalidOperation(format!(
                         "Skill '{}' has conflicting contents required by individual root(s): {}",
                         member.id,
@@ -664,13 +658,13 @@ impl BundleService {
                             })
                         });
                 if let Some(expected) = expected_existing {
-                    if actual != expected {
+                    if !actual.matches(expected) {
                         return Err(ServiceError::InvalidOperation(format!(
                             "Skill '{}' is locally modified; declare a permitted personal override or discard the edit before changing bundles",
                             member.id
                         )));
                     }
-                } else if actual != member.digest {
+                } else if actual.current != member.digest.current {
                     return Err(ServiceError::InvalidOperation(format!(
                         "Skill '{}' already exists with different contents",
                         member.id
@@ -696,9 +690,9 @@ impl BundleService {
             let destination = self.skills_directory.join(&member.id);
             let identical = destination
                 .exists()
-                .then(|| digest_directory(&destination))
+                .then(|| content_digest(&destination))
                 .transpose()?
-                .is_some_and(|digest| digest == member.digest);
+                .is_some_and(|digest| digest == member.digest.current);
             if !identical {
                 changes.replacements.push(BundleReplacement {
                     id: member.id.clone(),
@@ -744,8 +738,7 @@ impl BundleService {
         if !destination.exists() {
             return Ok(());
         }
-        let actual = digest_directory(&destination)?;
-        if actual == expected {
+        if content_digest_matches(expected, &destination)? {
             Ok(())
         } else {
             Err(ServiceError::InvalidOperation(format!(
@@ -805,8 +798,7 @@ impl BundleService {
                 .map_or(member.digest.as_str(), |override_entry| {
                     override_entry.digest.as_str()
                 });
-            digest_directory(&self.skills_directory.join(&member.id))
-                .map(|digest| digest == effective_digest)
+            content_digest_matches(effective_digest, &self.skills_directory.join(&member.id))
                 .unwrap_or(false)
         })
     }

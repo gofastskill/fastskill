@@ -23,7 +23,7 @@ pub(crate) fn preview_install(
         .find(|bundle| bundle.id == prepared.descriptor.id);
     if let Some(installed) = existing {
         if installed.version == prepared.descriptor.version
-            && installed.digest != prepared.release_digest
+            && !prepared.release_digest.matches(&installed.digest)
         {
             return Err(ServiceError::Validation(format!(
                 "Bundle release '{}@{}' is immutable: its contents differ from the installed digest",
@@ -36,7 +36,7 @@ pub(crate) fn preview_install(
                 installed.id, installed.version, installed.id
             )));
         }
-        if installed.digest == prepared.release_digest {
+        if prepared.release_digest.matches(&installed.digest) {
             return Ok(BundleInstallPreview {
                 id: installed.id.clone(),
                 current_revision: Some(installed.version.clone()),
@@ -56,7 +56,7 @@ pub(crate) fn preview_install(
         .load_history()?
         .releases
         .get(&release_key)
-        .is_some_and(|known| known != &prepared.release_digest)
+        .is_some_and(|known| !prepared.release_digest.matches(known))
     {
         return Err(ServiceError::Validation(format!(
             "Bundle release '{release_key}' is immutable: its contents differ from the previously known digest"
@@ -129,8 +129,9 @@ pub(crate) fn preview_update(
             .iter()
             .find(|candidate| candidate.id == *member);
         let proposed = prepared.members.get(*member);
-        if locked.map(|candidate| candidate.digest.as_str())
-            != proposed.map(|candidate| candidate.digest.as_str())
+        if !locked
+            .zip(proposed)
+            .is_some_and(|(locked, proposed)| proposed.digest.matches(&locked.digest))
         {
             changes.push(format!("replace {member}"));
         } else if locked.map(|candidate| candidate.overridable)
@@ -225,7 +226,7 @@ pub(crate) fn validate_declared(
                 .map(|member| DeclaredBundleMember {
                     bundle_id: id.clone(),
                     id: member.id.clone(),
-                    digest: member.digest.clone(),
+                    digest: member.digest.current.clone(),
                     overridable: member.overridable,
                 }),
         );
@@ -234,13 +235,13 @@ pub(crate) fn validate_declared(
             id: id.clone(),
             version: prepared.descriptor.version.clone(),
             artifact: dependency.artifact.clone(),
-            digest: prepared.release_digest.clone(),
+            digest: prepared.release_digest.current.clone(),
             members: prepared
                 .members
                 .values()
                 .map(|member| ProjectLockedBundleMember {
                     id: member.id.clone(),
-                    digest: member.digest.clone(),
+                    digest: member.digest.current.clone(),
                     overridable: member.overridable,
                 })
                 .collect(),

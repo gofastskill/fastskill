@@ -13,6 +13,19 @@ impl PreparedSkill {
     pub fn dependencies(&self) -> &[crate::core::manifest::SkillEntry] {
         &self.dependencies
     }
+
+    /// Whether a recorded content digest, in either form, names this candidate's contents.
+    /// A candidate without a content digest (an editable local origin) matches nothing.
+    pub fn checksum_matches(&self, expected: &str) -> Result<bool, ServiceError> {
+        match self.fetched.resolved.checksum.as_deref() {
+            None => Ok(false),
+            Some(actual) if actual == expected => Ok(true),
+            Some(_) => crate::core::content_digest::content_digest_matches(
+                expected,
+                &self.fetched.skill_path,
+            ),
+        }
+    }
 }
 
 impl FastSkillService {

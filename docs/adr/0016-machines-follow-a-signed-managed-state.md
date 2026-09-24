@@ -106,7 +106,8 @@ It doesn't protect against:
    - a digest is in `blocked` and also in `skills` or `also_allowed`
    - two `skills` entries share an id
    - an id isn't a safe skill id (one path component, under ADR-0014's rules)
-   - a digest isn't in FastSkill's current content digest format. The original digest didn't
+   - a digest isn't in FastSkill's current content digest format
+     ([ADR-0017](0017-versioned-content-digests.md)). The original digest didn't
      length-frame file contents, so two different trees could share it. It is never accepted
      here.
    - an artifact location or `report_url` isn't `https://` (a file source may use local paths)

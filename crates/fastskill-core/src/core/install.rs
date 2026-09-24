@@ -6,7 +6,6 @@
 //! skills dir → upsert Manifest → write Lock → reindex-if-provider). `mode` only
 //! governs the id-conflict policy. `add`/`update` are one operation.
 
-use crate::core::bundle_persistence::digest_directory;
 use crate::core::cache::{CacheIdentity, SkillCache, SourceIndex, SourceIndexEntry, ZipValidator};
 use crate::core::lock::{project_lock_path, ProjectSkillsLock};
 use crate::core::manifest::{
@@ -78,9 +77,11 @@ pub struct PreparedSkill {
     dependencies: Vec<crate::core::manifest::SkillEntry>,
 }
 
-/// Compute the canonical content digest used by Lock and bundle ownership.
+/// Compute the canonical content digest used by Lock and bundle ownership, in the current
+/// `sha256-tree-v2:` form. Compare a recorded digest with
+/// [`crate::core::content_digest::content_digest_matches`], which also accepts the legacy form.
 pub fn content_digest(path: &Path) -> Result<String, ServiceError> {
-    digest_directory(path)
+    crate::core::content_digest::content_digest(path)
 }
 
 impl FastSkillService {
@@ -267,6 +268,7 @@ impl FastSkillService {
                 &recorded_origin,
                 expected,
                 &fetched.resolved,
+                &fetched.skill_path,
             )?;
         }
 
@@ -361,7 +363,7 @@ impl FastSkillService {
             resolved: Resolved {
                 version,
                 commit_hash: expected.commit_hash.clone(),
-                checksum: Some(digest_directory(&skill_path)?),
+                checksum: Some(content_digest(&skill_path)?),
             },
             skill_path,
         })
@@ -488,7 +490,7 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
-        let checksum = digest_directory(&skill_path)?;
+        let checksum = content_digest(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
@@ -547,7 +549,7 @@ impl FastSkillService {
         let checksum = if editable {
             None
         } else {
-            Some(digest_directory(&skill_path)?)
+            Some(content_digest(&skill_path)?)
         };
         Ok(Fetched {
             temp_dir,
@@ -579,7 +581,7 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&skill_path).await?;
         let (_, version) = derive_skill_id_and_version(&skill_path, &frontmatter)?;
 
-        let checksum = digest_directory(&skill_path)?;
+        let checksum = content_digest(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
@@ -662,7 +664,7 @@ impl FastSkillService {
             }
         }
 
-        let checksum = digest_directory(&skill_path)?;
+        let checksum = content_digest(&skill_path)?;
         Ok(Fetched {
             temp_dir,
             skill_path,
