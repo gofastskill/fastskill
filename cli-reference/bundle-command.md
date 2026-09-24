@@ -1,12 +1,12 @@
 # Bundle commands
 
-FastSkill 0.9.255
+FastSkill 0.9.256
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: f50384dc721eb83cf23b24d63c090fb93e3ea357
+Release revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
 
-Documentation revision: f50384dc721eb83cf23b24d63c090fb93e3ea357
+Documentation revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
 
 
 
@@ -44,6 +44,8 @@ fastskill bundle build --output dist
 
 The result is `dist/notes-team-1.0.0.zip`. Its embedded identity, version, membership, and
 digests are authoritative, so renaming the download does not change the release.
+An artifact built by an earlier release, whose digests lack the `sha256-tree-v2:` prefix, still
+installs with a warning; rebuild it to record current-form digests.
 
 There is no `[bundle.members]` list to maintain. A source Manifest using the earlier `[bundle]`
 format remains buildable for migration, while all new bundles should use `[metadata]`.
