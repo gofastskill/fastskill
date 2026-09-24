@@ -349,12 +349,13 @@ async fn restore_and_remove_unlink_current_directory_symlinks_without_following_
     let root = TempDir::new().unwrap();
     let target = root.path().join("target");
     let link = root.path().join("editable");
+    let installed = ContainedPath::skill(root.path(), "editable").unwrap();
     fs::create_dir_all(&target).unwrap();
     fs::write(target.join("sentinel"), "keep").unwrap();
     create_directory_symlink(&target, &link).unwrap();
 
     restore_directories(&[DirectorySnapshot {
-        installed: link.clone(),
+        installed: installed.clone(),
         original: OriginalPath::Missing,
     }])
     .await
@@ -363,7 +364,7 @@ async fn restore_and_remove_unlink_current_directory_symlinks_without_following_
     assert!(target.join("sentinel").is_file());
 
     create_directory_symlink(&target, &link).unwrap();
-    remove_global_path(&link).unwrap();
+    remove_contained(&installed).unwrap();
     assert!(fs::symlink_metadata(&link).is_err());
     assert!(target.join("sentinel").is_file());
 }
@@ -377,9 +378,9 @@ async fn path_removal_and_rollback_restore_every_authoritative_value() {
     fs::write(storage.join("managed/SKILL.md"), "before").unwrap();
     fs::write(storage.join("plain-file"), "plain").unwrap();
     fs::create_dir_all(storage.join("directory")).unwrap();
-    remove_global_path(&storage.join("plain-file")).unwrap();
-    remove_global_path(&storage.join("directory")).unwrap();
-    remove_global_path(&storage.join("absent")).unwrap();
+    remove_contained(&ContainedPath::skill(&storage, "plain-file").unwrap()).unwrap();
+    remove_contained(&ContainedPath::skill(&storage, "directory").unwrap()).unwrap();
+    remove_contained(&ContainedPath::skill(&storage, "absent").unwrap()).unwrap();
 
     let snapshots = capture_directories(
         &storage,

@@ -12,6 +12,7 @@ pub(crate) mod bundle_plan;
 pub(crate) mod bundle_types;
 pub mod cache;
 pub mod change_detection;
+pub mod contained_path;
 pub mod context_resolver;
 pub mod dependencies;
 pub mod embedding;

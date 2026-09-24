@@ -12,6 +12,7 @@ use crate::core::bundle_persistence::{
     preview_personal_override, remove_skill_directory, replace_skill_directory,
     save_bundle_declarations, BundleHistory, BundleTransaction,
 };
+use crate::core::contained_path::ContainedPath;
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
 use crate::core::manifest::SkillProjectToml;
 use crate::core::ownership::ProjectOwnership;
@@ -869,11 +870,11 @@ impl BundleService {
             };
         let result = (|| {
             for id in deletions {
-                remove_skill_directory(&self.skills_directory.join(id))?;
+                remove_skill_directory(&ContainedPath::skill(&self.skills_directory, id)?)?;
             }
             for replacement in replacements {
                 replace_skill_directory(
-                    &self.skills_directory.join(&replacement.id),
+                    &ContainedPath::skill(&self.skills_directory, &replacement.id)?,
                     &replacement.source,
                 )?;
             }

@@ -3,6 +3,7 @@ use crate::commands::add::copy_dir_recursive;
 use crate::config::create_service_config;
 use crate::error::{CliError, CliResult};
 use crate::utils::messages;
+use fastskill_core::core::contained_path::{remove_contained, ContainedPath};
 use fastskill_core::core::install::PreparedSkill;
 use fastskill_core::core::lock::{global_lock_path, GlobalLockedSkillEntry, GlobalSkillsLock};
 use fastskill_core::core::project_removal::managed_tree_digest;
@@ -31,7 +32,7 @@ static EDIT_CONTENT_BEFORE_COMMIT: std::sync::Mutex<Option<(PathBuf, String)>> =
     std::sync::Mutex::new(None);
 
 pub(crate) struct DirectorySnapshot {
-    installed: PathBuf,
+    installed: ContainedPath,
     original: OriginalPath,
 }
 
@@ -258,15 +259,16 @@ pub(crate) async fn capture_directories(
 ) -> CliResult<Vec<DirectorySnapshot>> {
     let mut snapshots = Vec::new();
     for (index, id) in ids.enumerate() {
-        let installed = storage.join(id);
+        let installed = ContainedPath::skill(storage, &id)?;
         let original = if installed
+            .as_path()
             .symlink_metadata()
             .is_ok_and(|metadata| metadata.file_type().is_symlink())
         {
-            OriginalPath::Symlink(fs::read_link(&installed).map_err(CliError::Io)?)
-        } else if installed.exists() {
+            OriginalPath::Symlink(fs::read_link(installed.as_path()).map_err(CliError::Io)?)
+        } else if installed.as_path().exists() {
             let backup = backup_root.join(index.to_string());
-            copy_dir_recursive(&installed, &backup).await?;
+            copy_dir_recursive(installed.as_path(), &backup).await?;
             OriginalPath::Directory(backup)
         } else {
             OriginalPath::Missing
@@ -281,25 +283,14 @@ pub(crate) async fn capture_directories(
 
 pub(crate) async fn restore_directories(snapshots: &[DirectorySnapshot]) -> CliResult<()> {
     for snapshot in snapshots {
-        if let Ok(metadata) = snapshot.installed.symlink_metadata() {
-            if metadata.file_type().is_symlink() {
-                fastskill_core::core::lifecycle_transaction::unlink_symlink(
-                    &snapshot.installed,
-                    &metadata,
-                )
-                .map_err(CliError::Service)?;
-            } else if metadata.is_file() {
-                fs::remove_file(&snapshot.installed).map_err(CliError::Io)?;
-            } else {
-                fs::remove_dir_all(&snapshot.installed).map_err(CliError::Io)?;
-            }
-        }
+        remove_contained(&snapshot.installed)?;
+        let installed = snapshot.installed.as_path();
         match &snapshot.original {
             OriginalPath::Missing => {}
             OriginalPath::Directory(backup) => {
-                copy_dir_recursive(backup, &snapshot.installed).await?;
+                copy_dir_recursive(backup, installed).await?;
             }
-            OriginalPath::Symlink(target) => create_directory_symlink(target, &snapshot.installed)?,
+            OriginalPath::Symlink(target) => create_directory_symlink(target, installed)?,
         }
     }
     Ok(())
@@ -337,27 +328,6 @@ async fn rollback_global_update(
         }
     }
     Ok(())
-}
-
-fn remove_global_path(path: &Path) -> CliResult<()> {
-    let metadata = match path.symlink_metadata() {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(CliError::Io(error)),
-    };
-    if metadata.file_type().is_symlink() {
-        fastskill_core::core::lifecycle_transaction::unlink_symlink(path, &metadata)
-            .map_err(CliError::Service)
-    } else if metadata.is_file() {
-        fs::remove_file(path).map_err(CliError::Io)
-    } else if metadata.is_dir() {
-        fs::remove_dir_all(path).map_err(CliError::Io)
-    } else {
-        Err(CliError::Config(format!(
-            "Unsupported global skill destination: {}",
-            path.display()
-        )))
-    }
 }
 
 async fn apply_global_plan(
@@ -427,7 +397,10 @@ async fn apply_global_plan(
     let mut pruned_count = 0usize;
     if failures.is_empty() {
         for id in pruned_ids {
-            remove_global_path(&service.config().skill_storage_path.join(id))?;
+            remove_contained(&ContainedPath::skill(
+                &service.config().skill_storage_path,
+                id,
+            )?)?;
             let skill_id = fastskill_core::SkillId::new(id.clone()).map_err(CliError::Service)?;
             service
                 .skill_manager()

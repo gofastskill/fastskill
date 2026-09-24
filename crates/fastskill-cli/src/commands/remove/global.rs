@@ -1,4 +1,5 @@
 use crate::error::{CliError, CliResult};
+use fastskill_core::core::contained_path::{remove_contained, ContainedPath};
 use fastskill_core::core::global_ownership::{plan_removal, GlobalRemovalPlan};
 use fastskill_core::core::lifecycle_transaction::LifecycleTransaction;
 use fastskill_core::core::lock::{global_lock_path, GlobalSkillsLock};
@@ -236,30 +237,12 @@ async fn apply(
         ));
     }
     for id in &plan.delete_files {
-        remove_path(&service.config().skill_storage_path.join(id))?;
+        remove_contained(&ContainedPath::skill(
+            &service.config().skill_storage_path,
+            id,
+        )?)?;
     }
     Ok(())
-}
-
-fn remove_path(path: &Path) -> CliResult<()> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(value) => value,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(CliError::Io(error)),
-    };
-    if metadata.file_type().is_symlink() {
-        fastskill_core::core::lifecycle_transaction::unlink_symlink(path, &metadata)
-            .map_err(CliError::Service)
-    } else if metadata.is_file() {
-        fs::remove_file(path).map_err(CliError::Io)
-    } else if metadata.is_dir() {
-        fs::remove_dir_all(path).map_err(CliError::Io)
-    } else {
-        Err(CliError::Config(format!(
-            "unsupported global skill destination: {}",
-            path.display()
-        )))
-    }
 }
 
 async fn capture_registry(
@@ -618,16 +601,5 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "invalid = [").unwrap();
         assert!(lock_from_bytes(b"invalid", &path).is_err());
-
-        let missing = root.path().join("missing");
-        remove_path(&missing).unwrap();
-        let file = root.path().join("file");
-        fs::write(&file, "content").unwrap();
-        remove_path(&file).unwrap();
-        let directory = root.path().join("directory");
-        fs::create_dir_all(&directory).unwrap();
-        remove_path(&directory).unwrap();
-        assert!(!file.exists());
-        assert!(!directory.exists());
     }
 }

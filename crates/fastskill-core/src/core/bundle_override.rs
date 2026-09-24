@@ -7,6 +7,7 @@ use crate::core::bundle_persistence::{
     digest_directory, replace_skill_directory, save_bundle_declarations, BundleOverrideDeclaration,
     BundleTransaction,
 };
+use crate::core::contained_path::ContainedPath;
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
 use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
 use crate::core::origin::{Origin, Resolved};
@@ -229,7 +230,7 @@ pub(crate) fn reset_personal_override(
     let expected_override = preparation.expected_override;
     let artifact = preparation.artifact;
     let packaged_digest = preparation.packaged_digest;
-    let installed = service.skills_directory.join(id);
+    let installed = ContainedPath::skill(&service.skills_directory, id)?;
 
     let state_guard = StateMutationGuard::acquire_for(
         &service.project_root,
@@ -278,8 +279,8 @@ pub(crate) fn reset_personal_override(
             )));
         }
     };
-    if installed.exists() {
-        let installed_digest = match digest_directory(&installed) {
+    if installed.as_path().exists() {
+        let installed_digest = match digest_directory(installed.as_path()) {
             Ok(digest) => digest,
             Err(error) => {
                 state_guard.recovered()?;
