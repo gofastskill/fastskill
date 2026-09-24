@@ -432,3 +432,78 @@ fn loading_a_lock_leaves_ordinary_origins_untouched() {
     let loaded = ProjectSkillsLock::load_from_file(&path).unwrap();
     assert_eq!(loaded.skills[0].origin, lock.skills[0].origin);
 }
+
+fn write_project_lock(dir: &TempDir, lock: &ProjectSkillsLock) -> std::path::PathBuf {
+    let path = dir.path().join("skills.lock");
+    lock.save_to_file(&path).unwrap();
+    path
+}
+
+#[test]
+fn project_lock_refuses_every_entry_id_that_is_not_a_skill_id() {
+    // Lock ids become directory names under the skills directory, so a crafted
+    // id such as "../victim" must never load.
+    let bad = "../victim";
+    let mut skill = ProjectSkillsLock::new_empty();
+    skill.update_skill(&make_skill("ok"));
+    skill.skills[0].id = bad.to_string();
+    let bundle_entry = ProjectLockedBundleEntry {
+        id: "team".to_string(),
+        version: "1.0.0".to_string(),
+        artifact: ".fastskill/bundles/team-1.0.0.zip".to_string(),
+        digest: "release".to_string(),
+        members: vec![ProjectLockedBundleMember {
+            id: "demo".to_string(),
+            digest: "d".to_string(),
+            overridable: false,
+        }],
+    };
+    let mut bundle = ProjectSkillsLock::new_empty();
+    bundle.bundles.push(ProjectLockedBundleEntry {
+        id: bad.to_string(),
+        ..bundle_entry.clone()
+    });
+    let mut member = ProjectSkillsLock::new_empty();
+    member.bundles.push(bundle_entry);
+    member.bundles[0].members[0].id = bad.to_string();
+    let mut personal = ProjectSkillsLock::new_empty();
+    personal.overrides.push(ProjectLockedPersonalOverride {
+        id: bad.to_string(),
+        origin: "/elsewhere".to_string(),
+        digest: "d".to_string(),
+    });
+
+    for (kind, lock) in [
+        ("skill", skill),
+        ("bundle", bundle),
+        ("bundle 'team' member", member),
+        ("override", personal),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let path = write_project_lock(&tmp, &lock);
+        let error = ProjectSkillsLock::load_from_file(&path)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(kind) && error.contains(bad),
+            "{kind}: {error}"
+        );
+    }
+}
+
+#[test]
+fn global_lock_refuses_a_skill_id_that_is_not_a_skill_id() {
+    let mut lock = GlobalSkillsLock::new_empty();
+    lock.upsert_skill(&make_skill("ok"), Utc::now());
+    lock.skills[0].id = "../victim".to_string();
+    lock.covered_roots = vec!["ok".to_string()];
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("global-skills.lock");
+    lock.save_to_file(&path).unwrap();
+
+    let error = GlobalSkillsLock::load_from_file(&path)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("../victim"), "{error}");
+}

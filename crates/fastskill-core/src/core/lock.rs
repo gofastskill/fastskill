@@ -6,6 +6,7 @@
 
 use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::origin_infer::normalize_git_tree_origin;
+use crate::core::service::SkillId;
 use crate::core::skill_manager::SkillDefinition;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -131,6 +132,7 @@ impl ProjectSkillsLock {
             LOCK_FORMAT_VERSION => {
                 let mut lock: Self =
                     toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
+                lock.validate_entry_ids()?;
                 lock.normalize_git_tree_origins();
                 Ok(lock)
             }
@@ -138,6 +140,7 @@ impl ProjectSkillsLock {
                 let legacy: LegacyProjectSkillsLock =
                     toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
                 let mut lock = legacy.upgrade()?;
+                lock.validate_entry_ids()?;
                 lock.normalize_git_tree_origins();
                 Ok(lock)
             }
@@ -146,6 +149,25 @@ impl ProjectSkillsLock {
                 found: found.to_string(),
             }),
         }
+    }
+
+    /// Refuse a lock whose entry ids are not skill ids. Every one of them names a
+    /// directory under the skills directory, and install, update and remove act on
+    /// that directory — so an id like `../victim` would reach outside it.
+    fn validate_entry_ids(&self) -> Result<(), LockError> {
+        for entry in &self.skills {
+            validate_entry_id("skill entry", &entry.id)?;
+        }
+        for bundle in &self.bundles {
+            validate_entry_id("bundle entry", &bundle.id)?;
+            for member in &bundle.members {
+                validate_entry_id(&format!("bundle '{}' member", bundle.id), &member.id)?;
+            }
+        }
+        for entry in &self.overrides {
+            validate_entry_id("personal override", &entry.id)?;
+        }
+        Ok(())
     }
 
     /// Bring recorded git origins into the form manifest schema v2 requires, so a lock
@@ -557,6 +579,9 @@ impl GlobalSkillsLock {
             .unwrap_or(false);
         let mut lock: GlobalSkillsLock =
             toml::from_str(&content).map_err(|e| LockError::Parse(e.to_string()))?;
+        for entry in &lock.skills {
+            validate_entry_id("skill entry", &entry.id)?;
+        }
         if covered_roots_missing {
             lock.covered_roots = lock.skills.iter().map(|entry| entry.id.clone()).collect();
         }
@@ -647,6 +672,12 @@ pub struct LockMismatch {
 }
 
 // ── Extended Error Enum ───────────────────────────────────────────────────────
+
+fn validate_entry_id(entry: &str, id: &str) -> Result<(), LockError> {
+    SkillId::new(id.to_string())
+        .map(|_| ())
+        .map_err(|error| LockError::Parse(format!("{entry} id '{id}' is invalid: {error}")))
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum LockError {
