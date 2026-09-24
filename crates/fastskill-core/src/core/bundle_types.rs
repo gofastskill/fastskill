@@ -3,6 +3,7 @@ use crate::core::bundle_archive::BundleArchiveLock;
 use crate::core::bundle_persistence::{
     parse_bundle_project, prepare_members, BundleOverrideDeclaration,
 };
+use crate::core::content_digest::DigestForms;
 use crate::core::lock::ProjectLockedBundleEntry;
 use crate::core::manifest::{DependencySpec, SkillProjectToml};
 use crate::core::service::{ServiceError, SkillId};
@@ -146,7 +147,7 @@ pub(crate) struct PreparedBundle {
     _temporary: TempDir,
     pub(crate) descriptor: BundleDescriptor,
     pub(crate) members: BTreeMap<String, PreparedMember>,
-    pub(crate) release_digest: String,
+    pub(crate) release_digest: DigestForms,
 }
 
 impl PreparedBundle {
@@ -172,9 +173,9 @@ impl PreparedBundle {
         archive_lock.verify(&descriptor, &members)?;
         Ok(Self {
             _temporary: temporary,
+            release_digest: BundleArchiveLock::release_digests(&descriptor, &members),
             descriptor,
             members,
-            release_digest: archive_lock.release_digest().to_string(),
         })
     }
 
@@ -185,12 +186,13 @@ impl PreparedBundle {
         let members_match = expected.members.len() == self.members.len()
             && expected.members.iter().all(|locked| {
                 self.members.get(&locked.id).is_some_and(|member| {
-                    member.digest == locked.digest && member.overridable == locked.overridable
+                    member.digest.matches(&locked.digest)
+                        && member.overridable == locked.overridable
                 })
             });
         if self.descriptor.id != expected.id
             || self.descriptor.version != expected.version
-            || self.release_digest != expected.digest
+            || !self.release_digest.matches(&expected.digest)
             || !members_match
         {
             return Err(ServiceError::Validation(format!(
@@ -206,7 +208,7 @@ impl PreparedBundle {
 pub(crate) struct PreparedMember {
     pub(crate) id: String,
     pub(crate) source: PathBuf,
-    pub(crate) digest: String,
+    pub(crate) digest: DigestForms,
     pub(crate) overridable: bool,
 }
 

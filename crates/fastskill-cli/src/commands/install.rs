@@ -646,10 +646,11 @@ async fn build_install_targets(
         let unchanged = current.as_ref().is_some_and(|installed| {
             installed.version == target.resolved_version
                 && target.checksum.as_ref().is_some_and(|checksum| {
-                    fastskill_core::core::install::content_digest(
+                    fastskill_core::core::content_digest::content_digest_matches(
+                        checksum,
                         &service.config().skill_storage_path.join(&target.id),
                     )
-                    .is_ok_and(|actual| &actual == checksum)
+                    .unwrap_or(false)
                 })
         });
         let current_revision = current.map(|installed| installed.version);

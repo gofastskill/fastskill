@@ -3,6 +3,10 @@ use crate::core::bundle::{
     BundleMemberPolicy, BundleOverridePreview, BundleService, PreparedMember, BUNDLE_FORMAT,
 };
 use crate::core::contained_path::ContainedPath;
+use crate::core::content_digest::{
+    all_match, content_digest, content_digest_matches, hash_field, recorded_digests_conflict,
+    DigestForms,
+};
 use crate::core::lock::{ProjectLockedPersonalOverride, ProjectSkillsLock};
 use crate::core::manifest::DependencySpec;
 use crate::core::origin::Origin;
@@ -14,7 +18,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -161,7 +164,7 @@ pub(crate) fn prepare_members(
             id.clone(),
             PreparedMember {
                 id,
-                digest: digest_directory(&source)?,
+                digest: DigestForms::of_directory(&source)?,
                 source,
                 overridable: policy.overridable,
             },
@@ -234,47 +237,6 @@ pub(crate) fn digest_release(
     crate::utils::to_hex_lower(&hasher.finalize())
 }
 
-pub(crate) fn digest_directory(path: &Path) -> Result<String, ServiceError> {
-    if !path.is_dir() {
-        return Err(ServiceError::Validation(format!(
-            "Expected skill directory at {}",
-            path.display()
-        )));
-    }
-    let mut hasher = Sha256::new();
-    for entry in WalkDir::new(path).sort_by_file_name() {
-        let entry = entry.map_err(|error| ServiceError::Io(io_error(error)))?;
-        if entry.file_type().is_symlink() {
-            return Err(ServiceError::Validation(format!(
-                "Symbolic links are not permitted in bundle members: {}",
-                entry.path().display()
-            )));
-        }
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = entry.path().strip_prefix(path).map_err(|error| {
-            ServiceError::Custom(format!("Failed to form skill digest path: {error}"))
-        })?;
-        hash_field(&mut hasher, &relative.to_string_lossy().replace('\\', "/"));
-        let mut file = fs::File::open(entry.path()).map_err(ServiceError::Io)?;
-        let mut buffer = [0u8; 8192];
-        loop {
-            let read = file.read(&mut buffer).map_err(ServiceError::Io)?;
-            if read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..read]);
-        }
-    }
-    Ok(crate::utils::to_hex_lower(&hasher.finalize()))
-}
-
-fn hash_field(hasher: &mut Sha256, value: &str) {
-    hasher.update((value.len() as u64).to_be_bytes());
-    hasher.update(value.as_bytes());
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct BundleHistory {
     #[serde(default)]
@@ -301,7 +263,7 @@ pub(crate) fn apply_personal_override(
         )));
     }
     let source = source.canonicalize().map_err(ServiceError::Io)?;
-    let digest = digest_directory(&source)?;
+    let digest = content_digest(&source)?;
     if preview.target_revision.as_deref() != Some(digest.as_str()) {
         return Err(ServiceError::InvalidOperation(format!(
             "Personal override source for '{id}' changed while the operation was prepared; retry"
@@ -399,7 +361,7 @@ pub(crate) fn apply_personal_override(
     if take_override_test_change(7) {
         fs::remove_file(source.join("SKILL.md")).map_err(ServiceError::Io)?;
     }
-    let current_digest = match digest_directory(&source) {
+    let current_digest = match content_digest(&source) {
         Ok(current_digest) => current_digest,
         Err(error) => {
             state_guard.recovered()?;
@@ -471,7 +433,7 @@ pub(crate) fn preview_personal_override(
         )));
     }
     let source = source.canonicalize().map_err(ServiceError::Io)?;
-    let target = digest_directory(&source)?;
+    let target = DigestForms::of_directory(&source)?;
     let manifest_path = service.project_root.join("skill-project.toml");
     let content = fs::read_to_string(&manifest_path).map_err(ServiceError::Io)?;
     let tables: BundleManifestTables = toml::from_str(&content).map_err(|error| {
@@ -496,8 +458,7 @@ pub(crate) fn preview_personal_override(
             "Every bundle owning '{id}' must permit a personal override"
         )));
     }
-    let owner_digest = &owners[0].digest;
-    if owners.iter().any(|member| member.digest != *owner_digest) {
+    if recorded_digests_conflict(owners.iter().map(|member| member.digest.as_str())) {
         return Err(ServiceError::InvalidOperation(format!(
             "Bundle owners of '{id}' disagree on packaged contents"
         )));
@@ -512,20 +473,22 @@ pub(crate) fn preview_personal_override(
             )));
         }
     }
-    let current = existing_override
-        .map(|entry| entry.digest.clone())
-        .unwrap_or_else(|| owner_digest.clone());
+    let recorded = match existing_override {
+        Some(entry) => vec![entry.digest.as_str()],
+        None => owners.iter().map(|member| member.digest.as_str()).collect(),
+    };
+    let current = recorded[0].to_string();
     let installed = service.skills_directory.join(id);
-    if installed.exists() && digest_directory(&installed)? != current {
+    if installed.exists() && !all_match(&recorded, &installed)? {
         return Err(ServiceError::InvalidOperation(format!(
             "Skill '{id}' is locally modified; FastSkill will not discard those edits while setting an override"
         )));
     }
-    let changed = current != target || existing_override.is_none();
+    let changed = !target.matches(&current) || existing_override.is_none();
     Ok(BundleOverridePreview {
         id: id.to_string(),
         current_revision: Some(current),
-        target_revision: Some(target),
+        target_revision: Some(target.current),
         changed,
         changes: if changed {
             vec![
@@ -652,7 +615,7 @@ fn restore_personal_overrides_impl(
                     source.display()
                 )));
             }
-            if digest_directory(&source)? != locked.digest {
+            if !content_digest_matches(&locked.digest, &source)? {
                 return Err(ServiceError::InvalidOperation(format!(
                     "Personal override '{id}' no longer matches its locked digest"
                 )));

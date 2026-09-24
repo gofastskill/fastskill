@@ -406,7 +406,10 @@ pub(crate) fn validate_declared_bundle_members(
             .filter(|member| member.id == planned.prepared.id())
         {
             if !member.overridable
-                && planned.prepared.resolved().checksum.as_deref() != Some(member.digest.as_str())
+                && !planned
+                    .prepared
+                    .checksum_matches(&member.digest)
+                    .map_err(CliError::Service)?
             {
                 return Err(CliError::Config(format!(
                     "individual skill '{}' conflicts with member content from bundle '{}'",

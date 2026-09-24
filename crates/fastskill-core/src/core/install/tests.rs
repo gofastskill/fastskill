@@ -765,6 +765,33 @@ async fn offline_preparation_restores_cached_repository_and_zip_artifacts() {
         restored.resolved().checksum.as_deref(),
         Some(checksum.as_str())
     );
+    // A Lock written before ADR-0017 pins the legacy form. It still verifies, and the
+    // prepared facts, which become the next Lock entry, carry the current form.
+    let legacy = crate::core::content_digest::legacy_content_digest(&cached).unwrap();
+    let legacy_expected = Resolved {
+        checksum: Some(legacy.clone()),
+        ..expected.clone()
+    };
+    let upgraded = service
+        .prepare_install_offline(repository_origin.clone(), "test-skill", &legacy_expected)
+        .await
+        .unwrap();
+    assert_eq!(
+        upgraded.resolved().checksum.as_deref(),
+        Some(checksum.as_str())
+    );
+    assert!(upgraded.checksum_matches(&legacy).unwrap());
+    assert!(upgraded.checksum_matches(&checksum).unwrap());
+    assert!(!upgraded.checksum_matches(&"0".repeat(64)).unwrap());
+    let tampered = Resolved {
+        checksum: Some("0".repeat(64)),
+        ..expected.clone()
+    };
+    let error = service
+        .prepare_install_offline(repository_origin.clone(), "test-skill", &tampered)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("locked checksum"), "{error}");
     let fresh = service
         .prepare_add_offline(repository_origin, Some("test-skill"))
         .await

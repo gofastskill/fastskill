@@ -1,4 +1,5 @@
 use super::*;
+use fastskill_core::core::project_removal::managed_tree_digest;
 
 struct EnvGuard {
     name: &'static str,

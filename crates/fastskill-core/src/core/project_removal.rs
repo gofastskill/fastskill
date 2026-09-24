@@ -247,8 +247,7 @@ impl ProjectRemovalService {
                     "Skill '{id}' has no locked content digest; restore it before removal so FastSkill can protect local edits"
                 ))
             })?;
-            let actual = managed_tree_digest(&path)?;
-            if &actual != expected {
+            if !crate::core::content_digest::content_digest_matches(expected, &path)? {
                 return Err(ServiceError::InvalidOperation(format!(
                     "Skill '{id}' is locally modified; FastSkill will not delete it"
                 )));
@@ -276,9 +275,11 @@ fn load_and_plan(
     Ok((manifest, lock, plan))
 }
 
-/// Canonical digest used for immutable installed-tree edit protection.
+/// Canonical digest used for immutable installed-tree edit protection, in the current
+/// `sha256-tree-v2:` form. Compare a recorded digest with
+/// [`crate::core::content_digest::content_digest_matches`], which also accepts the legacy form.
 pub fn managed_tree_digest(path: &Path) -> Result<String, ServiceError> {
-    crate::core::bundle_persistence::digest_directory(path)
+    crate::core::content_digest::content_digest(path)
 }
 
 #[cfg(test)]

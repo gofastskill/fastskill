@@ -1,6 +1,8 @@
 use super::support::{git_ref_cache_key, resolve_registry_version, resolve_repo_name};
+use crate::core::content_digest::content_digest_matches;
 use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::service::{FastSkillService, ServiceError};
+use std::path::Path;
 
 pub(super) fn offline_resolution(
     service: &FastSkillService,
@@ -59,11 +61,15 @@ pub(super) fn offline_resolution(
     }
 }
 
+/// Check fetched facts against the Lock. `skill_path` holds the fetched contents; a Lock
+/// written before ADR-0017 pins a legacy content digest, which is checked against those
+/// contents. The Lock written afterwards records `actual`, so the pin is upgraded.
 pub(super) fn verify_resolved_facts(
     id: &str,
     origin: &Origin,
     expected: &Resolved,
     actual: &Resolved,
+    skill_path: &Path,
 ) -> Result<(), ServiceError> {
     if expected.version != actual.version {
         return Err(ServiceError::Validation(format!(
@@ -82,7 +88,9 @@ pub(super) fn verify_resolved_facts(
                 "locked skill '{id}' has no checksum; run an explicit update to establish verified contents"
             ))
         })?;
-        if actual.checksum.as_ref() != Some(expected_checksum) {
+        if actual.checksum.as_ref() != Some(expected_checksum)
+            && !content_digest_matches(expected_checksum, skill_path)?
+        {
             return Err(ServiceError::Validation(format!(
                 "locked checksum for '{id}' does not match the fetched contents"
             )));
@@ -111,6 +119,10 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
+    fn missing() -> &'static Path {
+        Path::new("/nonexistent/fastskill-verification")
+    }
+
     fn resolved(version: &str, commit: Option<&str>, checksum: Option<&str>) -> Resolved {
         Resolved {
             version: version.to_string(),
@@ -123,24 +135,31 @@ mod tests {
     fn immutable_facts_must_all_match() {
         let origin = Origin::ZipUrl { url: "u".into() };
         let expected = resolved("1.0.0", None, Some("abc"));
-        assert!(verify_resolved_facts("x", &origin, &expected, &expected).is_ok());
+        assert!(verify_resolved_facts("x", &origin, &expected, &expected, missing()).is_ok());
         assert!(verify_resolved_facts(
             "x",
             &origin,
             &expected,
-            &resolved("2.0.0", None, Some("abc"))
+            &resolved("2.0.0", None, Some("abc")),
+            missing()
         )
         .is_err());
         assert!(verify_resolved_facts(
             "x",
             &origin,
             &expected,
-            &resolved("1.0.0", None, Some("bad"))
+            &resolved("1.0.0", None, Some("bad")),
+            missing()
         )
         .is_err());
-        assert!(
-            verify_resolved_facts("x", &origin, &resolved("1.0.0", None, None), &expected).is_err()
-        );
+        assert!(verify_resolved_facts(
+            "x",
+            &origin,
+            &resolved("1.0.0", None, None),
+            &expected,
+            missing()
+        )
+        .is_err());
     }
 
     #[test]
@@ -163,7 +182,8 @@ mod tests {
             "x",
             &git,
             &resolved("1.0.0", Some("a"), Some("c")),
-            &resolved("1.0.0", Some("b"), Some("c"))
+            &resolved("1.0.0", Some("b"), Some("c")),
+            missing()
         )
         .is_err());
         let editable = Origin::Local {
@@ -174,7 +194,8 @@ mod tests {
             "x",
             &editable,
             &resolved("1.0.0", None, None),
-            &resolved("1.0.0", None, None)
+            &resolved("1.0.0", None, None),
+            missing()
         )
         .is_ok());
     }

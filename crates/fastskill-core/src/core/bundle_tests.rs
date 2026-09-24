@@ -260,3 +260,127 @@ fn artifact_and_installed_content_validation_report_invalid_versions_and_local_e
         .to_string()
         .contains("locally modified"));
 }
+
+fn author_single_member_bundle() -> (TempDir, PathBuf) {
+    let author = TempDir::new().unwrap();
+    fs::write(
+        author.path().join("skill-project.toml"),
+        format!(
+            "[bundle]\nformat = \"{BUNDLE_FORMAT}\"\nid = \"team\"\nversion = \"1.0.0\"\n\n\
+             [bundle.members.demo]\noverridable = false\n\n[dependencies]\ndemo = \"1.0.0\"\n"
+        ),
+    )
+    .unwrap();
+    let skill = author.path().join("skills/demo");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: demo\nversion: 1.0.0\ndescription: demo\n---\ndemo\n",
+    )
+    .unwrap();
+    let artifact = BundleService::new(author.path(), author.path().join("skills"))
+        .build(author.path())
+        .unwrap()
+        .artifact;
+    (author, artifact)
+}
+
+/// Rewrite `artifact` as a release built before ADR-0017: every digest in the legacy form.
+fn legacy_artifact(artifact: &Path, destination: &Path) -> PreparedBundle {
+    let prepared = PreparedBundle::load(artifact).unwrap();
+    let extract = TempDir::new().unwrap();
+    ZipHandler::new()
+        .unwrap()
+        .extract_to_dir(artifact, extract.path())
+        .unwrap();
+    let current = fs::read_to_string(extract.path().join("skills.lock")).unwrap();
+    let member = &prepared.members["demo"];
+    let legacy = current
+        .replace(&member.digest.current, &member.digest.legacy)
+        .replace(
+            &prepared.release_digest.current,
+            &prepared.release_digest.legacy,
+        );
+    assert_ne!(legacy, current);
+    let legacy_lock: BundleArchiveLock = toml::from_str(&legacy).unwrap();
+    let manifest = fs::read(extract.path().join("skill-project.toml")).unwrap();
+    write_bundle_archive(destination, &manifest, &legacy_lock, &prepared.members).unwrap();
+    prepared
+}
+
+fn record_legacy_digests(root: &Path, prepared: &PreparedBundle) {
+    let lock_path = root.join("skills.lock");
+    let mut lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+    lock.bundles[0].digest = prepared.release_digest.legacy.clone();
+    lock.bundles[0].members[0].digest = prepared.members["demo"].digest.legacy.clone();
+    lock.save_to_file(&lock_path).unwrap();
+    fs::write(
+        root.join(BUNDLE_HISTORY_FILE),
+        format!(
+            "[releases]\n\"team@1.0.0\" = {:?}\n",
+            prepared.release_digest.legacy
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn legacy_bundle_artifacts_and_records_keep_working_and_upgrade_on_rewrite() {
+    let (author, artifact) = author_single_member_bundle();
+    let old_artifact = author.path().join("team-1.0.0-legacy.zip");
+    let prepared = legacy_artifact(&artifact, &old_artifact);
+    let current_release = prepared.release_digest.current.clone();
+    let current_member = prepared.members["demo"].digest.current.clone();
+    assert!(current_member.starts_with(crate::core::content_digest::CONTENT_DIGEST_PREFIX));
+    let (root, service) = fixture();
+    let lock_path = root.path().join("skills.lock");
+
+    // An artifact built by an older release installs, and the Lock records the current form.
+    assert!(!service.install(&old_artifact).unwrap().unchanged);
+    let lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+    assert_eq!(lock.bundles[0].digest, current_release);
+    assert_eq!(lock.bundles[0].members[0].digest, current_member);
+
+    // A Lock and history written by an older release still identify the same release.
+    record_legacy_digests(root.path(), &prepared);
+    assert!(service.install(&artifact).unwrap().unchanged);
+    assert!(service.plan_install(&artifact).unwrap().changes.is_empty());
+    let untouched = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+    assert_eq!(untouched.bundles[0].digest, prepared.release_digest.legacy);
+
+    // Restoring rewrites the records, and the rewrite upgrades them.
+    fs::remove_dir_all(root.path().join("skills/demo")).unwrap();
+    service.install_declared_locked().unwrap();
+    let upgraded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+    assert_eq!(upgraded.bundles[0].digest, current_release);
+    assert_eq!(upgraded.bundles[0].members[0].digest, current_member);
+    assert_eq!(
+        service.load_history().unwrap().releases["team@1.0.0"],
+        current_release
+    );
+
+    // Edit protection still honours a legacy record, and still catches an edit.
+    record_legacy_digests(root.path(), &prepared);
+    fs::write(root.path().join("skills/demo/extra.md"), "edit").unwrap();
+    assert!(service
+        .remove("team")
+        .unwrap_err()
+        .to_string()
+        .contains("locally modified"));
+    fs::remove_file(root.path().join("skills/demo/extra.md")).unwrap();
+    service.remove("team").unwrap();
+    assert!(!root.path().join("skills/demo").exists());
+}
+
+#[test]
+fn a_legacy_locked_release_that_names_other_contents_is_refused() {
+    let (_author, artifact) = author_single_member_bundle();
+    let (root, service) = fixture();
+    service.install(&artifact).unwrap();
+    let lock_path = root.path().join("skills.lock");
+    let mut lock = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
+    lock.bundles[0].members[0].digest = "0".repeat(64);
+    lock.save_to_file(&lock_path).unwrap();
+    fs::remove_dir_all(root.path().join("skills/demo")).unwrap();
+    assert!(service.install_declared_locked().is_err());
+}

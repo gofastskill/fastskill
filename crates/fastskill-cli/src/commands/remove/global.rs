@@ -198,9 +198,9 @@ fn validate_unmodified(
                 "global skill '{id}' has no locked content digest; restore it before removal"
             ))
         })?;
-        let actual =
-            fastskill_core::core::install::content_digest(&path).map_err(CliError::Service)?;
-        if &actual != expected {
+        if !fastskill_core::core::content_digest::content_digest_matches(expected, &path)
+            .map_err(CliError::Service)?
+        {
             return Err(CliError::Config(format!(
                 "global skill '{id}' is locally modified; FastSkill will not delete it"
             )));

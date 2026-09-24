@@ -1,5 +1,6 @@
 use crate::core::bundle::{BundleArchiveLockMember, BundleDescriptor, PreparedMember};
 use crate::core::bundle_persistence::digest_release;
+use crate::core::content_digest::DigestForms;
 use crate::core::service::ServiceError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -20,9 +21,18 @@ pub(super) struct BundleArchiveLock {
 }
 
 impl BundleArchiveLock {
+    /// The archive lock a new artifact carries: every digest in the current form.
     pub(super) fn from_members(
         descriptor: &BundleDescriptor,
         members: &BTreeMap<String, PreparedMember>,
+    ) -> Self {
+        Self::with_member_digests(descriptor, members, |forms| &forms.current)
+    }
+
+    fn with_member_digests(
+        descriptor: &BundleDescriptor,
+        members: &BTreeMap<String, PreparedMember>,
+        form: fn(&DigestForms) -> &String,
     ) -> Self {
         let members: BTreeMap<_, _> = members
             .iter()
@@ -30,7 +40,7 @@ impl BundleArchiveLock {
                 (
                     id.clone(),
                     BundleArchiveLockMember {
-                        digest: member.digest.clone(),
+                        digest: form(&member.digest).clone(),
                         overridable: member.overridable,
                     },
                 )
@@ -50,6 +60,22 @@ impl BundleArchiveLock {
         &self.release_digest
     }
 
+    /// The release digest of `members` in both forms: the current form fastskill records,
+    /// and the legacy form older releases recorded in Locks and bundle history.
+    pub(super) fn release_digests(
+        descriptor: &BundleDescriptor,
+        members: &BTreeMap<String, PreparedMember>,
+    ) -> DigestForms {
+        DigestForms {
+            current: Self::from_members(descriptor, members).release_digest,
+            legacy: Self::with_member_digests(descriptor, members, |forms| &forms.legacy)
+                .release_digest,
+        }
+    }
+
+    /// Check the archive lock against the extracted members. An artifact built before
+    /// ADR-0017 declares every digest in the legacy form; it is accepted with a warning. An
+    /// archive lock that mixes forms matches neither and is refused.
     pub(super) fn verify(
         &self,
         descriptor: &BundleDescriptor,
@@ -63,13 +89,25 @@ impl BundleArchiveLock {
                 "Bundle skills.lock does not match bundle identity and version".to_string(),
             ));
         }
-        let expected = Self::from_members(descriptor, members);
-        if self.members != expected.members || self.release_digest != expected.release_digest {
-            return Err(ServiceError::Validation(
-                "Bundle contents do not match the digests in skills.lock".to_string(),
-            ));
+        if self.declares(&Self::from_members(descriptor, members)) {
+            return Ok(());
         }
-        Ok(())
+        let legacy = Self::with_member_digests(descriptor, members, |forms| &forms.legacy);
+        if self.declares(&legacy) {
+            crate::utils::warn_once(
+                "legacy-bundle-artifact",
+                "bundle artifact was built by an older fastskill and declares legacy content \
+                 digests; rebuild it with `fastskill bundle build` (ADR-0017)",
+            );
+            return Ok(());
+        }
+        Err(ServiceError::Validation(
+            "Bundle contents do not match the digests in skills.lock".to_string(),
+        ))
+    }
+
+    fn declares(&self, expected: &Self) -> bool {
+        self.members == expected.members && self.release_digest == expected.release_digest
     }
 }
 
@@ -159,6 +197,13 @@ mod tests {
     use crate::core::bundle::{BundleMemberPolicy, BUNDLE_FORMAT};
     use std::os::unix::fs::PermissionsExt;
 
+    fn forms(current: &str) -> DigestForms {
+        DigestForms {
+            current: current.to_string(),
+            legacy: format!("legacy-{current}"),
+        }
+    }
+
     #[test]
     fn bundle_archive_preserves_the_executable_bit_for_member_files() {
         let root = tempfile::tempdir().unwrap();
@@ -179,7 +224,7 @@ mod tests {
             PreparedMember {
                 id: "demo".to_string(),
                 source,
-                digest: "digest".to_string(),
+                digest: forms("digest"),
                 overridable: false,
             },
         )]);
@@ -213,7 +258,7 @@ mod tests {
             PreparedMember {
                 id: "demo".to_string(),
                 source: std::path::PathBuf::from("demo"),
-                digest: "digest".to_string(),
+                digest: forms("digest"),
                 overridable: false,
             },
         )]);
@@ -229,7 +274,7 @@ mod tests {
         ));
 
         let mut changed_members = members;
-        changed_members.get_mut("demo").unwrap().digest = "changed".to_string();
+        changed_members.get_mut("demo").unwrap().digest = forms("changed");
         assert!(matches!(
             lock.verify(&descriptor, &changed_members),
             Err(ServiceError::Validation(message))
@@ -255,7 +300,7 @@ mod tests {
             PreparedMember {
                 id: "demo".to_string(),
                 source,
-                digest: "digest".to_string(),
+                digest: forms("digest"),
                 overridable: false,
             },
         )]);
@@ -268,6 +313,50 @@ mod tests {
         assert!(matches!(
             write_bundle_archive(root.path(), b"manifest", &lock, &members),
             Err(ServiceError::Io(_))
+        ));
+    }
+
+    #[test]
+    fn bundle_lock_verification_accepts_an_all_legacy_lock_but_not_a_mixed_one() {
+        let descriptor = BundleDescriptor {
+            format_marker: BUNDLE_FORMAT.to_string(),
+            id: "team".to_string(),
+            version: "1.0.0".to_string(),
+            members: BTreeMap::from([
+                ("one".to_string(), BundleMemberPolicy::default()),
+                ("two".to_string(), BundleMemberPolicy::default()),
+            ]),
+        };
+        let member = |id: &str| PreparedMember {
+            id: id.to_string(),
+            source: std::path::PathBuf::from(id),
+            digest: forms(id),
+            overridable: false,
+        };
+        let members = BTreeMap::from([
+            ("one".to_string(), member("one")),
+            ("two".to_string(), member("two")),
+        ]);
+        let current = BundleArchiveLock::from_members(&descriptor, &members);
+        let legacy =
+            BundleArchiveLock::with_member_digests(&descriptor, &members, |forms| &forms.legacy);
+        assert_ne!(current.release_digest, legacy.release_digest);
+        legacy.verify(&descriptor, &members).unwrap();
+        assert_eq!(
+            BundleArchiveLock::release_digests(&descriptor, &members),
+            DigestForms {
+                current: current.release_digest.clone(),
+                legacy: legacy.release_digest.clone(),
+            }
+        );
+
+        let mut mixed = legacy.clone();
+        mixed.members.get_mut("one").unwrap().digest = "one".to_string();
+        mixed.release_digest = digest_release(&descriptor, &mixed.members);
+        assert!(matches!(
+            mixed.verify(&descriptor, &members),
+            Err(ServiceError::Validation(message))
+                if message.contains("do not match the digests")
         ));
     }
 }
