@@ -478,21 +478,11 @@ impl BundleService {
         self.preflight_apply(&prepared, existing.as_ref(), &manifest, &lock)?;
         let changes = self.plan_changes(&prepared, existing.as_ref(), &manifest, &lock)?;
         let artifact_relative = self.artifact_relative(&prepared.descriptor)?;
-        let next = ProjectLockedBundleEntry {
-            id: prepared.descriptor.id.clone(),
-            version: prepared.descriptor.version.clone(),
-            artifact: artifact_relative.clone(),
-            digest: prepared.release_digest.current.clone(),
-            members: prepared
-                .members
-                .values()
-                .map(|member| ProjectLockedBundleMember {
-                    id: member.id.clone(),
-                    digest: member.digest.current.clone(),
-                    overridable: member.overridable,
-                })
-                .collect(),
+        let recorded = match mode {
+            ApplyMode::RestoreLocked { expected } => Some(expected),
+            _ => None,
         };
+        let next = prepared.lock_entry(artifact_relative.clone(), recorded);
         lock.bundles.retain(|bundle| bundle.id != next.id);
         lock.bundles.push(next);
         manifest.bundles.insert(

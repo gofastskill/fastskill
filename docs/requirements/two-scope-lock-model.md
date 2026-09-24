@@ -60,7 +60,7 @@ id = "my-skill"
 name = "My Skill"
 version = "1.2.0"
 source = { type = "source", name = "default", skill = "my-skill", version = "1.2.0" }
-checksum = "sha256:abc123..."
+checksum = "sha256-tree-v2:abc123..."
 dependencies = ["dependency-skill"]
 groups = ["dev"]
 editable = false
@@ -79,7 +79,8 @@ parent_skill = "parent-skill-id"  # Optional, only for transitive deps
 - `name`: Human-readable skill name
 - `version`: Installed version
 - `source`: Where the skill was fetched from (registry, git, local path, etc.)
-- `checksum`: SHA-256 hash of skill content (when available)
+- `checksum`: content digest of the skill directory (when available); see
+  [ADR-0017](../adr/0017-versioned-content-digests.md)
 - `dependencies`: List of skill IDs this skill depends on
 - `groups`: Optional groups this skill belongs to (e.g., "dev", "prod")
 - `editable`: Whether the skill was installed in editable mode
@@ -100,7 +101,7 @@ id = "my-global-skill"
 name = "My Global Skill"
 version = "2.0.0"
 source = { type = "git", url = "https://github.com/org/repo.git", branch = "main" }
-checksum = "sha256:def456..."
+checksum = "sha256-tree-v2:def456..."
 installed_at = "2026-04-28T10:00:00Z"
 last_checked_at = "2026-04-28T12:00:00Z"
 last_updated_at = "2026-04-28T10:00:00Z"
@@ -335,8 +336,11 @@ Project lock entries are **always sorted alphabetically by skill ID** before wri
 
 ### Checksum Verification
 
-When available, skills include a SHA-256 checksum in the lock file. This verifies integrity during
-`project install --lock` operations.
+When available, skills include a content digest in the lock file. This verifies integrity during
+`project install --lock` operations. The digest is `sha256-tree-v2:` plus a SHA-256 over every
+file's relative path and contents, each length-prefixed. A 64-character digest without the prefix
+was written by an earlier release; it is still verified, with a warning, until the entry is
+rewritten. See [ADR-0017](../adr/0017-versioned-content-digests.md).
 
 Not all source types provide checksums (e.g., editable local paths), so `checksum` is optional.
 

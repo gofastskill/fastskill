@@ -4,7 +4,7 @@ use crate::core::bundle_persistence::{
     parse_bundle_project, prepare_members, BundleOverrideDeclaration,
 };
 use crate::core::content_digest::DigestForms;
-use crate::core::lock::ProjectLockedBundleEntry;
+use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember};
 use crate::core::manifest::{DependencySpec, SkillProjectToml};
 use crate::core::service::{ServiceError, SkillId};
 use crate::storage::zip::ZipHandler;
@@ -201,6 +201,40 @@ impl PreparedBundle {
             )));
         }
         Ok(())
+    }
+
+    /// The Lock entry that records this release at `artifact`. A locked restore passes the
+    /// entry it verified as `recorded`, and its digests are kept as written, so restoring
+    /// from a Lock never changes it. Every other write records the current form.
+    pub(crate) fn lock_entry(
+        &self,
+        artifact: String,
+        recorded: Option<&ProjectLockedBundleEntry>,
+    ) -> ProjectLockedBundleEntry {
+        let recorded_member = |id: &str| {
+            recorded.and_then(|entry| entry.members.iter().find(|member| member.id == id))
+        };
+        ProjectLockedBundleEntry {
+            id: self.descriptor.id.clone(),
+            version: self.descriptor.version.clone(),
+            artifact,
+            digest: recorded.map_or_else(
+                || self.release_digest.current.clone(),
+                |entry| entry.digest.clone(),
+            ),
+            members: self
+                .members
+                .values()
+                .map(|member| ProjectLockedBundleMember {
+                    id: member.id.clone(),
+                    digest: recorded_member(&member.id).map_or_else(
+                        || member.digest.current.clone(),
+                        |locked| locked.digest.clone(),
+                    ),
+                    overridable: member.overridable,
+                })
+                .collect(),
+        }
     }
 }
 

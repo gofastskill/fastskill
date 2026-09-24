@@ -348,9 +348,16 @@ fn legacy_bundle_artifacts_and_records_keep_working_and_upgrade_on_rewrite() {
     let untouched = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
     assert_eq!(untouched.bundles[0].digest, prepared.release_digest.legacy);
 
-    // Restoring rewrites the records, and the rewrite upgrades them.
+    // Restoring from the Lock never changes it, even to upgrade a legacy digest.
+    let legacy_bytes = fs::read(&lock_path).unwrap();
     fs::remove_dir_all(root.path().join("skills/demo")).unwrap();
     service.install_declared_locked().unwrap();
+    assert!(root.path().join("skills/demo/SKILL.md").exists());
+    assert_eq!(fs::read(&lock_path).unwrap(), legacy_bytes);
+
+    // Any other rewrite of the records upgrades them.
+    fs::remove_dir_all(root.path().join("skills/demo")).unwrap();
+    service.install_declared().unwrap();
     let upgraded = ProjectSkillsLock::load_from_file(&lock_path).unwrap();
     assert_eq!(upgraded.bundles[0].digest, current_release);
     assert_eq!(upgraded.bundles[0].members[0].digest, current_member);
@@ -382,5 +389,9 @@ fn a_legacy_locked_release_that_names_other_contents_is_refused() {
     lock.bundles[0].members[0].digest = "0".repeat(64);
     lock.save_to_file(&lock_path).unwrap();
     fs::remove_dir_all(root.path().join("skills/demo")).unwrap();
-    assert!(service.install_declared_locked().is_err());
+    let error = service.install_declared_locked().unwrap_err().to_string();
+    assert!(
+        error.contains("does not match its cached artifact"),
+        "{error}"
+    );
 }

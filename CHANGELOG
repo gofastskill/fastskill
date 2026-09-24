@@ -4,6 +4,15 @@
 
 ### Breaking Changes
 
+- **Content digests now have a versioned form, `sha256-tree-v2:<hex>`.** Every `checksum` in
+  `skills.lock` and `global-skills.lock`, every bundle release and member digest, and every new
+  bundle artifact is written in this form. Digests written by earlier releases (64 bare hex
+  characters) are still accepted when they match, with a one-time warning, and are replaced the
+  next time fastskill rewrites that record; `project install --lock` keeps working without a
+  manual edit. Earlier releases cannot verify the new form and report a checksum mismatch, so
+  upgrade every machine and CI job that shares a project. File names that are not valid UTF-8 are
+  now refused. See [ADR-0017](docs/adr/0017-versioned-content-digests.md).
+
 - **`skill-project.toml` is now written with `schema_version = "2"`.** In schema 2 every git
   origin `url` is a plain clone URL: the branch or tag lives only in `ref`, the subdirectory
   only in `subdir`. Manifests that declare `"1"` — or declare nothing — are still read and are
@@ -96,6 +105,13 @@
   flip `/readyz` to 503, stop the `ValidationWorker` cleanly, and exit with code 0.
 
 ### Fixed
+
+- **Two different skill directories could share a content digest.** The digest hashed each
+  file's contents without their length, so the boundary between one file and the next was
+  ambiguous, and content that differed from what a Lock or bundle pinned could pass
+  verification. Each path and each file's contents are now length-prefixed. Legacy digests are
+  still accepted until their record is rewritten (see Breaking Changes); rebuild bundles with
+  `fastskill bundle build` to give them current-form digests.
 
 - **`project install` reports every dependency that fails to resolve, not just the first.** A
   missing local path, a moved git subdirectory or a renamed skill used to stop the run at the first
