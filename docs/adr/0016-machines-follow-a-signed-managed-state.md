@@ -36,6 +36,19 @@ one rule for every source:
 - Legacy content digests get a way to be rewritten and a date after which they are refused,
   recorded in ADR-0017.
 
+**Second amendment.** A pass on how a state reaches agents, after checking how twenty agents list
+skills and run hooks (see Agent facts, at the end):
+
+- No agent reliably shows a skill that its own session-start hook wrote, so the promise is "from
+  the next session". The hook starts apply in the background, and a timer applies at login and
+  hourly (decision 16).
+- Deployment prefers a shared folder that many agents read, and every apply detects agents again
+  (decision 8).
+- A machine that device management runs needs no step per user: the first apply enrolls
+  (decision 17), and administrator-level hooks come from `managed hooks --system`.
+- The credential command is told when there is no terminal, and a sign-in that lapsed is shown
+  instead of failing silently (decisions 6 and 16).
+
 ## Context
 
 team-skill-presets started from one need: a team keeps using incorrect or outdated skills, and
@@ -85,7 +98,8 @@ It doesn't protect against:
   move the clock, or start an agent without hooks. `required = true` makes following the state
   the default path and refuses FastSkill's own operations. It doesn't stop a determined user.
   Hard enforcement means configuring the agent runtime, through device management, to load only
-  managed folders.
+  managed folders. Few agents can be configured that way today (see Agent facts). FastSkill's
+  documentation lists, for each agent, what its administrator settings allow.
 - **Whoever holds a pinned signing key.** A key holder decides what enrolled machines install.
   Keeping that key safe is the managed source operator's responsibility.
 
@@ -192,6 +206,11 @@ It doesn't protect against:
      and its report). It never obtains, refreshes, stores, logs, prints or inspects the token.
    - **Standard error** goes to the terminal when there is one, so the command can prompt for a
      sign-in. FastSkill never records it.
+   - **Without a terminal.** When FastSkill runs from a hook or the timer (decision 16), it sets
+     `FASTSKILL_INTERACTIVE=0` in the command's environment. The command must then print a token
+     without prompting, for example from a refresh token it keeps, or exit non-zero. On failure
+     FastSkill keeps using the cached state and records that sign-in is needed. `managed status`
+     and the next hook notice say so.
    - **Where the token goes.** It is sent only to the managed source's origin (scheme, host and
      port). Artifact locations on that origin get it. Artifact locations on other origins get no
      token and must carry their own authorization, such as a pre-signed URL. A redirect to another
@@ -224,11 +243,21 @@ It doesn't protect against:
 ### Applying it
 
 8. **Agent targets come from `aikit-sdk`.**
-   - An Agent target is one agent's per-user skills folder.
-   - By default, an agent is a target when `aikit-sdk` knows it and its per-user configuration
+   - An Agent target is a per-user skills folder that one or more agents read. `aikit-sdk`
+     records every per-user folder each agent it knows reads, including shared folders such as
+     `~/.agents/skills`.
+   - By default, an agent is covered when `aikit-sdk` knows it and its per-user configuration
      folder exists.
+   - **Fewest folders.** Apply deploys to the smallest set of folders that reaches every covered
+     agent, preferring a shared folder to an agent's own. Today that is usually
+     `~/.agents/skills`, which most agents read, plus `~/.claude/skills` for Claude Code. An agent
+     that reads two of the chosen folders sees the same id with the same digest twice.
+     `aikit-sdk` supports an agent only after checking that this is harmless for it.
+   - **Every apply detects again.** An agent installed since the last apply is covered at once:
+     its folders are deployed and its hook registered (decision 16). An agent that is gone loses
+     its hook, and a folder no covered agent reads any more loses its target entries.
    - The `targets` setting can list agents explicitly, replacing detection.
-   - Agents `aikit-sdk` doesn't know are never targets.
+   - Agents `aikit-sdk` doesn't know are never covered.
 9. **`managed apply` installs through a private staging area and deploys only what it owns.**
    - **Download and verify.** Each listed skill whose digest isn't already in the user-level
      **managed store** is downloaded into a staging folder only that user can access.
@@ -312,7 +341,8 @@ It doesn't protect against:
       derived from hardware
     - a sequence number that increases with each report from that machine id
     - the `issued_at` of the applied state, and whether the apply completed
-    - the Agent targets, by agent name rather than by path
+    - the covered agents, by name, and for each whether it has a hook; Agent targets are never
+      sent by path
     - for each skill in an Agent target: its id, digest, Origin kind, whether it is editable, and
       its outcome (deployed, adopted, collision, quarantined or unmanaged)
     - what is currently in quarantine, and the quarantine actions taken in this run
@@ -329,29 +359,57 @@ It doesn't protect against:
     needs to know which projects still carry it and what people asked for and were refused.
     `managed status --json --report` prints the exact report body without sending it. A report is
     the machine's own claim, not proof. Whoever receives it should treat it that way.
-16. **Session start is a convenience, not an enforcement point.**
-    - `managed enroll` registers a session-start hook in each Agent target's agent that supports
-      one.
-    - The hook runs `managed apply` within a short time budget. When the budget runs out, apply
-      stops at the next skill boundary (decision 12).
-    - The hook always exits successfully and writes no agent metadata files.
-    - Agents without hooks get the state on explicit `managed apply` or a scheduled run.
+16. **Applies run in the background, at session start and on a timer. Neither is an
+    enforcement point.**
+    - **The promise.** Most agents list their skills before a session-start hook finishes, or
+      don't wait for it at all. What an apply deploys is guaranteed from the next session, not
+      the current one.
+    - **The session-start hook.** Each covered agent that can run a command at session start
+      gets a hook that runs `managed apply --hook`. It starts an apply in the background and
+      returns within a second. The per-user lock (decision 12) keeps applies from overlapping.
+      The hook always exits successfully and writes no agent metadata files.
+    - **What the hook prints.** Nothing, unless the last recorded apply left something the user
+      must act on: sign-in needed (decision 6), the state expired, or a covered agent left without
+      skills. Then it prints one notice, in the form that agent expects (decision 20). Agents
+      differ in whether and where they show it. `managed status` always shows it.
+    - **The timer.** A per-user timer runs `managed apply` at login and then hourly, each run
+      shifted by up to ten minutes at random: a systemd user timer, a launchd agent or a scheduled
+      task. It is the only path for agents that can't run a command at session start, including
+      agents whose hooks must be plugins in their own language, which `aikit-sdk` doesn't ship.
+    - **Who registers them.**
+      - On a machine its user manages, `managed enroll` registers user-level hooks and the timer.
+        For an agent that runs a new user-level hook only after its user approves it, enroll
+        names the agent and says how to approve.
+      - On a machine device management runs, `managed hooks --system` prints the entry for each
+        supported agent's administrator-level hook file, and a machine-wide timer unit. Device
+        management places and owns those files, and FastSkill never writes them. When an
+        administrator-level FastSkill hook is present for an agent, apply registers no user-level
+        hook for it.
+    - Every apply registers hooks for newly detected agents and removes those of agents that are
+      gone (decision 8).
 
 ### Commands
 
-17. A `managed` namespace joins ADR-0010's tree with four actions:
-    - **`enroll`**
-    - **`apply`**
+17. A `managed` namespace joins ADR-0010's tree with five actions:
+    - **`enroll`** fetches and caches the first state, creates the machine id, records the
+      subject, and registers the hooks and the timer (decision 16).
+    - **`apply`**. When the system file names a source and the user isn't enrolled, apply enrolls
+      first. A machine that device management runs therefore needs no step per user beyond the
+      credential command's own sign-in.
+    - **`hooks --system`** prints the administrator-level hook entries and timer unit (decision
+      16). It reads nothing but `aikit-sdk`'s agent list and changes nothing.
     - **`status`** shows the source, subject, expiry, Agent targets, collisions and quarantine
       contents, and with `--report` the report body.
-    - **`unenroll`** removes the hook registrations, the target entries in the ownership record,
+    - **`unenroll`** removes the user-level hook registrations, the timer, the target entries in
+      the ownership record,
       the managed store, the cached state, the recorded subject, `issued_at` and machine id, and
       the managed settings in the user configuration. A modified target entry is quarantined
       rather than removed. The quarantine itself stays. `unenroll` refuses when the system file
       sets `required = true`.
 
-    All four are classified for `server serve` and `mcp serve` under ADR-0003. `enroll`, `apply`
+    All five are classified for `server serve` and `mcp serve` under ADR-0003. `enroll`, `apply`
     and `unenroll` are write operations: they change skill folders and run the credential command.
+    `hooks` is a read operation.
 
 ### What FastSkill does not do
 
@@ -366,16 +424,19 @@ It doesn't protect against:
 
 20. Knowledge about agents belongs in `aikit-sdk`. Today it knows each agent's project skills
     folder. It needs four additions:
-    - each agent's per-user skills and configuration folders
+    - each agent's per-user configuration folder and every per-user skills folder it reads,
+      shared ones included
     - detecting that an agent is present, whether or not `aikit-sdk` can run it (today's list of
       installed agents covers only agents it can run)
     - deploying one skill into a folder by link or verified copy, without touching other entries
       (today's deployment replaces whole folders)
-    - registering and unregistering a session-start hook, persistently
+    - for each agent: whether it can run a command at session start; registering and
+      unregistering that hook at user level, persistently; the entry for its administrator-level
+      hook file; and writing a notice in the form its hook output takes
 
     FastSkill owns the rest: the managed state format and its verification, trusted
-    configuration, `managed apply`, the ownership record, the install gate, quarantine, and the
-    report. Both are libraries that any tool producing managed states can depend on.
+    configuration, `managed apply`, the ownership record, the install gate, quarantine, the
+    timer, and the report. Both are libraries that any tool producing managed states can depend on.
 
 ### What only an `https://` source turns on
 
@@ -415,10 +476,11 @@ It doesn't protect against:
   `managed apply`, installs and `--check`. A file copied into an agent folder between applies is
   caught at the next apply.
 - **Nothing bounds withdrawal time for a machine that stops applying.**
-  - A blocked digest reaches a machine at its next successful apply, which happens at every
-    agent session start where hooks exist.
+  - A blocked digest reaches a machine at its next successful apply: at login, hourly, and at
+    every agent session start where hooks exist. A machine that is on and can sign in applies it
+    within about 70 minutes, and its agents drop the skill from their next session.
   - A machine that stops applying keeps what it has, however long that lasts. That includes a
-    machine that is offline, has failing hooks, or runs agents without hooks.
+    machine that is off or offline, or whose user needs to sign in again.
   - Expiry limits how long FastSkill keeps allowing installs under an old state. It doesn't limit
     how long installed content stays.
   - A source can see from reports which machines haven't applied recently.
@@ -451,6 +513,12 @@ It doesn't protect against:
   and the two new reconciliation statuses.
 - **aikit changes come first.** The additions in decision 20 land in `aikit-sdk` before
   `managed apply` can deploy to agents.
+- **A session never changes under the user.** Because the promise is "from the next session", a
+  running session keeps the skills it started with, except in agents that watch their folders.
+- **Agent support is a moving list.** Agents add hooks and folders often. `aikit-sdk` holds the
+  current list; Agent facts below records what was true when this was decided.
+- **A hardening page follows.** FastSkill's documentation will list, for each agent, the
+  administrator settings that limit which skills it loads.
 
 ## Considered alternatives
 
@@ -474,6 +542,17 @@ It doesn't protect against:
 - **Binding each state to a machine** was rejected. The source would need a machine identity it
   can trust, which FastSkill can't provide. Binding the state to its source and subject, with the
   token authorizing each fetch, fits the threat model.
+- **A hook that waits for apply** was rejected. Most agents wouldn't show the result in that
+  session anyway, and hook timeouts as short as ten seconds would cut applies off.
+- **Deploying to every folder each agent reads** was rejected. Agents that read several folders
+  would list each skill several times.
+- **Only the shared `~/.agents/skills` folder** was rejected. Claude Code doesn't read it.
+- **FastSkill writing administrator-level hook files** was rejected. Those files belong to device
+  management, and merging into them risks breaking its other settings.
+- **Plugins for agents whose hooks must be code in their own language** were deferred. The timer
+  reaches them, and the difference is at most an hour.
+- **Deploying into agents' administrator skill folders**, which users can't change, was rejected.
+  They are machine-wide, and a managed state is per user.
 - **Deleting disallowed content** was rejected. Quarantine loses nothing and can be reversed.
 - **An `editable = allowed` value** that exempts editable skills from `blocked` too was rejected.
   A blocked digest is harmful content, and installing it from a local path doesn't change that.
@@ -484,3 +563,27 @@ It doesn't protect against:
   digest is enough to find where blocked content still is.
 - **Reviving `sync`** was rejected. ADR-0001 removed a command of that name with a different
   meaning, so the new actions are `managed apply` and `managed enroll`.
+
+## Agent facts
+
+Checked against each agent's documentation on 2026-09-24. "Shared folder" says whether the agent
+reads `~/.agents/skills`. "Same session" says whether a skill written by its session-start hook
+shows up in that session.
+
+| Agent | Shared folder | Command hook at session start | Administrator-level hooks | Same session |
+|---|---|---|---|---|
+| Claude Code | no | yes; output reaches the model | managed settings | no |
+| Cursor (IDE and CLI) | yes | yes, not awaited; output not shown | `/etc/cursor/hooks.json` | no |
+| Codex CLI | yes | yes; user hooks need approval | managed hooks, no approval | later |
+| Gemini CLI | yes | yes; output must be JSON | `/etc/gemini-cli/settings.json` | no |
+| Qwen Code | yes | yes | `/etc/qwen-code` | later |
+| GitHub Copilot (VS Code) | yes | yes; only JSON context reaches the model | GitHub policy | no |
+| GitHub Copilot CLI | yes | yes; 30 s timeout | `/etc/github-copilot/policy.d` | no |
+| Devin Desktop | yes | yes | `/etc/devin/hooks.json` | no |
+| Auggie | yes | yes | `/etc/augment/settings.json` | no |
+| Kiro, CodeBuddy, Qoder | no | yes | not checked | no |
+| IBM Bob | no | yes; 10 s timeout | enforced-hooks policy | no |
+| OpenCode, Amp, Pi, Kilo | yes | only through a plugin | not checked | no |
+| Roo Code (archived) | yes | none | none | no |
+
+"Later" means the agent watches its skills folders and picks the skill up during the session.
