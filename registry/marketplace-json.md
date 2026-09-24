@@ -1,12 +1,12 @@
 # Marketplace.json Format
 
-FastSkill 0.9.254
+FastSkill 0.9.255
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: 59a4351a974ed357416fbf4848253a8751970a90
+Release revision: f50384dc721eb83cf23b24d63c090fb93e3ea357
 
-Documentation revision: 59a4351a974ed357416fbf4848253a8751970a90
+Documentation revision: f50384dc721eb83cf23b24d63c090fb93e3ea357
 
 
 
