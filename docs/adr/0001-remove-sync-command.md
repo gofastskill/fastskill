@@ -27,3 +27,16 @@ We **remove `sync` entirely** (breaking change) rather than keep it as a hidden/
   configuration for an integration FastSkill no longer endorses. The earlier `sources`,
   `registry`, and `repos` paths are also historical after ADR-0010; repository operations now use
   `repo`.
+
+## Amendment by ADR-0016 (2026-09-24)
+
+[ADR-0016](./0016-machines-follow-a-signed-managed-state.md) adds a third member to propagation:
+`managed apply` (managed state → managed store → Agent targets). The Consequences bullet above
+that lists "exactly two members" is superseded by this amendment. The other two members are
+unchanged.
+
+The prohibition this ADR set stays in force. `managed apply` writes skill folders only. It never
+writes an agent metadata file, and it takes no `--agent` or `--agents-file` input. It is not
+`sync` under another name: its input is a signed, resolved state, and its outputs are the
+per-user skills folders an agent already reads. It does not regenerate a file that describes
+them.
