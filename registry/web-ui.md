@@ -1,12 +1,12 @@
 # Local browser console
 
-FastSkill 0.9.253
+FastSkill 0.9.254
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
+Release revision: 59a4351a974ed357416fbf4848253a8751970a90
 
-Documentation revision: 27607e7503e2e057fdbf8f8bceeade6bcbd663f8
+Documentation revision: 59a4351a974ed357416fbf4848253a8751970a90
 
 
 
