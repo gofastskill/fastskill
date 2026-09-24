@@ -1714,3 +1714,27 @@ fn plain_git_urls_pass_the_browser_url_guard() {
         assert!(reject_github_tree_url(url).is_ok(), "{url} must be allowed");
     }
 }
+
+/// Two different trees must never share a content digest. A file's bytes used
+/// to be hashed without their length, so the boundary between one file and
+/// the next was not part of the digest.
+#[test]
+fn content_digest_distinguishes_file_boundaries() {
+    let root = TestTempDir::new().unwrap();
+    let split = write_valid_skill(root.path(), "split");
+    std::fs::write(split.join("a.bin"), b"head").unwrap();
+    std::fs::write(split.join("z.sh"), b"tail").unwrap();
+
+    let merged = write_valid_skill(root.path(), "merged");
+    let mut joined = b"head".to_vec();
+    joined.extend_from_slice(&(b"z.sh".len() as u64).to_be_bytes());
+    joined.extend_from_slice(b"z.sh");
+    joined.extend_from_slice(b"tail");
+    std::fs::write(merged.join("a.bin"), joined).unwrap();
+
+    assert_ne!(
+        content_digest(&split).unwrap(),
+        content_digest(&merged).unwrap(),
+        "a one-file tree and a two-file tree produced the same content digest"
+    );
+}
