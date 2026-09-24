@@ -1,6 +1,6 @@
 # Machines can follow a signed managed state; FastSkill applies it and never decides it
 
-Status: proposed. Date: 2026-09-24. Revised: 2026-09-24.
+Status: proposed. Date: 2026-09-24. Revised: 2026-09-24. Amended: 2026-09-24.
 
 Related: [ADR-0001](0001-remove-sync-command.md),
 [ADR-0003](0003-serve-trust-boundary-and-edge-auth.md),
@@ -23,6 +23,18 @@ Related: [ADR-0001](0001-remove-sync-command.md),
 - It left `bundle override` outside the install gate.
 - It changed ADR-0001, ADR-0003 and ADR-0008 without saying so. Those amendments are now explicit,
   and each of those ADRs records them.
+
+**Amendment.** A later design pass added what a source serving many users needs, and tightened
+one rule for every source:
+
+- Blocked content is refused and quarantined even when it is an editable local skill, whatever the
+  source (decisions 11 and 13).
+- Three additions apply only when the managed source is an `https://` URL (decision 21): an
+  `editable` setting (decision 22), a request link printed on refusals (decision 23), and two
+  report additions (decision 15). A file source ignores them, and with no managed source nothing
+  changes.
+- Legacy content digests get a way to be rewritten and a date after which they are refused,
+  recorded in ADR-0017.
 
 ## Context
 
@@ -95,6 +107,8 @@ It doesn't protect against:
    - `blocked`: digests that must not be present, each with an optional message for the user
    - `report_url`: optional (decision 15)
    - `exclusive_targets`: a flag (decision 11)
+   - `editable`: optional, `blocked-only` or `refused` (decision 22)
+   - `request_url`: optional, a link template (decision 23)
 
    Entries are resolved content, like a Lock, not intent, like a Manifest. Applying a managed
    state never resolves versions, reads repositories or runs dependency resolution. The state is
@@ -110,7 +124,9 @@ It doesn't protect against:
      ([ADR-0017](0017-versioned-content-digests.md)). The original digest didn't
      length-frame file contents, so two different trees could share it. It is never accepted
      here.
-   - an artifact location or `report_url` isn't `https://` (a file source may use local paths)
+   - an artifact location, `report_url` or `request_url` isn't `https://` (a file source may use
+     local paths)
+   - `editable` has a value other than `blocked-only` or `refused`
 
    When it installs a skill, apply requires that the downloaded content's digest equals the
    entry's digest and that its own identity (ADR-0014) equals the entry's id.
@@ -181,7 +197,9 @@ It doesn't protect against:
      token and must carry their own authorization, such as a pre-signed URL. A redirect to another
      origin drops the token, and a redirect from `https` to `http` is refused.
    - **Reports.** `report_url` must be on the source's origin. If it isn't, apply sends no report
-     and warns.
+     and warns. A file source has no origin, so it never gets a report.
+   - **Request links.** `request_url` must be on the source's origin too. If it isn't, FastSkill
+     prints no link and apply warns.
    - FastSkill gains no login command.
 7. **Managed settings come only from trusted configuration.**
    - **The settings:** the source, the pinned keys, the credential command, `required`, and the
@@ -246,7 +264,9 @@ It doesn't protect against:
         `blocked`
       - with `allowed = listed` and `exclusive_targets = true`, content in an Agent target whose
         digest isn't allowed
-    - **Editable local skills** (ADR-0005) are reported, never quarantined.
+    - **Editable local skills** (ADR-0005) are quarantined only when their digest is `blocked`.
+      Blocking is a judgement about content, and a local path doesn't change it. Any other editable
+      local skill is reported, never quarantined, whatever `editable` says (decision 22).
     - **Where it goes.** Quarantine moves content into a timestamped folder in FastSkill's
       per-user data folder, which only that user can access. Each item carries a record of its
       digest, its former location and the reason.
@@ -270,6 +290,11 @@ It doesn't protect against:
       overrides, and `project install`.
     - **What it refuses.** Content whose digest is `blocked`, or, under `allowed = listed`, not
       allowed. It refuses before changing any state and names the digest and its message.
+    - **Editable local skills.** A blocked digest is refused for an editable local skill too,
+      whatever the source. Whether `allowed = listed` applies to one is decision 22.
+    - **What a refusal says.** A refusal for a digest that isn't allowed includes the request link
+      (decision 23). A refusal for a blocked digest never does. The refusal is recorded for the
+      next report (decision 15).
     - **Manifests and Locks.** Committed Manifests and Locks keep working unchanged. The gate only
       decides whether their pinned content may be installed on this machine.
 14. **The reconciliation vocabulary grows by two statuses.**
@@ -291,8 +316,17 @@ It doesn't protect against:
     - for each skill in an Agent target: its id, digest, Origin kind, whether it is editable, and
       its outcome (deployed, adopted, collision, quarantined or unmanaged)
     - what is currently in quarantine, and the quarantine actions taken in this run
+    - the refusals since the last accepted report: for each, the digest and the command that was
+      refused (`skill add`, `bundle update`, `project install` and so on), never its arguments.
+      They are kept per user, deduplicated by digest and command, and cleared when the source
+      accepts a report.
+    - the skills in the current project's skills folder when apply ran: each one's id and digest.
+      The current project is the one found from apply's working directory; with none, the list is
+      empty. Its path, its name and its repository URL are never sent.
 
-    Prompts, file contents, file paths, usernames and usage are never sent.
+    Prompts, file contents, file paths, usernames, project names, repository URLs and usage are
+    never sent. The last two items are part of the report because a source that blocks content
+    needs to know which projects still carry it and what people asked for and were refused.
     `managed status --json --report` prints the exact report body without sending it. A report is
     the machine's own claim, not proof. Whoever receives it should treat it that way.
 16. **Session start is a convenience, not an enforcement point.**
@@ -343,6 +377,38 @@ It doesn't protect against:
     configuration, `managed apply`, the ownership record, the install gate, quarantine, and the
     report. Both are libraries that any tool producing managed states can depend on.
 
+### What only an `https://` source turns on
+
+21. **Some fields and report items apply only when the managed source is an `https://` URL.**
+    - **What they are:** the `editable` setting (decision 22), the request link (decision 23), and
+      the refusals and project skills in the report (decision 15).
+    - **With a file source,** FastSkill ignores `editable` and `request_url`, and it never sends
+      a report (decision 6). `managed status` names each field it ignored and says why.
+    - **With no managed source,** none of this exists and nothing changes.
+    - **Blocking isn't one of them.** Blocked content is refused and quarantined, editable or not,
+      whatever the source (decisions 11 and 13). That is part of what `blocked` means.
+
+    Each of these serves a source that knows its users: one that can set a rule per user, take a
+    request, and read a report. A file or git source is a state someone wrote or a CI job built.
+    It can't take a request or receive a report, so its behavior stays fixed and a static state
+    stays simple to write.
+22. **`editable` decides whether editable local skills skip the allow-list.** It matters only
+    under `allowed = listed`.
+    - **`blocked-only`,** the default: editable local skills (ADR-0005) skip the allow-list. Their
+      digests change with every edit, so no list could name them. Blocked digests are still
+      refused and quarantined.
+    - **`refused`:** adding an editable local skill (`skill add --editable`) is refused. Editable
+      skills already installed are reported, never quarantined, so nobody loses local work.
+    - There is no value that lets editable skills bypass `blocked`.
+    - A state from a file source always behaves as `blocked-only`.
+23. **A refusal can point to where access is requested.** `request_url` is a URL template with
+    one `{digest}` placeholder.
+    - When the install gate refuses content that isn't allowed, the refusal includes the link,
+      with the refused digest substituted and percent-encoded.
+    - FastSkill prints the link and never opens or fetches it. `server serve` and `mcp serve`
+      include it in the refusal they return.
+    - A refusal for blocked content never includes it. Blocked content isn't something to ask for.
+
 ## Consequences
 
 - **Enforcement has limits**, as the threat model says. FastSkill enforces at its own operations:
@@ -367,6 +433,12 @@ It doesn't protect against:
   reports separately.
 - **Nothing changes unless configured.** With no managed source, FastSkill does no new network
   activity, emits no new statuses, and every current command behaves as before.
+- **A file source gets the core, not the service features.** Signing, expiry, the install gate,
+  blocking and quarantine work the same for every source. The `editable` setting, request links
+  and reports need an `https://` source (decision 21).
+- **The report says a little more about projects.** It carries the ids and digests of the
+  current project's skills, but no path or project identity. A source can tell that a blocked
+  digest is still in some project on a machine, not which project.
 - **A static file is enough.** A signed managed state in a git repository or a storage bucket is
   a complete managed source. Tools to build and sign a state from a Manifest are out of scope
   here and may follow.
@@ -403,5 +475,12 @@ It doesn't protect against:
   can trust, which FastSkill can't provide. Binding the state to its source and subject, with the
   token authorizing each fetch, fits the threat model.
 - **Deleting disallowed content** was rejected. Quarantine loses nothing and can be reversed.
+- **An `editable = allowed` value** that exempts editable skills from `blocked` too was rejected.
+  A blocked digest is harmful content, and installing it from a local path doesn't change that.
+- **Applying `editable` and request links to file sources** was rejected. A file source can't
+  set them per user or act on a request, so they would only add ways for a static state to be
+  wrong.
+- **Reporting project paths or repository URLs** was rejected. They identify private work, and a
+  digest is enough to find where blocked content still is.
 - **Reviving `sync`** was rejected. ADR-0001 removed a command of that name with a different
   meaning, so the new actions are `managed apply` and `managed enroll`.

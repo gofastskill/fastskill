@@ -44,9 +44,10 @@ _Avoid_: lockfile (in prose), pin file.
 **Content digest**:
 The string that names the exact files of a skill directory: `sha256-tree-v2:` plus a SHA-256
 over every file's relative path and contents, each length-prefixed. A Lock pins it as `checksum`;
-bundle records and artifacts pin it per member. A **legacy digest** (64 bare hex characters,
-written before ADR-0017) is still accepted with a warning and is replaced when its record is
-rewritten. See [ADR-0017](./docs/adr/0017-versioned-content-digests.md).
+bundle records and artifacts pin it per member. A **legacy digest** (64 bare hex characters, written
+before ADR-0017) is still accepted with a warning and is replaced when its record is rewritten or by
+`project repin`; the second minor release after `project repin` ships refuses it. See
+[ADR-0017](./docs/adr/0017-versioned-content-digests.md).
 _Avoid_: hash, checksum (except as the Lock field name).
 
 **Installed skill**:

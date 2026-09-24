@@ -1,6 +1,7 @@
 # Content digests are versioned and frame every field
 
-Status: accepted. Date: 2026-09-24. Implemented: 2026-09-24.
+Status: accepted. Date: 2026-09-24. Implemented: 2026-09-24. Amended: 2026-09-24 (retiring
+legacy digests; not yet implemented).
 
 Related: [ADR-0007](0007-self-contained-tracked-skill-bundles.md),
 [ADR-0008](0008-bundle-ownership-and-local-changes.md),
@@ -85,14 +86,41 @@ The bundle archive format (`fastskill-bundle-lock-v1`) and the Lock format versi
 changed. Changing either would make older releases refuse to read files they could otherwise
 report on, with a message suggesting that the Lock be deleted.
 
+### Retiring legacy digests
+
+*Amendment.* Accepting legacy digests keeps the weakness this ADR fixes wherever one is still
+recorded, so acceptance ends, in two steps.
+
+1. **A re-pin command rewrites them.** `project repin` joins ADR-0010's `project` namespace.
+   - For each legacy value in the project's records (the table above), it checks the installed
+     content against the legacy value, computes the current form from that same content, and
+     writes it. `--global` does the same for `global-skills.lock`.
+   - It never changes content and never re-resolves anything. A legacy value that doesn't match
+     the installed content, or whose content isn't installed, is left as it is and reported.
+   - Bundle artifacts are immutable, so it reports each one that holds legacy digests and names
+     `bundle build` as the fix.
+   - `--check` changes nothing and fails when any legacy value remains, so CI can find them.
+2. **The second minor release after the one that ships `project repin` refuses legacy digests.**
+   - Until then, the warning names the release that will refuse them and says to run
+     `project repin`.
+   - From that release on, a legacy value is refused as a checksum mismatch that names the
+     command to run.
+   - A setting in the user's FastSkill configuration file or the system configuration file keeps
+     accepting legacy values after the cutoff, still with the warning. A project's
+     `skill-project.toml` can't set it: a repository shouldn't be able to turn a weaker check back
+     on for everyone who clones it.
+
+A managed state never accepted legacy digests
+([ADR-0016](0016-machines-follow-a-signed-managed-state.md) decision 1), and this doesn't change.
+
 ## Tradeoffs
 
 - **Legacy values are still trusted until they are rewritten.** A tree crafted to collide with a
   legacy digest passes where that digest is still recorded. Refusing legacy digests would close
-  this, but every committed Lock and every bundle built by an earlier release would stop
-  installing, including `project install --lock` in CI, with no way to verify the content they
-  pinned. The warning makes the weaker record visible, and a rewrite removes it. A later release
-  can refuse legacy digests once Locks have had time to be rewritten.
+  this, but every committed Lock and every bundle built by an earlier release would stop installing,
+  including `project install --lock` in CI, with no way to verify the content they pinned. The
+  warning makes the weaker record visible, and a rewrite removes it. `project repin` rewrites them
+  on purpose, and the cutoff two minor releases later ends acceptance (see Retiring legacy digests).
 - **Older releases cannot verify current-form digests.** A Lock or artifact written by this
   release reports a checksum mismatch on an older fastskill. Every machine and CI job that shares
   a project must be upgraded together, as with manifest `schema_version = "2"`.
@@ -106,4 +134,3 @@ report on, with a message suggesting that the Lock be deleted.
   (for example, the archive or git tree), which fastskill does not have for every Origin.
 - **Empty directories.** Neither ZIP artifacts nor git preserve them consistently, so they cannot
   be part of what a digest promises.
-- **Removing legacy acceptance.** That is a later decision, with its own migration notice.
