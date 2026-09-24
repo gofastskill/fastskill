@@ -1,6 +1,7 @@
 //! Whole-project snapshots used to recover multi-phase lifecycle operations.
 
-use crate::core::service::{ServiceError, SkillId};
+use crate::core::contained_path::ContainedPath;
+use crate::core::service::ServiceError;
 use crate::utils::atomic_write;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -71,9 +72,10 @@ impl LifecycleTransaction {
         ids: &[String],
         additional_files: &[PathBuf],
     ) -> Result<Self, ServiceError> {
-        for id in ids {
-            SkillId::new(id.clone())?;
-        }
+        let installed = ids
+            .iter()
+            .map(|id| ContainedPath::skill(destination, id))
+            .collect::<Result<Vec<_>, _>>()?;
         let temporary = TempDir::new().map_err(ServiceError::Io)?;
         let mut paths = vec![
             project_root.join("skill-project.toml"),
@@ -82,7 +84,7 @@ impl LifecycleTransaction {
             project_root.join(".fastskill/bundles"),
         ];
         paths.extend(additional_files.iter().cloned());
-        paths.extend(ids.iter().map(|id| destination.join(id)));
+        paths.extend(installed.iter().map(|path| path.as_path().to_path_buf()));
         paths.sort();
         paths.dedup();
         let mut captured = Vec::with_capacity(paths.len());

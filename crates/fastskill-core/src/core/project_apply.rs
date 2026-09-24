@@ -1,5 +1,6 @@
 //! Transactional application of a verified project dependency plan.
 
+use crate::core::contained_path::{remove_contained, ContainedPath};
 use crate::core::install::PreparedSkill;
 use crate::core::lifecycle_transaction::LifecycleTransaction;
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
@@ -357,7 +358,10 @@ impl FastSkillService {
             if self.skill_manager().get_skill(&id).await?.is_some() {
                 self.skill_manager().unregister_skill(&id).await?;
             }
-            remove_managed_path(&self.config().skill_storage_path.join(id.as_str()))?;
+            remove_contained(&ContainedPath::skill(
+                &self.config().skill_storage_path,
+                id.as_str(),
+            )?)?;
         }
         if !plan.manifest_updates.is_empty() {
             apply_manifest_updates(project_root, &plan.manifest_updates)?;
@@ -535,26 +539,6 @@ fn validate_unmanaged_destinations(
         }
     }
     Ok(())
-}
-
-fn remove_managed_path(path: &Path) -> Result<(), ServiceError> {
-    let metadata = match std::fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(ServiceError::Io(error)),
-    };
-    if metadata.file_type().is_symlink() {
-        crate::core::lifecycle_transaction::unlink_symlink(path, &metadata)
-    } else if metadata.is_file() {
-        std::fs::remove_file(path).map_err(ServiceError::Io)
-    } else if metadata.is_dir() {
-        std::fs::remove_dir_all(path).map_err(ServiceError::Io)
-    } else {
-        Err(ServiceError::InvalidOperation(format!(
-            "unsupported managed destination: {}",
-            path.display()
-        )))
-    }
 }
 
 fn apply_manifest_updates(project_root: &Path, updates: &[SkillEntry]) -> Result<(), ServiceError> {

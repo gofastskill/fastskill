@@ -1,5 +1,6 @@
 //! Transactional application of project removal plans.
 
+use crate::core::contained_path::{remove_contained, ContainedPath};
 use crate::core::lifecycle_transaction::LifecycleTransaction;
 use crate::core::lock::ProjectSkillsLock;
 use crate::core::manifest::SkillProjectToml;
@@ -197,7 +198,7 @@ impl ProjectRemovalService {
                 ServiceError::Config(format!("Failed to save skills.lock: {error}"))
             })?;
             for id in &plan.delete_files {
-                remove_installed_path(&self.skills_directory.join(id))?;
+                remove_contained(&ContainedPath::skill(&self.skills_directory, id)?)?;
             }
             Ok(())
         })();
@@ -278,26 +279,6 @@ fn load_and_plan(
 /// Canonical digest used for immutable installed-tree edit protection.
 pub fn managed_tree_digest(path: &Path) -> Result<String, ServiceError> {
     crate::core::bundle_persistence::digest_directory(path)
-}
-
-fn remove_installed_path(path: &Path) -> Result<(), ServiceError> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(ServiceError::Io(error)),
-    };
-    if metadata.file_type().is_symlink() {
-        crate::core::lifecycle_transaction::unlink_symlink(path, &metadata)
-    } else if metadata.is_file() {
-        fs::remove_file(path).map_err(ServiceError::Io)
-    } else if metadata.is_dir() {
-        fs::remove_dir_all(path).map_err(ServiceError::Io)
-    } else {
-        Err(ServiceError::Validation(format!(
-            "Refusing to remove unsupported skill destination: {}",
-            path.display()
-        )))
-    }
 }
 
 #[cfg(test)]
@@ -507,34 +488,6 @@ mod tests {
         );
         assert!(installed.join("SKILL.md").is_file());
         assert!(!root.path().join(".fastskill/recovery-required").exists());
-    }
-
-    #[test]
-    fn installed_path_removal_handles_files_links_and_missing_paths() {
-        let _serial = serial();
-        let root = TempDir::new().unwrap();
-        let file = root.path().join("file");
-        fs::write(&file, "value").unwrap();
-        remove_installed_path(&file).unwrap();
-        assert!(!file.exists());
-        remove_installed_path(&file).unwrap();
-
-        let directory = root.path().join("directory");
-        fs::create_dir_all(&directory).unwrap();
-        fs::write(directory.join("content"), "value").unwrap();
-        remove_installed_path(&directory).unwrap();
-        assert!(!directory.exists());
-
-        #[cfg(unix)]
-        {
-            let target = root.path().join("target");
-            let link = root.path().join("link");
-            fs::write(&target, "source").unwrap();
-            std::os::unix::fs::symlink(&target, &link).unwrap();
-            remove_installed_path(&link).unwrap();
-            assert!(target.is_file());
-            assert!(fs::symlink_metadata(&link).is_err());
-        }
     }
 
     #[test]

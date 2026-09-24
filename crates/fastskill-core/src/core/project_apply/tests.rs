@@ -300,22 +300,6 @@ fn immutable_ordinary_content_without_a_digest_cannot_be_replaced() {
 }
 
 #[test]
-fn managed_path_removal_handles_absent_file_and_directory_destinations() {
-    let root = TempDir::new().unwrap();
-    remove_managed_path(&root.path().join("absent")).unwrap();
-
-    let file = root.path().join("file");
-    std::fs::write(&file, "content").unwrap();
-    remove_managed_path(&file).unwrap();
-    assert!(!file.exists());
-
-    let directory = root.path().join("directory");
-    std::fs::create_dir_all(directory.join("nested")).unwrap();
-    remove_managed_path(&directory).unwrap();
-    assert!(!directory.exists());
-}
-
-#[test]
 fn manifest_updates_create_dependencies_and_validation_normalizes_groups() {
     let project = TempDir::new().unwrap();
     std::fs::write(

@@ -229,12 +229,12 @@ fn replacing_a_skill_copies_nested_content() {
     fs::create_dir_all(source.join("references")).unwrap();
     fs::write(source.join("SKILL.md"), "---\nname: demo\n---\n").unwrap();
     fs::write(source.join("references/guide.md"), "guide").unwrap();
-    let destination = root.path().join("skills/demo");
+    let destination = ContainedPath::skill(&root.path().join("skills"), "demo").unwrap();
 
     replace_skill_directory(&destination, &source).unwrap();
 
     assert_eq!(
-        fs::read_to_string(destination.join("references/guide.md")).unwrap(),
+        fs::read_to_string(destination.as_path().join("references/guide.md")).unwrap(),
         "guide"
     );
 }

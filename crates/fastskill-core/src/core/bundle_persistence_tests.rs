@@ -479,22 +479,21 @@ fn declaration_writer_adds_and_removes_only_owned_tables() {
 fn directory_helpers_stage_replacements_and_refuse_non_directories() {
     let root = TempDir::new().unwrap();
     let source = root.path().join("source");
-    let destination = root.path().join("skills/demo");
+    let destination = ContainedPath::skill(&root.path().join("skills"), "demo").unwrap();
     fs::create_dir_all(&source).unwrap();
     fs::write(source.join("SKILL.md"), "replacement").unwrap();
     replace_skill_directory(&destination, &source).unwrap();
     assert_eq!(
-        fs::read_to_string(destination.join("SKILL.md")).unwrap(),
+        fs::read_to_string(destination.as_path().join("SKILL.md")).unwrap(),
         "replacement"
     );
     remove_skill_directory(&destination).unwrap();
     remove_skill_directory(&destination).unwrap();
-    fs::write(&destination, "not a directory").unwrap();
+    fs::write(destination.as_path(), "not a directory").unwrap();
     assert!(matches!(
         remove_skill_directory(&destination),
         Err(ServiceError::Validation(_))
     ));
-    assert!(replace_skill_directory(Path::new("/"), &source).is_err());
 }
 
 #[cfg(unix)]

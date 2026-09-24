@@ -2,6 +2,7 @@ use crate::core::bundle::{
     BundleArchiveLockMember, BundleDependency, BundleDescriptor, BundleManifestTables,
     BundleMemberPolicy, BundleOverridePreview, BundleService, PreparedMember, BUNDLE_FORMAT,
 };
+use crate::core::contained_path::ContainedPath;
 use crate::core::lock::{ProjectLockedPersonalOverride, ProjectSkillsLock};
 use crate::core::manifest::DependencySpec;
 use crate::core::origin::Origin;
@@ -424,7 +425,10 @@ pub(crate) fn apply_personal_override(
         }
     };
     let result = (|| {
-        replace_skill_directory(&service.skills_directory.join(id), &source)?;
+        replace_skill_directory(
+            &ContainedPath::skill(&service.skills_directory, id)?,
+            &source,
+        )?;
         tables.overrides.insert(
             id.to_string(),
             BundleOverrideDeclaration {
@@ -653,7 +657,10 @@ fn restore_personal_overrides_impl(
                     "Personal override '{id}' no longer matches its locked digest"
                 )));
             }
-            replace_skill_directory(&service.skills_directory.join(id), &source)?;
+            replace_skill_directory(
+                &ContainedPath::skill(&service.skills_directory, id)?,
+                &source,
+            )?;
         }
         Ok(())
     })();
@@ -697,15 +704,10 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<(), ServiceError>
 }
 
 pub(crate) fn replace_skill_directory(
-    destination: &Path,
+    destination: &ContainedPath,
     source: &Path,
 ) -> Result<(), ServiceError> {
-    let parent = destination.parent().ok_or_else(|| {
-        ServiceError::InvalidOperation(format!(
-            "Skill destination has no parent: {}",
-            destination.display()
-        ))
-    })?;
+    let parent = destination.parent();
     fs::create_dir_all(parent).map_err(ServiceError::Io)?;
     let stage = tempfile::Builder::new()
         .prefix(".fastskill-bundle-stage-")
@@ -714,10 +716,11 @@ pub(crate) fn replace_skill_directory(
     let staged = stage.path().join("skill");
     copy_directory(source, &staged)?;
     remove_skill_directory(destination)?;
-    fs::rename(&staged, destination).map_err(ServiceError::Io)
+    fs::rename(&staged, destination.as_path()).map_err(ServiceError::Io)
 }
 
-pub(crate) fn remove_skill_directory(destination: &Path) -> Result<(), ServiceError> {
+pub(crate) fn remove_skill_directory(destination: &ContainedPath) -> Result<(), ServiceError> {
+    let destination = destination.as_path();
     if !destination.exists() {
         return Ok(());
     }
@@ -733,7 +736,7 @@ pub(crate) fn remove_skill_directory(destination: &Path) -> Result<(), ServiceEr
 
 pub(crate) struct BundleTransaction {
     temporary: TempDir,
-    skill_backups: Vec<(PathBuf, Option<PathBuf>)>,
+    skill_backups: Vec<(ContainedPath, Option<PathBuf>)>,
     file_backups: Vec<(PathBuf, Option<PathBuf>)>,
 }
 
@@ -779,10 +782,10 @@ impl BundleTransaction {
         let temporary = TempDir::new().map_err(ServiceError::Io)?;
         let mut skill_backups = Vec::new();
         for id in ids {
-            let destination = skills_directory.join(id);
-            let backup = if destination.exists() {
+            let destination = ContainedPath::skill(skills_directory, id)?;
+            let backup = if destination.as_path().exists() {
                 let backup = temporary.path().join("skills").join(id);
-                copy_directory(&destination, &backup)?;
+                copy_directory(destination.as_path(), &backup)?;
                 Some(backup)
             } else {
                 None
@@ -814,7 +817,7 @@ impl BundleTransaction {
         for (destination, backup) in &self.skill_backups {
             let result = remove_skill_directory(destination).and_then(|()| {
                 if let Some(backup) = backup {
-                    copy_directory(backup, destination)?;
+                    copy_directory(backup, destination.as_path())?;
                 }
                 Ok(())
             });
@@ -850,16 +853,16 @@ impl BundleTransaction {
 
 fn write_bundle_recovery_mapping(
     temporary: &TempDir,
-    skill_backups: &[(PathBuf, Option<PathBuf>)],
+    skill_backups: &[(ContainedPath, Option<PathBuf>)],
     file_backups: &[(PathBuf, Option<PathBuf>)],
 ) -> Result<(), ServiceError> {
     let paths = skill_backups
         .iter()
-        .map(|(destination, backup)| ("skill", destination, backup))
+        .map(|(destination, backup)| ("skill", destination.as_path(), backup))
         .chain(
             file_backups
                 .iter()
-                .map(|(destination, backup)| ("file", destination, backup)),
+                .map(|(destination, backup)| ("file", destination.as_path(), backup)),
         )
         .map(|(kind, destination, backup)| {
             let backup = backup
