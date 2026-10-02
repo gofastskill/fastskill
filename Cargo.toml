@@ -106,7 +106,7 @@ url = "2.5"
 tempfile = "3.27"
 
 # Directory utilities
-dirs = "6.0"
+dirs = "7.0"
 
 # Embed static assets
 include_dir = "0.7"
