@@ -15,7 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 # Async runtime
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
 async-trait.workspace = true
 futures.workspace = true
 

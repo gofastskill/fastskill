@@ -2,7 +2,6 @@ use crate::error::{CliError, CliResult};
 use crate::utils::messages;
 use fastskill_core::core::repository::RepositoryDefinition;
 use fastskill_core::OutputFormat;
-use std::path::PathBuf;
 
 #[allow(dead_code)] // Used by legacy registry command paths if needed
 pub async fn execute_list() -> CliResult<()> {
@@ -87,11 +86,11 @@ pub async fn execute_update(
     branch: Option<String>,
     priority: Option<u32>,
 ) -> CliResult<()> {
-    let mut repo_manager = super::helpers::load_repo_manager().await?;
+    let mut repo_manager = super::helpers::load_project_repo_manager().await?;
 
     let repo = repo_manager
         .get_repository(&name)
-        .ok_or_else(|| CliError::Config(format!("Repository '{}' not found", name)))?
+        .ok_or_else(|| not_in_project(&name))?
         .clone();
     super::helpers::validate_repository_ref_options(&repo.repo_type, branch.as_deref(), None)?;
 
@@ -273,31 +272,32 @@ pub async fn execute_refresh(name: Option<String>) -> CliResult<()> {
     )))
 }
 
-pub async fn execute_add(
-    name: String,
-    repo_type: String,
-    url_or_path: String,
-    priority: Option<u32>,
-    branch: Option<String>,
-    tag: Option<String>,
-    auth_type: Option<String>,
-    auth_env: Option<String>,
-    auth_key_path: Option<PathBuf>,
-    auth_username: Option<String>,
-) -> CliResult<()> {
-    let mut repo_manager = super::helpers::load_repo_manager().await?;
+pub async fn execute_add(args: super::ReposAddArgs) -> CliResult<()> {
+    let auth = super::helpers::parse_authentication(&args)?;
+    let mut repo_manager = if args.user {
+        super::helpers::load_user_repo_manager()?
+    } else {
+        super::helpers::load_project_repo_manager().await?
+    };
 
-    let repo_type = super::helpers::parse_repository_type(&repo_type)?;
-    super::helpers::validate_repository_ref_options(&repo_type, branch.as_deref(), tag.as_deref())?;
-    let config =
-        super::helpers::create_repository_config(repo_type.clone(), url_or_path, branch, tag);
-    let auth =
-        super::helpers::parse_authentication(auth_type, auth_env, auth_key_path, auth_username)?;
+    let repo_type = super::helpers::parse_repository_type(&args.repo_type)?;
+    super::helpers::validate_repository_ref_options(
+        &repo_type,
+        args.branch.as_deref(),
+        args.tag.as_deref(),
+    )?;
+    let config = super::helpers::create_repository_config(
+        repo_type.clone(),
+        args.url_or_path,
+        args.branch,
+        args.tag,
+    );
 
+    let name = args.name;
     let repo = RepositoryDefinition {
         name: name.clone(),
         repo_type,
-        priority: priority.unwrap_or(0),
+        priority: args.priority.unwrap_or(0),
         config,
         auth,
         storage: None,
@@ -311,12 +311,54 @@ pub async fn execute_add(
         .save()
         .map_err(|e| CliError::Config(format!("Failed to save repositories: {}", e)))?;
 
-    crate::outln!("{}", messages::ok(&format!("Added repository: {}", name)));
+    let added = if args.user {
+        format!(
+            "Added repository: {} (user config {})",
+            name,
+            fastskill_core::core::repository::user_config::user_repositories_path()
+                .unwrap_or_default()
+                .display()
+        )
+    } else {
+        format!("Added repository: {}", name)
+    };
+    crate::outln!("{}", messages::ok(&added));
     Ok(())
 }
 
-pub async fn execute_remove(name: String) -> CliResult<()> {
-    let mut repo_manager = super::helpers::load_repo_manager().await?;
+/// The "not found" error for a project-file edit, pointing at the user file
+/// when that is where the repository lives.
+fn not_in_project(name: &str) -> CliError {
+    if super::helpers::is_user_repository(name) {
+        CliError::Config(format!(
+            "Repository '{name}' is configured in your user repositories.toml, not in \
+             skill-project.toml; edit that file, or remove it with \
+             `fastskill repo remove --user {name}`"
+        ))
+    } else {
+        CliError::Config(format!("Repository '{name}' not found"))
+    }
+}
+
+pub async fn execute_remove(name: String, user: bool) -> CliResult<()> {
+    let mut repo_manager = if user {
+        let exists = fastskill_core::core::repository::user_config::user_repositories_path()
+            .is_some_and(|path| path.exists());
+        if !exists {
+            return Err(CliError::Config(format!(
+                "Repository '{name}' not found: there is no user repositories.toml"
+            )));
+        }
+        super::helpers::load_user_repo_manager()?
+    } else {
+        super::helpers::load_project_repo_manager().await?
+    };
+    if !user
+        && repo_manager.get_repository(&name).is_none()
+        && super::helpers::is_user_repository(&name)
+    {
+        return Err(not_in_project(&name));
+    }
 
     repo_manager
         .remove_repository(&name)
@@ -406,18 +448,12 @@ skills_directory = ".claude/skills"
 "#;
         fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
-        let result = execute_add(
-            "test-repo".to_string(),
-            "local".to_string(),
-            repo_path.display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let result = execute_add(crate::commands::repos::ReposAddArgs {
+            name: "test-repo".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: repo_path.display().to_string(),
+            ..Default::default()
+        })
         .await;
         assert!(result.is_ok());
 
@@ -454,18 +490,12 @@ skills_directory = ".claude/skills"
 "#;
         fs::write(temp_dir.path().join("skill-project.toml"), manifest_content).unwrap();
 
-        let add_result = execute_add(
-            "test-repo".to_string(),
-            "local".to_string(),
-            repo_path.display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let add_result = execute_add(crate::commands::repos::ReposAddArgs {
+            name: "test-repo".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: repo_path.display().to_string(),
+            ..Default::default()
+        })
         .await;
         assert!(add_result.is_ok());
 
@@ -488,7 +518,7 @@ skills_directory = ".claude/skills"
                 .is_ok()
         );
 
-        let remove_result = execute_remove("test-repo".to_string()).await;
+        let remove_result = execute_remove("test-repo".to_string(), false).await;
         assert!(remove_result.is_ok());
 
         let list_result = execute_list_with_json(false).await;
@@ -581,18 +611,12 @@ skills_directory = ".claude/skills"
         let repo_path = temp_dir.path().join("indexed-repo");
         write_skill(&repo_path, "indexed-skill", "2.3.4");
 
-        let add_result = execute_add(
-            "idx-repo".to_string(),
-            "local".to_string(),
-            repo_path.display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let add_result = execute_add(crate::commands::repos::ReposAddArgs {
+            name: "idx-repo".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: repo_path.display().to_string(),
+            ..Default::default()
+        })
         .await;
         assert!(add_result.is_ok());
 
@@ -635,34 +659,22 @@ skills_directory = ".claude/skills"
 
         let good_repo_path = temp_dir.path().join("good-repo");
         write_skill(&good_repo_path, "healthy-skill", "1.0.0");
-        let add_good = execute_add(
-            "healthy".to_string(),
-            "local".to_string(),
-            good_repo_path.display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let add_good = execute_add(crate::commands::repos::ReposAddArgs {
+            name: "healthy".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: good_repo_path.display().to_string(),
+            ..Default::default()
+        })
         .await;
         assert!(add_good.is_ok());
 
         let broken_repo_path = temp_dir.path().join("this-path-does-not-exist");
-        let add_bad = execute_add(
-            "broken".to_string(),
-            "local".to_string(),
-            broken_repo_path.display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let add_bad = execute_add(crate::commands::repos::ReposAddArgs {
+            name: "broken".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: broken_repo_path.display().to_string(),
+            ..Default::default()
+        })
         .await;
         assert!(add_bad.is_ok());
 

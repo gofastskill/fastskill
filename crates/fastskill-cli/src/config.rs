@@ -4,7 +4,7 @@ use crate::error::{CliError, CliResult};
 use fastskill_core::core::global_lock_path;
 use fastskill_core::core::manifest::SkillProjectToml;
 use fastskill_core::core::project;
-use fastskill_core::core::repository::{RepositoryDefinition, RepositoryManager};
+use fastskill_core::core::repository::{user_config, RepositoryDefinition, RepositoryManager};
 use fastskill_core::core::service::HttpServerConfig;
 use fastskill_core::{FastSkillService, ServiceConfig};
 use std::env;
@@ -35,19 +35,31 @@ pub fn load_repositories_from_project() -> CliResult<Vec<RepositoryDefinition>> 
 /// Repositories that resolve dependency origins: the project's own plus those
 /// of every Manifest it composes through [tool.fastskill.manifests], so a
 /// composed repository origin finds the catalog its own Manifest names.
+///
+/// The user's repositories.toml (ADR-0018) is merged on top: a user entry
+/// replaces a project entry of the same name. It is the only place a
+/// credential command may be configured.
 pub fn load_resolution_repositories() -> CliResult<Vec<RepositoryDefinition>> {
+    let user = load_user_repositories()?;
     let Some((project, project_path)) = load_current_project()? else {
-        return Ok(Vec::new());
+        return Ok(user);
     };
     let project_dir = project_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
-    Ok(project
+    let repositories = project
         .composed_repositories(project_dir)
         .map_err(CliError::Config)?
         .into_iter()
         .map(convert_repository_definition)
-        .collect())
+        .collect();
+    Ok(user_config::merge_repositories(repositories, user))
+}
+
+/// Repositories from the user's repositories.toml in FastSkill's config
+/// directory. A missing file is empty.
+pub fn load_user_repositories() -> CliResult<Vec<RepositoryDefinition>> {
+    user_config::load_user_repositories().map_err(|e| CliError::Config(e.to_string()))
 }
 
 /// The skill-project.toml found from the current directory, if any.
@@ -72,59 +84,11 @@ fn load_current_project() -> CliResult<Option<(SkillProjectToml, PathBuf)>> {
 }
 
 /// Convert manifest::RepositoryDefinition to repository::RepositoryDefinition
-/// These are different types because they're in different modules with slightly different structures
+/// through the canonical `From` impl in fastskill-core.
 pub fn convert_repository_definition(
     manifest_repo: fastskill_core::core::manifest::RepositoryDefinition,
 ) -> RepositoryDefinition {
-    use fastskill_core::core::repository::{RepositoryAuth, RepositoryConfig, RepositoryType};
-
-    // Convert repository type
-    let repo_type = match manifest_repo.r#type {
-        fastskill_core::core::manifest::RepositoryType::HttpRegistry => {
-            RepositoryType::HttpRegistry
-        }
-        fastskill_core::core::manifest::RepositoryType::GitMarketplace => {
-            RepositoryType::GitMarketplace
-        }
-        fastskill_core::core::manifest::RepositoryType::ZipUrl => RepositoryType::ZipUrl,
-        fastskill_core::core::manifest::RepositoryType::Local => RepositoryType::Local,
-    };
-
-    // Convert connection to config
-    let config = match manifest_repo.connection {
-        fastskill_core::core::manifest::RepositoryConnection::HttpRegistry { index_url } => {
-            RepositoryConfig::HttpRegistry { index_url }
-        }
-        fastskill_core::core::manifest::RepositoryConnection::GitMarketplace {
-            url,
-            branch,
-            tag,
-        } => RepositoryConfig::GitMarketplace { url, branch, tag },
-        fastskill_core::core::manifest::RepositoryConnection::ZipUrl { zip_url } => {
-            RepositoryConfig::ZipUrl { base_url: zip_url }
-        }
-        fastskill_core::core::manifest::RepositoryConnection::Local { path } => {
-            RepositoryConfig::Local {
-                path: PathBuf::from(path),
-            }
-        }
-    };
-
-    // Convert auth
-    let auth = manifest_repo.auth.map(|a| match a.r#type {
-        fastskill_core::core::manifest::AuthType::Pat => RepositoryAuth::Pat {
-            env_var: a.env_var.unwrap_or_else(|| "PAT_TOKEN".to_string()),
-        },
-    });
-
-    RepositoryDefinition {
-        name: manifest_repo.name,
-        repo_type,
-        priority: manifest_repo.priority,
-        config,
-        auth,
-        storage: None, // Not used in manifest format
-    }
+    RepositoryDefinition::from(&manifest_repo)
 }
 
 /// Return the paths used when resolving installed skills for diagnostics.

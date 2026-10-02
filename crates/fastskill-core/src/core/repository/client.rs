@@ -8,7 +8,6 @@ use crate::core::registry_index::{ListSkillsOptions, SkillSummary};
 use crate::core::repository::{RepositoryConfig, RepositoryDefinition, RepositoryType};
 use crate::core::service::{ServiceError, SkillId};
 use crate::core::sources::{SourceConfig, SourceDefinition, SourcesManager};
-use reqwest::Client;
 use std::sync::Arc;
 
 /// Error type for repository client operations
@@ -73,14 +72,15 @@ impl MarketplaceRepositoryClient {
         // Convert RepositoryConfig to SourceConfig
         let source_config = match &repo.config {
             RepositoryConfig::GitMarketplace { url, branch, tag } => {
-                // Convert auth. `RepositoryAuth` has exactly one variant, so
-                // this conversion is total and cannot silently drop anything.
-                let auth = repo.auth.as_ref().map(|a| {
-                    let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
-                    crate::core::sources::SourceAuth::Pat {
-                        env_var: env_var.clone(),
-                    }
-                });
+                // Only `pat` maps to a source auth; `validate` (run by
+                // `create_client`) refuses any auth on this type anyway.
+                let auth = repo
+                    .auth
+                    .as_ref()
+                    .and_then(|a| a.pat_env_var())
+                    .map(|env_var| crate::core::sources::SourceAuth::Pat {
+                        env_var: env_var.to_string(),
+                    });
 
                 SourceConfig::Git {
                     url: url.clone(),
@@ -90,12 +90,13 @@ impl MarketplaceRepositoryClient {
                 }
             }
             RepositoryConfig::ZipUrl { base_url } => {
-                let auth = repo.auth.as_ref().map(|a| {
-                    let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
-                    crate::core::sources::SourceAuth::Pat {
-                        env_var: env_var.clone(),
-                    }
-                });
+                let auth = repo
+                    .auth
+                    .as_ref()
+                    .and_then(|a| a.pat_env_var())
+                    .map(|env_var| crate::core::sources::SourceAuth::Pat {
+                        env_var: env_var.to_string(),
+                    });
 
                 SourceConfig::ZipUrl {
                     base_url: base_url.clone(),
@@ -233,7 +234,6 @@ impl RepositoryClient for MarketplaceRepositoryClient {
 pub struct CratesRegistryClient {
     registry_client: RegistryClient,
     index_url: String,
-    auth: Option<crate::core::registry::config::AuthConfig>,
 }
 
 impl CratesRegistryClient {
@@ -262,15 +262,21 @@ impl CratesRegistryClient {
             )));
         }
 
-        // Convert auth. Total over `RepositoryAuth`'s single variant. This
-        // previously carried a `_ =>` fallback that substituted a hardcoded
-        // `GITHUB_TOKEN` env var for any variant it did not understand --
-        // a silent wrong default that could authenticate against an entirely
-        // different credential than the one the user configured.
+        // Every `RepositoryAuth` maps to a registry auth; nothing is dropped
+        // or substituted with a default credential.
         let auth = repo.auth.as_ref().map(|a| {
-            let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
-            crate::core::registry::config::AuthConfig::Pat {
-                env_var: env_var.clone(),
+            use crate::core::registry::config::AuthConfig;
+            use crate::core::repository::RepositoryAuth;
+            match a {
+                RepositoryAuth::Pat { env_var } => AuthConfig::Pat {
+                    env_var: env_var.clone(),
+                },
+                RepositoryAuth::Bearer { env_var } => AuthConfig::Bearer {
+                    env_var: env_var.clone(),
+                },
+                RepositoryAuth::Command { command } => AuthConfig::Command {
+                    command: command.clone(),
+                },
             }
         });
 
@@ -297,7 +303,6 @@ impl CratesRegistryClient {
         Ok(Self {
             registry_client,
             index_url: registry_config.index_url.clone(),
-            auth: registry_config.auth.clone(),
         })
     }
 
@@ -306,8 +311,6 @@ impl CratesRegistryClient {
         &self,
         options: &ListSkillsOptions,
     ) -> Result<Vec<SkillSummary>, RepositoryClientError> {
-        use crate::core::registry::auth::Auth;
-
         // Build the API endpoint URL
         let base_url = self.index_url.trim_end_matches('/');
         let mut url = format!("{}/api/v1/registry/index/skills", base_url);
@@ -333,45 +336,12 @@ impl CratesRegistryClient {
             url = url_obj.to_string();
         }
 
-        // Create HTTP client
-        let client = Client::builder()
-            .user_agent("fastskill/0.8.6")
-            .build()
-            .map_err(|e| {
-                RepositoryClientError::Client(format!("Failed to create HTTP client: {}", e))
+        // The registry client adds the Authorization header (one place for all
+        // registry requests, ADR-0018).
+        let response =
+            self.registry_client.send_get(&url).await.map_err(|e| {
+                RepositoryClientError::Client(format!("HTTP request failed: {}", e))
             })?;
-
-        // Build request
-        let mut request = client.get(&url);
-
-        // Add authentication if configured
-        if let Some(ref auth_config) = self.auth {
-            let auth: Option<Box<dyn Auth>> = match auth_config {
-                crate::core::registry::config::AuthConfig::Pat { env_var } => Some(Box::new(
-                    crate::core::registry::auth::GitHubPat::new(env_var.clone()),
-                )),
-                crate::core::registry::config::AuthConfig::Ssh { key_path } => Some(Box::new(
-                    crate::core::registry::auth::SshKey::new(key_path.clone()),
-                )),
-                crate::core::registry::config::AuthConfig::ApiKey { env_var } => Some(Box::new(
-                    crate::core::registry::auth::ApiKey::new(env_var.clone()),
-                )),
-            };
-
-            if let Some(auth) = auth {
-                if auth.is_configured() {
-                    if let Ok(header_value) = auth.get_auth_header() {
-                        request = request.header("Authorization", header_value);
-                    }
-                }
-            }
-        }
-
-        // Send request
-        let response = request
-            .send()
-            .await
-            .map_err(|e| RepositoryClientError::Client(format!("HTTP request failed: {}", e)))?;
 
         // Handle HTTP status codes
         let status = response.status();

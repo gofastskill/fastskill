@@ -70,6 +70,17 @@
 
 ### Added
 
+- **Bearer-token and credential-command auth for `http-registry` repositories.**
+  `auth = { type = "bearer", env_var = "VAR" }` sends `Authorization: Bearer <token>` from an
+  environment variable and may sit in `skill-project.toml`. `auth = { type = "command", command =
+  ["program", "arg"] }` runs a program, without a shell and at most once per process, and uses the
+  first line it prints; it is allowed only in the new user `repositories.toml` in FastSkill's
+  configuration directory, and a project file that names one is refused. The token goes only to
+  the registry's origin, and a missing variable or failing command is an error. `repo add` gains
+  `--auth-type bearer|command`, `--credential-command`, `--credential-arg` and `--user`;
+  `repo remove` gains `--user`. `pat` is unchanged. See
+  [ADR-0018](docs/adr/0018-registry-credentials-bearer-and-command.md).
+
 - **`fastskill cli doctor`**: new diagnostics command that reports environment readiness
   (skills directory, `skill-project.toml`, embedding provider, API key, auth token). Exits 0
   when no hard failures; exits 1 when the skills directory is inaccessible. `--json` flag emits

@@ -3,9 +3,11 @@
 use crate::core::metadata::SkillMetadata;
 use crate::core::registry::auth::Auth;
 use crate::core::registry::config::RegistryConfig;
+use crate::core::registry::credential::{redirect_decision, Credential, RedirectDecision};
 use crate::core::registry_index::{Dependency as RegistryDependency, IndexMetadata};
 use crate::core::service::ServiceError;
-use reqwest::Client;
+use reqwest::header::{HeaderValue, AUTHORIZATION, LOCATION};
+use reqwest::{Client, Response, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
@@ -15,8 +17,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct RegistryClient {
     config: RegistryConfig,
     client: Client,
+    /// Legacy auth (`pat`, `ssh`, `api_key`): sent when configured, skipped
+    /// silently when its variable is unset, redirects followed by reqwest.
     auth: Option<Box<dyn Auth>>,
+    /// Bearer auth (`bearer`, `command`, ADR-0018): an error when the token
+    /// cannot be had, sent only to the registry's origin, redirects followed
+    /// by [`RegistryClient::send_get`] under [`redirect_decision`].
+    credential: Option<Credential>,
 }
+
+/// The most redirects an authenticated request follows.
+const MAX_REDIRECTS: usize = 10;
 
 /// Index entry for a skill version
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,33 +63,117 @@ pub static DOWNLOAD_INVOCATIONS: AtomicUsize = AtomicUsize::new(0);
 impl RegistryClient {
     /// Create a new registry client
     pub fn new(config: RegistryConfig) -> Result<Self, ServiceError> {
-        let client = Client::builder()
-            .user_agent("fastskill/0.6.8")
+        use crate::core::registry::auth::{ApiKey, GitHubPat, SshKey};
+        use crate::core::registry::config::AuthConfig;
+
+        let credential = config.auth.as_ref().and_then(Credential::from_config);
+        let mut builder = Client::builder().user_agent("fastskill/0.6.8");
+        if credential.is_some() {
+            builder = builder.redirect(reqwest::redirect::Policy::none());
+        }
+        let client = builder
             .build()
             .map_err(|e| ServiceError::Custom(format!("Failed to create HTTP client: {}", e)))?;
 
-        // Setup authentication
-        let auth: Option<Box<dyn Auth>> = if let Some(ref auth_config) = config.auth {
-            match auth_config {
-                crate::core::registry::config::AuthConfig::Pat { env_var } => Some(Box::new(
-                    crate::core::registry::auth::GitHubPat::new(env_var.clone()),
-                )),
-                crate::core::registry::config::AuthConfig::Ssh { key_path } => Some(Box::new(
-                    crate::core::registry::auth::SshKey::new(key_path.clone()),
-                )),
-                crate::core::registry::config::AuthConfig::ApiKey { env_var } => Some(Box::new(
-                    crate::core::registry::auth::ApiKey::new(env_var.clone()),
-                )),
-            }
-        } else {
-            None
+        let auth: Option<Box<dyn Auth>> = match &config.auth {
+            Some(AuthConfig::Pat { env_var }) => Some(Box::new(GitHubPat::new(env_var.clone()))),
+            Some(AuthConfig::Ssh { key_path }) => Some(Box::new(SshKey::new(key_path.clone()))),
+            Some(AuthConfig::ApiKey { env_var }) => Some(Box::new(ApiKey::new(env_var.clone()))),
+            Some(AuthConfig::Bearer { .. } | AuthConfig::Command { .. }) | None => None,
         };
 
         Ok(Self {
             config,
             client,
             auth,
+            credential,
         })
+    }
+
+    /// GET `url`, the one place a registry request gets its `Authorization`
+    /// header. Index, listing and download requests all come through here.
+    pub async fn send_get(&self, url: &str) -> Result<Response, ServiceError> {
+        match &self.credential {
+            Some(credential) => self.send_get_with_credential(credential, url).await,
+            None => {
+                let mut request = self.client.get(url);
+                if self.uses_registry_origin(url) {
+                    if let Some(ref auth) = self.auth {
+                        if auth.is_configured() {
+                            if let Ok(header_value) = auth.get_auth_header() {
+                                request = request.header(AUTHORIZATION, header_value);
+                            }
+                        }
+                    }
+                }
+                request
+                    .send()
+                    .await
+                    .map_err(|e| ServiceError::Custom(e.to_string()))
+            }
+        }
+    }
+
+    /// Follow redirects by hand so the token reaches only the registry's
+    /// origin and never travels over a downgraded connection.
+    async fn send_get_with_credential(
+        &self,
+        credential: &Credential,
+        url: &str,
+    ) -> Result<Response, ServiceError> {
+        let invalid = |what: &str, e: url::ParseError| {
+            ServiceError::Custom(format!("Invalid {what} URL: {e}"))
+        };
+        let registry_origin = Url::parse(&self.config.index_url)
+            .map_err(|e| invalid("registry", e))?
+            .origin();
+        let mut current = Url::parse(url).map_err(|e| invalid("request", e))?;
+        let mut send_token = current.origin() == registry_origin;
+        let mut header: Option<HeaderValue> = None;
+        for _ in 0..=MAX_REDIRECTS {
+            let mut request = self.client.get(current.clone());
+            if send_token {
+                if header.is_none() {
+                    let value = credential
+                        .header(&self.config.name, &self.config.index_url)
+                        .await?;
+                    header = Some(value);
+                }
+                if let Some(value) = &header {
+                    request = request.header(AUTHORIZATION, value.clone());
+                }
+            }
+            let response = request
+                .send()
+                .await
+                .map_err(|e| ServiceError::Custom(e.to_string()))?;
+            let followed = matches!(
+                response.status(),
+                StatusCode::MOVED_PERMANENTLY
+                    | StatusCode::FOUND
+                    | StatusCode::SEE_OTHER
+                    | StatusCode::TEMPORARY_REDIRECT
+                    | StatusCode::PERMANENT_REDIRECT
+            );
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|value| value.to_str().ok());
+            let Some(location) = location.filter(|_| followed) else {
+                return Ok(response);
+            };
+            let next = current.join(location).map_err(|e| invalid("redirect", e))?;
+            match redirect_decision(&current, &next, &registry_origin) {
+                RedirectDecision::Refuse(reason) => return Err(ServiceError::Custom(reason)),
+                RedirectDecision::Follow {
+                    send_token: next_send,
+                } => send_token = next_send,
+            }
+            current = next;
+        }
+        Err(ServiceError::Custom(format!(
+            "stopped after {MAX_REDIRECTS} redirects"
+        )))
     }
 
     /// Get the index URL for a skill (flat layout: scope/skill-name)
@@ -92,7 +187,7 @@ impl RegistryClient {
         )
     }
 
-    fn download_uses_registry_origin(&self, download_url: &str) -> bool {
+    fn uses_registry_origin(&self, download_url: &str) -> bool {
         let Ok(registry) = reqwest::Url::parse(&self.config.index_url) else {
             return false;
         };
@@ -107,19 +202,8 @@ impl RegistryClient {
     pub async fn get_skill(&self, name: &str) -> Result<Vec<IndexEntry>, ServiceError> {
         let url = self.get_index_url(name);
 
-        let mut request = self.client.get(&url);
-
-        // Add authentication if available
-        if let Some(ref auth) = self.auth {
-            if auth.is_configured() {
-                if let Ok(header_value) = auth.get_auth_header() {
-                    request = request.header("Authorization", header_value);
-                }
-            }
-        }
-
-        let response = request
-            .send()
+        let response = self
+            .send_get(&url)
             .await
             .map_err(|e| ServiceError::Custom(format!("Failed to fetch skill index: {}", e)))?;
 
@@ -254,21 +338,9 @@ impl RegistryClient {
             )));
         }
 
-        let mut request = self.client.get(&entry.download_url);
-
-        // Add authentication if available
-        if self.download_uses_registry_origin(&entry.download_url) {
-            if let Some(ref auth) = self.auth {
-                if auth.is_configured() {
-                    if let Ok(header_value) = auth.get_auth_header() {
-                        request = request.header("Authorization", header_value);
-                    }
-                }
-            }
-        }
-
-        let response = request
-            .send()
+        // Auth goes only to the registry's own origin (`send_get`).
+        let response = self
+            .send_get(&entry.download_url)
             .await
             .map_err(|e| ServiceError::Custom(format!("Failed to download package: {}", e)))?;
 
@@ -307,6 +379,11 @@ impl RegistryClient {
         Ok(Vec::new())
     }
 }
+
+#[cfg(test)]
+#[path = "client_auth_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod auth_tests;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -368,6 +445,12 @@ mod tests {
             },
             AuthConfig::ApiKey {
                 env_var: "API_KEY".to_string(),
+            },
+            AuthConfig::Bearer {
+                env_var: "REGISTRY_TOKEN".to_string(),
+            },
+            AuthConfig::Command {
+                command: vec!["helper".to_string()],
             },
         ] {
             assert!(

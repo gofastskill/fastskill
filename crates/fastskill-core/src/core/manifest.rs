@@ -556,6 +556,10 @@ pub struct AuthConfig {
 pub enum AuthType {
     #[serde(rename = "pat")]
     Pat,
+    /// `Authorization: Bearer <token>`, token read from `env_var` (ADR-0018).
+    /// `command` auth is refused in a project file; see `repository_auth`.
+    #[serde(rename = "bearer")]
+    Bearer,
 }
 
 /// Project context enum for context detection
@@ -597,6 +601,7 @@ impl SkillProjectToml {
 
     /// Parse manifest content, then refuse unknown keys under `[tool.fastskill]`.
     pub fn from_toml_str(content: &str) -> Result<Self, ManifestError> {
+        repository_auth::reject_unusable_repository_auth(content)?;
         let project = Self::parse_any_schema(content)?;
         project.reject_unknown_tool_keys(content)?;
         Ok(project)
@@ -830,6 +835,7 @@ impl SkillProjectToml {
 }
 
 mod composition;
+mod repository_auth;
 
 /// Canonical conversion from manifest RepositoryDefinition to the runtime type.
 /// This is the single authoritative definition; all call-sites MUST use this impl.
@@ -868,6 +874,11 @@ impl From<&RepositoryDefinition> for crate::core::repository::RepositoryDefiniti
         let auth = r.auth.as_ref().map(|a| match a.r#type {
             AuthType::Pat => RepositoryAuth::Pat {
                 env_var: a.env_var.clone().unwrap_or_else(|| "PAT_TOKEN".to_string()),
+            },
+            // `from_toml_str` refuses a bearer auth without `env_var`; an empty
+            // name left here is refused again by `RepositoryDefinition::validate`.
+            AuthType::Bearer => RepositoryAuth::Bearer {
+                env_var: a.env_var.clone().unwrap_or_default(),
             },
         });
 

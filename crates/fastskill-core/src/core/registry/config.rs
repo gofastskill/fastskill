@@ -59,6 +59,12 @@ pub enum AuthConfig {
     Ssh { key_path: PathBuf },
     #[serde(rename = "api_key")]
     ApiKey { env_var: String },
+    /// `Authorization: Bearer <token>` from an environment variable (ADR-0018).
+    #[serde(rename = "bearer")]
+    Bearer { env_var: String },
+    /// `Authorization: Bearer <token>` printed by a program (ADR-0018).
+    #[serde(rename = "command")]
+    Command { command: Vec<String> },
 }
 
 /// Storage backend configuration

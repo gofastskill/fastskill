@@ -2,8 +2,12 @@
 //!
 //! This module provides a unified repositories.toml configuration for all repository types.
 
+pub mod auth;
 pub mod client;
+pub mod user_config;
 pub(crate) mod validation;
+
+pub use auth::RepositoryAuth;
 
 pub use client::{CratesRegistryClient, RepositoryClient, RepositoryClientError};
 
@@ -74,18 +78,6 @@ pub enum RepositoryConfig {
     ZipUrl { base_url: String },
     /// Local path configuration
     Local { path: PathBuf },
-}
-
-/// Unified authentication configuration
-///
-/// `Pat` is the only variant: it is the only auth method the on-disk manifest
-/// format (`manifest::AuthType`) can represent, so it is the only one that
-/// ever survives a save/load round-trip. See `convert_to_manifest_repo` below.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum RepositoryAuth {
-    #[serde(rename = "pat")]
-    Pat { env_var: String },
 }
 
 /// Storage backend configuration
@@ -234,7 +226,7 @@ impl RepositoryManager {
             .repositories
             .values()
             .map(|repo| self.convert_to_manifest_repo(repo))
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         // Update tool.fastskill.repositories
         if project.tool.is_none() {
@@ -281,7 +273,7 @@ impl RepositoryManager {
     fn convert_to_manifest_repo(
         &self,
         repo: &RepositoryDefinition,
-    ) -> crate::core::manifest::RepositoryDefinition {
+    ) -> Result<crate::core::manifest::RepositoryDefinition, ServiceError> {
         use crate::core::manifest::{
             AuthConfig, AuthType, RepositoryConnection, RepositoryType as ManifestType,
         };
@@ -312,23 +304,31 @@ impl RepositoryManager {
             },
         };
 
-        // RepositoryAuth has exactly one variant (`Pat`), so this conversion
-        // is total.
-        let auth = repo.auth.as_ref().map(|a| {
-            let RepositoryAuth::Pat { env_var } = a;
-            AuthConfig {
+        // A project file can never name a credential command (ADR-0018).
+        let auth = match &repo.auth {
+            None => None,
+            Some(RepositoryAuth::Pat { env_var }) => Some(AuthConfig {
                 r#type: AuthType::Pat,
                 env_var: Some(env_var.clone()),
+            }),
+            Some(RepositoryAuth::Bearer { env_var }) => Some(AuthConfig {
+                r#type: AuthType::Bearer,
+                env_var: Some(env_var.clone()),
+            }),
+            Some(RepositoryAuth::Command { .. }) => {
+                return Err(ServiceError::Custom(auth::project_command_refused(
+                    &repo.name,
+                )))
             }
-        });
+        };
 
-        crate::core::manifest::RepositoryDefinition {
+        Ok(crate::core::manifest::RepositoryDefinition {
             name: repo.name.clone(),
             r#type: repo_type,
             priority: repo.priority,
             connection,
             auth,
-        }
+        })
     }
 
     /// Internal helper to save config (for old repositories.toml format)

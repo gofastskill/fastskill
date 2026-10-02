@@ -67,12 +67,13 @@ async fn get_sources_manager_from_repos(
         let source_config = match &repo.repo_type {
             RepositoryType::GitMarketplace => {
                 if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config {
-                    let auth = repo.auth.as_ref().map(|a| {
-                        let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
-                        SourceAuth::Pat {
-                            env_var: env_var.clone(),
-                        }
-                    });
+                    let auth = repo
+                        .auth
+                        .as_ref()
+                        .and_then(|a| a.pat_env_var())
+                        .map(|env_var| SourceAuth::Pat {
+                            env_var: env_var.to_string(),
+                        });
 
                     Some(SourceConfig::Git {
                         url: url.clone(),
@@ -86,12 +87,13 @@ async fn get_sources_manager_from_repos(
             }
             RepositoryType::ZipUrl => {
                 if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                    let auth = repo.auth.as_ref().map(|a| {
-                        let crate::core::repository::RepositoryAuth::Pat { env_var } = a;
-                        SourceAuth::Pat {
-                            env_var: env_var.clone(),
-                        }
-                    });
+                    let auth = repo
+                        .auth
+                        .as_ref()
+                        .and_then(|a| a.pat_env_var())
+                        .map(|env_var| SourceAuth::Pat {
+                            env_var: env_var.to_string(),
+                        });
 
                     Some(SourceConfig::ZipUrl {
                         base_url: base_url.clone(),

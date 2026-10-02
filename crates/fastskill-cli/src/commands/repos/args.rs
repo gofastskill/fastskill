@@ -26,7 +26,7 @@ pub struct ReposListArgs {
     pub json: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ReposAddArgs {
     pub name: String,
     pub repo_type: String,
@@ -38,11 +38,18 @@ pub struct ReposAddArgs {
     pub auth_env: Option<String>,
     pub auth_key_path: Option<PathBuf>,
     pub auth_username: Option<String>,
+    /// Program for `--auth-type command` (ADR-0018).
+    pub credential_command: Option<String>,
+    /// Arguments for the credential command, in order.
+    pub credential_args: Vec<String>,
+    /// Write to the user's repositories.toml instead of skill-project.toml.
+    pub user: bool,
 }
 
 #[derive(Debug)]
 pub struct ReposRemoveArgs {
     pub name: String,
+    pub user: bool,
 }
 
 #[derive(Debug)]
@@ -156,6 +163,8 @@ impl IntoCommandSpec for ReposAddArgs {
             examples: vec![
                 "fastskill repo add my-repo https://github.com/org/skills.git --repo-type git-marketplace",
                 "fastskill repo add local-skills ./skills --repo-type local",
+                "fastskill repo add private https://registry.example/index --repo-type http-registry --auth-type bearer --auth-env REGISTRY_TOKEN",
+                "fastskill repo add private https://registry.example/index --repo-type http-registry --user --auth-type command --credential-command my-login --credential-arg token",
             ],
             args: vec![
                 ArgSpec {
@@ -217,7 +226,7 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-type"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Authentication type: pat (the only supported type)",
+                    help: "Authentication type for http-registry: pat, bearer, or command",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -226,7 +235,34 @@ impl IntoCommandSpec for ReposAddArgs {
                     long: Some("auth-env"),
                     value_type: ArgValueType::String,
                     cardinality: Cardinality::Optional,
-                    help: "Environment variable holding the PAT",
+                    help: "Environment variable holding the token (pat and bearer)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "credential-command",
+                    kind: ArgKind::Option,
+                    long: Some("credential-command"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Optional,
+                    help: "Program that prints a token (--auth-type command; needs --user)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "credential-arg",
+                    kind: ArgKind::Option,
+                    long: Some("credential-arg"),
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Repeated,
+                    help: "Argument for the credential command; repeat for each one (write --credential-arg=-x for one that starts with a dash)",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "user",
+                    kind: ArgKind::Flag,
+                    long: Some("user"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Save to your user repositories.toml, not skill-project.toml",
                     ..Default::default()
                 },
                 ArgSpec {
@@ -335,6 +371,25 @@ impl FromArgValueMap for ReposAddArgs {
                     None
                 }
             }),
+            credential_command: map.get("credential-command").and_then(|v| {
+                if let ArgValue::Str(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            }),
+            credential_args: match map.get("credential-arg") {
+                Some(ArgValue::List(values)) => values
+                    .iter()
+                    .filter_map(|v| match v {
+                        ArgValue::Str(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+                Some(ArgValue::Str(s)) => vec![s.clone()],
+                _ => Vec::new(),
+            },
+            user: matches!(map.get("user"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -343,18 +398,32 @@ impl IntoCommandSpec for ReposRemoveArgs {
     fn command_spec() -> CommandSpec {
         CommandSpec {
             summary: "Remove a repository",
-            syntax: Some("repo remove <NAME>"),
+            syntax: Some("repo remove <NAME> [--user]"),
             category: Some("repositories"),
             help_order: Some(50),
-            examples: vec!["fastskill repo remove my-repo"],
-            args: vec![ArgSpec {
-                name: "name",
-                kind: ArgKind::Positional,
-                value_type: ArgValueType::String,
-                cardinality: Cardinality::Required,
-                help: "Repository name to remove",
-                ..Default::default()
-            }],
+            examples: vec![
+                "fastskill repo remove my-repo",
+                "fastskill repo remove private --user",
+            ],
+            args: vec![
+                ArgSpec {
+                    name: "name",
+                    kind: ArgKind::Positional,
+                    value_type: ArgValueType::String,
+                    cardinality: Cardinality::Required,
+                    help: "Repository name to remove",
+                    ..Default::default()
+                },
+                ArgSpec {
+                    name: "user",
+                    kind: ArgKind::Flag,
+                    long: Some("user"),
+                    value_type: ArgValueType::Bool,
+                    cardinality: Cardinality::Optional,
+                    help: "Remove from your user repositories.toml",
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }
     }
@@ -373,6 +442,7 @@ impl FromArgValueMap for ReposRemoveArgs {
                     }
                 })
                 .unwrap_or_default(),
+            user: matches!(map.get("user"), Some(ArgValue::Bool(true))),
         }
     }
 }

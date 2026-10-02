@@ -1,12 +1,44 @@
+use super::args::ReposAddArgs;
 use crate::error::{CliError, CliResult};
 use fastskill_core::core::repository::{
-    RepositoryAuth, RepositoryConfig, RepositoryManager, RepositoryType,
+    user_config, RepositoryAuth, RepositoryConfig, RepositoryManager, RepositoryType,
 };
 use std::path::PathBuf;
 
+/// Every repository this project can use: the project's own plus the user's
+/// repositories.toml, where a user entry replaces a project entry of the same
+/// name. For reading only; saving it would copy user entries into the project.
 pub async fn load_repo_manager() -> CliResult<RepositoryManager> {
     let repositories = crate::config::load_repositories_from_project()?;
+    let user = crate::config::load_user_repositories()?;
+    Ok(RepositoryManager::from_definitions(
+        user_config::merge_repositories(repositories, user),
+    ))
+}
+
+/// The project's own repositories, for commands that save them back.
+pub async fn load_project_repo_manager() -> CliResult<RepositoryManager> {
+    let repositories = crate::config::load_repositories_from_project()?;
     Ok(RepositoryManager::from_definitions(repositories))
+}
+
+/// The user's repositories.toml, for `repo add --user` and `repo remove --user`.
+pub fn load_user_repo_manager() -> CliResult<RepositoryManager> {
+    let path = user_config::user_repositories_path().ok_or_else(|| {
+        CliError::Config("FastSkill's config directory is unknown on this platform".to_string())
+    })?;
+    let mut manager = RepositoryManager::new(path);
+    manager
+        .load()
+        .map_err(|e| CliError::Config(format!("Failed to load user repositories: {e}")))?;
+    Ok(manager)
+}
+
+/// Whether `name` is configured in the user's repositories.toml.
+pub fn is_user_repository(name: &str) -> bool {
+    crate::config::load_user_repositories()
+        .map(|repositories| repositories.iter().any(|r| r.name == name))
+        .unwrap_or(false)
 }
 
 pub fn resolve_repository_name(
@@ -86,58 +118,89 @@ pub fn validate_repository_ref_options(
 ///
 /// `ssh-key`, `ssh`, `basic` and `api_key` used to be accepted here, held in
 /// memory, and then silently discarded when the repository was written to
-/// `skill-project.toml` -- the manifest's `AuthType` has only ever been able
-/// to represent `pat`. Users configured them and believed they were in
+/// `skill-project.toml`. Users configured them and believed they were in
 /// effect. Rejecting is the honest answer; see also the git and zip-url
 /// `auth` rejections in fastskill-core.
 fn unsupported_auth_type(auth_type: &str) -> CliError {
     CliError::Config(format!(
-        "Unsupported auth type '{auth_type}'. Only `pat` is supported -- it is the only \
-         method the project manifest can store, so the others were never persisted even \
-         when this command accepted them. For a private git remote, configure a git \
-         credential helper or use an SSH remote instead; for a private HTTP registry, use \
-         `--auth-type pat --auth-env <VAR>`."
+        "Unsupported auth type '{auth_type}'. Supported types are `pat`, `bearer` and \
+         `command`; the others were never persisted even when this command accepted them. \
+         For a private git remote, configure a git credential helper or use an SSH remote \
+         instead; for a private HTTP registry, use `--auth-type bearer --auth-env <VAR>`."
     ))
 }
 
-pub fn parse_authentication(
-    auth_type: Option<String>,
-    auth_env: Option<String>,
-    auth_key_path: Option<PathBuf>,
-    auth_username: Option<String>,
-) -> CliResult<Option<RepositoryAuth>> {
+/// The auth block `repo add` asked for (ADR-0018).
+pub fn parse_authentication(args: &ReposAddArgs) -> CliResult<Option<RepositoryAuth>> {
     // These two flags only ever fed the removed methods. Silently ignoring
     // them would recreate exactly the bug this change removes.
-    if auth_key_path.is_some() {
+    if args.auth_key_path.is_some() {
         return Err(CliError::Config(
             "--auth-key-path is no longer supported: fastskill does not inject SSH key \
              credentials. Use an SSH remote with a key loaded in your SSH agent instead."
                 .to_string(),
         ));
     }
-    if auth_username.is_some() {
+    if args.auth_username.is_some() {
         return Err(CliError::Config(
             "--auth-username is no longer supported: basic authentication was never \
-             persisted to the project manifest. Use `--auth-type pat --auth-env <VAR>`."
+             persisted to the project manifest. Use `--auth-type bearer --auth-env <VAR>`."
                 .to_string(),
         ));
     }
 
-    let Some(auth_t) = auth_type else {
+    let auth_t = args.auth_type.as_deref();
+    let has_command_flags = args.credential_command.is_some() || !args.credential_args.is_empty();
+    if has_command_flags && auth_t != Some("command") {
+        return Err(CliError::Config(
+            "--credential-command and --credential-arg are only used with --auth-type command"
+                .to_string(),
+        ));
+    }
+    let Some(auth_t) = auth_t else {
         return Ok(None);
     };
+    let env_var = |kind: &str| {
+        args.auth_env.clone().ok_or_else(|| {
+            CliError::Config(format!("--auth-env required for {kind} authentication"))
+        })
+    };
 
-    match auth_t.as_str() {
-        "pat" => {
-            let env_var = auth_env.ok_or_else(|| {
-                CliError::Config("--auth-env required for pat authentication".to_string())
+    match auth_t {
+        "pat" => Ok(Some(RepositoryAuth::Pat {
+            env_var: env_var("pat")?,
+        })),
+        "bearer" => Ok(Some(RepositoryAuth::Bearer {
+            env_var: env_var("bearer")?,
+        })),
+        "command" => {
+            if args.auth_env.is_some() {
+                return Err(CliError::Config(
+                    "--auth-env is not used by command authentication; the command prints \
+                     the token"
+                        .to_string(),
+                ));
+            }
+            let program = args.credential_command.clone().ok_or_else(|| {
+                CliError::Config(
+                    "--credential-command required for command authentication".to_string(),
+                )
             })?;
-            Ok(Some(RepositoryAuth::Pat { env_var }))
+            if !args.user {
+                return Err(CliError::Config(
+                    "--auth-type command needs --user: a project file cannot name a command \
+                     for FastSkill to run, so this repository can only be saved to your user \
+                     repositories.toml"
+                        .to_string(),
+                ));
+            }
+            let mut command = vec![program];
+            command.extend(args.credential_args.iter().cloned());
+            Ok(Some(RepositoryAuth::Command { command }))
         }
-        "ssh-key" | "ssh" | "basic" | "api_key" => Err(unsupported_auth_type(&auth_t)),
+        "ssh-key" | "ssh" | "basic" | "api_key" => Err(unsupported_auth_type(auth_t)),
         _ => Err(CliError::Config(format!(
-            "Invalid auth type: {}. Use: pat",
-            auth_t
+            "Invalid auth type: {auth_t}. Use: pat, bearer, or command"
         ))),
     }
 }
@@ -148,12 +211,11 @@ mod tests {
     use super::*;
 
     fn parse(auth_type: Option<&str>, auth_env: Option<&str>) -> CliResult<Option<RepositoryAuth>> {
-        parse_authentication(
-            auth_type.map(str::to_string),
-            auth_env.map(str::to_string),
-            None,
-            None,
-        )
+        parse_authentication(&ReposAddArgs {
+            auth_type: auth_type.map(str::to_string),
+            auth_env: auth_env.map(str::to_string),
+            ..Default::default()
+        })
     }
 
     #[test]
@@ -161,8 +223,69 @@ mod tests {
         let auth = parse(Some("pat"), Some("MY_TOKEN"))
             .expect("pat is supported")
             .expect("an auth block was requested");
-        let RepositoryAuth::Pat { env_var } = auth;
-        assert_eq!(env_var, "MY_TOKEN");
+        assert_eq!(
+            auth,
+            RepositoryAuth::Pat {
+                env_var: "MY_TOKEN".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn bearer_takes_its_variable_from_auth_env() {
+        let auth = parse(Some("bearer"), Some("REGISTRY_TOKEN")).unwrap();
+        assert_eq!(
+            auth,
+            Some(RepositoryAuth::Bearer {
+                env_var: "REGISTRY_TOKEN".to_string()
+            })
+        );
+        let err = parse(Some("bearer"), None).unwrap_err().to_string();
+        assert!(err.contains("--auth-env required for bearer"), "{err}");
+    }
+
+    fn command_args(user: bool) -> ReposAddArgs {
+        ReposAddArgs {
+            auth_type: Some("command".to_string()),
+            credential_command: Some("my-login".to_string()),
+            credential_args: vec!["token".to_string(), "--quiet".to_string()],
+            user,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn command_builds_argv_and_needs_user() {
+        let auth = parse_authentication(&command_args(true)).unwrap();
+        assert_eq!(
+            auth,
+            Some(RepositoryAuth::Command {
+                command: vec!["my-login".into(), "token".into(), "--quiet".into()]
+            })
+        );
+        let err = parse_authentication(&command_args(false))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("needs --user"), "{err}");
+        assert!(err.contains("cannot name a command"), "{err}");
+    }
+
+    #[test]
+    fn command_flags_are_checked() {
+        let mut no_program = command_args(true);
+        no_program.credential_command = None;
+        let err = parse_authentication(&no_program).unwrap_err().to_string();
+        assert!(err.contains("--credential-command required"), "{err}");
+
+        let mut with_env = command_args(true);
+        with_env.auth_env = Some("T".to_string());
+        assert!(parse_authentication(&with_env).is_err());
+
+        let mut stray = command_args(true);
+        stray.auth_type = Some("bearer".to_string());
+        stray.auth_env = Some("T".to_string());
+        let err = parse_authentication(&stray).unwrap_err().to_string();
+        assert!(err.contains("only used with --auth-type command"), "{err}");
     }
 
     #[test]
@@ -237,12 +360,12 @@ mod tests {
     /// Silently ignoring these would recreate the very bug being fixed.
     #[test]
     fn flags_for_removed_methods_are_rejected_not_ignored() {
-        let err = parse_authentication(
-            Some("pat".to_string()),
-            Some("MY_TOKEN".to_string()),
-            Some(PathBuf::from("/tmp/key")),
-            None,
-        )
+        let err = parse_authentication(&ReposAddArgs {
+            auth_type: Some("pat".to_string()),
+            auth_env: Some("MY_TOKEN".to_string()),
+            auth_key_path: Some(PathBuf::from("/tmp/key")),
+            ..Default::default()
+        })
         .unwrap_err()
         .to_string();
         assert!(
@@ -250,12 +373,12 @@ mod tests {
             "{err}"
         );
 
-        let err = parse_authentication(
-            Some("pat".to_string()),
-            Some("MY_TOKEN".to_string()),
-            None,
-            Some("someone".to_string()),
-        )
+        let err = parse_authentication(&ReposAddArgs {
+            auth_type: Some("pat".to_string()),
+            auth_env: Some("MY_TOKEN".to_string()),
+            auth_username: Some("someone".to_string()),
+            ..Default::default()
+        })
         .unwrap_err()
         .to_string();
         assert!(

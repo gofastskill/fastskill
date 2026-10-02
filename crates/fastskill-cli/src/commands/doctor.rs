@@ -210,11 +210,11 @@ pub async fn execute_doctor(
                 .list_repositories()
                 .into_iter()
                 .filter_map(|repository| {
-                    repository.auth.as_ref().map(|auth| match auth {
-                        fastskill_core::core::repository::RepositoryAuth::Pat { env_var } => {
-                            env_var.clone()
-                        }
-                    })
+                    // A `command` auth has no variable to check; it runs when used.
+                    repository
+                        .auth
+                        .as_ref()
+                        .and_then(|auth| auth.env_var().map(str::to_string))
                 })
                 .collect::<Vec<_>>()
         })
