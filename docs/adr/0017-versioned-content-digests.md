@@ -1,7 +1,7 @@
 # Content digests are versioned and frame every field
 
 Status: accepted. Date: 2026-09-24. Implemented: 2026-09-24. Amended: 2026-09-24 (retiring
-legacy digests; not yet implemented).
+legacy digests: `project repin` implemented 2026-10-02; the cutoff is not yet implemented).
 
 Related: [ADR-0007](0007-self-contained-tracked-skill-bundles.md),
 [ADR-0008](0008-bundle-ownership-and-local-changes.md),

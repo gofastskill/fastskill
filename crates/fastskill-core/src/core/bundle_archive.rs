@@ -1,11 +1,11 @@
 use crate::core::bundle::{BundleArchiveLockMember, BundleDescriptor, PreparedMember};
 use crate::core::bundle_persistence::digest_release;
-use crate::core::content_digest::DigestForms;
+use crate::core::content_digest::{is_legacy_digest, DigestForms};
 use crate::core::service::ServiceError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -97,7 +97,8 @@ impl BundleArchiveLock {
             crate::utils::warn_once(
                 "legacy-bundle-artifact",
                 "bundle artifact was built by an older fastskill and declares legacy content \
-                 digests; rebuild it with `fastskill bundle build` (ADR-0017)",
+                 digests; rebuild it with `fastskill bundle build`, since a future minor release \
+                 will refuse legacy digests (ADR-0017)",
             );
             return Ok(());
         }
@@ -109,6 +110,31 @@ impl BundleArchiveLock {
     fn declares(&self, expected: &Self) -> bool {
         self.members == expected.members && self.release_digest == expected.release_digest
     }
+}
+
+/// Whether the bundle artifact at `path` was built by an older fastskill: its archive lock
+/// declares member digests in the legacy form. Reads only the archive lock, so it neither
+/// extracts nor verifies the members.
+pub(crate) fn artifact_declares_legacy_digests(path: &Path) -> Result<bool, ServiceError> {
+    let file = fs::File::open(path).map_err(ServiceError::Io)?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| {
+        ServiceError::Validation(format!("{} is not a ZIP archive: {error}", path.display()))
+    })?;
+    let mut content = String::new();
+    archive
+        .by_name("skills.lock")
+        .map_err(|_| {
+            ServiceError::Validation(format!("{} is missing root skills.lock", path.display()))
+        })?
+        .read_to_string(&mut content)
+        .map_err(ServiceError::Io)?;
+    let lock: BundleArchiveLock = toml::from_str(&content).map_err(|error| {
+        ServiceError::Validation(format!("Invalid bundle skills.lock: {error}"))
+    })?;
+    Ok(lock
+        .members
+        .values()
+        .any(|member| is_legacy_digest(&member.digest)))
 }
 
 pub(super) fn write_bundle_archive(

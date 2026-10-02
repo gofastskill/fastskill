@@ -37,6 +37,7 @@ pub(crate) fn is_json_lifecycle(args: &[String]) -> bool {
             | ["skill", "update", ..]
             | ["skill", "remove", ..]
             | ["project", "install", ..]
+            | ["project", "repin", ..]
             | ["bundle", "add", ..]
             | ["bundle", "update", ..]
             | ["bundle", "remove", ..]

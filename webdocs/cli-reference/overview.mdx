@@ -58,7 +58,7 @@ fastskill bundle add --help     # Help for adding a bundle artifact
 | --- | --- |
 | `fastskill skill` | `add`, `remove`, `update`, `list`, `read`, `search` |
 | `fastskill bundle` | `build`, `add`, `list`, `update`, `remove`, `override` |
-| `fastskill project` | `init`, `install` |
+| `fastskill project` | `init`, `install`, `repin` |
 | `fastskill repo` | `add`, `list`, `info`, `update`, `remove`, `test`, `refresh`, `skills`, `show`, `versions` |
 | `fastskill marketplace` | `create` |
 | `fastskill analysis` | `matrix`, `cluster`, `duplicates` |
@@ -70,7 +70,7 @@ fastskill bundle add --help     # Help for adding a bundle artifact
 | `fastskill mcp` | `serve`, `install`, `list` |
 | `fastskill cli` | `doctor`, `completion`, `spec` |
 
-The tree contains 49 leaf commands. Root help shows the namespaces as a compact table of contents.
+The tree contains 50 leaf commands. Root help shows the namespaces as a compact table of contents.
 Run `fastskill <namespace> --help` to discover that namespace, then run
 `fastskill <namespace> <action> --help` for arguments and examples. A bare skill ID is not a
 command; use `fastskill skill read <skill-id>`.
@@ -78,7 +78,8 @@ command; use `fastskill skill read <skill-id>`.
 <Cards>
   <Card title="Skills and projects">
     See [skill commands](/cli-reference/skill-commands), [bundle commands](/cli-reference/bundle-command),
-    [project init](/cli-reference/init-command), and [project install](/cli-reference/install-command).
+    [project init](/cli-reference/init-command), [project install](/cli-reference/install-command), and
+    [project repin](/cli-reference/repin-command).
   </Card>
   <Card title="Sources and distribution">
     See [repository commands](/cli-reference/repository-command) and

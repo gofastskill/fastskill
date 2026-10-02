@@ -38,8 +38,8 @@ pub use crate::core::bundle_types::{
 /// The marker that prevents a bundle archive from being mistaken for an
 /// existing single-skill ZIP.
 pub const BUNDLE_FORMAT: &str = "fastskill-bundle-v1";
-const BUNDLE_STATE_DIRECTORY: &str = ".fastskill/bundles";
-const BUNDLE_HISTORY_FILE: &str = ".fastskill/bundle-history.toml";
+pub(crate) const BUNDLE_STATE_DIRECTORY: &str = ".fastskill/bundles";
+pub(crate) const BUNDLE_HISTORY_FILE: &str = ".fastskill/bundle-history.toml";
 
 /// Result of creating a portable bundle artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]

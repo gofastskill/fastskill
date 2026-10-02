@@ -107,7 +107,7 @@ fn app_error_exit_code(error: &anyhow::Error) -> i32 {
 
 use commands::{
     add, analyze, bundle, cache, doctor, eval, init, install, list, marketplace, mcp, read,
-    reindex, remove, repos, search, serve, skillopt, update,
+    reindex, remove, repin, repos, search, serve, skillopt, update,
 };
 
 /// The binary's name, as reported by `--version` and used to derive MCP tool
@@ -247,6 +247,15 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 }
             },
         )?
+        .register_out(path!["project", "repin"], |ctx, args: repin::RepinArgs| {
+            let global = ctx_global(ctx);
+            let skills_dir = ctx_skills_dir(ctx);
+            async move {
+                repin::execute_repin(args, global, skills_dir)
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        })?
         .register_out(path!["skill", "update"], |ctx, args: update::UpdateArgs| {
             let global = ctx_global(ctx);
             let skills_dir = ctx_skills_dir(ctx);
