@@ -19,6 +19,8 @@ pub struct ReposArgs {
     pub command: ReposCommand,
 }
 
+// `Add` carries every auth option; this enum is parsed once per process.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 pub enum ReposCommand {
     // Repository Management Commands
@@ -56,12 +58,21 @@ pub enum ReposCommand {
         /// Tag for git-marketplace
         #[arg(long)]
         tag: Option<String>,
-        /// Authentication type: pat (the only supported type)
+        /// Authentication type: pat, bearer, or command
         #[arg(long)]
         auth_type: Option<String>,
-        /// Environment variable holding the PAT
+        /// Environment variable holding the token (pat and bearer)
         #[arg(long)]
         auth_env: Option<String>,
+        /// Program that prints a bearer token (command auth; needs --user)
+        #[arg(long)]
+        credential_command: Option<String>,
+        /// Argument passed to the credential command (repeatable)
+        #[arg(long = "credential-arg")]
+        credential_args: Vec<String>,
+        /// Save to the user repositories.toml instead of skill-project.toml
+        #[arg(long)]
+        user: bool,
         /// No longer supported; use an SSH remote with an SSH agent instead
         #[arg(long)]
         auth_key_path: Option<PathBuf>,
@@ -75,6 +86,9 @@ pub enum ReposCommand {
     Remove {
         /// Repository name to remove
         name: String,
+        /// Remove from the user repositories.toml instead of skill-project.toml
+        #[arg(long)]
+        user: bool,
     },
 
     /// Show repository details
@@ -188,23 +202,11 @@ pub async fn execute_repos_list(args: ReposListArgs) -> CliResult<()> {
 }
 
 pub async fn execute_repos_add(args: ReposAddArgs) -> CliResult<()> {
-    repo_ops::execute_add(
-        args.name,
-        args.repo_type,
-        args.url_or_path,
-        args.priority,
-        args.branch,
-        args.tag,
-        args.auth_type,
-        args.auth_env,
-        args.auth_key_path,
-        args.auth_username,
-    )
-    .await
+    repo_ops::execute_add(args).await
 }
 
 pub async fn execute_repos_remove(args: ReposRemoveArgs) -> CliResult<()> {
-    repo_ops::execute_remove(args.name).await
+    repo_ops::execute_remove(args.name, args.user).await
 }
 
 pub async fn execute_repos_info(args: ReposInfoArgs) -> CliResult<()> {

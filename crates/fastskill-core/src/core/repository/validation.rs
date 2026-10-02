@@ -73,7 +73,8 @@ impl RepositoryDefinition {
                  they are mutually exclusive. Keep one."
             ));
         }
-        if self.auth.is_some() {
+        if let Some(auth) = &self.auth {
+            auth.validate(name)?;
             match self.repo_type {
                 RepositoryType::GitMarketplace => return Err(git_auth_unsupported(name)),
                 RepositoryType::ZipUrl => return Err(zip_url_auth_unsupported(name)),

@@ -11,8 +11,11 @@ pub fn format_repository_list(repos: &[&RepositoryDefinition]) -> String {
         for repo in repos {
             let repo_type_str = repo_type_to_string(&repo.repo_type);
             output.push_str(&format!(
-                "  • {} (type: {}, priority: {})\n",
-                repo.name, repo_type_str, repo.priority
+                "  • {} (type: {}, priority: {}{})\n",
+                repo.name,
+                repo_type_str,
+                repo.priority,
+                auth_suffix(repo, ", auth: ", "")
             ));
         }
         output
@@ -49,7 +52,8 @@ pub fn format_repository_details(repo: &RepositoryDefinition) -> String {
     }
 
     if let Some(auth) = &repo.auth {
-        output.push_str(&format!("  Auth: {:?}\n", auth));
+        // The auth type and where the token comes from; never a token.
+        output.push_str(&format!("  Auth: {}\n", auth.describe()));
     }
 
     if let Some(storage) = &repo.storage {
@@ -57,6 +61,15 @@ pub fn format_repository_details(repo: &RepositoryDefinition) -> String {
     }
 
     output
+}
+
+/// `{before}{auth type}{after}` when the repository has auth, else empty.
+/// Only the type is shown, never a variable's value or a token.
+fn auth_suffix(repo: &RepositoryDefinition, before: &str, after: &str) -> String {
+    repo.auth
+        .as_ref()
+        .map(|auth| format!("{before}{}{after}", auth.kind()))
+        .unwrap_or_default()
 }
 
 pub(crate) fn repo_type_to_string(repo_type: &RepositoryType) -> &'static str {
@@ -168,8 +181,11 @@ pub fn format_repository_list_grid(repos: &[&RepositoryDefinition]) -> String {
     for repo in repos {
         let repo_type_str = repo_type_to_string(&repo.repo_type);
         output.push_str(&format!(
-            "- {} [{}] priority={}\n",
-            repo.name, repo_type_str, repo.priority
+            "- {} [{}] priority={}{}\n",
+            repo.name,
+            repo_type_str,
+            repo.priority,
+            auth_suffix(repo, " auth=", "")
         ));
     }
     output
@@ -201,6 +217,9 @@ pub fn format_repository_details_grid(repo: &RepositoryDefinition) -> String {
             output.push_str(&format!("path={}\n", path.display()));
         }
     }
+    if let Some(auth) = &repo.auth {
+        output.push_str(&format!("auth={}\n", auth.kind()));
+    }
 
     output
 }
@@ -209,10 +228,11 @@ pub fn format_repository_list_xml(repos: &[&RepositoryDefinition]) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<repositories>\n");
     for repo in repos {
         xml.push_str(&format!(
-            "  <repository name=\"{}\" type=\"{}\" priority=\"{}\" />\n",
+            "  <repository name=\"{}\" type=\"{}\" priority=\"{}\"{} />\n",
             escape_xml(&repo.name),
             repo_type_to_string(&repo.repo_type),
-            repo.priority
+            repo.priority,
+            auth_suffix(repo, " auth=\"", "\"")
         ));
     }
     xml.push_str("</repositories>\n");
@@ -266,6 +286,9 @@ pub fn format_repository_details_xml(repo: &RepositoryDefinition) -> String {
         }
     }
 
+    if let Some(auth) = &repo.auth {
+        xml.push_str(&format!("  <auth type=\"{}\" />\n", auth.kind()));
+    }
     xml.push_str("</repository>\n");
     xml
 }
@@ -306,3 +329,8 @@ fn escape_xml(input: &str) -> String {
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
 }
+
+#[cfg(test)]
+#[path = "formatters_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests;

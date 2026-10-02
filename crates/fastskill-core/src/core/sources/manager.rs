@@ -809,7 +809,7 @@ impl SourcesManager {
                     RepositoryType::GitMarketplace => {
                         if let RepositoryConfig::GitMarketplace { url, branch, tag } = &repo.config
                         {
-                            let auth = repo.auth.as_ref().map(repo_auth_to_source_auth);
+                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
                             Some(SourceConfig::Git {
                                 url: url.clone(),
                                 branch: branch.clone(),
@@ -822,7 +822,7 @@ impl SourcesManager {
                     }
                     RepositoryType::ZipUrl => {
                         if let RepositoryConfig::ZipUrl { base_url } = &repo.config {
-                            let auth = repo.auth.as_ref().map(repo_auth_to_source_auth);
+                            let auth = repo.auth.as_ref().and_then(repo_auth_to_source_auth);
                             Some(SourceConfig::ZipUrl {
                                 base_url: base_url.clone(),
                                 auth,
@@ -965,19 +965,16 @@ fn source_index_to_marketplace(idx: &crate::core::cache::SourceIndex) -> Marketp
     }
 }
 
-/// Total: `RepositoryAuth` has exactly one variant, so every configured
-/// repository auth maps to a `SourceAuth`. This previously returned `Option`
-/// and answered `None` for `ApiKey`, which is how a configured credential
-/// could vanish without a word.
+/// Only a legacy `pat` auth maps to a `SourceAuth`. Git and zip-url sources
+/// never carry `bearer` or `command` auth: `RepositoryDefinition::validate`
+/// refuses any auth on those types, and these sources are git or zip-url.
 fn repo_auth_to_source_auth(
     auth: &crate::core::repository::RepositoryAuth,
-) -> super::model::SourceAuth {
-    use super::model::SourceAuth;
-    use crate::core::repository::RepositoryAuth;
-    let RepositoryAuth::Pat { env_var } = auth;
-    SourceAuth::Pat {
-        env_var: env_var.clone(),
-    }
+) -> Option<super::model::SourceAuth> {
+    auth.pat_env_var()
+        .map(|env_var| super::model::SourceAuth::Pat {
+            env_var: env_var.to_string(),
+        })
 }
 
 #[cfg(test)]

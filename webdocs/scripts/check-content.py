@@ -41,8 +41,9 @@ def check_config(data):
         if not isinstance(repo.get('priority'), int) or repo['priority'] < 0:
             raise ValueError('repository priority must be a nonnegative integer')
         auth = repo.get('auth')
-        if auth and (auth.get('type') != 'pat' or not isinstance(auth.get('env_var'), str)):
-            raise ValueError('repository auth supports pat with an env_var string')
+        # A Manifest may not name a credential command (ADR-0018).
+        if auth and (auth.get('type') not in ('pat', 'bearer') or not isinstance(auth.get('env_var'), str)):
+            raise ValueError('project repository auth supports pat or bearer with an env_var string')
 
 
 def check(binary=None):

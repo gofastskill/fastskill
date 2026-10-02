@@ -59,6 +59,12 @@ pub enum AuthConfig {
     Ssh { key_path: PathBuf },
     #[serde(rename = "api_key")]
     ApiKey { env_var: String },
+    /// `Authorization: Bearer <token>` from an environment variable (ADR-0018).
+    #[serde(rename = "bearer")]
+    Bearer { env_var: String },
+    /// `Authorization: Bearer <token>` printed by a program (ADR-0018).
+    #[serde(rename = "command")]
+    Command { command: Vec<String> },
 }
 
 /// Storage backend configuration
@@ -214,5 +220,76 @@ index_url = "https://github.com/org/enterprise-registry"
         let enterprise = manager.get_registry("enterprise").unwrap();
         assert!(enterprise.is_some());
         assert_eq!(enterprise.unwrap().name, "enterprise");
+    }
+
+    #[test]
+    fn a_missing_file_loads_as_empty_and_lookups_need_a_load() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut manager = RegistryConfigManager::new(temp_dir.path().join("absent.toml"));
+        for result in [
+            manager.get_default_registry().map(|_| ()),
+            manager.get_registry("x").map(|_| ()),
+            manager.list_registries().map(|_| ()),
+        ] {
+            assert!(result.unwrap_err().to_string().contains("not loaded"));
+        }
+
+        manager.load().unwrap();
+        assert!(manager.get_default_registry().unwrap().is_none());
+        assert!(manager.get_registry("x").unwrap().is_none());
+        assert!(manager.list_registries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_invalid_file_is_a_parse_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("registries.toml");
+        std::fs::write(&config_path, "registries = 3").unwrap();
+        let error = RegistryConfigManager::new(config_path)
+            .load()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Failed to parse registries config"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn bearer_and_command_auth_parse_and_registries_are_listed() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("registries.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[registry]
+name = "primary"
+type = "http"
+index_url = "https://registry.example/index"
+auth = { type = "bearer", env_var = "REGISTRY_TOKEN" }
+
+[[registries]]
+name = "second"
+type = "http"
+index_url = "https://other.example/index"
+auth = { type = "command", command = ["my-login", "token"] }
+"#,
+        )
+        .unwrap();
+        let mut manager = RegistryConfigManager::new(config_path);
+        manager.load().unwrap();
+
+        assert_eq!(manager.list_registries().unwrap(), ["primary", "second"]);
+        let primary = manager.get_registry("primary").unwrap().unwrap();
+        assert!(matches!(
+            primary.auth,
+            Some(AuthConfig::Bearer { ref env_var }) if env_var == "REGISTRY_TOKEN"
+        ));
+        let second = manager.get_registry("second").unwrap().unwrap();
+        assert!(matches!(
+            second.auth,
+            Some(AuthConfig::Command { ref command }) if command == &["my-login", "token"]
+        ));
+        assert!(manager.get_registry("third").unwrap().is_none());
     }
 }

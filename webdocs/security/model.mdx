@@ -61,7 +61,7 @@ operator's call when they open the port; it is a disclosure consideration, not a
 
 ## Repository credentials: env-var indirection
 
-HTTP registries can authenticate with a **PAT referenced by environment variable**.
+HTTP registries can authenticate with a **PAT or bearer token referenced by environment variable**.
 Git sources use system Git credentials. Tokens are not written into the manifest:
 
 ```toml
@@ -75,6 +75,24 @@ auth = { type = "pat", env_var = "TEAM_REGISTRY_TOKEN" }
 
 FastSkill reads the token from `TEAM_REGISTRY_TOKEN` at runtime. Commit `skill-project.toml`; keep
 the token in your shell profile, CI secrets, or a secrets manager. Never commit a plaintext token.
+
+A registry that requires an OAuth bearer token uses `auth = { type = "bearer", env_var = "…" }`
+instead, and FastSkill sends `Authorization: Bearer <token>`. When the token is short-lived, a
+**credential command** can print it (`auth = { type = "command", command = [...] }`):
+
+- **Only user configuration may name a command.** It lives in `repositories.toml` in FastSkill's
+  configuration directory. A `skill-project.toml` that names a command is refused, so a cloned
+  repository can never make FastSkill run a program.
+- **It runs without a shell**, from FastSkill's configuration directory, with a 30-second timeout,
+  at most once per process for each repository. The token stays in memory; it is never written to
+  disk, logs or error messages.
+- **Non-interactive runs are flagged.** When standard input or standard error is not a terminal,
+  the command sees `FASTSKILL_INTERACTIVE=0` and must not prompt.
+- **The token stays on the registry origin.** It is sent only to the scheme, host and port of
+  `index_url`. A redirect to another origin drops it, and a redirect from `https` to `http` is
+  refused.
+- **Missing credentials fail closed.** An unset `bearer` variable or a failing command is an error,
+  never an unauthenticated retry. `pat` keeps its existing behaviour.
 
 ## Reproducible, verifiable installs
 

@@ -24,6 +24,7 @@ pub mod read_tests;
 pub mod registry_e2e_tests;
 pub mod reindex_e2e_tests;
 pub mod repos_integration_tests;
+pub mod repository_auth_e2e_tests;
 pub mod repository_tests;
 pub mod serve_e2e_tests;
 pub mod shorthand_e2e_tests;

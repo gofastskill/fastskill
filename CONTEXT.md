@@ -202,6 +202,19 @@ precedence).
 _Avoid_: **source**, **registry**, **repos** — historical command names must not be reintroduced as
 current concepts.
 
+**User repositories file**:
+`repositories.toml` in FastSkill's configuration directory (`$XDG_CONFIG_HOME/fastskill/` when set).
+It holds per-machine Repositories, written by `repo add --user`; an entry replaces a project
+Repository of the same name. It is the only place a **credential command** may be configured.
+
+**Credential command**:
+An `http-registry` auth type (`auth = { type = "command", command = [...] }`): a program FastSkill
+runs, without a shell and at most once per process, whose first line of output is a bearer token.
+It is refused in a Manifest. `bearer` is the variant that reads the token from an environment
+variable. The token goes only to the registry's origin. See
+[ADR-0018](./docs/adr/0018-registry-credentials-bearer-and-command.md).
+_Avoid_: login, credential helper (git's term for a different protocol).
+
 **Scope**:
 The publisher namespace of an `http-registry` skill: `acme/web-scraper` has scope `acme`. Only
 `http-registry` repositories have scopes; `git-marketplace` and `local` repositories list bare

@@ -106,9 +106,75 @@ nested project directory.
 origins use `origin.type = "zip-url"` and `origin.url` instead. These are different
 configuration objects.
 
-The manifest's repository authentication supports `pat` with a token environment
-variable. Omit `auth` for public catalogs. Do not put credentials in a committed
-manifest. This setting does not replace system Git authentication.
+Omit `auth` for public catalogs. Never put a token in a committed manifest:
+`auth` names where the token comes from, not the token itself. Repository auth does
+not replace system Git authentication.
+
+### Registry authentication
+
+| `auth.type` | Token source | Header sent | Where it may be configured |
+| --- | --- | --- | --- |
+| `pat` | `env_var` | `Authorization: token …` | `skill-project.toml` or user file |
+| `bearer` | `env_var` | `Authorization: Bearer …` | `skill-project.toml` or user file |
+| `command` | first line printed by `command` | `Authorization: Bearer …` | user file only |
+
+`bearer` and `command` apply to `http-registry` repositories. With either one, a
+missing variable or a failing command is an error; FastSkill never retries the
+request without credentials. `pat` keeps its existing behaviour and sends no header
+when its variable is unset.
+
+For a registry that requires a bearer token, name the variable in the manifest:
+
+```toml
+[[tool.fastskill.repositories]]
+name = "private"
+type = "http-registry"
+priority = 0
+index_url = "https://registry.example.com/index"
+auth = { type = "bearer", env_var = "REGISTRY_TOKEN" }
+```
+
+When the token is short-lived, let a program print it, such as an identity provider
+CLI or a CI job's token exchange. A credential command can only be configured in your
+user repositories file, `repositories.toml` in FastSkill's configuration directory
+(`$XDG_CONFIG_HOME/fastskill/` when set, otherwise the platform config directory). A
+`skill-project.toml` that names a command is refused, so cloning a project can never
+make FastSkill run a program.
+
+```toml
+# ~/.config/fastskill/repositories.toml
+[[repositories]]
+name = "private"
+type = "http-registry"
+priority = 0
+index_url = "https://registry.example.com/index"
+auth = { type = "command", command = ["my-login", "token"] }
+```
+
+```bash
+fastskill repo add private https://registry.example.com/index --repo-type http-registry \
+  --user --auth-type command --credential-command my-login --credential-arg token
+```
+
+A user entry replaces a project entry with the same name, for listing, resolution
+and install alike. How the command runs:
+
+- It runs directly, without a shell, from FastSkill's configuration directory, and is
+  stopped after 30 seconds.
+- The token is the first line of standard output with the trailing line ending
+  removed. Output over 16 KiB, an empty token, or a non-zero exit is an error. Errors
+  name the program and its exit status, never the token.
+- Standard error reaches your terminal only when there is one, so the command can
+  prompt you to sign in. When standard input or standard error is not a terminal,
+  FastSkill sets `FASTSKILL_INTERACTIVE=0`: the command must then print a token
+  without prompting, or exit non-zero.
+- It runs at most once per FastSkill process for each repository. The token stays in
+  memory; FastSkill never writes it to disk or prints it.
+
+The token is sent only to the origin (scheme, host and port) of `index_url`. A
+download on another origin gets no token and must carry its own authorization, such
+as a pre-signed URL. A redirect to another origin is followed without the token, and
+a redirect from `https` to `http` is refused.
 
 You can also manage sources through the CLI:
 

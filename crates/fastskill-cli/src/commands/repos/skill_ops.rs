@@ -273,18 +273,12 @@ mod tests {
             "---\nname: demo\nversion: 1.2.3\ndescription: catalog fixture\nauthor: FastSkill\n---\n# Demo\n",
         )
         .unwrap();
-        crate::commands::repos::repo_ops::execute_add(
-            "local".to_string(),
-            "local".to_string(),
-            temp.path().join("catalog").display().to_string(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        crate::commands::repos::repo_ops::execute_add(crate::commands::repos::ReposAddArgs {
+            name: "local".to_string(),
+            repo_type: "local".to_string(),
+            url_or_path: temp.path().join("catalog").display().to_string(),
+            ..Default::default()
+        })
         .await
         .unwrap();
         (temp, restore)
@@ -377,18 +371,12 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(body))
             .mount(&server)
             .await;
-        crate::commands::repos::repo_ops::execute_add(
-            "registry".to_string(),
-            "http-registry".to_string(),
-            server.uri(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        crate::commands::repos::repo_ops::execute_add(crate::commands::repos::ReposAddArgs {
+            name: "registry".to_string(),
+            repo_type: "http-registry".to_string(),
+            url_or_path: server.uri(),
+            ..Default::default()
+        })
         .await
         .unwrap();
 

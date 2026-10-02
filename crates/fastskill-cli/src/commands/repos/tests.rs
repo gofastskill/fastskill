@@ -49,6 +49,47 @@ fn add_typed_arguments_preserve_repository_options() {
 }
 
 #[test]
+fn add_typed_arguments_carry_the_credential_command_and_user_flag() {
+    let values = HashMap::from([
+        ("name".to_string(), ArgValue::Str("private".to_string())),
+        (
+            "url-or-path".to_string(),
+            ArgValue::Str("https://registry.example/index".to_string()),
+        ),
+        (
+            "repo-type".to_string(),
+            ArgValue::Str("http-registry".to_string()),
+        ),
+        (
+            "auth-type".to_string(),
+            ArgValue::Str("command".to_string()),
+        ),
+        (
+            "credential-command".to_string(),
+            ArgValue::Str("my-login".to_string()),
+        ),
+        (
+            "credential-arg".to_string(),
+            ArgValue::List(vec![
+                ArgValue::Str("token".to_string()),
+                ArgValue::Str("--quiet".to_string()),
+            ]),
+        ),
+        ("user".to_string(), ArgValue::Bool(true)),
+    ]);
+    let args = ReposAddArgs::from_arg_value_map(&values);
+    assert_eq!(args.credential_command.as_deref(), Some("my-login"));
+    assert_eq!(args.credential_args, vec!["token", "--quiet"]);
+    assert!(args.user);
+
+    let remove = ReposRemoveArgs::from_arg_value_map(&HashMap::from([
+        ("name".to_string(), ArgValue::Str("private".to_string())),
+        ("user".to_string(), ArgValue::Bool(true)),
+    ]));
+    assert!(remove.user);
+}
+
+#[test]
 fn add_typed_spec_rejects_branch_and_tag_together() {
     let values = HashMap::from([
         ("name".to_string(), ArgValue::Str("team".to_string())),
@@ -94,11 +135,14 @@ fn typed_specs_describe_every_repository_subcommand() {
             "tag",
             "auth-type",
             "auth-env",
+            "credential-command",
+            "credential-arg",
+            "user",
             "auth-key-path",
             "auth-username",
         ],
     );
-    assert_spec::<ReposRemoveArgs>("repo remove <NAME>", &["name"]);
+    assert_spec::<ReposRemoveArgs>("repo remove <NAME> [--user]", &["name", "user"]);
     assert_spec::<ReposInfoArgs>("repo info <NAME> [OPTIONS]", &["name", "format", "json"]);
     assert_spec::<ReposUpdateArgs>(
         "repo update <NAME> [OPTIONS]",
@@ -303,11 +347,15 @@ fn test_repos_command_has_approved_subcommands() {
         tag: None,
         auth_type: None,
         auth_env: None,
+        credential_command: None,
+        credential_args: Vec::new(),
+        user: false,
         auth_key_path: None,
         auth_username: None,
     };
     let remove = ReposCommand::Remove {
         name: "test".to_string(),
+        user: false,
     };
     let info = ReposCommand::Info {
         name: "test".to_string(),
@@ -491,4 +539,154 @@ zip_url = "https://example.invalid/catalog.zip"
     .unwrap();
     let manager = super::helpers::load_repo_manager().await.unwrap();
     assert_eq!(manager.get_repository("local").unwrap().priority, 9);
+}
+
+/// Points FastSkill's user config at a temporary directory.
+struct UserConfigDir {
+    dir: TempDir,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl UserConfigDir {
+    fn new() -> Self {
+        let dir = TempDir::new().unwrap();
+        let previous = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        Self { dir, previous }
+    }
+
+    fn repositories_file(&self) -> std::path::PathBuf {
+        self.dir.path().join("fastskill").join("repositories.toml")
+    }
+}
+
+impl Drop for UserConfigDir {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(previous) => std::env::set_var("XDG_CONFIG_HOME", previous),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+    }
+}
+
+fn command_repository_args(user: bool) -> ReposAddArgs {
+    ReposAddArgs {
+        name: "private".to_string(),
+        repo_type: "http-registry".to_string(),
+        url_or_path: "https://registry.example/index".to_string(),
+        auth_type: Some("command".to_string()),
+        credential_command: Some("my-login".to_string()),
+        credential_args: vec!["token".to_string()],
+        user,
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn command_auth_is_added_to_and_removed_from_the_user_file_only() {
+    use fastskill_core::core::repository::RepositoryAuth;
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let config = UserConfigDir::new();
+    let project = RepositoryProject::new("");
+    let original = fs::read(project.manifest_path()).unwrap();
+
+    let error = execute_repos_add(command_repository_args(false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("needs --user"), "{error}");
+    assert!(!config.repositories_file().exists());
+
+    execute_repos_add(command_repository_args(true))
+        .await
+        .unwrap();
+    assert_eq!(fs::read(project.manifest_path()).unwrap(), original);
+    let saved = fs::read_to_string(config.repositories_file()).unwrap();
+    assert!(saved.contains("type = \"command\""), "{saved}");
+
+    // Reads see the user entry; its listing shows the auth type only.
+    let manager = super::helpers::load_repo_manager().await.unwrap();
+    let repository = manager.get_repository("private").unwrap();
+    assert_eq!(
+        repository.auth,
+        Some(RepositoryAuth::Command {
+            command: vec!["my-login".to_string(), "token".to_string()]
+        })
+    );
+    let listed = super::formatters::format_repository_list(&[repository]);
+    assert!(listed.contains("auth: command"), "{listed}");
+    let details = super::formatters::format_repository_details(repository);
+    assert!(details.contains("Auth: command (my-login)"), "{details}");
+    assert!(!details.contains("token"), "{details}");
+    let grid = super::formatters::format_repository_list_grid(&[repository]);
+    assert!(grid.contains("auth=command"), "{grid}");
+    let xml = super::formatters::format_repository_details_xml(repository);
+    assert!(xml.contains("<auth type=\"command\" />"), "{xml}");
+
+    // Install and resolution see it too.
+    let resolution = crate::config::load_resolution_repositories().unwrap();
+    assert!(resolution.iter().any(|r| r.name == "private"));
+
+    let error = execute_repos_remove(ReposRemoveArgs {
+        name: "private".to_string(),
+        user: false,
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("user repositories.toml"), "{error}");
+
+    execute_repos_remove(ReposRemoveArgs {
+        name: "private".to_string(),
+        user: true,
+    })
+    .await
+    .unwrap();
+    let saved = fs::read_to_string(config.repositories_file()).unwrap();
+    assert!(!saved.contains("private"), "{saved}");
+}
+
+#[tokio::test]
+async fn bearer_auth_is_saved_to_the_project_file() {
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let config = UserConfigDir::new();
+    let project = RepositoryProject::new("");
+    execute_repos_add(ReposAddArgs {
+        name: "private".to_string(),
+        repo_type: "http-registry".to_string(),
+        url_or_path: "https://registry.example/index".to_string(),
+        auth_type: Some("bearer".to_string()),
+        auth_env: Some("REGISTRY_TOKEN".to_string()),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let saved = fs::read_to_string(project.manifest_path()).unwrap();
+    assert!(saved.contains("bearer"), "{saved}");
+    assert!(saved.contains("REGISTRY_TOKEN"), "{saved}");
+    assert!(!config.repositories_file().exists());
+
+    let error = execute_repos_remove(ReposRemoveArgs {
+        name: "absent".to_string(),
+        user: true,
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("no user repositories.toml"), "{error}");
+    let error = execute_repos_remove(ReposRemoveArgs {
+        name: "absent".to_string(),
+        user: false,
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("Failed to remove repository: Repository 'absent' not found"),
+        "{error}"
+    );
 }
