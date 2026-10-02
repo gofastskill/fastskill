@@ -1,12 +1,12 @@
 # repo commands
 
-FastSkill 0.9.257
+FastSkill 0.9.258
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Release revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
-Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Documentation revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
 
 
@@ -76,18 +76,29 @@ fastskill repo add local-dev --repo-type local ./skills --priority 3
 # Add a private HTTP registry with a PAT read from the environment
 fastskill repo add registry --repo-type http-registry https://api.example.com \
   --auth-type pat --auth-env REGISTRY_TOKEN
+
+# Add a registry that requires a bearer token read from the environment
+fastskill repo add private --repo-type http-registry https://registry.example.com/index \
+  --auth-type bearer --auth-env REGISTRY_TOKEN
+
+# Add a registry whose token a program prints, to your user repositories file
+fastskill repo add private --repo-type http-registry https://registry.example.com/index \
+  --user --auth-type command --credential-command my-login --credential-arg token
 ```
 
 **Options**:
 
-| Flag          | Short | Type   | Default  | Description                                                                |
-| ------------- | ----- | ------ | -------- | -------------------------------------------------------------------------- |
-| `--repo-type` | -     | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local` |
-| `--priority`  | -     | number | 0        | Lower number = higher priority (used for conflict resolution)              |
-| `--branch`    | -     | string | none     | Git branch to checkout (for git-marketplace)                               |
-| `--tag`       | -     | string | none     | Git tag to checkout (for git-marketplace)                                  |
-| `--auth-type` | -     | string | none     | Authentication type: `pat` (HTTP registry only)                            |
-| `--auth-env`  | -     | string | none     | Environment variable containing the HTTP registry PAT                      |
+| Flag                   | Short | Type   | Default  | Description                                                                                                           |
+| ---------------------- | ----- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--repo-type`          | -     | string | required | Repository type: `git-marketplace`, `http-registry`, `zip-url`, or `local`                                            |
+| `--priority`           | -     | number | 0        | Lower number = higher priority (used for conflict resolution)                                                         |
+| `--branch`             | -     | string | none     | Git branch to checkout (for git-marketplace)                                                                          |
+| `--tag`                | -     | string | none     | Git tag to checkout (for git-marketplace)                                                                             |
+| `--auth-type`          | -     | string | none     | Authentication type: `pat`, `bearer` or `command` (HTTP registry only)                                                |
+| `--auth-env`           | -     | string | none     | Environment variable holding the token, for `pat` and `bearer`                                                        |
+| `--credential-command` | -     | string | none     | Program that prints a bearer token, for `command`; needs `--user`                                                     |
+| `--credential-arg`     | -     | string | none     | Argument for the credential command; repeat for each one. Write `--credential-arg=-x` for one that starts with a dash |
+| `--user`               | -     | flag   | false    | Save to your user `repositories.toml` instead of `skill-project.toml`                                                 |
 
 **Repository Types**:
 
@@ -102,7 +113,8 @@ stored in `skill-project.toml` and reused after FastSkill restarts.
    * Scans for skills across repository structure
 
 2. **http-registry**: HTTP-based registry with flat skill index
-   * Supports PAT authentication through environment-variable indirection
+   * Supports `pat` and `bearer` tokens read from an environment variable, and a `command`
+     that prints a bearer token (see [Authentication Types](#authentication-types))
    * Fast skill lookup via API
    * Best for production registries
 
@@ -128,13 +140,17 @@ Remove a repository from your sources.
 # Remove a repository
 fastskill repo remove team-skills
 
+# Remove a repository from your user repositories file
+fastskill repo remove private --user
+
 # Remove multiple repositories
 fastskill repo remove team-skills local-dev
 ```
 
 **Behavior**:
 
-* Removes repository from configuration file
+* Removes repository from `skill-project.toml`, or with `--user` from your user
+  `repositories.toml`
 * Does not uninstall skills that were installed from this repository
 * Skills remain in skills directory until explicitly removed
 
@@ -429,9 +445,47 @@ fastskill repo add private-registry --repo-type http-registry https://example.co
 Set `PAT_TOKEN` through your shell or CI secret manager before accessing the registry.
 The URL is a placeholder for your registry.
 
-Git sources use system Git credentials. The project manifest supports `pat`
-authentication for HTTP catalogs; other authentication type labels are not
-supported by this release's manifest. See [sources](/registry/sources).
+### Bearer token
+
+For a registry that requires an OAuth bearer token, name the variable that holds it:
+
+```bash
+fastskill repo add private --repo-type http-registry https://registry.example.com/index --auth-type bearer --auth-env REGISTRY_TOKEN
+```
+
+FastSkill sends `Authorization: Bearer <token>`. If the variable is unset or empty,
+every request to that registry fails; FastSkill never falls back to an
+unauthenticated request.
+
+### Credential command
+
+When the token is short-lived, a program can print it: an identity provider CLI, or a
+script that performs a CI job's token exchange. A credential command can only be
+saved to your user `repositories.toml`, so `--auth-type command` requires `--user`.
+A `skill-project.toml` that names a command is refused.
+
+```bash
+fastskill repo add private --repo-type http-registry https://registry.example.com/index --user --auth-type command --credential-command my-login --credential-arg token
+```
+
+* The program runs directly, without a shell, from FastSkill's configuration
+  directory, and is stopped after 30 seconds.
+* The first line of its standard output is the token. More than 16 KiB of output, an
+  empty token, or a non-zero exit fails the request. Errors name the program and its
+  exit status, never the token.
+* Standard error reaches your terminal only when there is one. When standard input
+  or standard error is not a terminal, FastSkill sets `FASTSKILL_INTERACTIVE=0`, and
+  the command must print a token without prompting or exit non-zero.
+* It runs at most once per FastSkill process for each repository, and the token is
+  kept in memory only.
+
+With `bearer` and `command`, the token is sent only to the origin of the registry's
+index URL. Downloads on other origins get no token, a redirect to another origin
+drops it, and a redirect from `https` to `http` is refused. `repo list` and `repo info`
+show the auth type, never the token.
+
+Git sources use system Git credentials. A project manifest may use `pat` or `bearer`
+for HTTP catalogs. See [sources](/registry/sources#registry-authentication).
 
 ## Multi-Source Skill Resolution
 
@@ -554,7 +608,7 @@ Priority 0 is highest, priority 10 is lower.
 
 
 
-Repositories configuration is stored in `skill-project.toml` and should be committed to version control. Authentication credentials (environment variables) should never be committed.
+Repositories configuration is stored in `skill-project.toml` and should be committed to version control. Authentication credentials (environment variables) should never be committed. Per-machine repositories, including any credential command, live in `repositories.toml` in FastSkill's configuration directory (`$XDG_CONFIG_HOME/fastskill/` when set) and take precedence over a project repository with the same name.
 
 
 ## See Also

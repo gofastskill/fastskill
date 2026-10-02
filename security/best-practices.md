@@ -1,12 +1,12 @@
 # Security Best Practices
 
-FastSkill 0.9.257
+FastSkill 0.9.258
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Release revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
-Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Documentation revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
 
 
@@ -47,10 +47,15 @@ protection comes from *how you run and expose it*.
 * **Never commit plaintext tokens.** Keep them in your shell profile, CI secret store, or a secrets
   manager. Commit `skill-project.toml`; keep the token value out of the repo.
 
-* **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT to
-  index and artifact URLs only when they have the same scheme, host, and port as `index_url`.
-  Use a pre-signed URL or separately authenticated delivery layer when artifacts are hosted on
-  another origin.
+* **Registry credentials stay on the registry origin.** FastSkill sends the configured PAT or
+  bearer token to index and artifact URLs only when they have the same scheme, host, and port as
+  `index_url`. Use a pre-signed URL or separately authenticated delivery layer when artifacts are
+  hosted on another origin.
+
+* **Prefer short-lived tokens from a credential command.** Configure it with
+  `fastskill repo add --user --auth-type command --credential-command <program>`; it is saved to
+  your user `repositories.toml`, never to the project. In CI and hooks the command sees
+  `FASTSKILL_INTERACTIVE=0`, so it must print a token without prompting or exit non-zero.
 
 * **Set `OPENAI_API_KEY` via secrets** where semantic search / reindex is used. If it is unset,
   embedding-based features silently skip rather than failing — but do not paste the key into config

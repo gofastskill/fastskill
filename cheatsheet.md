@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.257
+FastSkill 0.9.258
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Release revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
-Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
+Documentation revision: 1c5e6397baa83f1540faa3f95b89140075ad8300
 
 
 
@@ -59,16 +59,16 @@ Repository-ID examples below assume a configured catalog:
 fastskill repo add team --repo-type git-marketplace https://github.com/your-org/skills.git
 ```
 
-| Operation               | Command                                                       | What It Does                                                                    |
-| ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Latest stable           | `fastskill skill add pptx@latest --repository team`           | Selects the newest stable release from the named repository                     |
-| Pinned version          | `fastskill skill add pptx@1.2.3 --repository team`            | Selects that exact version and records the repository identity                  |
-| From Git                | `fastskill skill add https://github.com/org/skill.git`        | Clones, validates layout, registers and installs                                |
-| Editable local path     | `fastskill skill add ./dev-skill -e`                          | Symlink or reference; edits apply without reinstall                             |
-| Private registry        | `fastskill skill add team-skill --repository team`            | Uses auth from `skill-project.toml` / environment                               |
-| Folder of skills        | `fastskill skill add ./skills -r`                             | Adds each subdirectory that contains `SKILL.md` (local trees only)              |
-| Network share (Windows) | `fastskill skill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory                   |
-| Offline add             | `fastskill skill add pptx@1.2.3 --repository team --offline`  | Uses a verified cached artifact without refresh, network, or automatic indexing |
+| Operation               | Command                                                       | What It Does                                                                                                   |
+| ----------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Latest stable           | `fastskill skill add pptx@latest --repository team`           | Selects the newest stable release from the named repository                                                    |
+| Pinned version          | `fastskill skill add pptx@1.2.3 --repository team`            | Selects that exact version and records the repository identity                                                 |
+| From Git                | `fastskill skill add https://github.com/org/skill.git`        | Clones, validates layout, registers and installs                                                               |
+| Editable local path     | `fastskill skill add ./dev-skill -e`                          | Symlink or reference; edits apply without reinstall                                                            |
+| Private registry        | `fastskill skill add team-skill --repository team`            | Uses auth from `skill-project.toml` or your user `repositories.toml`: a token variable or a credential command |
+| Folder of skills        | `fastskill skill add ./skills -r`                             | Adds each subdirectory that contains `SKILL.md` (local trees only)                                             |
+| Network share (Windows) | `fastskill skill add \\\\fileserver\\corp-skills\\team-tools` | Copies from a corporate share into the local skills directory                                                  |
+| Offline add             | `fastskill skill add pptx@1.2.3 --repository team --offline`  | Uses a verified cached artifact without refresh, network, or automatic indexing                                |
 
 ## Search
 
