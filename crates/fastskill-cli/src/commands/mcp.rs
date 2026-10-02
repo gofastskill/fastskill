@@ -469,6 +469,7 @@ mod tests {
         for expected in [
             "fastskill_project_init",
             "fastskill_project_install",
+            "fastskill_project_repin",
             "fastskill_skill_add",
             "fastskill_skill_update",
             "fastskill_skill_remove",

@@ -35,6 +35,7 @@ pub mod project_state;
 pub mod registry;
 pub mod registry_index;
 pub mod reindex;
+pub mod repin;
 pub mod repository;
 pub mod resolution;
 pub mod resolver;

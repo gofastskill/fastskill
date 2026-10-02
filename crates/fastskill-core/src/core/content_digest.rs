@@ -23,7 +23,8 @@
 //! and contents. Legacy digests are still accepted when they match, with a warning, so that
 //! Locks and bundles written by older releases keep installing. Every digest fastskill
 //! writes is in the current form; a legacy value is replaced whenever its record is
-//! rewritten.
+//! rewritten, and `fastskill project repin` replaces every legacy value in a project's
+//! records at once, without changing any content.
 
 use crate::core::service::ServiceError;
 use sha2::{Digest, Sha256};
@@ -158,7 +159,7 @@ impl DigestForms {
 
 /// The digest algorithm before ADR-0017. Kept only to verify records older releases wrote;
 /// never used to write a new record.
-pub(crate) fn legacy_content_digest(path: &Path) -> Result<String, ServiceError> {
+pub fn legacy_content_digest(path: &Path) -> Result<String, ServiceError> {
     ensure_directory(path)?;
     let mut hasher = Sha256::new();
     for entry in WalkDir::new(path).sort_by_file_name() {
@@ -280,8 +281,9 @@ fn warn_legacy_digest_accepted() {
     crate::utils::warn_once(
         "legacy-content-digest",
         "accepted a legacy content digest written by an older fastskill; legacy digests are \
-         weaker than the current `sha256-tree-v2` form, and fastskill replaces each one the \
-         next time it rewrites that record (ADR-0017)",
+         weaker than the current `sha256-tree-v2` form. Run `fastskill project repin` \
+         (and `fastskill --global project repin`) to rewrite them from the installed content; \
+         a future minor release will refuse legacy digests (ADR-0017)",
     );
 }
 

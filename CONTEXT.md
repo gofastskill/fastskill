@@ -25,7 +25,8 @@ A bare action or skill ID is not a command path. See
 
 **Project restoration**:
 `project init` creates `skill-project.toml`; `project install` restores the complete selected
-project, including skills and bundles.
+project, including skills and bundles. `project repin` rewrites legacy content digests in the
+project's records from the installed content, without changing content or re-resolving anything.
 
 ### Core entities
 

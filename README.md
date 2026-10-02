@@ -191,7 +191,7 @@ exports. It refuses a `tools/call` naming one with JSON-RPC
 | --- | --- | --- |
 | `fastskill skill` | `add`, `remove`, `update`, `list`, `read`, `search` | Manage and discover individual skills. |
 | `fastskill bundle` | `build`, `add`, `list`, `update`, `remove`, `override` | Build and manage self-contained team bundles. |
-| `fastskill project` | `init`, `install` | Create and restore a skill project. |
+| `fastskill project` | `init`, `install`, `repin` | Create and restore a skill project, and re-pin legacy digests. |
 | `fastskill repo` | `add`, `list`, `info`, `update`, `remove`, `test`, `refresh`, `skills`, `show`, `versions` | Configure repositories and browse catalogs. |
 | `fastskill marketplace` | `create` | Generate a `marketplace.json` catalog. |
 | `fastskill analysis` | `matrix`, `cluster`, `duplicates` | Analyze similarity across installed skills. |

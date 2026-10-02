@@ -143,6 +143,11 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
         }],
     },
     WriteOperation {
+        id: "project-repin",
+        command_path: Some(&["project", "repin"]),
+        http_routes: &[],
+    },
+    WriteOperation {
         id: "skill-update",
         command_path: Some(&["skill", "update"]),
         http_routes: &[

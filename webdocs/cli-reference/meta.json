@@ -5,6 +5,7 @@
     "skill-commands",
     "init-command",
     "install-command",
+    "repin-command",
     "update-command",
     "bundle-command",
     "---Sources and distribution---",

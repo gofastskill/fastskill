@@ -41,6 +41,7 @@ const CANONICAL_PATHS: &[&str] = &[
     "optimization/status",
     "project/init",
     "project/install",
+    "project/repin",
     "repo/add",
     "repo/info",
     "repo/list",
@@ -100,7 +101,7 @@ fn spec_exports_the_exact_canonical_inventory() {
         .collect::<BTreeSet<_>>();
     let expected = CANONICAL_PATHS.iter().copied().collect::<BTreeSet<_>>();
     assert_eq!(actual, expected);
-    assert_eq!(actual.len(), 54);
+    assert_eq!(actual.len(), 55);
 }
 
 #[test]

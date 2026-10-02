@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod read;
 pub mod reindex;
 pub mod remove;
+pub mod repin;
 pub mod repos;
 pub mod search;
 pub mod serve;
