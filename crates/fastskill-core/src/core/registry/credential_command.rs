@@ -23,6 +23,9 @@ pub const MAX_COMMAND_OUTPUT: usize = 16 * 1024;
 /// standard input or standard error is not a terminal.
 pub const INTERACTIVE_ENV: &str = "FASTSKILL_INTERACTIVE";
 
+const NO_CONFIG_DIR: &str =
+    "Cannot run a credential command: FastSkill's config directory is unknown on this platform";
+
 /// How a credential command is run. [`CommandSettings::detect`] gives the
 /// settings FastSkill uses; tests build their own.
 #[derive(Debug, Clone)]
@@ -37,14 +40,8 @@ impl CommandSettings {
     /// The real settings: a 30 second timeout, FastSkill's config directory,
     /// and this process's own terminals.
     pub fn detect() -> Result<Self, ServiceError> {
-        let working_dir =
-            crate::core::repository::user_config::user_config_dir().ok_or_else(|| {
-                ServiceError::Config(
-                    "Cannot run a credential command: FastSkill's config directory is \
-                     unknown on this platform"
-                        .to_string(),
-                )
-            })?;
+        let working_dir = crate::core::repository::user_config::user_config_dir()
+            .ok_or_else(|| ServiceError::Config(NO_CONFIG_DIR.to_string()))?;
         Ok(Self {
             timeout: COMMAND_TIMEOUT,
             working_dir,

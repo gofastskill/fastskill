@@ -44,9 +44,7 @@ pub fn load_resolution_repositories() -> CliResult<Vec<RepositoryDefinition>> {
     let Some((project, project_path)) = load_current_project()? else {
         return Ok(user);
     };
-    let project_dir = project_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+    let project_dir = project_path.parent().unwrap_or(std::path::Path::new("."));
     let repositories = project
         .composed_repositories(project_dir)
         .map_err(CliError::Config)?
@@ -62,10 +60,14 @@ pub fn load_user_repositories() -> CliResult<Vec<RepositoryDefinition>> {
     user_config::load_user_repositories().map_err(|e| CliError::Config(e.to_string()))
 }
 
+fn current_dir() -> CliResult<PathBuf> {
+    env::current_dir()
+        .map_err(|e| CliError::Config(format!("Failed to get current directory: {e}")))
+}
+
 /// The skill-project.toml found from the current directory, if any.
 fn load_current_project() -> CliResult<Option<(SkillProjectToml, PathBuf)>> {
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+    let current_dir = current_dir()?;
 
     let project_file = project::resolve_project_file(&current_dir);
     if !project_file.found {
@@ -97,8 +99,7 @@ pub fn get_skill_search_locations_for_display(global: bool) -> CliResult<Vec<(Pa
     if global {
         Ok(vec![(global_skills_directory()?, "global".to_string())])
     } else {
-        let current_dir = env::current_dir()
-            .map_err(|e| CliError::Config(format!("Failed to get current directory: {e}")))?;
+        let current_dir = current_dir()?;
         let config =
             fastskill_core::core::load_project_config(&current_dir).map_err(CliError::Config)?;
         Ok(vec![(config.skills_directory, "project".to_string())])
@@ -115,8 +116,7 @@ pub fn resolve_skills_storage_directory(global: bool) -> CliResult<PathBuf> {
         debug!("Using global skills directory: {}", global_dir.display());
         Ok(global_dir)
     } else {
-        let current_dir = env::current_dir()
-            .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
+        let current_dir = current_dir()?;
 
         // Load project config using single loader
         let config =
@@ -252,21 +252,9 @@ pub fn inject_edge_services(mut service: FastSkillService) -> CliResult<FastSkil
 
 /// Load HTTP server configuration from skill-project.toml [tool.fastskill.server]
 pub fn load_server_config() -> CliResult<Option<HttpServerConfig>> {
-    let current_dir = env::current_dir()
-        .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
-
-    let project_file = project::resolve_project_file(&current_dir);
-    if !project_file.found {
+    let Some((project, _)) = load_current_project()? else {
         return Ok(None); // No skill-project.toml found
-    }
-
-    let project = SkillProjectToml::load_from_file(&project_file.path).map_err(|e| {
-        CliError::Config(format!(
-            "Failed to load skill-project.toml from {}: {}",
-            project_file.path.display(),
-            e
-        ))
-    })?;
+    };
 
     // Extract [tool.fastskill.server] configuration
     let server_toml = project

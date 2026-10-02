@@ -329,3 +329,8 @@ fn escape_xml(input: &str) -> String {
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
 }
+
+#[cfg(test)]
+#[path = "formatters_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests;

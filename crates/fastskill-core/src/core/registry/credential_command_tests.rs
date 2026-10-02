@@ -179,6 +179,18 @@ async fn a_missing_program_or_empty_command_is_an_error() {
     assert!(error.contains("empty"), "{error}");
 }
 
+#[tokio::test]
+async fn a_working_dir_that_cannot_be_created_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("not-a-dir");
+    std::fs::write(&file, "x").unwrap();
+    let error = run_credential_command(&argv(&["helper"]), &settings(&file.join("sub")))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("'helper' could not run"), "{error}");
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn windows_command_prints_a_token() {
