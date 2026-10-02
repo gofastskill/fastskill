@@ -1,12 +1,12 @@
 # MCP Tool Calling
 
-FastSkill 0.9.256
+FastSkill 0.9.257
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
-Documentation revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
 
 
@@ -54,6 +54,7 @@ with JSON-RPC error `-32005 MCP_TOOL_DENIED` quoting the flag, before the comman
 | `fastskill_project_init`        | `fastskill project init`        |
 | `fastskill_skill_add`           | `fastskill skill add`           |
 | `fastskill_project_install`     | `fastskill project install`     |
+| `fastskill_project_repin`       | `fastskill project repin`       |
 | `fastskill_skill_update`        | `fastskill skill update`        |
 | `fastskill_skill_remove`        | `fastskill skill remove`        |
 | `fastskill_bundle_add`          | `fastskill bundle add`          |

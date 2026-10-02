@@ -1,12 +1,12 @@
 # CLI Reference Overview
 
-FastSkill 0.9.256
+FastSkill 0.9.257
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
-Documentation revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
 
 
@@ -67,7 +67,7 @@ fastskill bundle add --help     # Help for adding a bundle artifact
 | ------------------------ | ------------------------------------------------------------------------------------------ |
 | `fastskill skill`        | `add`, `remove`, `update`, `list`, `read`, `search`                                        |
 | `fastskill bundle`       | `build`, `add`, `list`, `update`, `remove`, `override`                                     |
-| `fastskill project`      | `init`, `install`                                                                          |
+| `fastskill project`      | `init`, `install`, `repin`                                                                 |
 | `fastskill repo`         | `add`, `list`, `info`, `update`, `remove`, `test`, `refresh`, `skills`, `show`, `versions` |
 | `fastskill marketplace`  | `create`                                                                                   |
 | `fastskill analysis`     | `matrix`, `cluster`, `duplicates`                                                          |
@@ -79,7 +79,7 @@ fastskill bundle add --help     # Help for adding a bundle artifact
 | `fastskill mcp`          | `serve`, `install`, `list`                                                                 |
 | `fastskill cli`          | `doctor`, `completion`, `spec`                                                             |
 
-The tree contains 49 leaf commands. Root help shows the namespaces as a compact table of contents.
+The tree contains 50 leaf commands. Root help shows the namespaces as a compact table of contents.
 Run `fastskill <namespace> --help` to discover that namespace, then run
 `fastskill <namespace> <action> --help` for arguments and examples. A bare skill ID is not a
 command; use `fastskill skill read <skill-id>`.
@@ -87,7 +87,8 @@ command; use `fastskill skill read <skill-id>`.
 **Skills and projects**
 
 See [skill commands](/cli-reference/skill-commands), [bundle commands](/cli-reference/bundle-command),
-[project init](/cli-reference/init-command), and [project install](/cli-reference/install-command).
+[project init](/cli-reference/init-command), [project install](/cli-reference/install-command), and
+[project repin](/cli-reference/repin-command).
 
 
 **Sources and distribution**

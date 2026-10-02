@@ -1,12 +1,12 @@
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.256
+FastSkill 0.9.257
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Release revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
-Documentation revision: 045bbbf81a9212b9129e560e7fc8276117c1a6c3
+Documentation revision: e87a6f75226673b6ebe0f492dfee174dd2381946
 
 
 
