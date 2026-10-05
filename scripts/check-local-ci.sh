@@ -51,6 +51,7 @@ cargo clippy --workspace --all-targets --all-features
 cargo build --all-features
 bash scripts/smoke-binary.sh "${CARGO_TARGET_DIR:-target}/debug/fastskill"
 cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
+cargo test --doc --workspace --all-features
 
 # Fresh instrumentation counters: never allow a previous run to inflate coverage.
 cargo llvm-cov clean --workspace
