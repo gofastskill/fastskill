@@ -1,2 +1,2 @@
-Release: v0.9.260
-Documentation revision: 2bf37eef28adf73599e0d2d6d55796aa42621036
+Release: v0.9.261
+Documentation revision: b5b1e83ea78ad1a0859215656ac96230440ad7e9
