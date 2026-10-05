@@ -30,7 +30,10 @@ fn clone_args_disable_hooks_helpers_and_unsafe_transports() {
     ] {
         assert!(settings.contains(&expected), "{expected} in {settings:?}");
     }
-    let hooks = format!("core.hooksPath={}", Path::new("/w/home/hooks").display());
+    let hooks = format!(
+        "core.hooksPath={}",
+        Path::new("/w/home").join("hooks").display()
+    );
     assert!(settings.contains(&hooks.as_str()), "{settings:?}");
     for flag in [
         "--depth=1",
@@ -40,7 +43,10 @@ fn clone_args_disable_hooks_helpers_and_unsafe_transports() {
     ] {
         assert!(args.iter().any(|arg| arg == flag), "{flag} in {args:?}");
     }
-    let template = format!("--template={}", Path::new("/w/home/template").display());
+    let template = format!(
+        "--template={}",
+        Path::new("/w/home").join("template").display()
+    );
     assert!(args.contains(&template), "{args:?}");
     assert!(!args.iter().any(|arg| arg.starts_with("--branch")));
 }
