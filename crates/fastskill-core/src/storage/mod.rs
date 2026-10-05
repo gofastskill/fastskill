@@ -16,6 +16,7 @@ pub trait StorageBackend: Send + Sync {
 pub mod filesystem;
 pub mod git;
 pub mod git_commit;
+pub mod git_isolated;
 pub mod hot_reload;
 pub mod vector_index;
 pub mod zip;

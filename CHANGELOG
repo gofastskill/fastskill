@@ -70,6 +70,15 @@
 
 ### Added
 
+- **`storage::git_isolated::clone_isolated` for cloning repositories you do not control.** The
+  library clone reads no system, global or user git configuration and inherits no environment
+  beyond `PATH`, proxy and CA settings, so a host's credential helper, `insteadOf` rewrite or
+  filter never applies. It runs no hooks and copies no templates, never prompts, allows only
+  HTTPS by default and follows no redirect unless asked. One overall deadline, a byte cap and a
+  file cap are checked while git runs. It returns the tree at one commit, without `.git`, and
+  that commit's ID; symbolic links are left for the caller to judge. The CLI's own clones are
+  unchanged.
+
 - **Bearer-token and credential-command auth for `http-registry` repositories.**
   `auth = { type = "bearer", env_var = "VAR" }` sends `Authorization: Bearer <token>` from an
   environment variable and may sit in `skill-project.toml`. `auth = { type = "command", command =
