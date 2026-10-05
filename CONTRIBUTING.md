@@ -155,6 +155,14 @@ that `.gitignore` excludes, or to this file.
 
 [Rust](https://rustup.rs/) nightly is required to build fastskill. The exact version and components are pinned in `rust-toolchain.toml` to ensure consistent builds across contributors, CI, and releases.
 
+### Bumping the toolchain
+
+The nightly is pinned to a dated channel so that a nightly regression cannot turn CI red without a change in this repo. Bumps are manual:
+
+1. Edit the date in `rust-toolchain.toml` (`channel = "nightly-YYYY-MM-DD"`).
+2. Run `scripts/run-tests.sh` against the new toolchain.
+3. Open a PR containing only that change.
+
 fastskill uses pure Rust dependencies and does not require a C compiler for building. The SQLite dependency (rusqlite) uses the `bundled` feature, which compiles SQLite from source using the Rust compiler.
 
 ### Testing Tools
