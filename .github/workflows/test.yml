@@ -89,6 +89,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
+      # nextest does not run doctests, so compile and run the doc examples separately.
+      - run: cargo test --doc --workspace --all-features
 
   # Windows unit + integration test coverage (Phase 2a + 2b).
   #
