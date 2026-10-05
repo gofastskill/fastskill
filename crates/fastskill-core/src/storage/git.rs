@@ -52,6 +52,9 @@ pub enum GitError {
     #[error("Ref '{ref_name}' not found on {url}")]
     RefNotFound { url: String, ref_name: String },
 
+    #[error("Clone of {url} exceeded its limit: {limit}")]
+    CloneTooLarge { url: String, limit: String },
+
     #[error(
         "Git sources authenticate via the system git credential helper or SSH agent, not via \
          `auth` config -- fastskill does not inject PAT/basic credentials into git operations. \
