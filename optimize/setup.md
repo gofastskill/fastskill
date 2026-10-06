@@ -1,12 +1,12 @@
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.263
+FastSkill 0.9.264
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: 2191ca55eaf1dbf69ee30e26e914cb4d8d03ce3a
+Release revision: 77e1ecdf9d221ea023b0d92e10be7bb2554e1481
 
-Documentation revision: 2191ca55eaf1dbf69ee30e26e914cb4d8d03ce3a
+Documentation revision: 77e1ecdf9d221ea023b0d92e10be7bb2554e1481
 
 
 
