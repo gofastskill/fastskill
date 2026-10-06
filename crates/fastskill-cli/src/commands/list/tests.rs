@@ -99,6 +99,8 @@ async fn test_execute_list_format_conflict() {
     }
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn test_execute_list_no_manifest() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -159,6 +161,8 @@ async fn test_execute_list_no_manifest() {
     }
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn test_execute_list_manifest_empty_lock() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -210,6 +214,8 @@ skills_directory = ".claude/skills"
     assert!(result.is_ok() || result.is_err());
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn test_execute_list_with_installed_skill() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -287,6 +293,8 @@ source = { path = ".claude/skills/test-skill" }
     assert!(result.is_ok() || result.is_err());
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn test_execute_list_json() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -338,6 +346,8 @@ skills_directory = ".claude/skills"
     assert!(result.is_ok() || result.is_err());
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn test_execute_list_details() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -389,6 +399,8 @@ skills_directory = ".claude/skills"
     assert!(result.is_ok() || result.is_err());
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn bundle_listing_and_selector_conflicts_are_validated_consistently() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -440,6 +452,8 @@ async fn bundle_listing_and_selector_conflicts_are_validated_consistently() {
     assert_eq!(ListArgs::from_arg_value_map(&map).format, None);
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn project_reconciliation_classifies_each_managed_state_shape_and_group_selection() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
