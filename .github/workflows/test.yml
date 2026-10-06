@@ -28,6 +28,15 @@ jobs:
       - run: bash scripts/check-source-size.sh
       - run: python3 -m unittest discover -s scripts/tests -p 'test_local_ci.py'
 
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories sources
+
   webdocs:
     name: Web docs
     runs-on: ubuntu-latest
@@ -63,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   build:
@@ -71,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --all-features
 
       # `cargo build --all-features` above already produces target/debug/fastskill, so
@@ -86,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
       # nextest does not run doctests, so compile and run the doc examples separately.
@@ -115,7 +124,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo install cargo-nextest --locked
       # --no-fail-fast: this job is still being brought up, and stopping at the
       # first failure would surface only one platform issue per CI round-trip.
@@ -231,6 +240,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --all-features --retries 3 --fail-fast -E 'not test(install_e2e_tests)'
