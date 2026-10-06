@@ -1,12 +1,12 @@
 # Reconcile project skill state
 
-FastSkill 0.9.261
+FastSkill 0.9.263
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: b5b1e83ea78ad1a0859215656ac96230440ad7e9
+Release revision: 2191ca55eaf1dbf69ee30e26e914cb4d8d03ce3a
 
-Documentation revision: b5b1e83ea78ad1a0859215656ac96230440ad7e9
+Documentation revision: 2191ca55eaf1dbf69ee30e26e914cb4d8d03ce3a
 
 
 
