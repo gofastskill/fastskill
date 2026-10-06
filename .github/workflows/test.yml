@@ -33,9 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
-        with:
-          command: check advisories sources
+      # Installed from crates.io: the repo's Actions allowlist does not permit
+      # EmbarkStudios/cargo-deny-action. Version-pinned and --locked.
+      - run: cargo install cargo-deny --version 0.20.2 --locked
+      - run: cargo deny check advisories sources
 
   webdocs:
     name: Web docs
