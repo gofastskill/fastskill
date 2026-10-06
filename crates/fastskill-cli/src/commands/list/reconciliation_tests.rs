@@ -96,6 +96,8 @@ fn bundle(id: &str, members: &[(&str, &str)]) -> ProjectLockedBundleEntry {
     }
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn bundle_members_report_shared_ownership_overrides_and_integrity_failures() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX
@@ -199,6 +201,8 @@ fn locked_child(id: &str, checksum: Option<String>) -> ProjectLockedSkillEntry {
     }
 }
 
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn selected_roots_check_transitive_content_and_exclude_the_same_closure_by_group() {
     let _lock = fastskill_core::test_utils::DIR_MUTEX

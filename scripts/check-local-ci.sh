@@ -47,7 +47,7 @@ fi
 cargo fmt --all -- --check
 bash scripts/check-source-size.sh
 python3 -m unittest discover -s scripts/tests -p 'test_local_ci.py'
-cargo clippy --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo build --all-features
 bash scripts/smoke-binary.sh "${CARGO_TARGET_DIR:-target}/debug/fastskill"
 cargo nextest run --retries 3 --fail-fast -E 'not test(install_e2e_tests)'

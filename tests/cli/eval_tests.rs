@@ -8,7 +8,7 @@ use super::snapshot_helpers::{
 };
 
 /// Path to the compiled fake-agent test helper (see
-/// `crates/fastskill-cli/src/bin/fake_agent.rs`), auto-discovered by Cargo
+/// `crates/fastskill-cli/src/bin/fake-agent.rs`), auto-discovered by Cargo
 /// as a `[[bin]]` target of this same package via the `CARGO_BIN_EXE_<name>`
 /// env var Cargo sets for integration tests.
 ///
@@ -19,7 +19,7 @@ use super::snapshot_helpers::{
 /// extension, so Windows can neither find nor execute it), and no
 /// Unix-only `:` PATH-separator assumption.
 fn fake_agent_binary() -> &'static std::path::Path {
-    std::path::Path::new(env!("CARGO_BIN_EXE_fake_agent"))
+    std::path::Path::new(env!("CARGO_BIN_EXE_fake-agent"))
 }
 
 /// Installs the compiled fake-agent helper into `bin_dir` under

@@ -52,7 +52,6 @@ num_cpus = "1.16"
 
 # File system and I/O
 tokio-util = { version = "0.7", features = ["io"] }
-notify = "6.0"
 walkdir = "2.5"
 fs2 = "0.4"
 
@@ -61,9 +60,6 @@ zip = { version = "8.6", default-features = false, features = ["deflate"] }
 
 # HTTP client for embedding API (rustls for musl compatibility)
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
-
-# Multipart form data handling for skill uploads
-multer = "3.1"
 
 # HTTP server
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }
@@ -96,7 +92,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
-config = "0.15"
 clap = { version = "4.4", features = ["derive"] }
 
 # URL parsing
@@ -118,9 +113,6 @@ semver = "1.0"
 comrak = "0.55.0"
 ammonia = "4.1.4"
 
-# AWS S3 storage (for registry publishing)
-aws-sdk-s3 = "1"
-aws-config = "1"
 
 [workspace.lints.clippy]
 # Warn about critical lints that should be avoided in production code

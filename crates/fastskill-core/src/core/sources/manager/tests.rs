@@ -560,6 +560,7 @@ fn repository_conversion_keeps_supported_types_and_priority() {
 }
 
 #[test]
+#[allow(clippy::panic)]
 fn repository_conversion_rejects_settings_that_would_be_ignored() {
     fn rejected(
         repo_type: RepositoryType,

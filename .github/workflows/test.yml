@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --all-features
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   build:
     name: Build
@@ -196,7 +196,7 @@ jobs:
       # aikit-sdk's `command_resolve.rs`), independent of any real product
       # behavior. Fixed by replacing the shell-script fixture with a small
       # compiled cross-platform helper
-      # (`crates/fastskill-cli/src/bin/fake_agent.rs`) installed under the
+      # (`crates/fastskill-cli/src/bin/fake-agent.rs`) installed under the
       # right name/extension and a `std::env::join_paths`-built `PATH`, so
       # these 4 now run (and pass) on both platforms.
       - name: Test fastskill-cli cli_tests (Windows)
