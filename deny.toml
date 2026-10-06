@@ -1,0 +1,32 @@
+# cargo-deny configuration. CI runs `cargo deny check advisories sources`.
+# License policy is deliberately not enforced here yet (see #384).
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# Every RustSec vulnerability fails the check. An advisory that cannot be fixed
+# yet needs an explicit entry here with the reason.
+ignore = [
+    # Test-only: wiremock 0.5 (dev-dependency) pulls hyper 0.14 -> h2 0.3, which has no fixed 0.3.x release.
+    { id = "RUSTSEC-2026-0258", reason = "h2 0.3.27 is reached only through dev-dependency wiremock 0.5; no patched 0.3.x exists" },
+    { id = "RUSTSEC-2026-0174", reason = "http-types is reached only through dev-dependency wiremock 0.5; no patched release" },
+    { id = "RUSTSEC-2024-0384", reason = "instant (unmaintained) is reached only through dev-dependency wiremock 0.5" },
+    # Unmaintained crates with no drop-in replacement upstream.
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x (unmaintained) comes from comrak -> syntect; no safe upgrade available" },
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust (unmaintained) comes from comrak -> syntect; no safe upgrade available" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 (unmaintained) is a build-time proc-macro dep of validator_derive" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Exactly the git dependencies Cargo.lock resolves.
+allow-git = [
+    "https://github.com/goaikit/aikit",
+    "https://github.com/aroff/cli-framework",
+    "https://github.com/aroff/claude-agent-sdk-rust",
+    "https://github.com/goailoop/ailoop",
+]
