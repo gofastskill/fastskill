@@ -1,12 +1,12 @@
 # MCP Tool Calling
 
-FastSkill 0.9.266
+FastSkill 0.9.267
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: 9f9e90018580795ea54bf6d9866eac771e4e5dd7
+Release revision: 8ba0a024d3728003ebe2776ec5f443810d97696f
 
-Documentation revision: 9f9e90018580795ea54bf6d9866eac771e4e5dd7
+Documentation revision: 8ba0a024d3728003ebe2776ec5f443810d97696f
 
 
 
