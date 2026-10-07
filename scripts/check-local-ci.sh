@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 BASE_REF=${1:-origin/main}
-for tool in cargo cargo-nextest cargo-llvm-cov rustup python3 node git; do
+for tool in cargo cargo-nextest cargo-llvm-cov cargo-deny rustup python3 node git; do
     command -v "$tool" >/dev/null || {
         echo "error: missing $tool; see CONTRIBUTING.md local PR validation prerequisites" >&2
         exit 1
@@ -46,6 +46,7 @@ fi
 
 cargo fmt --all -- --check
 bash scripts/check-source-size.sh
+cargo deny check advisories sources
 python3 -m unittest discover -s scripts/tests -p 'test_local_ci.py'
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo build --all-features
