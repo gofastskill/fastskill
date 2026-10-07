@@ -83,8 +83,6 @@ impl FastSkillService {
             });
         }
 
-        let total = skill_files.len();
-
         // Collect current skill IDs so stale index entries (skills removed from
         // disk since the last reindex) can be pruned below.
         let current_skill_ids: HashSet<String> = skill_files
@@ -92,64 +90,90 @@ impl FastSkillService {
             .filter_map(|f| skill_id_from_path(f))
             .collect();
 
-        let mut count = 0usize;
-        for (idx, skill_file) in skill_files.into_iter().enumerate() {
-            let skill_id = skill_id_from_path(&skill_file).unwrap_or_else(|| "unknown".to_string());
+        let count = index_skill_files(
+            skill_files,
+            embedding_service.as_ref(),
+            vector_index_service.as_ref(),
+            observer,
+        )
+        .await;
 
-            if let Some(obs) = observer {
-                obs(ReindexProgress {
-                    current: idx + 1,
-                    total,
-                    skill_id: skill_id.clone(),
-                });
-            }
-
-            match index_skill_file(
-                &skill_file,
-                &skill_id,
-                embedding_service.as_ref(),
-                vector_index_service.as_ref(),
-            )
-            .await
-            {
-                Ok(true) => count += 1,
-                Ok(false) => {
-                    // Unchanged hash: nothing to do.
-                }
-                Err(e) => {
-                    // A single skill failing to index should not abort the whole
-                    // reindex run; log and continue with the rest.
-                    tracing::warn!("Failed to reindex skill {}: {}", skill_id, e);
-                }
-            }
-        }
-
-        // Cleanup: remove skills from the index that are no longer on disk.
-        match vector_index_service.get_all_skills().await {
-            Ok(all_indexed_skills) => {
-                for indexed_skill in all_indexed_skills {
-                    if !current_skill_ids.contains(&indexed_skill.id) {
-                        tracing::info!("Removing stale index entry: {}", indexed_skill.id);
-                        if let Err(e) = vector_index_service.remove_skill(&indexed_skill.id).await {
-                            tracing::warn!(
-                                "Failed to remove stale index entry {}: {}",
-                                indexed_skill.id,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to retrieve all indexed skills for cleanup: {}", e);
-            }
-        }
+        prune_stale_entries(vector_index_service.as_ref(), &current_skill_ids).await;
 
         Ok(ReindexOutcome {
             reindexed: true,
             count,
             reason: None,
         })
+    }
+}
+
+/// Index every skill file, reporting progress to `observer`. A skill that fails
+/// to index is logged and skipped so one bad skill does not abort the run.
+/// Returns how many skills were (re)indexed.
+async fn index_skill_files(
+    skill_files: Vec<PathBuf>,
+    embedding_service: &dyn EmbeddingService,
+    vector_index_service: &dyn VectorIndexService,
+    observer: Option<&(dyn Fn(ReindexProgress) + Send + Sync)>,
+) -> usize {
+    let total = skill_files.len();
+    let mut count = 0usize;
+    for (idx, skill_file) in skill_files.into_iter().enumerate() {
+        let skill_id = skill_id_from_path(&skill_file).unwrap_or_else(|| "unknown".to_string());
+
+        if let Some(obs) = observer {
+            obs(ReindexProgress {
+                current: idx + 1,
+                total,
+                skill_id: skill_id.clone(),
+            });
+        }
+
+        match index_skill_file(
+            &skill_file,
+            &skill_id,
+            embedding_service,
+            vector_index_service,
+        )
+        .await
+        {
+            Ok(true) => count += 1,
+            Ok(false) => {
+                // Unchanged hash: nothing to do.
+            }
+            Err(e) => {
+                tracing::warn!("Failed to reindex skill {}: {}", skill_id, e);
+            }
+        }
+    }
+    count
+}
+
+/// Remove index entries for skills that are no longer on disk. Failures are
+/// logged, not returned: a stale entry is harmless compared to aborting reindex.
+async fn prune_stale_entries(
+    vector_index_service: &dyn VectorIndexService,
+    current_skill_ids: &HashSet<String>,
+) {
+    let all_indexed_skills = match vector_index_service.get_all_skills().await {
+        Ok(skills) => skills,
+        Err(e) => {
+            tracing::warn!("Failed to retrieve all indexed skills for cleanup: {}", e);
+            return;
+        }
+    };
+    for indexed_skill in all_indexed_skills {
+        if !current_skill_ids.contains(&indexed_skill.id) {
+            remove_stale_entry(vector_index_service, &indexed_skill.id).await;
+        }
+    }
+}
+
+async fn remove_stale_entry(vector_index_service: &dyn VectorIndexService, skill_id: &str) {
+    tracing::info!("Removing stale index entry: {}", skill_id);
+    if let Err(e) = vector_index_service.remove_skill(skill_id).await {
+        tracing::warn!("Failed to remove stale index entry {}: {}", skill_id, e);
     }
 }
 
