@@ -2,6 +2,9 @@
 
 **Package manager and operational toolkit for AI agent skills.**
 
+[![Release](https://img.shields.io/github/v/release/gofastskill/fastskill?sort=semver)](https://github.com/gofastskill/fastskill/releases)
+
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
 [![CI](https://github.com/gofastskill/fastskill/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/gofastskill/fastskill/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/gofastskill/fastskill/branch/main/graph/badge.svg)](https://codecov.io/gh/gofastskill/fastskill)
 
