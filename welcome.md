@@ -1,12 +1,12 @@
 # Understand FastSkill
 
-FastSkill 0.9.268
+FastSkill 0.9.269
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: c54201552f9afec842626c136897aac4317185ef
+Release revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
 
-Documentation revision: c54201552f9afec842626c136897aac4317185ef
+Documentation revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
 
 
 
