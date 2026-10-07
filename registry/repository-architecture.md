@@ -1,12 +1,12 @@
 # Choose a distribution model
 
-FastSkill 0.9.264
+FastSkill 0.9.265
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: 77e1ecdf9d221ea023b0d92e10be7bb2554e1481
+Release revision: 2fd5a2e0f067c02a7b5fee0342d7842ae79c0d5c
 
-Documentation revision: 77e1ecdf9d221ea023b0d92e10be7bb2554e1481
+Documentation revision: 2fd5a2e0f067c02a7b5fee0342d7842ae79c0d5c
 
 
 
