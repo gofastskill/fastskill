@@ -1368,7 +1368,6 @@ dependencies = [
  "futures",
  "include_dir",
  "insta",
- "num_cpus",
  "once_cell",
  "predicates",
  "proptest",
