@@ -17,7 +17,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 # Async runtime
 tokio = { workspace = true, features = ["sync", "time"] }
 async-trait.workspace = true
-futures.workspace = true
 
 # Serialization
 serde.workspace = true
