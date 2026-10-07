@@ -1,12 +1,12 @@
 # project repin
 
-FastSkill 0.9.265
+FastSkill 0.9.266
 
 Source: https://docs.gofastskill.com/cli-reference/repin-command
 
-Release revision: 2fd5a2e0f067c02a7b5fee0342d7842ae79c0d5c
+Release revision: 9f9e90018580795ea54bf6d9866eac771e4e5dd7
 
-Documentation revision: 2fd5a2e0f067c02a7b5fee0342d7842ae79c0d5c
+Documentation revision: 9f9e90018580795ea54bf6d9866eac771e4e5dd7
 
 
 
