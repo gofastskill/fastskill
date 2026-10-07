@@ -255,12 +255,12 @@ Rust changes, and run `bash scripts/run-tests.sh --base origin/main`. For anothe
 pass that target ref or SHA with `--base`. The script does not fetch or install tools automatically.
 It rejects uncommitted Rust changes because the coverage checker compares committed changes.
 
-Prerequisites: the repository Rust toolchain, `cargo-nextest`, `cargo-llvm-cov`,
+Prerequisites: the repository Rust toolchain, `cargo-nextest`, `cargo-llvm-cov`, `cargo-deny`,
 `rustup component add llvm-tools-preview`, Python 3, Node 22 and pnpm 10.21.0.
 The runner prefers `corepack pnpm` when Corepack is on PATH, using the version pinned
 in `webdocs/package.json`; otherwise it uses `pnpm` from that directory. You do not
 need to downgrade your global pnpm. Corepack may download the pinned version on first use.
-The runner checks formatting, source size, Clippy, build/binary smoke, default-feature tests,
+The runner checks formatting, source size, cargo-deny advisories/sources, Clippy, build/binary smoke, default-feature tests,
 instrumented all-feature tests and the coverage threshold, web docs install/content/lint/types/build/export,
 then the uninstrumented all-feature suite. It uses CI's install-E2E exclusion and retries;
 dependency audit findings remain advisory, just as in CI. Coverage reports are retained in a

@@ -17,7 +17,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 # Async runtime
 tokio = { workspace = true, features = ["sync", "time"] }
 async-trait.workspace = true
-futures.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -36,7 +35,6 @@ fs2.workspace = true
 chrono.workspace = true
 once_cell.workspace = true
 regex.workspace = true
-num_cpus.workspace = true
 
 # File system and I/O
 tokio-util.workspace = true

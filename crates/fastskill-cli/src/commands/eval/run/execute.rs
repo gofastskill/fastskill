@@ -12,24 +12,28 @@ use chrono::Utc;
 use fastskill_core::core::project::resolve_project_file;
 use fastskill_core::OutputFormat;
 use fastskill_evals::artifacts::{
-    aggregate_trials, allocate_run_dir, read_summary, skill_git_identity,
-    write_case_trials_summary, write_summary, write_trial_artifacts, CaseStatus, CaseSummary,
-    IsolationReport, SummaryResult, TrialArtifacts, TrialResult,
+    allocate_run_dir, read_summary, skill_git_identity, write_summary, CaseStatus, CaseSummary,
+    IsolationReport, SkillGitIdentity, SummaryResult,
 };
 use fastskill_evals::checks::load_checks;
+use fastskill_evals::config::EvalConfig;
 use fastskill_evals::judge::{JudgeRunOptions, SuitePassRule};
 use fastskill_evals::resolve_eval_config;
-use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner};
-use fastskill_evals::suite::load_suite;
+use fastskill_evals::runner::{AikitEvalRunner, CaseRunOptions, EvalRunner, IsolationMode};
+use fastskill_evals::suite::{load_suite, EvalSuite};
+use fastskill_evals::CheckDefinition;
 
 use crate::commands::eval::isolation::{render_isolation_line, resolve_isolation_mode};
 use crate::commands::eval::observability::scoreable_runtimes;
 use std::env;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 
 use super::RunArgs;
+
+mod case;
+
+use case::CaseRun;
 
 /// Pass rate over every case in a run.
 fn case_rate(passed: usize, total_cases: usize) -> f64 {
@@ -68,28 +72,51 @@ pub async fn execute_run_with_runner<R: EvalRunner + 'static>(
     execute_run_with_shared_runner(args, runner).await
 }
 
+/// Everything settled before the first trial: what to run, where, and against
+/// which thresholds. The same for every runtime in the invocation.
+struct RunPlan {
+    use_json: bool,
+    runtimes: Vec<String>,
+    project_root: PathBuf,
+    skill_identity: Option<SkillGitIdentity>,
+    eval_config: EvalConfig,
+    isolation: IsolationMode,
+    trials_per_case: u32,
+    pass_threshold: f64,
+    suite: EvalSuite,
+    checks: Vec<CheckDefinition>,
+    run_dir_base: PathBuf,
+}
+
 async fn execute_run_with_shared_runner(
     args: RunArgs,
     runner: Arc<dyn EvalRunner>,
 ) -> CliResult<()> {
+    let plan = prepare_run(&args)?;
+
+    let mut all_summaries: Vec<SummaryResult> = Vec::new();
+    let mut any_agent_failed = false;
+    let mut judge_errors: u32 = 0;
+
+    for agent_key in &plan.runtimes {
+        let (summary, agent_judge_errors) = run_agent(&plan, &args, &runner, agent_key).await?;
+        judge_errors += agent_judge_errors;
+        if !run_verdict(&summary, args.ci, plan.pass_threshold) {
+            any_agent_failed = true;
+        }
+        all_summaries.push(summary);
+    }
+
+    print_results(&all_summaries, &args, &plan);
+    final_verdict(&all_summaries, &args, &plan, judge_errors, any_agent_failed)
+}
+
+fn prepare_run(args: &RunArgs) -> CliResult<RunPlan> {
     let format = validate_eval_format_args(&args.format, args.json)?;
     let use_json = format == OutputFormat::Json;
 
     // Resolve runtime selection first so missing --agent is caught before project-file checks.
-    let input = RuntimeSelectionInput::from(&args);
-    let selection = crate::runtime_selector::resolve_runtime_selection(&input)
-        .map_err(runtime_selection_error_to_cli)?;
-
-    let runtimes = match selection {
-        Some(sel) => sel.runtimes,
-        None => {
-            return Err(CliError::Config(
-                "RUNTIME_NO_SELECTION: No runtime selected. Use --agent <id> or --all to \
-                 specify a target runtime."
-                    .to_string(),
-            ));
-        }
-    };
+    let runtimes = select_runtimes(args)?;
 
     let current_dir = env::current_dir()
         .map_err(|e| CliError::Config(format!("Failed to get current directory: {}", e)))?;
@@ -118,11 +145,77 @@ async fn execute_run_with_shared_runner(
 
     let isolation = resolve_isolation_mode(args.no_isolation, &resolution.path, &project_root)?;
 
+    let trials_per_case = validate_trials(args.trials, &eval_config)?;
+    let pass_threshold = validate_threshold(args.threshold, &eval_config)?;
+
+    let suite = load_filtered_suite(args, &eval_config)?;
+
+    // Load checks if configured.
+    let checks = match eval_config.checks_path {
+        Some(ref checks_path) => {
+            load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?
+        }
+        None => vec![],
+    };
+
+    // R10: a required check whose evidence a backend never emits makes the
+    // suite unscoreable there. Ask before the first trial — every one after
+    // this point costs a provider call, and none of them would produce a score.
+    // Runtimes that cannot score are dropped rather than failing the whole
+    // invocation, so `--all` is not held hostage by one text-only decoder;
+    // naming a backend with `--agent` leaves nothing to fall back to and fails.
+    let (runtimes, exclusion_notice) = scoreable_runtimes(
+        &runtimes,
+        &suite.cases,
+        &checks,
+        matches!(isolation, IsolationMode::Isolated { .. }),
+    )?;
+    if let Some(notice) = exclusion_notice {
+        // stderr even under --json: the machine-readable summary covers the
+        // runtimes that ran, and the ones that did not must not vanish.
+        eprintln!("{}", notice);
+    }
+
+    if !use_json {
+        warn_on_cost(suite.cases.len(), trials_per_case, runtimes.len());
+    }
+
+    let run_dir_base = allocate_run_base(&args.output_dir)?;
+
+    Ok(RunPlan {
+        use_json,
+        runtimes,
+        project_root,
+        skill_identity,
+        eval_config,
+        isolation,
+        trials_per_case,
+        pass_threshold,
+        suite,
+        checks,
+        run_dir_base,
+    })
+}
+
+fn select_runtimes(args: &RunArgs) -> CliResult<Vec<String>> {
+    let input = RuntimeSelectionInput::from(args);
+    let selection = crate::runtime_selector::resolve_runtime_selection(&input)
+        .map_err(runtime_selection_error_to_cli)?;
+
+    match selection {
+        Some(sel) => Ok(sel.runtimes),
+        None => Err(CliError::Config(
+            "RUNTIME_NO_SELECTION: No runtime selected. Use --agent <id> or --all to \
+             specify a target runtime."
+                .to_string(),
+        )),
+    }
+}
+
+fn validate_trials(trials: Option<i64>, eval_config: &EvalConfig) -> CliResult<u32> {
     // Validate against the raw parsed value so the error echoes exactly what the
     // user typed (e.g. a negative `-3`), not a wrapped/clamped integer.
-    let trials_raw = args
-        .trials
-        .unwrap_or(i64::from(eval_config.trials_per_case));
+    let trials_raw = trials.unwrap_or(i64::from(eval_config.trials_per_case));
     if !(1..=1000).contains(&trials_raw) {
         return Err(CliError::Config(format!(
             "EVAL_INVALID_TRIALS_CONFIG: trials must be in range [1, 1000], got {}",
@@ -130,17 +223,22 @@ async fn execute_run_with_shared_runner(
         )));
     }
     // Safe: validated to be within [1, 1000] above.
-    let trials_per_case = trials_raw as u32;
+    Ok(trials_raw as u32)
+}
 
-    let pass_threshold = args.threshold.unwrap_or(eval_config.pass_threshold);
+fn validate_threshold(threshold: Option<f64>, eval_config: &EvalConfig) -> CliResult<f64> {
+    let pass_threshold = threshold.unwrap_or(eval_config.pass_threshold);
     if !(0.0..=1.0).contains(&pass_threshold) {
         return Err(CliError::Config(format!(
             "EVAL_INVALID_THRESHOLD: threshold must be in range [0.0, 1.0], got {}",
             pass_threshold
         )));
     }
+    Ok(pass_threshold)
+}
 
-    // Load suite and apply filters (same for all runtimes).
+/// Load the suite and apply `--case` / `--tag` (same for all runtimes).
+fn load_filtered_suite(args: &RunArgs, eval_config: &EvalConfig) -> CliResult<EvalSuite> {
     let mut suite =
         load_suite(&eval_config.prompts_path).map_err(|e| CliError::Config(e.to_string()))?;
 
@@ -175,434 +273,284 @@ async fn execute_run_with_shared_runner(
             )));
         }
     }
+    Ok(suite)
+}
 
-    // Load checks if configured.
-    let checks = if let Some(ref checks_path) = eval_config.checks_path {
-        load_checks(checks_path).map_err(|e| CliError::Config(e.to_string()))?
-    } else {
-        vec![]
-    };
-
-    // R10: a required check whose evidence a backend never emits makes the
-    // suite unscoreable there. Ask before the first trial — every one after
-    // this point costs a provider call, and none of them would produce a score.
-    // Runtimes that cannot score are dropped rather than failing the whole
-    // invocation, so `--all` is not held hostage by one text-only decoder;
-    // naming a backend with `--agent` leaves nothing to fall back to and fails.
-    let (runtimes, exclusion_notice) = scoreable_runtimes(
-        &runtimes,
-        &suite.cases,
-        &checks,
-        matches!(
-            isolation,
-            fastskill_evals::runner::IsolationMode::Isolated { .. }
-        ),
-    )?;
-    if let Some(notice) = exclusion_notice {
-        // stderr even under --json: the machine-readable summary covers the
-        // runtimes that ran, and the ones that did not must not vanish.
-        eprintln!("{}", notice);
-    }
-
-    let total_trial_runs =
-        (suite.cases.len() as u64) * (trials_per_case as u64) * (runtimes.len() as u64);
-    if total_trial_runs >= 100 && !use_json {
+fn warn_on_cost(cases: usize, trials_per_case: u32, agents: usize) {
+    let total_trial_runs = (cases as u64) * (trials_per_case as u64) * (agents as u64);
+    if total_trial_runs >= 100 {
         eprintln!(
             "warning: EVAL_COST_WARNING: running {} case(s) × {} trial(s) × {} agent(s) = {} total trial runs",
-            suite.cases.len(),
-            trials_per_case,
-            runtimes.len(),
-            total_trial_runs
+            cases, trials_per_case, agents, total_trial_runs
         );
     }
+}
 
-    // Allocate run base directory.
+/// Allocate the run base directory under `output_dir`.
+fn allocate_run_base(output_dir: &Path) -> CliResult<PathBuf> {
     let run_id = Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
-    std::fs::create_dir_all(&args.output_dir).map_err(|e| {
+    std::fs::create_dir_all(output_dir).map_err(|e| {
         CliError::Config(format!(
             "Failed to create output directory '{}': {}",
-            args.output_dir.display(),
+            output_dir.display(),
             e
         ))
     })?;
-    let run_dir_base =
-        allocate_run_dir(&args.output_dir, &run_id).map_err(|e| CliError::Config(e.to_string()))?;
+    allocate_run_dir(output_dir, &run_id).map_err(|e| CliError::Config(e.to_string()))
+}
 
-    let mut all_summaries: Vec<SummaryResult> = Vec::new();
-    let mut any_agent_failed = false;
-    let mut judge_errors: u32 = 0;
+/// Run every case for one agent, write its summary and, under `--judge`, judge
+/// it. Returns the summary to report and the number of failed judgments.
+async fn run_agent(
+    plan: &RunPlan,
+    args: &RunArgs,
+    runner: &Arc<dyn EvalRunner>,
+    agent_key: &str,
+) -> CliResult<(SummaryResult, u32)> {
+    // Per-agent subdirectory.
+    let run_dir = plan.run_dir_base.join(agent_key);
+    std::fs::create_dir_all(&run_dir).map_err(|e| {
+        CliError::Config(format!(
+            "Failed to create run directory '{}': {}",
+            run_dir.display(),
+            e
+        ))
+    })?;
 
-    for agent_key in &runtimes {
-        // Per-agent subdirectory.
-        let run_dir = run_dir_base.join(agent_key);
-        std::fs::create_dir_all(&run_dir).map_err(|e| {
-            CliError::Config(format!(
-                "Failed to create run directory '{}': {}",
-                run_dir.display(),
-                e
-            ))
-        })?;
-
-        // Check agent availability.
-        if eval_config.fail_on_missing_agent && !is_agent_available(agent_key) {
-            return Err(CliError::Config(format!(
-                "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it first.",
-                agent_key
-            )));
-        }
-
-        let run_opts = CaseRunOptions {
-            agent_key: agent_key.clone(),
-            model: args.model.clone(),
-            project_root: project_root.clone(),
-            timeout_seconds: eval_config.timeout_seconds,
-            pass_threshold,
-            isolation: isolation.clone(),
-            // A failed case's scratch workspace is moved here so it survives
-            // for debugging; successful workspaces are deleted.
-            retain_workspace_in: Some(run_dir.join("workspaces")),
-        };
-
-        if !use_json {
-            eprintln!(
-                "Running {} eval case(s) with agent '{}' ({} trial(s) per case)...",
-                suite.cases.len(),
-                agent_key,
-                trials_per_case
-            );
-        }
-
-        let mut case_summaries = Vec::new();
-        // First observed per-case isolation report stands in for the run: the
-        // backend and mechanism are constant across an agent's run, and a
-        // per-case copy lives in each trial's artifacts.
-        let mut run_isolation: Option<IsolationReport> = None;
-
-        for case in &suite.cases {
-            if !use_json {
-                eprintln!("  Running case '{}'...", case.id);
-            }
-
-            let max_parallel = eval_config
-                .parallel
-                .unwrap_or_else(|| num_cpus::get().max(1) as u32)
-                .max(1) as usize;
-            let semaphore = Arc::new(Semaphore::new(max_parallel));
-            let mut join_set: JoinSet<
-                CliResult<(
-                    u32,
-                    fastskill_evals::runner::CaseRunOutput,
-                    fastskill_evals::artifacts::CaseResult,
-                    String,
-                )>,
-            > = JoinSet::new();
-
-            for trial_id in 1..=trials_per_case {
-                let permit = Arc::clone(&semaphore);
-                let runner = Arc::clone(&runner);
-                let case_clone = case.clone();
-                let opts_clone = run_opts.clone();
-                let checks_vec = checks.clone();
-
-                join_set.spawn(async move {
-                    let Ok(_permit) = permit.acquire().await else {
-                        return Err(CliError::Config(
-                            "EVAL_PARALLEL_EXHAUSTION: semaphore closed".to_string(),
-                        ));
-                    };
-                    let (out, res, trace) =
-                        runner.run_case(&case_clone, &opts_clone, &checks_vec).await;
-                    Ok((trial_id, out, res, trace))
-                });
-            }
-
-            let mut trials: Vec<TrialResult> = Vec::with_capacity(trials_per_case as usize);
-            let mut command_count_sum: usize = 0;
-            let mut input_tokens_sum: u64 = 0;
-            let mut output_tokens_sum: u64 = 0;
-            let mut saw_any_command_count = false;
-            let mut saw_any_input_tokens = false;
-            let mut saw_any_output_tokens = false;
-
-            while let Some(joined) = join_set.join_next().await {
-                let (trial_id, out, case_result, trace_jsonl) = joined.map_err(|e| {
-                    CliError::Config(format!(
-                        "EVAL_PARALLEL_EXHAUSTION: trial task failed: {}",
-                        e
-                    ))
-                })??;
-
-                if run_isolation.is_none() {
-                    run_isolation = out.isolation.clone();
-                }
-
-                let trial = TrialResult {
-                    trial_id,
-                    status: case_result.status.clone(),
-                    command_count: case_result.command_count,
-                    input_tokens: case_result.input_tokens,
-                    output_tokens: case_result.output_tokens,
-                    check_results: case_result.check_results.clone(),
-                    error_message: case_result.error_message.clone(),
-                    // R5: every field the runner already held and the artifact
-                    // previously narrowed away. Copied verbatim — `eval run` is
-                    // the writer, and a writer that reshapes what the runner
-                    // measured is a second source of truth.
-                    exit_code: case_result.exit_code,
-                    terminal: case_result.terminal.clone(),
-                    cost_usd: case_result.cost_usd,
-                    tokens: case_result.tokens.clone(),
-                    skill_path: case_result.skill_path.clone(),
-                    // Set by `eval judge`, never by the runner: no judge has
-                    // seen this trial yet.
-                    judge_excluded: false,
-                };
-
-                if let Some(cc) = trial.command_count {
-                    saw_any_command_count = true;
-                    command_count_sum = command_count_sum.saturating_add(cc);
-                }
-                if let Some(it) = trial.input_tokens {
-                    saw_any_input_tokens = true;
-                    input_tokens_sum = input_tokens_sum.saturating_add(it);
-                }
-                if let Some(ot) = trial.output_tokens {
-                    saw_any_output_tokens = true;
-                    output_tokens_sum = output_tokens_sum.saturating_add(ot);
-                }
-
-                if let Err(e) = write_trial_artifacts(
-                    &run_dir,
-                    &case.id,
-                    trial_id,
-                    &TrialArtifacts {
-                        stdout: &out.stdout,
-                        stderr: &out.stderr,
-                        trace_jsonl: &trace_jsonl,
-                        // `None` when the trial had no seeded workspace to diff
-                        // against, and then no `workspace.diff` is written at
-                        // all: a judge must see "no evidence", never an empty
-                        // diff claiming nothing changed.
-                        workspace_diff: out.workspace_diff.as_deref(),
-                        result: &trial,
-                    },
-                ) {
-                    if !use_json {
-                        eprintln!(
-                            "  warning: failed to write artifacts for case '{}' trial {}: {}",
-                            case.id, trial_id, e
-                        );
-                    }
-                }
-
-                trials.push(trial);
-            }
-
-            // R4: one fold, shared with the engine. Errored trials leave the
-            // ratio entirely, and a case with none left scores `error` rather
-            // than a 0% fail. Re-deriving the rate here would let the CLI and
-            // the engine disagree about the same run.
-            let aggregated = aggregate_trials(&case.id, trials, trials_per_case, pass_threshold);
-            let trials = aggregated.trials.clone();
-            let aggregated_status = aggregated.aggregated_status.clone();
-            let total_trials = aggregated.total_trials;
-            let pass_rate = aggregated.pass_rate;
-            let pass_count = aggregated.pass_count;
-
-            if let Err(e) = write_case_trials_summary(&run_dir, &case.id, &aggregated) {
-                if !use_json {
-                    eprintln!(
-                        "  warning: failed to write aggregated summary for case '{}': {}",
-                        case.id, e
-                    );
-                }
-            }
-
-            case_summaries.push(CaseSummary {
-                id: case.id.clone(),
-                status: aggregated_status,
-                command_count: if saw_any_command_count {
-                    Some(command_count_sum)
-                } else {
-                    None
-                },
-                input_tokens: if saw_any_input_tokens {
-                    Some(input_tokens_sum)
-                } else {
-                    None
-                },
-                output_tokens: if saw_any_output_tokens {
-                    Some(output_tokens_sum)
-                } else {
-                    None
-                },
-                pass_count: Some(pass_count),
-                total_trials: Some(total_trials),
-                pass_rate: Some(pass_rate),
-                error_count: Some(aggregated.error_count),
-                scored_trials: Some(aggregated.scored_trials),
-                // Recorded so `eval score` can rebuild the same effective check
-                // list offline: under R7 this column generates an implicit
-                // skill-invocation check, and a scorer that cannot see it drops
-                // that check and reports a different verdict than the run.
-                should_trigger: Some(case.should_trigger),
-                judge_excluded_count: Some(aggregated.judge_excluded_count),
-                scores: aggregated.scores.clone(),
-                trials,
-            });
-        }
-
-        let passed = case_summaries
-            .iter()
-            .filter(|r| r.status == CaseStatus::Passed)
-            .count();
-        let failed = case_summaries.len() - passed;
-        let suite_pass_rate = if case_summaries.is_empty() {
-            0.0
-        } else {
-            passed as f64 / case_summaries.len() as f64
-        };
-        let suite_pass = if args.ci {
-            suite_pass_rate >= pass_threshold
-        } else {
-            failed == 0
-        };
-
-        let summary = SummaryResult {
-            suite_pass,
-            suite_pass_rate: Some(suite_pass_rate),
-            agent: agent_key.clone(),
-            model: args.model.clone(),
-            total_cases: case_summaries.len(),
-            passed,
-            failed,
-            trials_per_case: Some(trials_per_case),
-            parallel: eval_config.parallel,
-            pass_threshold: Some(pass_threshold),
-            run_dir: run_dir.clone(),
-            checks_path: eval_config.checks_path.clone(),
-            skill_project_root: project_root.clone(),
-            isolation: run_isolation,
-            // Judge totals belong to `eval judge`, which rewrites them into
-            // this file after it has judged. The runner reports no judgment.
-            judge_errors: None,
-            judge_skipped_trials: None,
-            judge_tokens: None,
-            judge_cost_usd: None,
-            // Recorded now, at run time: the skill on disk when a scorecard is
-            // built later is not the skill that ran (scorecard R2).
-            skill_git_sha: skill_identity.as_ref().map(|i| i.sha.clone()),
-            skill_dirty: skill_identity.as_ref().map(|i| i.dirty),
-            cases: case_summaries,
-        };
-
-        if let Err(e) = write_summary(&run_dir, &summary) {
-            if !use_json {
-                eprintln!("warning: failed to write summary.json: {}", e);
-            }
-        }
-
-        // R13: the same judging function `eval judge` calls, run right after
-        // this agent's own scoring. It rewrites the run's artifacts in place,
-        // so the summary reported from here on is re-read from the file the
-        // judge left rather than the one held in memory.
-        let summary = if args.judge {
-            let opts = JudgeRunOptions {
-                judge_model: args.judge_model.clone(),
-                parallel: eval_config.parallel,
-                suite_rule: if args.ci {
-                    SuitePassRule::RateAtLeast(pass_threshold)
-                } else {
-                    SuitePassRule::AllCases
-                },
-                ..Default::default()
-            };
-            let report = crate::commands::eval::judge::judge_run(&run_dir, &suite, &opts).await?;
-            judge_errors += report.errors;
-            if !use_json {
-                if report.judges.is_empty() {
-                    eprintln!("  no [[judge]] declared in the checks file; nothing was judged");
-                } else {
-                    eprintln!("  judged agent '{}'", agent_key);
-                    crate::commands::eval::judge::render_report(&report);
-                }
-            }
-            read_summary(&run_dir).map_err(|e| {
-                CliError::Config(format!(
-                    "EVAL_ARTIFACTS_CORRUPT: failed to re-read summary.json after judging: {}",
-                    e
-                ))
-            })?
-        } else {
-            summary
-        };
-
-        if !run_verdict(&summary, args.ci, pass_threshold) {
-            any_agent_failed = true;
-        }
-
-        all_summaries.push(summary);
+    // Check agent availability.
+    if plan.eval_config.fail_on_missing_agent && !is_agent_available(agent_key) {
+        return Err(CliError::Config(format!(
+            "EVAL_AGENT_UNAVAILABLE: Agent '{}' is not available. Install it first.",
+            agent_key
+        )));
     }
 
-    // Output results.
-    if use_json {
-        if all_summaries.len() == 1 {
-            crate::outln!(
-                "{}",
-                serde_json::to_string_pretty(&all_summaries[0]).unwrap_or_default()
-            );
-        } else {
-            crate::outln!(
-                "{}",
-                serde_json::to_string_pretty(&all_summaries).unwrap_or_default()
-            );
+    let run_opts = CaseRunOptions {
+        agent_key: agent_key.to_string(),
+        model: args.model.clone(),
+        project_root: plan.project_root.clone(),
+        timeout_seconds: plan.eval_config.timeout_seconds,
+        pass_threshold: plan.pass_threshold,
+        isolation: plan.isolation.clone(),
+        // A failed case's scratch workspace is moved here so it survives
+        // for debugging; successful workspaces are deleted.
+        retain_workspace_in: Some(run_dir.join("workspaces")),
+    };
+
+    if !plan.use_json {
+        eprintln!(
+            "Running {} eval case(s) with agent '{}' ({} trial(s) per case)...",
+            plan.suite.cases.len(),
+            agent_key,
+            plan.trials_per_case
+        );
+    }
+
+    let case_run = CaseRun {
+        runner,
+        opts: &run_opts,
+        checks: &plan.checks,
+        run_dir: &run_dir,
+        trials_per_case: plan.trials_per_case,
+        pass_threshold: plan.pass_threshold,
+        parallel: plan.eval_config.parallel,
+        use_json: plan.use_json,
+    };
+
+    let mut case_summaries = Vec::new();
+    // First observed per-case isolation report stands in for the run: the
+    // backend and mechanism are constant across an agent's run, and a
+    // per-case copy lives in each trial's artifacts.
+    let mut run_isolation: Option<IsolationReport> = None;
+
+    for case in &plan.suite.cases {
+        if !plan.use_json {
+            eprintln!("  Running case '{}'...", case.id);
         }
+        let (case_summary, isolation) = case_run.run(case).await?;
+        if run_isolation.is_none() {
+            run_isolation = isolation;
+        }
+        case_summaries.push(case_summary);
+    }
+
+    let summary = build_summary(
+        plan,
+        args,
+        agent_key,
+        &run_dir,
+        run_isolation,
+        case_summaries,
+    );
+
+    if let Err(e) = write_summary(&run_dir, &summary) {
+        if !plan.use_json {
+            eprintln!("warning: failed to write summary.json: {}", e);
+        }
+    }
+
+    if args.judge {
+        judge_agent(plan, args, agent_key, &run_dir).await
     } else {
-        for summary in &all_summaries {
-            // Over every case in the run, which is the question `run_verdict`
-            // asks. After judging `summary.suite_pass_rate` answers a narrower
-            // one (scored cases only); the two must not be reported as one
-            // number.
-            let suite_pass_rate = case_rate(summary.passed, summary.total_cases);
-            let verdict = run_verdict(summary, args.ci, pass_threshold);
-            crate::outln!(
-                "\nEval run complete for agent '{}': {}/{} passed",
-                summary.agent,
-                summary.passed,
-                summary.total_cases
-            );
-            crate::outln!("  run_dir: {}", summary.run_dir.display());
-            crate::outln!("  {}", render_isolation_line(summary.isolation.as_ref()));
-            if let Some(iso) = &summary.isolation {
-                if !iso.ambient_skills.is_empty() {
-                    crate::outln!(
-                        "  ambient skills visible to agent: {}",
-                        iso.ambient_skills.join(", ")
-                    );
-                }
-            }
-            if verdict {
-                if args.ci {
-                    crate::outln!(
-                        "  result: PASSED (suite pass rate {:.0}% ≥ {:.0}% threshold)",
-                        suite_pass_rate * 100.0,
-                        pass_threshold * 100.0
-                    );
-                } else {
-                    crate::outln!("  result: PASSED");
-                }
-            } else if args.ci {
-                crate::outln!(
-                    "  result: FAILED (suite pass rate {:.0}% < {:.0}% threshold)",
-                    suite_pass_rate * 100.0,
-                    pass_threshold * 100.0
-                );
-            } else {
-                crate::outln!("  result: FAILED ({} case(s) failed)", summary.failed);
-            }
+        Ok((summary, 0))
+    }
+}
+
+fn build_summary(
+    plan: &RunPlan,
+    args: &RunArgs,
+    agent_key: &str,
+    run_dir: &Path,
+    run_isolation: Option<IsolationReport>,
+    case_summaries: Vec<CaseSummary>,
+) -> SummaryResult {
+    let passed = case_summaries
+        .iter()
+        .filter(|r| r.status == CaseStatus::Passed)
+        .count();
+    let failed = case_summaries.len() - passed;
+    let suite_pass_rate = case_rate(passed, case_summaries.len());
+    let suite_pass = if args.ci {
+        suite_pass_rate >= plan.pass_threshold
+    } else {
+        failed == 0
+    };
+
+    SummaryResult {
+        suite_pass,
+        suite_pass_rate: Some(suite_pass_rate),
+        agent: agent_key.to_string(),
+        model: args.model.clone(),
+        total_cases: case_summaries.len(),
+        passed,
+        failed,
+        trials_per_case: Some(plan.trials_per_case),
+        parallel: plan.eval_config.parallel,
+        pass_threshold: Some(plan.pass_threshold),
+        run_dir: run_dir.to_path_buf(),
+        checks_path: plan.eval_config.checks_path.clone(),
+        skill_project_root: plan.project_root.clone(),
+        isolation: run_isolation,
+        // Judge totals belong to `eval judge`, which rewrites them into
+        // this file after it has judged. The runner reports no judgment.
+        judge_errors: None,
+        judge_skipped_trials: None,
+        judge_tokens: None,
+        judge_cost_usd: None,
+        // Recorded now, at run time: the skill on disk when a scorecard is
+        // built later is not the skill that ran (scorecard R2).
+        skill_git_sha: plan.skill_identity.as_ref().map(|i| i.sha.clone()),
+        skill_dirty: plan.skill_identity.as_ref().map(|i| i.dirty),
+        cases: case_summaries,
+    }
+}
+
+/// R13: the same judging function `eval judge` calls, run right after this
+/// agent's own scoring. It rewrites the run's artifacts in place, so the
+/// summary reported from here on is re-read from the file the judge left
+/// rather than the one held in memory.
+async fn judge_agent(
+    plan: &RunPlan,
+    args: &RunArgs,
+    agent_key: &str,
+    run_dir: &Path,
+) -> CliResult<(SummaryResult, u32)> {
+    let opts = JudgeRunOptions {
+        judge_model: args.judge_model.clone(),
+        parallel: plan.eval_config.parallel,
+        suite_rule: if args.ci {
+            SuitePassRule::RateAtLeast(plan.pass_threshold)
+        } else {
+            SuitePassRule::AllCases
+        },
+        ..Default::default()
+    };
+    let report = crate::commands::eval::judge::judge_run(run_dir, &plan.suite, &opts).await?;
+    if !plan.use_json {
+        if report.judges.is_empty() {
+            eprintln!("  no [[judge]] declared in the checks file; nothing was judged");
+        } else {
+            eprintln!("  judged agent '{}'", agent_key);
+            crate::commands::eval::judge::render_report(&report);
         }
     }
+    let summary = read_summary(run_dir).map_err(|e| {
+        CliError::Config(format!(
+            "EVAL_ARTIFACTS_CORRUPT: failed to re-read summary.json after judging: {}",
+            e
+        ))
+    })?;
+    Ok((summary, report.errors))
+}
 
+fn print_results(all_summaries: &[SummaryResult], args: &RunArgs, plan: &RunPlan) {
+    if !plan.use_json {
+        for summary in all_summaries {
+            print_agent_result(summary, args.ci, plan.pass_threshold);
+        }
+    } else if all_summaries.len() == 1 {
+        crate::outln!(
+            "{}",
+            serde_json::to_string_pretty(&all_summaries[0]).unwrap_or_default()
+        );
+    } else {
+        crate::outln!(
+            "{}",
+            serde_json::to_string_pretty(&all_summaries).unwrap_or_default()
+        );
+    }
+}
+
+fn print_agent_result(summary: &SummaryResult, ci: bool, pass_threshold: f64) {
+    crate::outln!(
+        "\nEval run complete for agent '{}': {}/{} passed",
+        summary.agent,
+        summary.passed,
+        summary.total_cases
+    );
+    crate::outln!("  run_dir: {}", summary.run_dir.display());
+    crate::outln!("  {}", render_isolation_line(summary.isolation.as_ref()));
+    if let Some(iso) = &summary.isolation {
+        if !iso.ambient_skills.is_empty() {
+            crate::outln!(
+                "  ambient skills visible to agent: {}",
+                iso.ambient_skills.join(", ")
+            );
+        }
+    }
+    crate::outln!("  result: {}", result_line(summary, ci, pass_threshold));
+}
+
+/// The `result:` line for one agent.
+fn result_line(summary: &SummaryResult, ci: bool, pass_threshold: f64) -> String {
+    // Over every case in the run, which is the question `run_verdict` asks.
+    // After judging `summary.suite_pass_rate` answers a narrower one (scored
+    // cases only); the two must not be reported as one number.
+    let suite_pass_rate = case_rate(summary.passed, summary.total_cases);
+    let verdict = run_verdict(summary, ci, pass_threshold);
+    match (verdict, ci) {
+        (true, true) => format!(
+            "PASSED (suite pass rate {:.0}% ≥ {:.0}% threshold)",
+            suite_pass_rate * 100.0,
+            pass_threshold * 100.0
+        ),
+        (true, false) => "PASSED".to_string(),
+        (false, true) => format!(
+            "FAILED (suite pass rate {:.0}% < {:.0}% threshold)",
+            suite_pass_rate * 100.0,
+            pass_threshold * 100.0
+        ),
+        (false, false) => format!("FAILED ({} case(s) failed)", summary.failed),
+    }
+}
+
+fn final_verdict(
+    all_summaries: &[SummaryResult],
+    args: &RunArgs,
+    plan: &RunPlan,
+    judge_errors: u32,
+    any_agent_failed: bool,
+) -> CliResult<()> {
     // R13: a judge that could not render a judgment left a gap in the
     // measurement. `--no-fail` suppresses a failing verdict, never a missing
     // one — reporting an outage as a score is the one thing this must not do.
@@ -611,13 +559,11 @@ async fn execute_run_with_shared_runner(
             "EVAL_JUDGE_ERRORS: {} judgment(s) failed; see judgments.json under {} for the \
              recorded attempts",
             judge_errors,
-            run_dir_base.display()
+            plan.run_dir_base.display()
         )));
     }
 
-    let should_fail = any_agent_failed;
-
-    if should_fail && !args.no_fail {
+    if any_agent_failed && !args.no_fail {
         let total_passed: usize = all_summaries.iter().map(|s| s.passed).sum();
         let total_cases: usize = all_summaries.iter().map(|s| s.total_cases).sum();
         return Err(CliError::Config(format!(
@@ -625,7 +571,7 @@ async fn execute_run_with_shared_runner(
             total_passed,
             total_cases,
             all_summaries.len(),
-            pass_threshold
+            plan.pass_threshold
         )));
     }
 

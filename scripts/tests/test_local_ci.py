@@ -45,7 +45,7 @@ case "$name $*" in
 esac
 exit 0
 '''
-        for name in ("cargo", "cargo-nextest", "cargo-llvm-cov", "rustup",
+        for name in ("cargo", "cargo-nextest", "cargo-llvm-cov", "cargo-deny", "rustup",
                      "python3", "pnpm", "node", "git"):
             target = self.bin / name
             target.write_text(stub)
@@ -69,6 +69,7 @@ exit 0
         commands = self.log.read_text()
         for command in (
             "cargo fmt --all -- --check", "check-source-size.sh",
+            "cargo deny check advisories sources",
             "cargo clippy --workspace --all-targets --all-features -- -D warnings",
             "cargo build --all-features", "smoke-binary.sh",
             "cargo nextest run --retries 3 --fail-fast -E not test(install_e2e_tests)",
@@ -86,6 +87,7 @@ exit 0
         for command in (
             "git rev-parse --verify target-branch^{commit}",
             "cargo fmt --all -- --check", "check-source-size.sh",
+            "cargo deny check advisories sources",
             "cargo clippy --workspace --all-targets --all-features -- -D warnings",
             "cargo build --all-features", "smoke-binary.sh",
             "cargo nextest run --retries 3 --fail-fast -E not test(install_e2e_tests)",

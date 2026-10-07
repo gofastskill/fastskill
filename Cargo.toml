@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.9.264"
+version = "0.9.268"
 edition = "2021"
 authors = ["aroff"]
 license = "Apache-2.0"
@@ -29,7 +29,6 @@ aikit-skillopt = { git = "https://github.com/goaikit/aikit.git", rev = "eb50f2c5
 # Async runtime
 tokio = { version = "1.52", features = ["rt-multi-thread", "net", "fs", "io-util", "macros", "process"] }
 async-trait = "0.1"
-futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
