@@ -1,12 +1,12 @@
 # Context Resolution API
 
-FastSkill 0.9.267
+FastSkill 0.9.268
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: 8ba0a024d3728003ebe2776ec5f443810d97696f
+Release revision: c54201552f9afec842626c136897aac4317185ef
 
-Documentation revision: 8ba0a024d3728003ebe2776ec5f443810d97696f
+Documentation revision: c54201552f9afec842626c136897aac4317185ef
 
 
 
