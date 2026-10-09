@@ -28,6 +28,11 @@ fn pinned(id: &str, seed: u8) -> PinnedKey {
     }
 }
 
+/// An absolute local path on every platform.
+fn local(name: &str) -> String {
+    std::env::temp_dir().join(name).display().to_string()
+}
+
 fn now() -> DateTime<Utc> {
     "2026-10-09T12:00:00Z".parse().unwrap()
 }
@@ -273,9 +278,9 @@ fn whole_state_rules_refuse_it() {
 
 #[test]
 fn a_file_source_may_name_local_artifacts_but_no_other_scheme() {
-    let source = ManagedSource::parse("/srv/managed/state.json").unwrap();
+    let source = ManagedSource::parse(&local("state.json")).unwrap();
     let mut state: ManagedState = serde_json::from_value(state_json()).unwrap();
-    state.skills[0].artifact = "/srv/managed/a.zip".to_string();
+    state.skills[0].artifact = local("a.zip");
     state.validate(&source).unwrap();
     state.skills[0].artifact = "file:///srv/managed/a.zip".to_string();
     assert!(state.validate(&source).is_err());
@@ -342,7 +347,7 @@ fn https_only_features_need_an_https_source_and_its_origin() {
             "d".repeat(64)
         )
     );
-    let file = ManagedSource::parse("/srv/state.json").unwrap();
+    let file = ManagedSource::parse(&local("state.json")).unwrap();
     assert_eq!(state.editable(&file), Editable::BlockedOnly);
     assert_eq!(state.report_url(&file), None);
     assert_eq!(state.request_link(&file, &digest('d')), None);
@@ -361,7 +366,7 @@ fn sources_parse_https_or_absolute_paths_only() {
         Ok(ManagedSource::Https(_))
     ));
     assert!(matches!(
-        ManagedSource::parse("/srv/state.json"),
+        ManagedSource::parse(&local("state.json")),
         Ok(ManagedSource::File(_))
     ));
     for bad in [
@@ -405,8 +410,9 @@ fn the_system_file_overrides_the_user_file_setting_by_setting() {
         dir.path(),
         "user.toml",
         &format!(
-            "source = \"/srv/state.json\"\nrequired = false\ntargets = [\"claude\"]\n\
+            "source = '{}'\nrequired = false\ntargets = [\"claude\"]\n\
              credential_command = [\"login\", \"token\"]\n{}",
+            local("state.json"),
             key_toml("user", 2)
         ),
     );
@@ -493,4 +499,86 @@ fn the_system_file_check_refuses_files_others_can_change() {
 fn nix_is_root() -> bool {
     use std::os::unix::fs::MetadataExt;
     std::fs::metadata("/proc/self").is_ok_and(|m| m.uid() == 0)
+}
+
+#[test]
+fn errors_convert_to_service_errors_by_kind() {
+    use crate::core::service::ServiceError;
+    let config: ServiceError = ManagedError::Config("x".to_string()).into();
+    assert!(matches!(config, ServiceError::Config(m) if m == "managed settings: x"));
+    let invalid: ServiceError = ManagedError::Invalid("y".to_string()).into();
+    assert!(matches!(invalid, ServiceError::Validation(m) if m == "managed state refused: y"));
+}
+
+#[test]
+fn opening_without_a_source_is_a_settings_error() {
+    let payload = serde_json::to_vec(&state_json()).unwrap();
+    let envelope = sign(&payload, &[("k1", 1)]);
+    let error = open(
+        &envelope,
+        &ManagedSettings::default(),
+        &Recorded::default(),
+        now(),
+    )
+    .unwrap_err();
+    assert!(matches!(error, ManagedError::Config(_)), "{error}");
+}
+
+#[test]
+fn sources_report_themselves_and_only_https_has_an_origin() {
+    let https = ManagedSource::parse(SOURCE).unwrap();
+    assert_eq!(https.as_str(), SOURCE);
+    assert!(!https.same_origin("http://skills.example.com/x"));
+    let path = local("state.json");
+    let file = ManagedSource::parse(&path).unwrap();
+    assert_eq!(file.as_str(), path);
+    assert!(file.matches(&path));
+    assert!(!file.same_origin(SOURCE));
+}
+
+#[test]
+fn the_platform_paths_are_known_and_loading_them_reads_what_is_there() {
+    if cfg!(any(target_os = "linux", target_os = "macos", windows)) {
+        assert!(super::config::system_file_path()
+            .is_some_and(|path| path.ends_with(super::SYSTEM_FILE_NAME)));
+    }
+    // Whatever this machine has, loading reports it rather than panicking.
+    let _ = ManagedSettings::load();
+}
+
+#[test]
+fn a_settings_file_that_cant_be_read_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let error = ManagedSettings::load_from(None, Some(dir.path()), |_| Ok(())).unwrap_err();
+    assert!(
+        matches!(&error, ManagedError::Config(m) if m.contains("can't read")),
+        "{error}"
+    );
+    let empty_id = write(
+        dir.path(),
+        "user.toml",
+        "[[keys]]\nid = \" \"\npublic_key = \"AAAA\"\n",
+    );
+    let error = ManagedSettings::load_from(None, Some(&empty_id), |_| Ok(())).unwrap_err();
+    assert!(
+        matches!(&error, ManagedError::Config(m) if m.contains("empty id")),
+        "{error}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_system_file_check_accepts_a_root_owned_file_and_reports_a_missing_one() {
+    let root_owned = Path::new("/etc/passwd");
+    if root_owned.is_file() {
+        super::config::check_system_file(root_owned).unwrap();
+    }
+    assert!(super::config::check_system_file(Path::new("/nonexistent/managed.toml")).is_err());
+}
+
+#[cfg(not(unix))]
+#[test]
+fn the_system_file_is_refused_where_it_cant_be_checked() {
+    let error = super::config::check_system_file(Path::new("managed.toml")).unwrap_err();
+    assert!(error.contains("isn't supported"), "{error}");
 }
