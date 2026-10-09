@@ -4,9 +4,12 @@
 //! what runs on every machine that reads it. So `command` auth, which names a
 //! program to run, is refused here before the typed parse, in the same way
 //! ADR-0016 decision 7 keeps a project file from naming a command. A `bearer`
-//! auth must name its environment variable.
+//! auth must name its environment variable. Managed settings (`[managed]` or
+//! `[tool.fastskill.managed]`) are refused for the same reason: they choose
+//! where a machine's skills come from and which keys vouch for them.
 
 use super::ManifestError;
+use crate::core::managed::config::project_settings_refused;
 use crate::core::repository::auth::project_command_refused;
 
 /// Check every `[[tool.fastskill.repositories]]` entry's `auth` table.
@@ -17,6 +20,15 @@ pub(super) fn reject_unusable_repository_auth(content: &str) -> Result<(), Manif
     let Ok(raw) = toml::from_str::<toml::Value>(content) else {
         return Ok(());
     };
+    let managed_tool = raw
+        .get("tool")
+        .and_then(|tool| tool.get("fastskill"))
+        .and_then(|fastskill| fastskill.get("managed"));
+    if raw.get("managed").is_some() || managed_tool.is_some() {
+        return Err(ManifestError::Parse(project_settings_refused(
+            "skill-project.toml",
+        )));
+    }
     let repositories = raw
         .get("tool")
         .and_then(|tool| tool.get("fastskill"))
@@ -101,6 +113,22 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("without `env_var`"), "{error}");
+    }
+
+    #[test]
+    fn project_file_with_managed_settings_is_refused() {
+        for content in [
+            "[dependencies]\n\n[managed]\nsource = \"https://skills.example/state\"\n",
+            "[dependencies]\n\n[tool.fastskill.managed]\nrequired = true\n",
+        ] {
+            let error = SkillProjectToml::from_toml_str(content)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("skill-project.toml contains managed settings"),
+                "{error}"
+            );
+        }
     }
 
     #[test]
