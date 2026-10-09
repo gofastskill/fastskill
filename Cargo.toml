@@ -86,6 +86,9 @@ sha2 = "0.11"
 # Base64 encoding/decoding for JWT parsing
 base64 = "0.23"
 
+# Ed25519 verification of signed managed states (already in the tree through rustls)
+ring = "0.17"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

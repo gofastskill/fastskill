@@ -103,6 +103,13 @@ pub fn is_legacy_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+/// Whether `value` has the current form: the prefix, then 64 lowercase hex characters.
+pub fn is_current_digest(value: &str) -> bool {
+    value
+        .strip_prefix(CONTENT_DIGEST_PREFIX)
+        .is_some_and(is_legacy_digest)
+}
+
 /// Whether every recorded digest names the contents of `path`.
 pub fn all_match(recorded: &[&str], path: &Path) -> Result<bool, ServiceError> {
     for digest in recorded {

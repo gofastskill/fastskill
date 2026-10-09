@@ -22,6 +22,7 @@ pub mod global_ownership;
 pub mod install;
 pub mod lifecycle_transaction;
 pub mod lock;
+pub mod managed;
 pub mod manifest;
 pub mod metadata;
 pub mod origin;
