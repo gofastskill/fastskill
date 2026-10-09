@@ -25,6 +25,9 @@ serde_yaml.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 
+# aikit-sdk: per-user Agent skills folders and skill entry deployment (managed state)
+aikit-sdk.workspace = true
+
 # Error handling
 anyhow.workspace = true
 thiserror.workspace = true

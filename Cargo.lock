@@ -45,7 +45,7 @@ dependencies = [
 [[package]]
 name = "aikit-agent"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=eb50f2c5509d4345cab65af0f7faed012ab0e557#eb50f2c5509d4345cab65af0f7faed012ab0e557"
+source = "git+https://github.com/goaikit/aikit.git?rev=9de6b40db1703c921d1be327d0e417be1f734c03#9de6b40db1703c921d1be327d0e417be1f734c03"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "aikit-evals"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=eb50f2c5509d4345cab65af0f7faed012ab0e557#eb50f2c5509d4345cab65af0f7faed012ab0e557"
+source = "git+https://github.com/goaikit/aikit.git?rev=9de6b40db1703c921d1be327d0e417be1f734c03#9de6b40db1703c921d1be327d0e417be1f734c03"
 dependencies = [
  "aikit-sdk",
  "async-trait",
@@ -79,7 +79,7 @@ dependencies = [
 [[package]]
 name = "aikit-sdk"
 version = "0.3.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=eb50f2c5509d4345cab65af0f7faed012ab0e557#eb50f2c5509d4345cab65af0f7faed012ab0e557"
+source = "git+https://github.com/goaikit/aikit.git?rev=9de6b40db1703c921d1be327d0e417be1f734c03#9de6b40db1703c921d1be327d0e417be1f734c03"
 dependencies = [
  "aikit-agent",
  "claude-agent-sdk",
@@ -88,6 +88,7 @@ dependencies = [
  "jsonschema",
  "nix",
  "reqwest 0.12.28",
+ "schemars",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -102,7 +103,7 @@ dependencies = [
 [[package]]
 name = "aikit-skillopt"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=eb50f2c5509d4345cab65af0f7faed012ab0e557#eb50f2c5509d4345cab65af0f7faed012ab0e557"
+source = "git+https://github.com/goaikit/aikit.git?rev=9de6b40db1703c921d1be327d0e417be1f734c03#9de6b40db1703c921d1be327d0e417be1f734c03"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -115,7 +116,7 @@ dependencies = [
 [[package]]
 name = "aikit-textgrad"
 version = "0.1.0"
-source = "git+https://github.com/goaikit/aikit.git?rev=eb50f2c5509d4345cab65af0f7faed012ab0e557#eb50f2c5509d4345cab65af0f7faed012ab0e557"
+source = "git+https://github.com/goaikit/aikit.git?rev=9de6b40db1703c921d1be327d0e417be1f734c03#9de6b40db1703c921d1be327d0e417be1f734c03"
 dependencies = [
  "aikit-evals",
  "aikit-sdk",
@@ -496,7 +497,7 @@ version = "3.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dee98b0db6a962de883bf5d20362dee4d7ca0d12fe39a7c6c73c844e1cd7c1f"
 dependencies = [
- "darling 0.23.0",
+ "darling 0.20.11",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -693,7 +694,7 @@ dependencies = [
 [[package]]
 name = "cli-framework"
 version = "0.5.8"
-source = "git+https://github.com/aroff/cli-framework?rev=f24518f19423ce5ebbf73ffb9396161a8dde0d11#f24518f19423ce5ebbf73ffb9396161a8dde0d11"
+source = "git+https://github.com/aroff/cli-framework?rev=971134fd4257578ba19e95faae5d7a1c1bc74bde#971134fd4257578ba19e95faae5d7a1c1bc74bde"
 dependencies = [
  "aikit-sdk",
  "ailoop-core",
@@ -1249,7 +1250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1355,6 +1356,7 @@ dependencies = [
 name = "fastskill-core"
 version = "0.9.269"
 dependencies = [
+ "aikit-sdk",
  "ammonia",
  "anyhow",
  "assert_cmd",
@@ -2005,7 +2007,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -3016,7 +3018,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -3054,9 +3056,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3518,7 +3520,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3531,7 +3533,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3589,7 +3591,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4143,7 +4145,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5018,7 +5020,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

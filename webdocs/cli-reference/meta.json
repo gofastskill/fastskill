@@ -19,6 +19,7 @@
     "---Operations---",
     "reindex-command",
     "cache-command",
+    "managed-command",
     "serve-command"
   ],
   "title": "CLI commands"

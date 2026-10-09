@@ -335,6 +335,8 @@ async fn run_agent(
         // A failed case's scratch workspace is moved here so it survives
         // for debugging; successful workspaces are deleted.
         retain_workspace_in: Some(run_dir.join("workspaces")),
+        // The harness capture isn't offered from the CLI yet.
+        capture_harness: false,
     };
 
     if !plan.use_json {
