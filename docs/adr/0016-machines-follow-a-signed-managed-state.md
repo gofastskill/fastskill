@@ -1,6 +1,7 @@
 # Machines can follow a signed managed state; FastSkill applies it and never decides it
 
-Status: proposed. Date: 2026-09-24. Revised: 2026-09-24. Amended: 2026-09-24.
+Status: accepted. Date: 2026-09-24. Revised: 2026-09-24. Amended: 2026-09-24. Accepted:
+2026-10-09.
 
 Related: [ADR-0001](0001-remove-sync-command.md),
 [ADR-0003](0003-serve-trust-boundary-and-edge-auth.md),
