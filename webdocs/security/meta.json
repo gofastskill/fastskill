@@ -1,7 +1,8 @@
 {
   "pages": [
     "model",
-    "best-practices"
+    "best-practices",
+    "managed-machines"
   ],
   "title": "Security"
 }

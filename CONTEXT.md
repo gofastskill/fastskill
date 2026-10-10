@@ -147,6 +147,39 @@ A preset skill selection that a user may replace within the preset's customizati
 **Permitted addition**:
 A skill outside the preset's selections that its customization rules allow a user to add.
 
+### Managed machines
+
+**Managed state**:
+A signed, resolved list of the skills one user's agents on one machine should have, decided
+somewhere else and never by FastSkill. It travels in a DSSE envelope signed with Ed25519, is
+verified against keys pinned in trusted settings, is bound to its **managed source** and its
+`subject`, never goes backwards and expires. Resolved content like a Lock, not intent like a
+Manifest. See [ADR-0016](./docs/adr/0016-machines-follow-a-signed-managed-state.md).
+_Avoid_: policy, profile (the state is what a machine follows, not why).
+
+**Managed source**:
+The one location a machine fetches its managed state from: an `https://` URL or a local file path,
+set only in trusted settings (the administrator's system file or the user's `managed.toml`), never
+by a project. `report_url`, `request_url` and `editable` take effect only with an `https://`
+source.
+
+**Managed store**:
+FastSkill's private, per-user copy of the skills a managed state lists, from which `managed apply`
+deploys into each **Agent target** through a staging area. The cached state, the enrollment and
+ownership records and the quarantine live next to it.
+
+**Agent target**:
+One agent's per-user skills folder, as `aikit-sdk` describes it, detected on every apply.
+`managed apply` deploys to the fewest folders each agent reads and changes only the entries it
+placed. The current project's skills folder is never an Agent target.
+
+**Quarantine**:
+Where `managed apply` moves content aside instead of deleting it: content whose digest is blocked,
+content the state doesn't allow when it claims the Agent targets exclusively, and a deployed copy
+that was changed after FastSkill placed it. Each item keeps its former location, its digest and
+the reason; `managed unenroll` keeps the quarantine.
+_Avoid_: delete, remove (quarantined content is kept).
+
 ### Discovery axes
 
 These two axes — not the verb names — are what actually distinguish the read-side commands. The verbs should expose them, not hide them.
@@ -291,9 +324,10 @@ A proposed selection of behaviors and boundaries to evaluate for a skill, before
 
 ## Resolved decisions
 
-- **Historical `sync` is removed.** Modern targets read skills directly. Propagation has exactly two
-  members: `project install` (Manifest → skills directory) and `index rebuild` (skills directory →
-  Vector index, conditional on an Embedding provider).
+- **Historical `sync` is removed.** Modern targets read skills directly. Propagation has exactly
+  three members: `project install` (Manifest → skills directory), `index rebuild` (skills directory
+  → Vector index, conditional on an Embedding provider) and `managed apply` (managed state →
+  managed store → Agent targets).
 - **`index rebuild` is conditional.** It runs only when an **Embedding provider** is configured.
   Mutating commands may auto-run it only when embeddings are enabled; `--reindex` and
   `--no-reindex` override configuration. `cli doctor` surfaces provider state.
@@ -308,3 +342,5 @@ A proposed selection of behaviors and boundaries to evaluate for a skill, before
   and explicit latest-stable resolution.
 - [ADR-0010](./docs/adr/0010-command-taxonomy.md) defines the command namespaces and breaking
   migration policy.
+- [ADR-0016](./docs/adr/0016-machines-follow-a-signed-managed-state.md) defines the managed
+  state, how a machine follows it, and what FastSkill never decides.

@@ -33,6 +33,7 @@ agents — there is no metadata-file sync step. FastSkill manages the files; you
 - **Install skills** from a local folder, a git repo (branch/tag/subdirectory), a zip URL, or a registry ID.
 - **Keep installs reproducible** with `skill-project.toml` + `skills.lock`; split optional vs production skills into groups.
 - **Ship a complete team setup** as a verified, versioned bundle containing its full skill dependency closure.
+- **Follow a managed state** on managed machines: `fastskill managed` verifies a signed skill list against pinned keys, deploys it to each agent, quarantines blocked content and gates installs by digest.
 - **Discover skills** by meaning with semantic search (remote catalogs by default, `--local` for installed skills).
 - **Test skill quality** with eval suites (`fastskill eval`) before you ship — each case runs isolated in a scratch workspace with only your skill, so trigger rates are reproducible across machines.
 - **Improve skills automatically** with the text-gradient optimizer (`fastskill optimization`).
@@ -202,6 +203,7 @@ exports. It refuses a `tools/call` naming one with JSON-RPC
 | `fastskill optimization` | `run`, `resume`, `status`, `inspect`, `export` | Optimize a skill document and inspect runs. |
 | `fastskill index` | `rebuild` | Rebuild the local semantic index. |
 | `fastskill cache` | `info`, `clean` | Inspect and reclaim cached content. |
+| `fastskill managed` | `enroll`, `apply`, `status`, `unenroll`, `hooks` | Follow a signed managed state on this machine. |
 | `fastskill server` | `serve` | Run the local HTTP API and web UI. |
 | `fastskill mcp` | `serve`, `install`, `list` | Run and configure the MCP server. |
 | `fastskill cli` | `doctor`, `completion`, `spec` | Diagnose FastSkill and export CLI metadata. |

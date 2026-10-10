@@ -70,6 +70,22 @@
 
 ### Added
 
+- **Machines can follow a signed managed state (`fastskill managed`).** A managed state is a
+  signed, resolved list of the skills one user's agents should have, decided somewhere else. The
+  source and the Ed25519 verification keys come only from trusted settings (the administrator's
+  system file or the user's `managed.toml`), never from a project. `managed enroll` and
+  `managed apply` verify the state, deploy the listed skills into each agent's user skills folder,
+  remove the ones FastSkill placed that are no longer listed, and move blocked content into a
+  quarantine instead of deleting it. While a user follows a state, every command that adds or
+  replaces skill content is checked by digest first; `skill list` reports `managed-blocked` and
+  `managed-not-allowed`, and `--check` fails on them. An `https://` source can name a credential
+  command for sign-in, receive a fixed, inspectable report after each apply, honor `editable` and
+  point refusals at a `request_url`. Session-start hooks in Claude Code and Gemini CLI and a
+  per-user timer (at login, then hourly) keep machines up to date, and `managed hooks --system`
+  prints what an administrator installs machine-wide. Nothing changes until a source is
+  configured. See [ADR-0016](docs/adr/0016-machines-follow-a-signed-managed-state.md), the
+  [managed state](webdocs/skill-management/managed-state.mdx) format and
+  [Hardening managed machines](webdocs/security/managed-machines.mdx).
 - **`storage::git_isolated::clone_isolated` for cloning repositories you do not control.** The
   library clone reads no system, global or user git configuration and inherits no environment
   beyond `PATH`, proxy and CA settings, so a host's credential helper, `insteadOf` rewrite or
