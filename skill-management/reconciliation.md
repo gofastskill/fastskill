@@ -1,12 +1,12 @@
 # Reconcile project skill state
 
-FastSkill 0.9.269
+FastSkill 0.9.270
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
+Release revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
 
-Documentation revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
+Documentation revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
 
 
 
@@ -44,19 +44,26 @@ Editable installs use the human-readable `editable` flag.
 
 The `reconciliation` field is the canonical machine-readable status. Values can include:
 
-| Value                    | Meaning                                                             |
-| ------------------------ | ------------------------------------------------------------------- |
-| `ok`                     | Selected state agrees and managed content passes integrity checks.  |
-| `excluded`               | A group filter excluded the owning root.                            |
-| `missing-lock`           | Declared intent has no resolved lock entry.                         |
-| `missing-content`        | Managed content is absent from the skills directory.                |
-| `intent-mismatch`        | Manifest intent and locked origin differ.                           |
-| `revision-mismatch`      | Installed and locked versions differ.                               |
-| `content-mismatch`       | Installed managed content differs from its digest.                  |
-| `integrity-error`        | Installed content could not be verified.                            |
-| `insufficient-integrity` | The lock lacks evidence required for a reliable check.              |
-| `ownership-conflict`     | Bundle owners disagree about the expected content.                  |
-| `extraneous`             | Installed content has no manifest, lock, bundle, or override owner. |
+| Value                    | Meaning                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| `managed-blocked`        | The managed state blocks the installed content's digest.                              |
+| `managed-not-allowed`    | The managed state allows only listed content, and the installed content isn't listed. |
+| `ok`                     | Selected state agrees and managed content passes integrity checks.                    |
+| `excluded`               | A group filter excluded the owning root.                                              |
+| `missing-lock`           | Declared intent has no resolved lock entry.                                           |
+| `missing-content`        | Managed content is absent from the skills directory.                                  |
+| `intent-mismatch`        | Manifest intent and locked origin differ.                                             |
+| `revision-mismatch`      | Installed and locked versions differ.                                                 |
+| `content-mismatch`       | Installed managed content differs from its digest.                                    |
+| `integrity-error`        | Installed content could not be verified.                                              |
+| `insufficient-integrity` | The lock lacks evidence required for a reliable check.                                |
+| `ownership-conflict`     | Bundle owners disagree about the expected content.                                    |
+| `extraneous`             | Installed content has no manifest, lock, bundle, or override owner.                   |
+
+The two `managed-` values appear only when this machine follows a verified managed state (see
+[`fastskill managed`](/cli-reference/managed-command)). They take precedence over every other
+value, `managed-blocked` first, and `skill list --check` fails on them even for a skill outside
+the current selection.
 
 ## JSON schema
 

@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.269
+FastSkill 0.9.270
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
+Release revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
 
-Documentation revision: 7a108b2fae45f2d4f95100554f0118c0ece16cac
+Documentation revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
 
 
 
