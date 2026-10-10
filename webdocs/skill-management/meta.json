@@ -2,7 +2,8 @@
   "pages": [
     "manifest-system",
     "validation",
-    "reconciliation"
+    "reconciliation",
+    "managed-state"
   ],
   "title": "Skills and projects"
 }
