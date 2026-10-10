@@ -19,6 +19,46 @@ use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
+/// Register the `managed` group and its commands.
+pub fn register(
+    builder: cli_framework::prelude::AppBuilder,
+) -> anyhow::Result<cli_framework::prelude::AppBuilder> {
+    use crate::registration::AppBuilderExt;
+    use cli_framework::path;
+    builder
+        .register_group(&path!["managed"], group_metadata())?
+        .register_out(
+            path!["managed", "enroll"],
+            |_ctx, args: EnrollArgs| async move {
+                execute_enroll(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "apply"],
+            |_ctx, args: ApplyArgs| async move {
+                execute_apply(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "status"],
+            |_ctx, args: StatusArgs| async move {
+                execute_status(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "hooks"],
+            |_ctx, args: HooksArgs| async move {
+                execute_hooks(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "unenroll"],
+            |_ctx, args: UnenrollArgs| async move {
+                execute_unenroll(args).await.map_err(anyhow::Error::from)
+            },
+        )
+}
+
 /// The `managed` group.
 pub fn group_metadata() -> GroupMetadata {
     GroupMetadata {
