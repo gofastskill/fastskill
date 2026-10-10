@@ -229,7 +229,7 @@ fn an_unlisted_skill_is_removed_and_a_changed_copy_is_quarantined() {
     fixture.apply();
     let target = fixture.target();
     // Someone replaced the docx link with their own copy.
-    std::fs::remove_file(target.join("docx")).unwrap();
+    quarantine::remove_entry(&target.join("docx")).unwrap();
     write_skill(&target.join("docx"), "docx", "edited");
     fixture.publish(&[], json!({}));
 
@@ -256,7 +256,7 @@ fn a_changed_owned_entry_is_quarantined_before_the_listed_content_is_deployed() 
     fixture.publish(std::slice::from_ref(&pdf), json!({}));
     fixture.apply();
     let entry = fixture.target().join("pdf");
-    std::fs::remove_file(&entry).unwrap();
+    quarantine::remove_entry(&entry).unwrap();
     write_skill(&entry, "pdf", "edited");
 
     let outcome = fixture.apply();
@@ -271,7 +271,7 @@ fn a_missing_owned_entry_is_deployed_again() {
     let pdf = fixture.skill("pdf", "one");
     fixture.publish(&[pdf], json!({}));
     fixture.apply();
-    std::fs::remove_file(fixture.target().join("pdf")).unwrap();
+    quarantine::remove_entry(&fixture.target().join("pdf")).unwrap();
     assert_eq!(fixture.apply().deployed.len(), 1);
 }
 
@@ -495,7 +495,7 @@ fn unenrolling_removes_everything_but_the_quarantine() {
     fixture.publish(&[pdf, docx], json!({}));
     fixture.apply();
     let target = fixture.target();
-    std::fs::remove_file(target.join("docx")).unwrap();
+    quarantine::remove_entry(&target.join("docx")).unwrap();
     write_skill(&target.join("docx"), "docx", "edited");
     let user_file = fixture.root.join("managed.toml");
     std::fs::write(&user_file, "").unwrap();
