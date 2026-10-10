@@ -1,9 +1,9 @@
-# FastSkill 0.9.272
+# FastSkill 0.9.273
 
 Documentation for the current release only.
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 ## Pages
 
@@ -13,7 +13,6 @@ Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 - [Install your first skill](https://docs.gofastskill.com/quickstart.md): Install a local skill, verify it, and make it available to an agent without an API key.
 - [Troubleshooting](https://docs.gofastskill.com/troubleshooting.md): Diagnose and fix common FastSkill issues: lock files, embedding search, installs, and environment problems.
 - [Understand FastSkill](https://docs.gofastskill.com/welcome.md): Skills, projects, locks, and bundles in one workflow.
-- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Bundle commands](https://docs.gofastskill.com/cli-reference/bundle-command.md): Build, install, update, and restore self-contained project exports.
 - [cache Command](https://docs.gofastskill.com/cli-reference/cache-command.md): Inspect and reclaim the on-disk skill content cache with fastskill cache.
 - [Discover and inspect skills](https://docs.gofastskill.com/cli-reference/discovery-commands.md): Find a catalog result, inspect its origin, and install it explicitly.
@@ -31,6 +30,7 @@ Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 - [Skill and project commands](https://docs.gofastskill.com/cli-reference/skill-commands.md): Add, remove, update, list, read, and search skills through explicit namespaces.
 - [Marketplace, analysis, and CLI tools](https://docs.gofastskill.com/cli-reference/tooling-commands.md): CLI reference for fastskill marketplace, fastskill analysis, and fastskill cli doctor.
 - [skill update](https://docs.gofastskill.com/cli-reference/update-command.md): Resolve and apply deliberate changes from recorded skill origins.
+- [Init Command](https://docs.gofastskill.com/configuration/init-command.md): Create skill-project.toml for skill authors and project configuration.
 - [Cluster and Portfolio Analysis](https://docs.gofastskill.com/evals-quality/cluster-analysis.md): Analyze skill quality at portfolio level using cluster, matrix, and duplicate detection.
 - [Evals and Quality Overview](https://docs.gofastskill.com/evals-quality/overview.md): How FastSkill quality workflows fit together: validate, run evals, score, and cluster analysis.
 - [Run Evals](https://docs.gofastskill.com/evals-quality/run-evals.md): Operational guide for running, reporting, and scoring FastSkill eval suites.
@@ -54,7 +54,9 @@ Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 - [Configure skill sources](https://docs.gofastskill.com/registry/sources.md): Add skills from Git and configure local, Git marketplace, HTTP, and ZIP catalogs.
 - [Local browser console](https://docs.gofastskill.com/registry/web-ui.md): Inspect installed skills and manage a project through the optional HTTP server.
 - [Security Best Practices](https://docs.gofastskill.com/security/best-practices.md): Operational guidance for running FastSkill safely: read-only serve, auth proxies, PAT env-var indirection, and locked CI installs.
+- [Hardening managed machines](https://docs.gofastskill.com/security/managed-machines.md): What FastSkill enforces on a machine that follows a managed state, what it cannot, and what an administrator pins through device management: the system file, keys, hooks and the machine-wide timer.
 - [Security Model](https://docs.gofastskill.com/security/model.md): How FastSkill treats trust boundaries: read-only-by-default serve, no in-app auth, env-var token indirection, and reproducible locked installs.
+- [Managed state](https://docs.gofastskill.com/skill-management/managed-state.md): The format of the signed managed state a machine follows: the DSSE envelope, the payload fields, what FastSkill refuses, and how a state is bound to its source and subject.
 - [Manifests, locks, and scope](https://docs.gofastskill.com/skill-management/manifest-system.md): Declare sources and understand what FastSkill restores for a project or user.
 - [Reconcile project skill state](https://docs.gofastskill.com/skill-management/reconciliation.md): Compare declared, locked, and installed skill state and enforce it in CI.
 - [Validate a skill](https://docs.gofastskill.com/skill-management/validation.md): Check skill structure and installed state before an agent uses it.

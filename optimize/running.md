@@ -1,12 +1,12 @@
 # Running and Monitoring
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 

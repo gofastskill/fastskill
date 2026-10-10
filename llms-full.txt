@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -117,6 +117,18 @@ Modern agents (Claude Code, Cursor, …) read skills directly from the skills di
 
 See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference/repository-command).
 
+## Managed machines
+
+| Operation | Command                            | What it does                                                                                                          |
+| --------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Enroll    | `fastskill managed enroll`         | Follows the source in trusted settings, applies its first state, registers session-start hooks and the timer          |
+| Apply     | `fastskill managed apply`          | Fetches and applies the newest signed state; `--json` for the result                                                  |
+| Status    | `fastskill managed status`         | Source, subject, expiry, sign-in, targets and quarantine; `--report` adds what the last apply did and the report body |
+| Hooks     | `fastskill managed hooks --system` | What an administrator installs machine-wide: the hook entry per agent and the timer files                             |
+| Unenroll  | `fastskill managed unenroll`       | Removes what the state put here for this user; the quarantine stays                                                   |
+
+See [`managed`](/cli-reference/managed-command), the [managed state](/skill-management/managed-state) format and [Hardening managed machines](/security/managed-machines).
+
 ## Local server
 
 | Operation         | Command                                                                                                      | What it does                                                                                                   |
@@ -133,13 +145,13 @@ See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference
 
 # FastSkill
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -187,6 +199,11 @@ Catalog search by default; `--local` for installed skills, embeddings, and keywo
 **Catalogs & sources**
 
 `repo` for remote origins and catalog browsing. See [Registry overview](/registry/overview).
+
+
+**Managed machines**
+
+`fastskill managed` follows a signed managed state: verified against pinned keys, deployed to each agent, blocked content quarantined, installs gated by digest. See [managed command](/cli-reference/managed-command).
 
 
 
@@ -246,13 +263,13 @@ Continue with [Quick start](/quickstart) or the [CLI reference](/cli-reference/o
 
 # Install FastSkill
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/installation
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -371,13 +388,13 @@ Continue with [your first skill](/quickstart).
 
 # Install your first skill
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/quickstart
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -462,13 +479,13 @@ restoration. For a portable artifact, use a [team bundle](/cli-reference/bundle-
 
 # Troubleshooting
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/troubleshooting
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -706,13 +723,13 @@ Include:
 
 # Understand FastSkill
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/welcome
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -747,257 +764,15 @@ Start with [your first skill](/quickstart). Continue with
 
 ---
 
-# Init Command
-
-FastSkill 0.9.272
-
-Source: https://docs.gofastskill.com/configuration/init-command
-
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
-
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
-
-
-
-## Overview
-
-`fastskill project init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
-
-`project init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
-
-
-**Context detection**: `project init` detects whether you're in a skill directory or a project root:
-
-* **Skill-level**: run in a directory containing `SKILL.md` — writes a `[metadata]` section for skill authors. `skills_directory` is optional.
-* **Project-level**: run at a project root — writes `[dependencies]` for skill consumers. A skills directory is required (via `--skills-dir`, or the prompt).
-
-
-## What it does
-
-1. **Checks for an existing file**: refuses to overwrite `skill-project.toml` unless `--force` is given.
-2. **Reads `SKILL.md`** (if present): pulls `version`, `description`, and `author` from the frontmatter.
-3. **Resolves missing fields**: from CLI flags, or by prompting (unless `--yes`).
-4. **Writes `skill-project.toml`**: with `[metadata]`, `[dependencies]`, and — when a skills directory is set — `[tool.fastskill]`.
-5. **Validates**: the skill ID (derived from the directory name) and the version (must be valid semver).
-
-## Usage
-
-### Interactive setup
-
-```bash
-fastskill project init
-```
-
-Prompts for each missing field. For example, at a project root:
-
-```
-FastSkill Skill Initialization
-
-Description (optional, press Enter to skip): My project skills
-Author (optional, press Enter to skip): Jane Doe
-Download URL (optional, press Enter to skip):
-Skills directory (default: .claude/skills): .claude/skills
-
-Created skill-project.toml with version: 1.0.0
-Skills directory: .claude/skills
-```
-
-### Non-interactive setup
-
-```bash
-# Skill-level: skip all prompts, take metadata from SKILL.md
-fastskill project init --yes
-
-# Project-level with --yes: a skills directory is required
-fastskill project init --yes --skills-dir .claude/skills
-
-# Provide metadata directly
-fastskill project init --yes --set-version 1.2.0 --description "Team skills" --author "Jane Doe"
-```
-
-At a project root, `--yes` requires `--skills-dir <path>`. Without it, either drop `--yes` to be prompted or pass the flag.
-
-
-## Command options
-
-| Option                 | Description                                 | Default                       |
-| ---------------------- | ------------------------------------------- | ----------------------------- |
-| `--yes`                | Skip interactive prompts and use defaults   | `false`                       |
-| `--force`              | Overwrite an existing `skill-project.toml`  | `false`                       |
-| `--set-version <VER>`  | Set the skill version (validated as semver) | from `SKILL.md`, else `1.0.0` |
-| `--description <TEXT>` | Set the description                         | from `SKILL.md`, else empty   |
-| `--author <NAME>`      | Set the author                              | from `SKILL.md`, else empty   |
-| `--download-url <URL>` | Set the download URL                        | empty                         |
-| `--skills-dir <DIR>`   | Skills directory (global flag)              | `.claude/skills`              |
-
-## The file it creates
-
-At a project root, `project init` produces a `skill-project.toml` like:
-
-```toml skill-project.toml
-[metadata]
-id = "my-project"
-version = "1.0.0"
-description = "Team skills"
-author = "Jane Doe"
-
-[dependencies]
-
-[tool.fastskill]
-skills_directory = ".claude/skills"
-
-# Additional configuration options for [tool.fastskill]:
-#
-# [tool.fastskill.embedding]
-# openai_base_url = "https://api.openai.com/v1"
-# embedding_model = "text-embedding-3-small"
-#
-# [tool.fastskill.manifests]
-# platform = "../platform-team/skill-project.toml"
-#
-# [[tool.fastskill.repositories]]
-# name = "default"
-# type = "http-registry"
-# index_url = "https://registry.fastskill.dev"
-# priority = 0
-```
-
-The commented block is written verbatim so you can uncomment and fill in embedding settings or repositories later.
-
-## Skills directory
-
-* **Default**: `.claude/skills`
-* **Custom**: any path you pass via `--skills-dir` or the prompt
-* **Resolution at runtime**: `--skills-dir` flag > `--global` (`~/.config/fastskill/skills`) > `skills_directory` under `[tool.fastskill]` > walk up to an existing `.claude/skills/` > default `.claude/skills/`
-
-## Schema version
-
-`project init` writes the current manifest schema. Use the generated file as the
-starting point and keep project configuration in version control.
-
-## Embedding configuration
-
-Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `project init` — add it when you need it):
-
-```toml
-[tool.fastskill.embedding]
-openai_base_url = "https://api.openai.com/v1"
-embedding_model = "text-embedding-3-small"
-# index_path = ".fastskill/index"
-```
-
-Set the API key via the environment; if it is unset, semantic search is silently skipped:
-
-```bash
-export OPENAI_API_KEY="your-key-here"
-```
-
-### Pointing at a different endpoint
-
-`skill-project.toml` is committed and shared by everyone on the project, so it is
-the wrong place to record that *your* machine — or one CI job — talks to a
-different embedding endpoint. Both non-secret fields can be overridden from the
-environment, and the environment wins:
-
-| Variable                    | Overrides         | Example                       |
-| --------------------------- | ----------------- | ----------------------------- |
-| `OPENAI_BASE_URL`           | `openai_base_url` | `https://gateway.internal/v1` |
-| `FASTSKILL_EMBEDDING_MODEL` | `embedding_model` | `my-embed-model`              |
-
-```bash
-export OPENAI_BASE_URL="https://gateway.internal/v1"
-export FASTSKILL_EMBEDDING_MODEL="my-embed-model"
-export OPENAI_API_KEY="your-gateway-key"
-```
-
-An empty or whitespace-only value counts as unset, so a blank variable in a shell
-profile or CI matrix will not silently blank out a working manifest setting.
-
-Run `fastskill cli doctor` to see which endpoint and model are actually in effect:
-
-```
-[PASS] embedding_config: Embedding configuration found
-       (endpoint: https://gateway.internal/v1, model: my-embed-model).
-```
-
-**Changing the embedding model invalidates your index.** Vectors from different
-models are not comparable — and often not even the same length. After switching
-models, run `fastskill index rebuild` before searching, or results will be meaningless.
-
-
-The API key stays environment-only on purpose: a committed manifest is the wrong
-home for a secret.
-
-## Troubleshooting
-
-### "skill-project.toml already exists. Use --force to overwrite."
-
-**Cause**: a `skill-project.toml` is already present.
-**Solution**: pass `--force` to overwrite it, or remove the file first.
-
-### "Project-level init requires --skills-dir"
-
-**Cause**: `--yes` was used at a project root without a skills directory.
-**Solution**: add `--skills-dir <path>`, or drop `--yes` to be prompted.
-
-### Invalid version
-
-**Cause**: the version (from `--set-version` or `SKILL.md`) is not valid semver.
-**Solution**: use a semver string such as `1.0.0`.
-
-### Permission denied
-
-**Cause**: the current directory is not writable.
-**Solution**: fix permissions or run in a directory where you have write access.
-
-## Integration with CI/CD
-
-```yaml
-# .github/workflows/setup-fastskill.yml
-name: Setup FastSkill
-on: [push]
-
-jobs:
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install FastSkill
-        run: |
-          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | FASTSKILL_UNMANAGED=1 sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Initialize FastSkill
-        run: fastskill project init --yes --skills-dir .claude/skills
-
-      - name: Install skills from the manifest
-        run: fastskill project install
-
-      - name: Index skills (needs OPENAI_API_KEY for semantic search)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: fastskill index rebuild
-```
-
-## Next steps after init
-
-1. **Add skills**: `fastskill skill add <skill-id>` (registry, Git, or local path).
-2. **Install from the manifest**: `fastskill project install`.
-3. **Index for search**: `fastskill index rebuild` (requires `OPENAI_API_KEY`).
-4. **Search**: `fastskill skill search "your query"`.
-
-
-
----
-
 # Bundle commands
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/bundle-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -1133,13 +908,13 @@ tools unless it starts with `fastskill mcp serve --enable-write`.
 
 # cache Command
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/cache-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -1241,13 +1016,13 @@ exact moment of a clean simply re-fetches -- it never sees partial or corrupted 
 
 # Discover and inspect skills
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/discovery-commands
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -1289,13 +1064,13 @@ and [repository reference](/cli-reference/repository-command) for catalog operat
 
 # eval Command
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/eval-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -1566,13 +1341,13 @@ A case whose every trial errored is named in the output, and a metric that match
 
 # project init
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/init-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -1913,13 +1688,13 @@ Use `fastskill project init --yes` to:
 
 # project install
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -2402,13 +2177,13 @@ Keyword search with `--local --embedding false` works without an index.
 
 # managed Command
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/managed-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -2423,6 +2198,10 @@ instead of deleting it.
 Only FastSkill's own entries are changed. A skill folder that FastSkill didn't place and that
 holds other content than the state lists is reported as a collision and left alone.
 
+
+The envelope and the payload are documented in [Managed state](/skill-management/managed-state).
+What an administrator pins through device management, and what FastSkill can't enforce, is in
+[Hardening managed machines](/security/managed-machines).
 
 ## Usage
 
@@ -2520,7 +2299,8 @@ sending it.
 ### enroll
 
 Enroll this user with the configured source and apply its first state. Enrolling again with the
-same source keeps the machine id.
+same source keeps the machine id. Enrolling also registers the session-start hooks and installs
+the timer (see [Keeping up to date](#keeping-up-to-date)).
 
 ```bash
 fastskill managed enroll
@@ -2536,6 +2316,8 @@ quarantined.
 ```bash
 fastskill managed apply
 fastskill managed apply --json
+fastskill managed apply --hook fastskill-managed-claude   # as the agent's session-start hook
+fastskill managed apply --timer                           # as the timer: wait up to 10 minutes first
 ```
 
 Only one apply runs at a time for a user. A second apply started from a terminal says so; one
@@ -2560,15 +2342,47 @@ fastskill managed status --json --report   # only the body the next report carri
 Remove what managed state put on this machine for this user: the skills FastSkill deployed (a
 deployed copy that was changed is quarantined instead), the stored skills, the cached state,
 the records and the user settings file. The quarantine is kept. Refused when the system file
-sets `required = true`, and while an apply runs.
+sets `required = true`, and while an apply runs. The session-start hooks and the timer are
+removed too.
 
 ```bash
 fastskill managed unenroll
 ```
 
+### hooks
+
+Show this user's session-start hook for each agent that supports one, and the timer. With
+`--system`, print instead what an administrator installs for every user: the entry to merge
+into each agent's administrator-level settings, and the machine-wide timer files and commands.
+Nothing is written.
+
+```bash
+fastskill managed hooks
+fastskill managed hooks --system
+fastskill managed hooks --system --json
+```
+
 **Options** (every subcommand):
 
 * `--json`: Print the result as JSON
+
+## Keeping up to date
+
+Two things run `managed apply` without anyone typing it:
+
+* **Session-start hooks.** Every apply registers a hook in the user settings of each covered
+  agent that can run a command when a session starts (Claude Code and Gemini CLI), and removes
+  it from agents no longer covered. The hook starts an apply in the background and returns at
+  once. It prints nothing unless the user must act, such as to sign in, and then one notice.
+  Claude Code asks the user to approve a new hook once; the apply that adds it says so. An
+  agent whose administrator-level settings already hold the hook gets no user-level one.
+* **A timer.** Enrolling, including the first apply that enrolls, installs a timer that applies
+  shortly after login and then every hour, each time after a random wait of up to 10 minutes:
+  a systemd user timer on Linux, a launchd agent on macOS, and a scheduled task on Windows. No
+  user timer is installed when a machine-wide one is present. Set `FASTSKILL_MANAGED_TIMER=off`
+  to install none, for example on a machine without a user service manager.
+
+A hook or timer that can't be installed is a warning in the apply's report, not a failure.
 
 ## Installs and other commands
 
@@ -2604,13 +2418,13 @@ reason, and `fastskill managed status` lists them.
 
 # optimization commands
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/optimize-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -2711,13 +2525,13 @@ fastskill optimization export ./optimize-runs/run-1 --out ./SKILL.md
 
 # CLI Reference Overview
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/overview
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -3043,13 +2857,13 @@ Commands can change installed skills and manifest files. Try changes on a copy o
 
 # index rebuild
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/reindex-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -3517,13 +3331,13 @@ fastskill skill list --skills-dir .claude/skills/
 
 # project repin
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/repin-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -3644,13 +3458,13 @@ A project without `skills.lock` has nothing to re-pin and exits `0`.
 
 # repo commands
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/repository-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4269,13 +4083,13 @@ Repositories configuration is stored in `skill-project.toml` and should be commi
 
 # skill search
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/search-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4379,13 +4193,13 @@ search, including no matches, and nonzero for invalid input or incomplete reposi
 
 # server serve
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/serve-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4519,13 +4333,13 @@ Write endpoints (marked **write**) require `--enable-write`; without it they ret
 
 # Skill and project commands
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/skill-commands
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4703,13 +4517,13 @@ suggestion.
 
 # Marketplace, analysis, and CLI tools
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/tooling-commands
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4821,13 +4635,13 @@ fastskill cli doctor --json
 
 # skill update
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cli-reference/update-command
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -4962,15 +4776,257 @@ state, reports the failed target, and exits nonzero.
 
 ---
 
+# Init Command
+
+FastSkill 0.9.273
+
+Source: https://docs.gofastskill.com/configuration/init-command
+
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+
+
+## Overview
+
+`fastskill project init` creates a single file: `skill-project.toml` in the current directory. If a `SKILL.md` is present, it extracts metadata (version, description, author) from its frontmatter; anything missing is either taken from CLI flags or prompted for interactively.
+
+`project init` writes **only** `skill-project.toml`. It does not create a skills directory, example skills, or any other file. All FastSkill configuration lives in `skill-project.toml`.
+
+
+**Context detection**: `project init` detects whether you're in a skill directory or a project root:
+
+* **Skill-level**: run in a directory containing `SKILL.md` — writes a `[metadata]` section for skill authors. `skills_directory` is optional.
+* **Project-level**: run at a project root — writes `[dependencies]` for skill consumers. A skills directory is required (via `--skills-dir`, or the prompt).
+
+
+## What it does
+
+1. **Checks for an existing file**: refuses to overwrite `skill-project.toml` unless `--force` is given.
+2. **Reads `SKILL.md`** (if present): pulls `version`, `description`, and `author` from the frontmatter.
+3. **Resolves missing fields**: from CLI flags, or by prompting (unless `--yes`).
+4. **Writes `skill-project.toml`**: with `[metadata]`, `[dependencies]`, and — when a skills directory is set — `[tool.fastskill]`.
+5. **Validates**: the skill ID (derived from the directory name) and the version (must be valid semver).
+
+## Usage
+
+### Interactive setup
+
+```bash
+fastskill project init
+```
+
+Prompts for each missing field. For example, at a project root:
+
+```
+FastSkill Skill Initialization
+
+Description (optional, press Enter to skip): My project skills
+Author (optional, press Enter to skip): Jane Doe
+Download URL (optional, press Enter to skip):
+Skills directory (default: .claude/skills): .claude/skills
+
+Created skill-project.toml with version: 1.0.0
+Skills directory: .claude/skills
+```
+
+### Non-interactive setup
+
+```bash
+# Skill-level: skip all prompts, take metadata from SKILL.md
+fastskill project init --yes
+
+# Project-level with --yes: a skills directory is required
+fastskill project init --yes --skills-dir .claude/skills
+
+# Provide metadata directly
+fastskill project init --yes --set-version 1.2.0 --description "Team skills" --author "Jane Doe"
+```
+
+At a project root, `--yes` requires `--skills-dir <path>`. Without it, either drop `--yes` to be prompted or pass the flag.
+
+
+## Command options
+
+| Option                 | Description                                 | Default                       |
+| ---------------------- | ------------------------------------------- | ----------------------------- |
+| `--yes`                | Skip interactive prompts and use defaults   | `false`                       |
+| `--force`              | Overwrite an existing `skill-project.toml`  | `false`                       |
+| `--set-version <VER>`  | Set the skill version (validated as semver) | from `SKILL.md`, else `1.0.0` |
+| `--description <TEXT>` | Set the description                         | from `SKILL.md`, else empty   |
+| `--author <NAME>`      | Set the author                              | from `SKILL.md`, else empty   |
+| `--download-url <URL>` | Set the download URL                        | empty                         |
+| `--skills-dir <DIR>`   | Skills directory (global flag)              | `.claude/skills`              |
+
+## The file it creates
+
+At a project root, `project init` produces a `skill-project.toml` like:
+
+```toml skill-project.toml
+[metadata]
+id = "my-project"
+version = "1.0.0"
+description = "Team skills"
+author = "Jane Doe"
+
+[dependencies]
+
+[tool.fastskill]
+skills_directory = ".claude/skills"
+
+# Additional configuration options for [tool.fastskill]:
+#
+# [tool.fastskill.embedding]
+# openai_base_url = "https://api.openai.com/v1"
+# embedding_model = "text-embedding-3-small"
+#
+# [tool.fastskill.manifests]
+# platform = "../platform-team/skill-project.toml"
+#
+# [[tool.fastskill.repositories]]
+# name = "default"
+# type = "http-registry"
+# index_url = "https://registry.fastskill.dev"
+# priority = 0
+```
+
+The commented block is written verbatim so you can uncomment and fill in embedding settings or repositories later.
+
+## Skills directory
+
+* **Default**: `.claude/skills`
+* **Custom**: any path you pass via `--skills-dir` or the prompt
+* **Resolution at runtime**: `--skills-dir` flag > `--global` (`~/.config/fastskill/skills`) > `skills_directory` under `[tool.fastskill]` > walk up to an existing `.claude/skills/` > default `.claude/skills/`
+
+## Schema version
+
+`project init` writes the current manifest schema. Use the generated file as the
+starting point and keep project configuration in version control.
+
+## Embedding configuration
+
+Semantic search uses OpenAI-compatible embeddings, configured under `[tool.fastskill.embedding]` in `skill-project.toml` (not created by `project init` — add it when you need it):
+
+```toml
+[tool.fastskill.embedding]
+openai_base_url = "https://api.openai.com/v1"
+embedding_model = "text-embedding-3-small"
+# index_path = ".fastskill/index"
+```
+
+Set the API key via the environment; if it is unset, semantic search is silently skipped:
+
+```bash
+export OPENAI_API_KEY="your-key-here"
+```
+
+### Pointing at a different endpoint
+
+`skill-project.toml` is committed and shared by everyone on the project, so it is
+the wrong place to record that *your* machine — or one CI job — talks to a
+different embedding endpoint. Both non-secret fields can be overridden from the
+environment, and the environment wins:
+
+| Variable                    | Overrides         | Example                       |
+| --------------------------- | ----------------- | ----------------------------- |
+| `OPENAI_BASE_URL`           | `openai_base_url` | `https://gateway.internal/v1` |
+| `FASTSKILL_EMBEDDING_MODEL` | `embedding_model` | `my-embed-model`              |
+
+```bash
+export OPENAI_BASE_URL="https://gateway.internal/v1"
+export FASTSKILL_EMBEDDING_MODEL="my-embed-model"
+export OPENAI_API_KEY="your-gateway-key"
+```
+
+An empty or whitespace-only value counts as unset, so a blank variable in a shell
+profile or CI matrix will not silently blank out a working manifest setting.
+
+Run `fastskill cli doctor` to see which endpoint and model are actually in effect:
+
+```
+[PASS] embedding_config: Embedding configuration found
+       (endpoint: https://gateway.internal/v1, model: my-embed-model).
+```
+
+**Changing the embedding model invalidates your index.** Vectors from different
+models are not comparable — and often not even the same length. After switching
+models, run `fastskill index rebuild` before searching, or results will be meaningless.
+
+
+The API key stays environment-only on purpose: a committed manifest is the wrong
+home for a secret.
+
+## Troubleshooting
+
+### "skill-project.toml already exists. Use --force to overwrite."
+
+**Cause**: a `skill-project.toml` is already present.
+**Solution**: pass `--force` to overwrite it, or remove the file first.
+
+### "Project-level init requires --skills-dir"
+
+**Cause**: `--yes` was used at a project root without a skills directory.
+**Solution**: add `--skills-dir <path>`, or drop `--yes` to be prompted.
+
+### Invalid version
+
+**Cause**: the version (from `--set-version` or `SKILL.md`) is not valid semver.
+**Solution**: use a semver string such as `1.0.0`.
+
+### Permission denied
+
+**Cause**: the current directory is not writable.
+**Solution**: fix permissions or run in a directory where you have write access.
+
+## Integration with CI/CD
+
+```yaml
+# .github/workflows/setup-fastskill.yml
+name: Setup FastSkill
+on: [push]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install FastSkill
+        run: |
+          curl -fsSL https://github.com/gofastskill/fastskill/releases/latest/download/install.sh | FASTSKILL_UNMANAGED=1 sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize FastSkill
+        run: fastskill project init --yes --skills-dir .claude/skills
+
+      - name: Install skills from the manifest
+        run: fastskill project install
+
+      - name: Index skills (needs OPENAI_API_KEY for semantic search)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: fastskill index rebuild
+```
+
+## Next steps after init
+
+1. **Add skills**: `fastskill skill add <skill-id>` (registry, Git, or local path).
+2. **Install from the manifest**: `fastskill project install`.
+3. **Index for search**: `fastskill index rebuild` (requires `OPENAI_API_KEY`).
+4. **Search**: `fastskill skill search "your query"`.
+
+
+
+---
+
 # Cluster and Portfolio Analysis
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/evals-quality/cluster-analysis
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5037,13 +5093,13 @@ Use this regularly to keep catalog maintenance costs low.
 
 # Evals and Quality Overview
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5103,13 +5159,13 @@ New to evals? [Eval setup](/evals-quality/setup) is the authoring reference — 
 
 # Run Evals
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/evals-quality/run-evals
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5178,13 +5234,13 @@ fastskill eval report --run-dir ./.fastskill/eval-runs/2026-08-25T22-00-00Z/code
 
 # Eval Setup
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/evals-quality/setup
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5473,13 +5529,13 @@ See [Run evals](/evals-quality/run-evals) for the full day-to-day command set, a
 
 # Advanced Patterns
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5577,13 +5633,13 @@ plus `--global` to control what gets installed where.
 
 # Integration Tutorials
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/examples/integration-tutorials
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5684,13 +5740,13 @@ and HTTP API are the surface.
 
 # Documentation and tools for agents
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/integration/agents
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5750,13 +5806,13 @@ The server exposes read-only tools by default. Mutating tools require
 
 # Claude Code Integration
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/integration/claude-code-integration
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -5865,13 +5921,13 @@ See the [agent’s skill documentation](https://code.claude.com/docs/en/skills) 
 
 # Cursor Integration
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/integration/cursor-integration
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6025,13 +6081,13 @@ See the [agent’s skill documentation](https://cursor.com/docs/skills) for nati
 
 # Configuration Reference
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/configuration
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6233,13 +6289,13 @@ confirmed by running the binary against deliberately broken configs:
 
 # Skill Optimization Overview
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6309,13 +6365,13 @@ Each training step:
 
 # Inspecting and Exporting Results
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/results
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6541,13 +6597,13 @@ A `history.json` record looks like:
 
 # Running and Monitoring
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/running
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6735,13 +6791,13 @@ The run directory is safe to copy, archive, or share. Resume and inspect command
 
 # Setup: Eval Data and Grading
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/optimize/setup
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6901,13 +6957,13 @@ Once you have your suite and checks files ready, write the `optimize.toml` confi
 
 # Context Resolution API
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/progressive-loading/performance
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -6982,13 +7038,13 @@ the `limit`, and the embedding index — not by a configurable runtime cache.
 
 # Loading Strategies
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/progressive-loading/strategies
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7064,13 +7120,13 @@ covers essentially all resolution performance and quality concerns.
 
 # Registry Index System
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/index-system
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7234,13 +7290,13 @@ Skills are always stored with an organization prefix:
 
 # Marketplace.json Format
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/marketplace-json
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7466,13 +7522,13 @@ Marketplace.json files are cached for 5 minutes to reduce network requests. To f
 
 # Sources and catalogs
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/overview
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7515,13 +7571,13 @@ and [marketplace.json](/registry/marketplace-json) for catalog authoring.
 
 # Choose a distribution model
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/repository-architecture
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7565,13 +7621,13 @@ to agents. See the [security model](/security/model).
 
 # Configure skill sources
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/sources
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7781,13 +7837,13 @@ For sharing an already installed set without access to its original sources, use
 
 # Local browser console
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/registry/web-ui
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7837,13 +7893,13 @@ For the HTTP contract, health checks, and server flags, see
 
 # Security Best Practices
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/security/best-practices
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -7919,15 +7975,196 @@ that front an exposed instance.
 
 ---
 
+# Hardening managed machines
+
+FastSkill 0.9.273
+
+Source: https://docs.gofastskill.com/security/managed-machines
+
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+
+
+# Hardening managed machines
+
+[`fastskill managed`](/cli-reference/managed-command) is cooperative configuration management
+with integrity checks. It is not a sandbox. This page says where FastSkill enforces a
+[managed state](/skill-management/managed-state), where it can't, and what an administrator pins so
+that following the state is the default path on every machine.
+
+## What FastSkill enforces
+
+FastSkill enforces the state at its own operations, and nowhere else:
+
+* **`managed apply`** deploys the listed skills into each agent's user skills folder, removes the
+  ones it placed that are no longer listed, and moves blocked content into the quarantine. With
+  `allowed = listed` and `exclusive_targets = true`, content in an agent folder that the state
+  doesn't allow is quarantined too.
+* **Installs** are checked by digest before anything changes: `skill add`, `skill update`,
+  `bundle add`, `bundle update`, `bundle override`, `project install` and restoring personal
+  overrides, and the same through `server serve` and `mcp serve`. Blocked content is refused;
+  with `allowed = listed`, so is anything the state doesn't list.
+* **`skill list --check`** fails on `managed-blocked` and `managed-not-allowed`.
+
+What this protects against:
+
+* a state that was altered, replayed, or issued for another source or another subject, whether
+  it arrives over the network, from a cache, from a file or git source, or from a mirror
+* a repository that tries to change the managed source, or run a command, through project
+  configuration: managed settings in a project file are refused, with an error naming the file
+* other users on the same machine who aren't its administrator
+* a user installing blocked content by mistake, directly or through a project
+
+What it doesn't protect against:
+
+* **The machine's administrator.**
+* **The user acting deliberately.** They can copy files into an agent folder between applies,
+  move the clock, or start an agent without hooks. `required = true` makes following the state
+  the default path and refuses FastSkill's own operations until a valid state is cached. It
+  doesn't stop a determined user. Hard enforcement means configuring the agent itself, through
+  device management, to load only the folders FastSkill manages; few agents can be configured that
+  way today (see [Agents](#agents)).
+* **Whoever holds a pinned signing key.** A key holder decides what enrolled machines install.
+
+## How fast a block lands
+
+A blocked digest reaches a machine at its next successful apply: at login, hourly, and at every
+agent session start where a hook exists. A machine that is on and can sign in applies it within
+about 70 minutes, and its agents drop the skill from their next session. A machine that stops
+applying keeps what it has, however long that lasts: off, offline, or waiting for a sign-in.
+Expiry limits how long FastSkill keeps allowing installs under an old state, not how long
+installed content stays. The [report](/cli-reference/managed-command#the-report) tells a source
+which machines haven't applied recently.
+
+## The system file
+
+Device management deploys the system file at a fixed location:
+
+| Platform | Path                                                  |
+| -------- | ----------------------------------------------------- |
+| Linux    | `/etc/fastskill/managed.toml`                         |
+| macOS    | `/Library/Application Support/FastSkill/managed.toml` |
+| Windows  | `%ProgramData%\FastSkill\managed.toml`                |
+
+FastSkill honors it only when the file and its folder are owned by the administrator account
+(root, or Administrators or SYSTEM) and nobody else can write to them; otherwise it refuses to run
+and names the problem. A value in the system file wins over the same value in the user file, and
+no managed setting is ever read from a project, an environment variable or a flag.
+
+```toml
+source = "https://skills.example.com/state"
+credential_command = ["/usr/local/bin/example-login", "token"]
+
+[[keys]]
+id = "k1"
+public_key = "BASE64-ED25519-PUBLIC-KEY"
+
+# Refuse to unenroll, and refuse commands that read or change skills until a valid state is cached.
+required = true
+
+# Optional: cover these agents instead of the ones detected for each user.
+targets = ["claude", "gemini"]
+```
+
+When the system file names the source, the first apply enrolls each user: nobody has to run
+`fastskill managed enroll`. With `required = true`, `fastskill managed unenroll` is refused.
+
+## Keys
+
+Pin the verification keys in the system file, so that no user can add one. Pin a new key before
+the source signs with it, and unpin a key to revoke it: FastSkill verifies the cached state every
+time it uses it, so a state signed only by an unpinned key stops counting at the next command.
+Keep the private key where the machines never reach it. FastSkill never needs it; only the source
+signs.
+
+## The credential command
+
+When the source needs a sign-in, name the credential command in the system file by absolute
+path, pointing at a program only the administrator can change. It runs without a shell, and the
+token it prints goes only to the source's origin. From a hook or the timer there is no terminal,
+so `FASTSKILL_INTERACTIVE=0` is set and the command should fail at once instead of prompting; the
+user's next `fastskill managed apply` from a terminal signs in again.
+
+## Administrator-level hooks
+
+`fastskill managed hooks --system` prints, for each agent that runs a command at session start,
+the entry to merge into the agent's administrator-level settings. Device management places those
+files; FastSkill never writes them. When an administrator-level FastSkill hook is present for an
+agent, apply registers no user-level one, so there is no hook for the user to approve.
+
+| Agent       | Linux                                    | macOS                                                           | Windows                                             |
+| ----------- | ---------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Claude Code | `/etc/claude-code/managed-settings.json` | `/Library/Application Support/ClaudeCode/managed-settings.json` | `C:\Program Files\ClaudeCode\managed-settings.json` |
+| Gemini CLI  | `/etc/gemini-cli/settings.json`          | `/Library/Application Support/GeminiCli/settings.json`          | `C:\ProgramData\gemini-cli\settings.json`           |
+
+```bash
+fastskill managed hooks --system
+fastskill managed hooks --system --json
+```
+
+## The machine-wide timer
+
+The same command prints the machine-wide timer: the files to place, and the commands to run
+after placing them. When a machine-wide timer is present, apply installs no per-user one.
+
+| Platform | What device management places                                                                        |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| Linux    | `/etc/systemd/user/fastskill-managed-apply.timer` and `.service`, a systemd user unit for every user |
+| macOS    | `/Library/LaunchAgents/dev.fastskill.managed-apply.plist`, loaded at each user's next login          |
+| Windows  | `C:\ProgramData\fastskill\managed-apply-task.xml`, registered with `schtasks`                        |
+
+Each run applies at login and then every hour, after a random wait of up to ten minutes, so a
+fleet doesn't fetch all at once.
+
+## Agents
+
+Hard enforcement lives in the agent: one configured, through device management, to load skills
+only from the folders FastSkill manages. What each agent allows, as checked against its
+documentation on 2026-09-24. "Shared folder" says whether the agent reads `~/.agents/skills`;
+"same session" says whether a skill written by its session-start hook shows up in that session.
+
+| Agent                    | Shared folder | Command hook at session start            | Administrator-level hooks       | Same session |
+| ------------------------ | ------------- | ---------------------------------------- | ------------------------------- | ------------ |
+| Claude Code              | no            | yes; output reaches the model            | managed settings                | no           |
+| Cursor (IDE and CLI)     | yes           | yes, not awaited; output not shown       | `/etc/cursor/hooks.json`        | no           |
+| Codex CLI                | yes           | yes; user hooks need approval            | managed hooks, no approval      | later        |
+| Gemini CLI               | yes           | yes; output must be JSON                 | `/etc/gemini-cli/settings.json` | no           |
+| Qwen Code                | yes           | yes                                      | `/etc/qwen-code`                | later        |
+| GitHub Copilot (VS Code) | yes           | yes; only JSON context reaches the model | GitHub policy                   | no           |
+| GitHub Copilot CLI       | yes           | yes; 30 s timeout                        | `/etc/github-copilot/policy.d`  | no           |
+| Devin Desktop            | yes           | yes                                      | `/etc/devin/hooks.json`         | no           |
+| Auggie                   | yes           | yes                                      | `/etc/augment/settings.json`    | no           |
+| Kiro, CodeBuddy, Qoder   | no            | yes                                      | not checked                     | no           |
+| IBM Bob                  | no            | yes; 10 s timeout                        | enforced-hooks policy           | no           |
+| OpenCode, Amp, Pi, Kilo  | yes           | only through a plugin                    | not checked                     | no           |
+| Roo Code (archived)      | yes           | none                                     | none                            | no           |
+
+"Later" means the agent watches its skills folders and picks the skill up during the session.
+FastSkill registers session-start hooks where it has verified support (today Claude Code and
+Gemini CLI); every other agent is kept up to date by the timer. Agents add hooks and folders
+often, so check the agent's current documentation before relying on a row.
+
+## Several users on one machine
+
+The system file is machine-wide. Everything else is per user: the managed store, the machine id,
+the cached state, the quarantine, the hooks and the timer. Each user enrolls and reports
+separately.
+
+
+
+---
+
 # Security Model
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/security/model
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8044,15 +8281,192 @@ network policy, secrets management).
 
 ---
 
+# Managed state
+
+FastSkill 0.9.273
+
+Source: https://docs.gofastskill.com/skill-management/managed-state
+
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+
+
+
+# Managed state
+
+A **managed state** is a signed, resolved list of the skills one user's agents on one machine
+should have. Something outside FastSkill decides it; FastSkill verifies it, applies it and never
+decides it. This page is the format reference. The commands are under
+[`managed`](/cli-reference/managed-command), and what an administrator pins is in
+[Hardening managed machines](/security/managed-machines).
+
+The envelope, the payload and the [report](/cli-reference/managed-command#the-report) are a
+compatibility surface, like the [reconciliation statuses](/skill-management/reconciliation): each
+carries a format version, and within a version fields are only added, never changed or removed.
+
+## The envelope
+
+A state travels in a [DSSE](https://github.com/secure-systems-lab/dsse) envelope: one JSON object.
+
+```json
+{
+  "payloadType": "application/vnd.fastskill.managed-state+json",
+  "payload": "eyJmb3JtYXRfdmVyc2lvbiI6MSwgLi4ufQ",
+  "signatures": [
+    { "keyid": "k1", "sig": "base64 Ed25519 signature" }
+  ]
+}
+```
+
+* `payloadType` is exactly `application/vnd.fastskill.managed-state+json`.
+* `payload` is the payload's exact bytes in base64: standard or URL-safe alphabet, padded or not.
+* Each signature is Ed25519 over DSSE's pre-authentication encoding of the payload type and the
+  payload bytes, `DSSEv1 <length of type> <type> <length of payload> <payload>`, with the lengths
+  in ASCII decimal. No JSON is canonicalized: the signer signs the bytes it puts in `payload`.
+* `keyid` names a pinned key. FastSkill accepts the envelope when at least one signature names a
+  pinned key id and verifies against that key. Signatures that name no pinned key are ignored.
+* An envelope larger than 8 MiB is refused.
+
+Keys are pinned in [trusted settings](/cli-reference/managed-command#settings) only; they are
+never fetched from the source. Several keys can be pinned at once, so pin a new key before the
+source starts signing with it, and unpin a key to revoke it. FastSkill verifies the cached state
+every time it uses it, so a state signed only by an unpinned key stops counting at once.
+
+## The payload
+
+The payload is a JSON object. Its `format_version` is `1`; a state with any other value is refused
+with a message to update FastSkill, before anything else is read.
+
+| Field               | Required | Meaning                                                                                                                                                     |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format_version`    | yes      | `1`.                                                                                                                                                        |
+| `issued_at`         | yes      | When the state was issued, RFC 3339.                                                                                                                        |
+| `expires_at`        | yes      | When it expires, RFC 3339.                                                                                                                                  |
+| `source`            | yes      | The managed source it was issued for: the configured `source`, exactly.                                                                                     |
+| `subject`           | yes      | An opaque label. FastSkill displays it and compares it for equality, never interprets it.                                                                   |
+| `skills`            | no       | The skills to install. Each entry has an `id`, a `digest` and an `artifact`.                                                                                |
+| `allowed`           | yes      | `listed`: only digests in `skills` or `also_allowed` may be installed. `any`: anything that isn't blocked.                                                  |
+| `also_allowed`      | no       | Digests that may be installed but that the state doesn't install.                                                                                           |
+| `blocked`           | no       | Digests that must not be present, each with an optional `message` for the user.                                                                             |
+| `exclusive_targets` | no       | With `allowed = listed`, `true` makes apply quarantine content in an agent folder whose digest isn't allowed, instead of leaving it alone. Default `false`. |
+| `report_url`        | no       | Where each apply sends its report.                                                                                                                          |
+| `editable`          | no       | `blocked-only` (default) or `refused`: whether editable local skills skip the allow-list.                                                                   |
+| `request_url`       | no       | A link template with one `{digest}`, shown when an install is refused.                                                                                      |
+
+`report_url`, `editable` and `request_url` take effect only with an `https://` source; see
+[the fields only an `https://` source honors](/cli-reference/managed-command#fields-only-an-https-source-honors).
+
+A `skills` entry has:
+
+* `id`: the skill's id, one safe path component. It must equal the identity of the content the
+  archive holds.
+* `digest`: the skill's content digest in the current `sha256-tree-v2:` form. It must equal the
+  digest of the extracted archive.
+* `artifact`: where the skill's ZIP archive is. An `https://` URL; for a file source, also a path
+  next to the state or an absolute path.
+
+Entries are resolved content, like a Lock, not intent, like a Manifest. Applying a state never
+resolves versions, reads repositories or runs dependency resolution: `managed apply` installs
+exactly `skills`. A skill whose declared dependencies aren't in the state is still installed, and
+apply reports the missing dependencies.
+
+### Example
+
+```json
+{
+  "format_version": 1,
+  "issued_at": "2026-10-10T12:00:00Z",
+  "expires_at": "2026-10-17T12:00:00Z",
+  "source": "https://skills.example.com/state",
+  "subject": "team-a",
+  "skills": [
+    {
+      "id": "code-review",
+      "digest": "sha256-tree-v2:3f0c2b7d9e41a6c8d5f0b2e7c1a94d6f8e3b5a7c9d1e2f4a6b8c0d2e4f6a8b1c",
+      "artifact": "https://skills.example.com/archives/code-review-3f0c2b7d.zip"
+    }
+  ],
+  "allowed": "any",
+  "also_allowed": [],
+  "blocked": [
+    {
+      "digest": "sha256-tree-v2:9a1e4c7b2d5f8a0c3e6b9d1f4a7c0e2b5d8f1a3c6e9b2d4f7a0c3e5b8d1f4a6c",
+      "message": "Withdrawn on 2026-10-09. Install code-review instead."
+    }
+  ],
+  "exclusive_targets": false,
+  "report_url": "https://skills.example.com/reports",
+  "request_url": "https://skills.example.com/request?digest={digest}"
+}
+```
+
+### What FastSkill refuses
+
+The whole state is refused when any of these is true:
+
+* its format version isn't `1`
+* a digest is in `blocked` and also in `skills` or `also_allowed`
+* two `skills` entries share an id
+* an id isn't a safe skill id: one path component, under the same rules as any skill id
+* a digest isn't in the current content digest form; the older bare-hex form is never accepted
+  here, because two different trees could share it
+* an `artifact`, `report_url` or `request_url` isn't `https://` (a file source may use local
+  paths for artifacts)
+* `editable` has a value other than `blocked-only` or `refused`
+
+When it installs a skill, apply also requires that the downloaded content's digest equals the
+entry's `digest` and that the content's own identity equals the entry's `id`.
+
+### Bound to its source and subject, and never backwards
+
+* **Source.** `source` must equal the configured managed source. A state issued for another source
+  is refused, even when a pinned key signed it.
+* **Subject.** FastSkill records the `subject` of the first state it accepts after enrollment.
+  Later states with a different subject are refused until `fastskill managed enroll` runs again,
+  so a state issued for one user can't be swapped in for another's.
+* **No rollback.** FastSkill records the highest `issued_at` it has accepted and refuses any state
+  issued earlier. Receiving the same state again is fine.
+* **Clock skew.** A state whose `issued_at` is more than five minutes ahead of the local clock is
+  refused.
+
+### Expiry
+
+FastSkill keeps the last valid state and uses it offline until it expires. After expiry, commands
+that add or change skill content are refused, and `managed apply` adds, changes and removes
+nothing, though blocked content is still quarantined. Nothing is removed because of expiry alone,
+and expiry is checked against the local clock. The next accepted state ends the condition.
+
+## Producing a state
+
+FastSkill ships no signer and serves no managed state. Any tool that writes JSON and signs with
+an Ed25519 key can produce one:
+
+1. Resolve the skills: for each, its id, its content digest, and a ZIP archive of its folder at
+   that digest, placed where `artifact` will point.
+2. Write the payload with `issued_at` now, an `expires_at` that leaves machines time to fetch the
+   next state, and the `source` the machines are configured with.
+3. Sign the pre-authentication encoding of the payload type and the payload bytes with the private
+   key, and wrap the payload and the signature in the envelope under the key's pinned id.
+4. Publish the envelope at the source, next to the archives for a file source, and pin the public
+   key in the machines' trusted settings before any machine fetches it.
+
+A signed state in a git repository or a storage bucket is a complete managed source. Nothing
+about it depends on the transport.
+
+
+
+---
+
 # Manifests, locks, and scope
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/skill-management/manifest-system
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8200,13 +8614,13 @@ project configuration controls where consumers install it. See
 
 # Reconcile project skill state
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/skill-management/reconciliation
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8379,13 +8793,13 @@ checks.
 
 # Validate a skill
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8438,13 +8852,13 @@ for missing, changed, conflicting, and unverifiable installations.
 
 # Debugging Guide
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/testing/debugging
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8510,13 +8924,13 @@ Start with `fastskill cli doctor` to confirm the environment, then re-run the fa
 
 # Testing Framework
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/testing/framework
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -8581,13 +8995,13 @@ Start by pinning down what "good" looks like in your `checks.toml`, then iterate
 
 # MCP Tool Calling
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/tool-calling/development
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 

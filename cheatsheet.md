@@ -1,12 +1,12 @@
 # Cheatsheet
 
-FastSkill 0.9.272
+FastSkill 0.9.273
 
 Source: https://docs.gofastskill.com/cheatsheet
 
-Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
-Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
+Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
 
 
 
@@ -116,6 +116,18 @@ Modern agents (Claude Code, Cursor, …) read skills directly from the skills di
 | List versions       | `fastskill repo versions skill-id`                               | Published versions for an id                                           |
 
 See [Registry overview](/registry/overview) and [`repo` commands](/cli-reference/repository-command).
+
+## Managed machines
+
+| Operation | Command                            | What it does                                                                                                          |
+| --------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Enroll    | `fastskill managed enroll`         | Follows the source in trusted settings, applies its first state, registers session-start hooks and the timer          |
+| Apply     | `fastskill managed apply`          | Fetches and applies the newest signed state; `--json` for the result                                                  |
+| Status    | `fastskill managed status`         | Source, subject, expiry, sign-in, targets and quarantine; `--report` adds what the last apply did and the report body |
+| Hooks     | `fastskill managed hooks --system` | What an administrator installs machine-wide: the hook entry per agent and the timer files                             |
+| Unenroll  | `fastskill managed unenroll`       | Removes what the state put here for this user; the quarantine stays                                                   |
+
+See [`managed`](/cli-reference/managed-command), the [managed state](/skill-management/managed-state) format and [Hardening managed machines](/security/managed-machines).
 
 ## Local server
 
