@@ -30,6 +30,10 @@ const CANONICAL_PATHS: &[&str] = &[
     "eval/scorecard",
     "eval/validate",
     "index/rebuild",
+    "managed/apply",
+    "managed/enroll",
+    "managed/status",
+    "managed/unenroll",
     "marketplace/create",
     "mcp/install",
     "mcp/list",
@@ -101,7 +105,7 @@ fn spec_exports_the_exact_canonical_inventory() {
         .collect::<BTreeSet<_>>();
     let expected = CANONICAL_PATHS.iter().copied().collect::<BTreeSet<_>>();
     assert_eq!(actual, expected);
-    assert_eq!(actual.len(), 55);
+    assert_eq!(actual.len(), 59);
 }
 
 #[test]

@@ -10,6 +10,7 @@ pub mod eval;
 pub mod init;
 pub mod install;
 pub mod list;
+pub mod managed;
 pub mod marketplace;
 pub mod mcp;
 pub mod read;

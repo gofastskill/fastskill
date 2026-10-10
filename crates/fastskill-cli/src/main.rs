@@ -106,8 +106,8 @@ fn app_error_exit_code(error: &anyhow::Error) -> i32 {
 }
 
 use commands::{
-    add, analyze, bundle, cache, doctor, eval, init, install, list, marketplace, mcp, read,
-    reindex, remove, repin, repos, search, serve, skillopt, update,
+    add, analyze, bundle, cache, doctor, eval, init, install, list, managed, marketplace, mcp,
+    read, reindex, remove, repin, repos, search, serve, skillopt, update,
 };
 
 /// The binary's name, as reported by `--version` and used to derive MCP tool
@@ -551,6 +551,42 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
                 },
             )?
     };
+
+    // ── managed: follow a signed managed state for this user's agents (ADR-0016) ──
+    let builder = builder
+        .register_group(&path!["managed"], managed::group_metadata())?
+        .register_out(
+            path!["managed", "enroll"],
+            |_ctx, args: managed::EnrollArgs| async move {
+                managed::execute_enroll(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "apply"],
+            |_ctx, args: managed::ApplyArgs| async move {
+                managed::execute_apply(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "status"],
+            |_ctx, args: managed::StatusArgs| async move {
+                managed::execute_status(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "unenroll"],
+            |_ctx, args: managed::UnenrollArgs| async move {
+                managed::execute_unenroll(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?;
 
     // ── marketplace: fully migrated to typed API ─────────────────────────────
     let builder = {

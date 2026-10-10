@@ -81,6 +81,7 @@ pub static READ_ONLY_COMMAND_PATHS: &[&[&str]] = &[
     &["eval", "report"],
     &["eval", "score"],
     &["eval", "validate"],
+    &["managed", "status"],
     &["mcp", "list"],
     &["optimization", "inspect"],
     &["optimization", "status"],
@@ -221,6 +222,21 @@ pub static WRITE_OPERATIONS: &[WriteOperation] = &[
             path: "/registry/refresh",
             router: route_refresh_sources,
         }],
+    },
+    WriteOperation {
+        id: "managed-enroll",
+        command_path: Some(&["managed", "enroll"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "managed-apply",
+        command_path: Some(&["managed", "apply"]),
+        http_routes: &[],
+    },
+    WriteOperation {
+        id: "managed-unenroll",
+        command_path: Some(&["managed", "unenroll"]),
+        http_routes: &[],
     },
     WriteOperation {
         id: "cache-clean",

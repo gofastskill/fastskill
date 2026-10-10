@@ -109,6 +109,8 @@ pub struct ManagedSettings {
     pub targets: Option<Vec<String>>,
     /// Whether the system file set `required = true`.
     pub required_by_system: bool,
+    /// Whether the system file names the source, so the first apply may enroll.
+    pub source_from_system: bool,
     /// The files the settings came from.
     pub files: Vec<PathBuf>,
 }
@@ -139,11 +141,9 @@ impl ManagedSettings {
 
     /// Read the platform system file and the user file.
     pub fn load() -> Result<Self, ManagedError> {
-        let user = crate::core::repository::user_config::user_config_dir()
-            .map(|dir| dir.join(USER_FILE_NAME));
         Self::load_from(
             system_file_path().as_deref(),
-            user.as_deref(),
+            user_file_path().as_deref(),
             check_system_file,
         )
     }
@@ -191,6 +191,7 @@ fn merge(
 ) -> Result<ManagedSettings, ManagedError> {
     let system = system.unwrap_or_default();
     let required_by_system = system.required == Some(true);
+    let source_from_system = system.source.is_some();
     let source = system.source.or(user.source);
     let keys = system.keys.or(user.keys).unwrap_or_default();
     let credential_command = system.credential_command.or(user.credential_command);
@@ -201,6 +202,7 @@ fn merge(
         required: system.required.or(user.required).unwrap_or(false),
         targets: system.targets.or(user.targets),
         required_by_system,
+        source_from_system,
         files: Vec::new(),
     };
     if let Some(command) = &settings.credential_command {
@@ -257,6 +259,11 @@ fn parse_keys(entries: &[KeyEntry]) -> Result<Vec<PinnedKey>, ManagedError> {
             })
         })
         .collect()
+}
+
+/// The user's managed settings file, in FastSkill's configuration directory.
+pub fn user_file_path() -> Option<PathBuf> {
+    crate::core::repository::user_config::user_config_dir().map(|dir| dir.join(USER_FILE_NAME))
 }
 
 /// Where device management deploys the system file on this platform.

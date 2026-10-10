@@ -17,11 +17,11 @@ fn digest(fill: char) -> String {
     format!("sha256-tree-v2:{}", fill.to_string().repeat(64))
 }
 
-fn key_pair(seed: u8) -> Ed25519KeyPair {
+pub(super) fn key_pair(seed: u8) -> Ed25519KeyPair {
     Ed25519KeyPair::from_seed_unchecked(&[seed; 32]).unwrap()
 }
 
-fn pinned(id: &str, seed: u8) -> PinnedKey {
+pub(super) fn pinned(id: &str, seed: u8) -> PinnedKey {
     PinnedKey {
         id: id.to_string(),
         public_key: key_pair(seed).public_key().as_ref().try_into().unwrap(),
@@ -54,7 +54,7 @@ fn state_json() -> Value {
     })
 }
 
-fn sign(payload: &[u8], signers: &[(&str, u8)]) -> Vec<u8> {
+pub(super) fn sign(payload: &[u8], signers: &[(&str, u8)]) -> Vec<u8> {
     let message = pae(PAYLOAD_TYPE, payload);
     let signatures: Vec<Value> = signers
         .iter()

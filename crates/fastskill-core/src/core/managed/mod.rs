@@ -12,17 +12,34 @@
 //! - [`config`]: the managed settings, read only from the system file and the user's
 //!   `managed.toml` (decision 7).
 //!
+//! - [`apply`]: applying a state to this user's Agent targets, with the [`store`], the
+//!   [`quarantine`], the per-user [`layout`] and lock, and the [`records`] it keeps
+//!   (decisions 8 to 12 and 17).
+//!
 //! [`open`] is the one entry point that turns envelope bytes into a state FastSkill may use.
 
+pub mod apply;
 pub mod config;
+pub mod enrollment;
 pub mod envelope;
+pub mod layout;
+pub mod quarantine;
+pub mod records;
 pub mod state;
+pub mod store;
 
+#[cfg(test)]
+mod apply_tests;
 #[cfg(test)]
 mod tests;
 
+pub use apply::{apply, ApplyContext, ApplyOutcome, ApplyResult, EntryChange};
 pub use config::{ManagedSettings, ManagedSource, PinnedKey, SYSTEM_FILE_NAME, USER_FILE_NAME};
+pub use enrollment::{enroll, status, unenroll, ManagedStatus, UnenrollOutcome};
 pub use envelope::{verify_envelope, Verified, PAYLOAD_TYPE};
+pub use layout::{ApplyLock, ManagedLayout};
+pub use quarantine::{QuarantineReason, QuarantineRecord};
+pub use records::{Enrollment, EntryMode, OwnedEntry, Ownership};
 pub use state::{
     Allowed, BlockedDigest, Editable, ManagedState, Recorded, StateSkill, FORMAT_VERSION,
     MAX_CLOCK_SKEW,
