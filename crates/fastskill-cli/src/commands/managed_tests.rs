@@ -1,6 +1,7 @@
 use super::*;
 use fastskill_core::core::managed::{
     Enrollment, EntryChange, ManagedSource, PinnedKey, QuarantineReason, QuarantineRecord,
+    ReportDelivery,
 };
 use tempfile::TempDir;
 
@@ -21,6 +22,7 @@ fn environment(dir: &TempDir, configured: bool, interactive: bool) -> Environmen
         home: dir.path().join("home"),
         project_skills: None,
         interactive,
+        config_dir: dir.path().to_path_buf(),
     }
 }
 
@@ -255,7 +257,83 @@ fn status_of_an_enrolled_user() {
         report: true,
     };
     let value: Value = serde_json::from_str(&run_status(&env, &report).unwrap()).unwrap();
-    assert_eq!(value["last_apply"]["subject"], "team-a");
+    assert_eq!(value["format_version"], 1);
+    assert_eq!(value["sequence"], 1);
+    assert_eq!(value["machine_id"], value_of_machine(&env));
+    assert!(value.get("last_apply").is_none(), "{value}");
+}
+
+fn value_of_machine(env: &Environment) -> String {
+    let enrollment: Enrollment =
+        serde_json::from_slice(&std::fs::read(env.layout.enrollment_file()).unwrap()).unwrap();
+    enrollment.machine_id
+}
+
+#[test]
+fn sign_in_warnings_and_the_report_are_shown() {
+    let mut last = outcome(true);
+    last.sign_in_needed = true;
+    last.warnings = vec!["report_url is elsewhere".to_string()];
+    for (delivery, expected) in [
+        (
+            ReportDelivery {
+                sequence: 4,
+                accepted: true,
+                problem: None,
+            },
+            "report   #4 accepted",
+        ),
+        (
+            ReportDelivery {
+                sequence: 4,
+                accepted: false,
+                problem: Some("HTTP 500".to_string()),
+            },
+            "report   not accepted: HTTP 500",
+        ),
+        (ReportDelivery::default(), "report   not accepted"),
+    ] {
+        last.report = Some(delivery);
+        let text = render_outcome(&last);
+        for expected in [
+            expected,
+            "Sign-in needed",
+            "warning  report_url is elsewhere",
+        ] {
+            assert!(text.contains(expected), "{expected} in {text}");
+        }
+    }
+
+    let status = ManagedStatus {
+        source: Some("/s/state.dsse".to_string()),
+        enrollment: Some(Enrollment::new("/s/state.dsse", chrono::Utc::now())),
+        sign_in_needed: true,
+        ignored: vec!["report_url: a file source never gets a report".to_string()],
+        report_note: Some("none: a file source never gets a report".to_string()),
+        report: Some(managed::Report::build(managed::report::ReportInput {
+            source: &ManagedSource::File(PathBuf::from("/s/state.dsse")),
+            enrollment: &Enrollment::new("/s/state.dsse", chrono::Utc::now()),
+            issued_at: None,
+            completed: true,
+            snapshot: &last.snapshot,
+            quarantine: &[],
+            refusals: &managed::report::Refusals::default(),
+        })),
+        last_apply: Some(last),
+        ..ManagedStatus::default()
+    };
+    let text = render_status(&status, true);
+    for expected in [
+        "Sign-in needed",
+        "Ignored:  report_url",
+        "Report:   none: a file source",
+        "  warning   report_url is elsewhere",
+        "Report body:",
+        "\"format_version\": 1",
+    ] {
+        assert!(text.contains(expected), "{expected} in {text}");
+    }
+    assert!(!render_status(&status, false).contains("Report body:"));
 }
 
 #[test]

@@ -159,8 +159,35 @@ impl Situation {
                  {APPLY_HINT}",
                 state.expires_at
             ))),
-            Self::State { state, source, .. } => check_state(state, source, candidate),
+            Self::State { state, source, .. } => {
+                check_state(state, source, candidate).map_err(|refusal| refused(refusal.message))
+            }
         }
+    }
+
+    /// [`Situation::check`], keeping a refusal of a known digest in `layout` for the next
+    /// report when the source is `https://` (decisions 15 and 21).
+    pub fn check_recording(
+        &self,
+        candidate: Candidate<'_>,
+        layout: &ManagedLayout,
+    ) -> Result<(), ServiceError> {
+        let Self::State {
+            state,
+            source: source @ ManagedSource::Https(_),
+            expired: false,
+        } = self
+        else {
+            return self.check(candidate);
+        };
+        check_state(state, source, candidate).map_err(|refusal| {
+            if let Some(digest) = &refusal.digest {
+                if let Err(error) = super::report::record_refusal(layout, digest) {
+                    tracing::warn!("couldn't keep the refusal for the managed report: {error}");
+                }
+            }
+            refused(refusal.message)
+        })
     }
 
     /// Check several candidates, stopping at the first refusal.
@@ -221,28 +248,51 @@ impl Situation {
     }
 }
 
+/// Why a candidate was refused, with its digest when it was known.
+struct Refusal {
+    message: String,
+    digest: Option<String>,
+}
+
+impl Refusal {
+    fn new(message: String, digest: Option<&str>) -> Self {
+        Self {
+            message,
+            digest: digest.map(str::to_string),
+        }
+    }
+}
+
 fn check_state(
     state: &ManagedState,
     source: &ManagedSource,
     candidate: Candidate<'_>,
-) -> Result<(), ServiceError> {
+) -> Result<(), Refusal> {
     if candidate.editable
         && state.allowed == Allowed::Listed
         && state.editable(source) == Editable::Refused
     {
-        return Err(refused(format!(
-            "{} is an editable local skill, and the managed state refuses those",
-            candidate.id
-        )));
+        return Err(Refusal::new(
+            format!(
+                "{} is an editable local skill, and the managed state refuses those",
+                candidate.id
+            ),
+            None,
+        ));
     }
     let digest = match (candidate.digest, candidate.path) {
         (Some(digest), _) => digest.to_string(),
-        (None, Some(path)) => digest_of(path)?,
+        (None, Some(path)) => {
+            digest_of(path).map_err(|error| Refusal::new(error.to_string(), None))?
+        }
         (None, None) => {
-            return Err(refused(format!(
-                "{} has no content digest to check against the managed state",
-                candidate.id
-            )))
+            return Err(Refusal::new(
+                format!(
+                    "{} has no content digest to check against the managed state",
+                    candidate.id
+                ),
+                None,
+            ))
         }
     };
     if let Some(blocked) = state.blocked(&digest) {
@@ -251,20 +301,26 @@ fn check_state(
             .as_deref()
             .map(|message| format!(": {message}"))
             .unwrap_or_default();
-        return Err(refused(format!(
-            "{} ({digest}) is blocked by the managed state{message}",
-            candidate.id
-        )));
+        return Err(Refusal::new(
+            format!(
+                "{} ({digest}) is blocked by the managed state{message}",
+                candidate.id
+            ),
+            Some(&digest),
+        ));
     }
     if not_allowed(state, source, &digest, candidate.editable) {
         let link = state
             .request_link(source, &digest)
             .map(|link| format!("; request it at {link}"))
             .unwrap_or_default();
-        return Err(refused(format!(
-            "{} ({digest}) isn't allowed by the managed state{link}",
-            candidate.id
-        )));
+        return Err(Refusal::new(
+            format!(
+                "{} ({digest}) isn't allowed by the managed state{link}",
+                candidate.id
+            ),
+            Some(&digest),
+        ));
     }
     Ok(())
 }
@@ -312,9 +368,10 @@ impl ManagedGate {
         }
     }
 
-    /// Check one candidate against the situation now.
+    /// Check one candidate against the situation now. The current user's gate keeps refusals
+    /// for the next report; a fixed one doesn't.
     pub fn check(&self, candidate: Candidate<'_>) -> Result<(), ServiceError> {
-        self.situation().check(candidate)
+        self.check_all([candidate])
     }
 
     /// Check several candidates against one reading of the situation.
@@ -322,7 +379,17 @@ impl ManagedGate {
         &self,
         candidates: impl IntoIterator<Item = Candidate<'a>>,
     ) -> Result<(), ServiceError> {
-        self.situation().check_all(candidates)
+        let situation = self.situation();
+        let layout = match &self.fixed {
+            Some(_) => None,
+            None => ManagedLayout::for_current_user().ok(),
+        };
+        candidates
+            .into_iter()
+            .try_for_each(|candidate| match &layout {
+                Some(layout) => situation.check_recording(candidate, layout),
+                None => situation.check(candidate),
+            })
     }
 }
 

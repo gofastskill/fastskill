@@ -19,6 +19,10 @@
 //! - [`gate`]: the install gate, the two managed reconciliation statuses and what a command may
 //!   do without a valid state (decisions 4, 13 and 14).
 //!
+//! - [`remote`]: fetching an `https://` source and its artifacts with the credential
+//!   command's token, and [`report`]: the fixed report an apply sends (decisions 5, 6, 15 and
+//!   21).
+//!
 //! [`open`] is the one entry point that turns envelope bytes into a state FastSkill may use.
 
 pub mod apply;
@@ -29,8 +33,12 @@ pub mod gate;
 pub mod layout;
 pub mod quarantine;
 pub mod records;
+pub mod remote;
+pub mod report;
 pub mod state;
 pub mod store;
+#[cfg(test)]
+mod test_https;
 
 #[cfg(test)]
 mod apply_tests;
@@ -45,6 +53,7 @@ pub use gate::{Candidate, CommandPolicy, ManagedGate, ManagedSkillStatus, Situat
 pub use layout::{ApplyLock, ManagedLayout};
 pub use quarantine::{QuarantineReason, QuarantineRecord};
 pub use records::{Enrollment, EntryMode, OwnedEntry, Ownership};
+pub use report::{set_current_command, Report, ReportDelivery};
 pub use state::{
     Allowed, BlockedDigest, Editable, ManagedState, Recorded, StateSkill, FORMAT_VERSION,
     MAX_CLOCK_SKEW,

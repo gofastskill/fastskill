@@ -33,7 +33,8 @@ pub fn group_metadata() -> GroupMetadata {
 #[derive(Debug, Default)]
 pub struct ManagedArgs {
     pub json: bool,
-    /// `status` only: include the last apply's full report.
+    /// `status` only: include what the last apply did and the report body; with `--json`, print
+    /// only the report body.
     pub report: bool,
 }
 
@@ -111,6 +112,7 @@ managed_args!(StatusArgs, {
         vec![
             "fastskill managed status",
             "fastskill managed status --report",
+            "fastskill managed status --json --report",
         ],
     );
     spec.args.push(ArgSpec {
@@ -119,7 +121,8 @@ managed_args!(StatusArgs, {
         long: Some("report"),
         value_type: ArgValueType::Bool,
         cardinality: Cardinality::Optional,
-        help: "Include everything the last apply did",
+        help: "Include everything the last apply did and the report body; with --json, print \
+               only the report body",
         ..Default::default()
     });
     spec
@@ -142,6 +145,8 @@ pub struct Environment {
     pub project_skills: Option<PathBuf>,
     /// Whether a person is watching; a hook runs without a terminal.
     pub interactive: bool,
+    /// FastSkill's configuration folder, where the credential command runs.
+    pub config_dir: PathBuf,
 }
 
 impl Environment {
@@ -151,6 +156,9 @@ impl Environment {
         Ok(Self {
             layout: ManagedLayout::for_current_user()?,
             settings,
+            config_dir: user_file_path()
+                .and_then(|file| file.parent().map(PathBuf::from))
+                .unwrap_or_else(std::env::temp_dir),
             user_settings_file: user_file_path(),
             home: dirs::home_dir()
                 .ok_or_else(|| CliError::Config("can't determine the home folder".to_string()))?,
@@ -170,6 +178,8 @@ impl Environment {
             project_skills: self.project_skills.clone(),
             may_enroll,
             now: chrono::Utc::now(),
+            interactive: self.interactive,
+            config_dir: self.config_dir.clone(),
         })
     }
 }
@@ -183,13 +193,21 @@ fn not_configured() -> CliError {
 }
 
 pub async fn execute_enroll(args: EnrollArgs) -> CliResult<()> {
-    let env = Environment::current()?;
-    emit(run_enroll(&env, &args.0)?)
+    emit(off_runtime(move || run_enroll(&Environment::current()?, &args.0)).await?)
 }
 
 pub async fn execute_apply(args: ApplyArgs) -> CliResult<()> {
-    let env = Environment::current()?;
-    emit(run_apply(&env, &args.0)?)
+    emit(off_runtime(move || run_apply(&Environment::current()?, &args.0)).await?)
+}
+
+/// Run an apply on a blocking thread: it makes blocking https requests and runs the
+/// credential command.
+async fn off_runtime(
+    work: impl FnOnce() -> CliResult<Rendered> + Send + 'static,
+) -> CliResult<Rendered> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| CliError::Config(format!("the apply stopped unexpectedly: {error}")))?
 }
 
 pub async fn execute_status(args: StatusArgs) -> CliResult<()> {
@@ -276,6 +294,9 @@ pub fn render_outcome(outcome: &ApplyOutcome) -> String {
     if let Some(problem) = &outcome.state_problem {
         lines.push(format!("Used the last accepted state: {problem}"));
     }
+    if outcome.sign_in_needed {
+        lines.push(SIGN_IN_NEEDED.to_string());
+    }
     if outcome.targets.is_empty() {
         lines.push("No agent targets were found for this user.".to_string());
     }
@@ -314,11 +335,29 @@ pub fn render_outcome(outcome: &ApplyOutcome) -> String {
     for (what, why) in &outcome.failures {
         lines.push(format!("  failed   {what}: {why}"));
     }
+    for warning in &outcome.warnings {
+        lines.push(format!("  warning  {warning}"));
+    }
+    if let Some(report) = &outcome.report {
+        lines.push(match (&report.problem, report.accepted) {
+            (_, true) => format!("  report   #{} accepted", report.sequence),
+            (Some(problem), _) => format!("  report   not accepted: {problem}"),
+            (None, false) => "  report   not accepted".to_string(),
+        });
+    }
     lines.join("\n")
 }
 
+const SIGN_IN_NEEDED: &str =
+    "Sign-in needed: the credential command didn't give a token the source accepts. Run \
+     `fastskill managed apply` in a terminal to sign in.";
+
 pub fn run_status(env: &Environment, args: &ManagedArgs) -> CliResult<String> {
     let status = managed::status(&env.layout, &env.settings, chrono::Utc::now())?;
+    if args.json && args.report {
+        // The exact body the next report carries, and nothing else (decision 15).
+        return Ok(serde_json::to_string_pretty(&status.report).unwrap_or_default());
+    }
     if args.json {
         return Ok(
             serde_json::to_string_pretty(&status_json(&status, args.report)).unwrap_or_default(),
@@ -338,6 +377,10 @@ fn status_json(status: &ManagedStatus, report: bool) -> Value {
         "expires_at": status.expires_at,
         "expired": status.expired,
         "state_problem": status.state_problem,
+        "sign_in_needed": status.sign_in_needed,
+        "ignored": status.ignored,
+        "report_to": status.report_note,
+        "warnings": last.map(|l| l.warnings.clone()).unwrap_or_default(),
         "targets": last.map(|l| l.targets.clone()).unwrap_or_default(),
         "collisions": last.map(|l| l.collisions.clone()).unwrap_or_default(),
         "owned": status.owned,
@@ -377,6 +420,15 @@ pub fn render_status(status: &ManagedStatus, report: bool) -> String {
     if let Some(problem) = &status.state_problem {
         lines.push(format!("State:    {problem}"));
     }
+    if status.sign_in_needed {
+        lines.push(SIGN_IN_NEEDED.to_string());
+    }
+    for ignored in &status.ignored {
+        lines.push(format!("Ignored:  {ignored}"));
+    }
+    if let Some(note) = &status.report_note {
+        lines.push(format!("Report:   {note}"));
+    }
     if let Some(last) = &status.last_apply {
         lines.push(format!(
             "Last apply: {} ({})",
@@ -393,9 +445,16 @@ pub fn render_status(status: &ManagedStatus, report: bool) -> String {
         for path in &last.collisions {
             lines.push(format!("  collision {}", path.display()));
         }
+        for warning in &last.warnings {
+            lines.push(format!("  warning   {warning}"));
+        }
         if report {
             lines.push(render_outcome(last));
         }
+    }
+    if let (true, Some(body)) = (report, &status.report) {
+        lines.push("Report body:".to_string());
+        lines.push(serde_json::to_string_pretty(body).unwrap_or_default());
     }
     lines.push(format!("Managed entries: {}", status.owned.len()));
     if status.quarantine.is_empty() {
