@@ -60,15 +60,18 @@ The comparison of the three states — Manifest (desired), Lock (pinned), skills
 (actual) — producing exactly one **reconciliation status** per skill. Owned by `skill list`.
 
 **Reconciliation status**:
-A closed vocabulary of eleven values. Two are **settled** — the skill needs no action:
+A closed vocabulary of thirteen values. Two are **settled** — the skill needs no action:
 
 - `ok` — the three states agree.
 - `excluded` — the skill is required by something, but is outside the current selection.
 
-The other nine each name a specific disagreement, and `skill list --check` fails on any of
+The other eleven each name a specific disagreement, and `skill list --check` fails on any of
 them. Because `--check` is how callers gate a build, this vocabulary is a compatibility
 surface rather than an internal detail:
 
+- `managed-blocked` — the **managed state** blocks the installed content's digest.
+- `managed-not-allowed` — the managed state allows only listed content, and the installed
+  content isn't listed.
 - `missing-lock` — in the Manifest, absent from the Lock.
 - `missing-content` — selected, but absent from the skills directory.
 - `intent-mismatch` — the Manifest and the Lock disagree about where the skill comes from.
@@ -78,6 +81,10 @@ surface rather than an internal detail:
 - `insufficient-integrity` — nothing pins the content, so it cannot be checked at all.
 - `ownership-conflict` — two **dependency roots** require the same skill at different content.
 - `extraneous` — installed, but no dependency root requires it.
+
+The two `managed-` values appear only on a machine that follows a verified managed state, and
+take precedence over every other value; `managed-blocked` comes first. `--check` fails on
+them even when the skill is outside the current selection.
 
 _Avoid_: `missing` and `mismatch` — neither is a status; name which one.
 

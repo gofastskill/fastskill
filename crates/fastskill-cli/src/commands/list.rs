@@ -342,6 +342,7 @@ pub async fn execute_list(
         .cloned()
         .collect();
 
+    let situation = service.managed_gate().situation();
     let mut check_failures = Vec::new();
     let mut rows: Vec<ListRow> = all_ids
         .into_iter()
@@ -418,7 +419,13 @@ pub async fn execute_list(
             let desired_entry = desired_entries.get(&id);
             let mutable = locked_entry
                 .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));
-            let reconciliation = if !selected && !owners.is_empty() {
+            let storage = service.config().skill_storage_path.join(&id);
+            let managed = installed
+                .then(|| ReconciliationStatus::managed(&situation, &storage, mutable))
+                .flatten();
+            let reconciliation = if let Some(status) = managed {
+                status
+            } else if !selected && !owners.is_empty() {
                 ReconciliationStatus::Excluded
             } else if selected && desired_entry.is_some() && locked_entry.is_none() {
                 ReconciliationStatus::MissingLock
@@ -467,7 +474,10 @@ pub async fn execute_list(
             } else {
                 ReconciliationStatus::Ok
             };
-            if args.check && selected && !reconciliation.is_settled() {
+            if args.check
+                && (selected || reconciliation.is_managed())
+                && !reconciliation.is_settled()
+            {
                 check_failures.push(format!("{id}: {reconciliation}"));
             }
             let desired_constraint = desired_entry.map(|entry| match &entry.origin {

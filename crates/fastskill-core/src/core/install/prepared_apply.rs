@@ -1,5 +1,8 @@
-use super::{AddMode, AddOutcome, PreparedSkill};
+use super::{AddMode, AddOutcome, Fetched, PreparedSkill};
+use crate::core::managed::Candidate;
+use crate::core::origin::{Origin, Resolved};
 use crate::core::service::{FastSkillService, ServiceError};
+use std::path::Path;
 
 impl PreparedSkill {
     pub fn id(&self) -> &str {
@@ -29,6 +32,34 @@ impl PreparedSkill {
 }
 
 impl FastSkillService {
+    /// [`Self::check_managed`] for content fetched for preparation, so a whole project is
+    /// checked before anything is applied.
+    pub(super) fn check_fetched(
+        &self,
+        id: &str,
+        fetched: &Fetched,
+        origin: &Origin,
+    ) -> Result<(), ServiceError> {
+        self.check_managed(id, &fetched.resolved, &fetched.skill_path, origin)
+    }
+
+    /// Ask the managed-state install gate whether fetched content may be installed, before any
+    /// state changes (ADR-0016 decision 13).
+    pub(super) fn check_managed(
+        &self,
+        id: &str,
+        resolved: &Resolved,
+        skill_path: &Path,
+        origin: &Origin,
+    ) -> Result<(), ServiceError> {
+        self.managed_gate().check(Candidate {
+            id,
+            digest: resolved.checksum.as_deref(),
+            path: Some(skill_path),
+            editable: matches!(origin, Origin::Local { editable: true, .. }),
+        })
+    }
+
     /// Apply a previously prepared candidate without changing desired state or
     /// the Lock. The caller persists one deterministic Lock after the complete
     /// operation succeeds.

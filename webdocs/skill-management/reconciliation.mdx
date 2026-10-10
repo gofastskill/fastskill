@@ -39,6 +39,8 @@ The `reconciliation` field is the canonical machine-readable status. Values can 
 
 | Value | Meaning |
 | --- | --- |
+| `managed-blocked` | The managed state blocks the installed content's digest. |
+| `managed-not-allowed` | The managed state allows only listed content, and the installed content isn't listed. |
 | `ok` | Selected state agrees and managed content passes integrity checks. |
 | `excluded` | A group filter excluded the owning root. |
 | `missing-lock` | Declared intent has no resolved lock entry. |
@@ -50,6 +52,11 @@ The `reconciliation` field is the canonical machine-readable status. Values can 
 | `insufficient-integrity` | The lock lacks evidence required for a reliable check. |
 | `ownership-conflict` | Bundle owners disagree about the expected content. |
 | `extraneous` | Installed content has no manifest, lock, bundle, or override owner. |
+
+The two `managed-` values appear only when this machine follows a verified managed state (see
+[`fastskill managed`](/cli-reference/managed-command)). They take precedence over every other
+value, `managed-blocked` first, and `skill list --check` fails on them even for a skill outside
+the current selection.
 
 ## JSON schema
 

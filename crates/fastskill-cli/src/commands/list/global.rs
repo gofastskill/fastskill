@@ -66,6 +66,7 @@ pub(super) async fn execute_global_list(
         .cloned()
         .collect::<Vec<_>>();
     let selected_ids = closure(&lock, &selected_roots);
+    let situation = service.managed_gate().situation();
     let mut failures = Vec::new();
     let mut rows = Vec::new();
     for id in ids {
@@ -74,7 +75,12 @@ pub(super) async fn execute_global_list(
         let selected = selected_ids.contains(&id);
         let mutable = locked
             .is_some_and(|entry| matches!(entry.origin, Origin::Local { editable: true, .. }));
-        let reconciliation = if locked.is_some() && !selected {
+        let storage = service.config().skill_storage_path.join(&id);
+        let managed =
+            actual.and_then(|_| ReconciliationStatus::managed(&situation, &storage, mutable));
+        let reconciliation = if let Some(status) = managed {
+            status
+        } else if locked.is_some() && !selected {
             ReconciliationStatus::Excluded
         } else {
             reconcile(service, &id, locked, actual, mutable)
@@ -412,6 +418,64 @@ mod tests {
         assert!(matches!(
             execute_global_list(&service, check, OutputFormat::Json).await,
             Err(CliError::Config(message)) if message.contains("missing-content")
+        ));
+    }
+
+    #[tokio::test]
+    async fn global_list_reports_blocked_content_first() {
+        use fastskill_core::core::managed::{ManagedGate, ManagedSource, ManagedState, Situation};
+        let _lock = fastskill_core::test_utils::DIR_MUTEX
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+        let _xdg = EnvGuard::set("XDG_CONFIG_HOME", &temp.path().join("config"));
+        let storage = temp.path().join("skills");
+        let installed = storage.join("demo");
+        std::fs::create_dir_all(&installed).unwrap();
+        std::fs::write(
+            installed.join("SKILL.md"),
+            "---\nname: demo\nversion: 1.0.0\ndescription: demo\n---\n# demo\n",
+        )
+        .unwrap();
+        let digest = managed_tree_digest(&installed).unwrap();
+        let path = global_lock_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut lock = GlobalSkillsLock::new_empty();
+        lock.covered_roots.push("demo".to_string());
+        lock.skills
+            .push(entry("demo", "1.0.0", Some(digest.clone())));
+        lock.save_to_file(&path).unwrap();
+        let source = ManagedSource::File(temp.path().join("state.dsse"));
+        let state = serde_json::json!({
+            "format_version": 1,
+            "issued_at": "2026-10-09T11:00:00Z",
+            "expires_at": "2026-10-16T11:00:00Z",
+            "source": source.as_str(),
+            "subject": "team-a",
+            "skills": [],
+            "allowed": "any",
+            "blocked": [{ "digest": digest }],
+        });
+        let situation = Situation::State {
+            state: Box::new(ManagedState::parse(&serde_json::to_vec(&state).unwrap()).unwrap()),
+            source,
+            expired: false,
+        };
+        let service = service(&storage)
+            .await
+            .with_managed_gate(ManagedGate::fixed(situation));
+        let args = ListArgs {
+            format: None,
+            json: false,
+            details: false,
+            check: true,
+            only: None,
+            without: None,
+            skills_dir: None,
+        };
+        assert!(matches!(
+            execute_global_list(&service, args, OutputFormat::Json).await,
+            Err(CliError::Config(message)) if message.contains("demo: managed-blocked")
         ));
     }
 }

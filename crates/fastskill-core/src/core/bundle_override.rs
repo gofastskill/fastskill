@@ -11,6 +11,7 @@ use crate::core::content_digest::{
     content_digest_matches, recorded_digests_conflict, upgraded_digest,
 };
 use crate::core::lock::{ProjectLockedSkillEntry, ProjectSkillsLock};
+use crate::core::managed::Candidate;
 use crate::core::manifest::{DependenciesSection, DependencySpec, SkillProjectToml};
 use crate::core::origin::{Origin, Resolved};
 use crate::core::ownership::normalize_lock_ownership;
@@ -407,6 +408,9 @@ fn prepare_reset(
             artifact.display()
         )));
     }
+    service
+        .managed_gate
+        .check(Candidate::digest(id, &packaged.digest.current))?;
     Ok(Some(ResetPreparation {
         manifest,
         lock,

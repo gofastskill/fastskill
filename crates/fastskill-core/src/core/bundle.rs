@@ -15,6 +15,7 @@ use crate::core::bundle_persistence::{
 use crate::core::contained_path::ContainedPath;
 use crate::core::content_digest::{content_digest, content_digest_matches, DigestForms};
 use crate::core::lock::{ProjectLockedBundleEntry, ProjectLockedBundleMember, ProjectSkillsLock};
+use crate::core::managed::{Candidate, ManagedGate};
 use crate::core::manifest::SkillProjectToml;
 use crate::core::ownership::ProjectOwnership;
 use crate::core::service::ServiceError;
@@ -83,6 +84,8 @@ pub struct DeclaredBundleMember {
 pub struct BundleService {
     pub(crate) project_root: PathBuf,
     pub(crate) skills_directory: PathBuf,
+    /// The managed-state install gate (ADR-0016 decision 13): this user's situation by default.
+    pub(crate) managed_gate: ManagedGate,
 }
 
 impl BundleService {
@@ -90,7 +93,14 @@ impl BundleService {
         Self {
             project_root: project_root.into(),
             skills_directory: skills_directory.into(),
+            managed_gate: ManagedGate::default(),
         }
+    }
+
+    /// Replace the managed-state install gate, which otherwise reads this user's situation.
+    pub fn with_managed_gate(mut self, gate: ManagedGate) -> Self {
+        self.managed_gate = gate;
+        self
     }
 
     /// Build `<metadata.id>-<metadata.version>.zip` from every dependency in
@@ -683,6 +693,7 @@ impl BundleService {
         lock: &ProjectSkillsLock,
     ) -> Result<BundleChanges, ServiceError> {
         let mut changes = BundleChanges::default();
+        let situation = self.managed_gate.situation();
         for member in prepared.members.values() {
             if self.has_personal_override(lock, &member.id) {
                 continue;
@@ -694,6 +705,7 @@ impl BundleService {
                 .transpose()?
                 .is_some_and(|digest| digest == member.digest.current);
             if !identical {
+                situation.check(Candidate::digest(&member.id, &member.digest.current))?;
                 changes.replacements.push(BundleReplacement {
                     id: member.id.clone(),
                     source: member.source.clone(),

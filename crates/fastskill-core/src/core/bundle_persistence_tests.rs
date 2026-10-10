@@ -757,3 +757,32 @@ fn a_manifest_override_key_that_is_not_a_skill_id_is_refused() {
 
     assert!(error.contains("../victim"), "{error}");
 }
+
+#[test]
+fn the_managed_gate_refuses_blocked_overrides_and_restores() {
+    let (root, service, source) = override_fixture();
+    let personal = content_digest(&source).unwrap();
+    let blocking = |digest: &str| {
+        crate::core::managed::ManagedGate::fixed(crate::core::managed::gate::test_situation(
+            digest, None,
+        ))
+    };
+
+    let gated = BundleService::new(root.path(), &service.skills_directory)
+        .with_managed_gate(blocking(&personal));
+    let error = preview_personal_override(&gated, "demo", &source)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("demo") && error.contains("is blocked"),
+        "{error}"
+    );
+    assert!(apply_personal_override(&gated, "demo", &source).is_err());
+
+    apply_personal_override(&service, "demo", &source).unwrap();
+    fs::remove_dir_all(service.skills_directory.join("demo")).unwrap();
+    let error = restore_personal_overrides(&gated).unwrap_err().to_string();
+    assert!(error.contains("is blocked"), "{error}");
+    assert!(!service.skills_directory.join("demo").exists());
+    restore_personal_overrides(&service).unwrap();
+}

@@ -16,12 +16,16 @@
 //!   [`quarantine`], the per-user [`layout`] and lock, and the [`records`] it keeps
 //!   (decisions 8 to 12 and 17).
 //!
+//! - [`gate`]: the install gate, the two managed reconciliation statuses and what a command may
+//!   do without a valid state (decisions 4, 13 and 14).
+//!
 //! [`open`] is the one entry point that turns envelope bytes into a state FastSkill may use.
 
 pub mod apply;
 pub mod config;
 pub mod enrollment;
 pub mod envelope;
+pub mod gate;
 pub mod layout;
 pub mod quarantine;
 pub mod records;
@@ -37,6 +41,7 @@ pub use apply::{apply, ApplyContext, ApplyOutcome, ApplyResult, EntryChange};
 pub use config::{ManagedSettings, ManagedSource, PinnedKey, SYSTEM_FILE_NAME, USER_FILE_NAME};
 pub use enrollment::{enroll, status, unenroll, ManagedStatus, UnenrollOutcome};
 pub use envelope::{verify_envelope, Verified, PAYLOAD_TYPE};
+pub use gate::{Candidate, CommandPolicy, ManagedGate, ManagedSkillStatus, Situation};
 pub use layout::{ApplyLock, ManagedLayout};
 pub use quarantine::{QuarantineReason, QuarantineRecord};
 pub use records::{Enrollment, EntryMode, OwnedEntry, Ownership};

@@ -328,6 +328,9 @@ pub struct FastSkillService {
     /// `config.skill_cache_root` (env-resolved when unset).
     skill_cache: crate::core::cache::SkillCache,
 
+    /// The managed-state install gate (ADR-0016 decision 13): this user's situation by default.
+    managed_gate: crate::core::managed::ManagedGate,
+
     /// Service state
     initialized: bool,
 }
@@ -399,6 +402,7 @@ impl FastSkillService {
             storage,
             hot_reload_manager,
             skill_cache,
+            managed_gate: crate::core::managed::ManagedGate::default(),
             initialized: false,
         })
     }
@@ -452,6 +456,17 @@ impl FastSkillService {
     /// The injected project root, if any.
     pub fn project_root(&self) -> Option<&PathBuf> {
         self.project_root.as_ref()
+    }
+
+    /// Replace the managed-state install gate, which otherwise reads this user's situation.
+    pub fn with_managed_gate(mut self, gate: crate::core::managed::ManagedGate) -> Self {
+        self.managed_gate = gate;
+        self
+    }
+
+    /// The managed-state install gate every content-adding operation consults.
+    pub fn managed_gate(&self) -> &crate::core::managed::ManagedGate {
+        &self.managed_gate
     }
 
     /// Initialize the service

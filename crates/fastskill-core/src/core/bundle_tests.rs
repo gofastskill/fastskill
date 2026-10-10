@@ -395,3 +395,72 @@ fn a_legacy_locked_release_that_names_other_contents_is_refused() {
         "{error}"
     );
 }
+
+#[test]
+fn the_managed_gate_refuses_a_bundle_with_a_blocked_member() {
+    let (_author, artifact) = author_single_member_bundle();
+    let member = PreparedBundle::load(&artifact).unwrap().members["demo"]
+        .digest
+        .current
+        .clone();
+    let (recipient, service) = fixture();
+    let service = service.with_managed_gate(crate::core::managed::ManagedGate::fixed(
+        crate::core::managed::gate::test_situation(&member, None),
+    ));
+
+    let error = service.install(&artifact).unwrap_err().to_string();
+    assert!(
+        error.contains("demo") && error.contains("is blocked"),
+        "{error}"
+    );
+    assert!(!recipient.path().join("skills/demo").exists());
+    assert!(
+        ProjectSkillsLock::load_from_file(&recipient.path().join("skills.lock"))
+            .unwrap()
+            .bundles
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_managed_gate_refuses_resetting_to_a_blocked_member() {
+    let author = TempDir::new().unwrap();
+    built_artifact(author.path());
+    let manifest = author.path().join("skill-project.toml");
+    let overridable = fs::read_to_string(&manifest).unwrap().replace(
+        "[bundle.members.demo]\n",
+        "[bundle.members.demo]\noverridable = true\n",
+    );
+    fs::write(&manifest, overridable).unwrap();
+    let artifact = BundleService::new(author.path(), author.path().join("skills"))
+        .build(&author.path().join("dist2"))
+        .unwrap()
+        .artifact;
+    let packaged = PreparedBundle::load(&artifact).unwrap().members["demo"]
+        .digest
+        .current
+        .clone();
+    let (recipient, service) = fixture();
+    service.install(&artifact).unwrap();
+    let personal = recipient.path().join("personal/demo");
+    fs::create_dir_all(&personal).unwrap();
+    fs::write(
+        personal.join("SKILL.md"),
+        "---\nname: demo\nversion: 2.0.0\ndescription: personal\n---\npersonal\n",
+    )
+    .unwrap();
+    service.override_member("demo", &personal).unwrap();
+
+    let gated = BundleService::new(recipient.path(), recipient.path().join("skills"))
+        .with_managed_gate(crate::core::managed::ManagedGate::fixed(
+            crate::core::managed::gate::test_situation(&packaged, None),
+        ));
+    let error = gated.reset_override("demo").unwrap_err().to_string();
+    assert!(error.contains("is blocked"), "{error}");
+    assert!(
+        fs::read_to_string(recipient.path().join("skills/demo/SKILL.md"))
+            .unwrap()
+            .contains("personal")
+    );
+    assert!(service.reset_override("demo").unwrap());
+}
