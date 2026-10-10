@@ -47,7 +47,7 @@ walkdir.workspace = true
 zip.workspace = true
 
 # HTTP client for embedding API (rustls for musl compatibility)
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
 
 # HTTP server
 axum.workspace = true
@@ -97,6 +97,9 @@ insta = "1.47"
 assert_cmd = "2.2"
 predicates = "3.0"
 proptest = "1.11"
+# A local https server for the managed source tests
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [features]
 default = ["filesystem-storage"]

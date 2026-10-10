@@ -2,11 +2,12 @@
 //! 17).
 
 use super::apply::{apply, entry_digest, ApplyContext, ApplyOutcome, ApplyResult};
-use super::config::ManagedSettings;
+use super::config::{ManagedSettings, ManagedSource};
 use super::layout::{read_record, write_record, ManagedLayout};
 use super::quarantine::{self, quarantine, remove_entry, QuarantineReason, QuarantineRecord};
 use super::records::{Enrollment, OwnedEntry, Ownership};
-use super::state::Recorded;
+use super::report::{self, Report, ReportInput};
+use super::state::{ManagedState, Recorded};
 use crate::core::service::ServiceError;
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
@@ -30,6 +31,7 @@ pub fn enroll(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
         let mut enrollment = Enrollment::new(source.as_str(), context.now);
         if previous.is_enrolled() && source.matches(&previous.source) {
             enrollment.machine_id = previous.machine_id;
+            enrollment.report_sequence = previous.report_sequence;
             enrollment.recorded = Recorded {
                 subject: None,
                 highest_issued_at: previous.recorded.highest_issued_at,
@@ -136,6 +138,14 @@ pub struct ManagedStatus {
     pub owned: Vec<OwnedEntry>,
     pub last_apply: Option<ApplyOutcome>,
     pub quarantine: Vec<QuarantineRecord>,
+    /// The last apply found that the user must sign in (decision 6).
+    pub sign_in_needed: bool,
+    /// State fields this source ignores, each with why (decision 21).
+    pub ignored: Vec<String>,
+    /// The body the next report would carry, built from the last apply.
+    pub report: Option<Report>,
+    /// Where reports go, or why none is sent.
+    pub report_note: Option<String>,
 }
 
 /// Read the status from the records and the cached state, changing nothing.
@@ -153,9 +163,13 @@ pub fn status(
             .as_ref()
             .map(|source| source.as_str().to_string()),
         owned: ownership.entries,
+        sign_in_needed: last_apply.sign_in_needed,
         last_apply: last_apply.applied_at.is_some().then_some(last_apply),
         quarantine: quarantine::list(layout)?,
         ..ManagedStatus::default()
+    };
+    let Some(source) = settings.source.as_ref() else {
+        return Ok(status);
     };
     if enrollment.is_enrolled() {
         match open_cached(layout, settings, &enrollment, now) {
@@ -164,12 +178,52 @@ pub fn status(
                 status.issued_at = Some(opened.state.issued_at);
                 status.expires_at = Some(opened.state.expires_at);
                 status.expired = opened.state.is_expired(now);
+                status.ignored = ignored_fields(&opened.state, source);
+                status.report_note = Some(
+                    match report::destination(opened.state.report_url.as_deref(), source) {
+                        Ok(Some(url)) => format!("sent to {url}"),
+                        Ok(None) => "none: the state names no report_url".to_string(),
+                        Err(problem) => format!("none: {problem}"),
+                    },
+                );
             }
             Err(problem) => status.state_problem = Some(problem),
         }
+        let last = status.last_apply.clone().unwrap_or_default();
+        status.report = Some(Report::build(ReportInput {
+            source,
+            enrollment: &enrollment,
+            issued_at: last.issued_at,
+            completed: last.completed,
+            snapshot: &last.snapshot,
+            quarantine: &status.quarantine,
+            refusals: &report::refusals(layout)?,
+        }));
         status.enrollment = Some(enrollment);
     }
     Ok(status)
+}
+
+/// The fields a file source's state sets that only an `https://` source honors (decision 21).
+fn ignored_fields(state: &ManagedState, source: &ManagedSource) -> Vec<String> {
+    if !matches!(source, ManagedSource::File(_)) {
+        return Vec::new();
+    }
+    let mut ignored = Vec::new();
+    if state.editable.is_some() {
+        ignored.push(
+            "editable: a file source always uses blocked-only, so editable local skills skip \
+             the allow-list"
+                .to_string(),
+        );
+    }
+    if state.request_url.is_some() {
+        ignored.push("request_url: a file source has no origin to send people to".to_string());
+    }
+    if state.report_url.is_some() {
+        ignored.push("report_url: a file source never gets a report".to_string());
+    }
+    ignored
 }
 
 /// Verify the cached state again, or say why it can't be used.

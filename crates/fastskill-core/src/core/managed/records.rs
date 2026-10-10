@@ -14,6 +14,9 @@ pub struct Enrollment {
     /// A random id for this user's reports, never derived from hardware (decision 15).
     pub machine_id: String,
     pub enrolled_at: Option<DateTime<Utc>>,
+    /// The sequence number of the last report built for this machine id (decision 15).
+    #[serde(default)]
+    pub report_sequence: u64,
     #[serde(flatten)]
     pub recorded: Recorded,
 }
@@ -25,6 +28,7 @@ impl Enrollment {
             source: source.to_string(),
             machine_id: uuid::Uuid::new_v4().to_string(),
             enrolled_at: Some(now),
+            report_sequence: 0,
             recorded: Recorded::default(),
         }
     }

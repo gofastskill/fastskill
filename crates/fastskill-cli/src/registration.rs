@@ -63,6 +63,7 @@ where
     let id: Arc<str> = Arc::from(path.leaf().unwrap_or(""));
     let handler = Arc::new(handler);
     let managed = follows_managed_policy(path);
+    let command_name: Arc<str> = Arc::from(path.0.join(" "));
 
     Command {
         id,
@@ -78,8 +79,11 @@ where
             // `'static` and does not hold the borrow, which frees `ctx` for the
             // drain below.
             let fut = handler(ctx, typed);
+            let command_name = command_name.clone();
             Box::pin(async move {
                 if managed {
+                    // A refused install is kept for the managed report under this name.
+                    fastskill_core::core::managed::set_current_command(&command_name);
                     managed_policy(Situation::for_current_user(Utc::now()).command_policy())?;
                 }
                 match output::mode() {

@@ -10,12 +10,19 @@
 //!    collisions and removing owned entries that are no longer listed;
 //! 4. quarantines blocked content in the targets and the project skills folder, even when the
 //!    state has expired;
-//! 5. records ownership, the accepted state and what happened.
+//! 5. records ownership, the accepted state and what happened, and sends the report when the
+//!    state names one on an `https://` source's origin.
+//!
+//! An `https://` source is fetched with the token its credential command prints (decision 6).
+//! When that command fails, the last accepted state is used and the outcome says sign-in is
+//! needed. Apply makes blocking requests: call it from a plain thread.
 
 use super::config::{ManagedSettings, ManagedSource};
 use super::layout::{read_record, write_record, ManagedLayout};
 use super::quarantine::{quarantine, remove_entry, QuarantineReason, QuarantineRecord};
 use super::records::{Enrollment, EntryMode, OwnedEntry, Ownership};
+use super::remote::{run_credential_command, Remote, RemoteError};
+use super::report::{ReportDelivery, ReportSnapshot};
 use super::state::{Allowed, ManagedState};
 use super::store::ManagedStore;
 use super::OpenedState;
@@ -37,6 +44,10 @@ pub struct ApplyContext {
     /// Enroll when this user isn't enrolled yet.
     pub may_enroll: bool,
     pub now: DateTime<Utc>,
+    /// Whether a person can answer the credential command's prompts.
+    pub interactive: bool,
+    /// FastSkill's configuration folder, where the credential command runs.
+    pub config_dir: PathBuf,
 }
 
 /// Whether an apply ran.
@@ -81,6 +92,18 @@ pub struct ApplyOutcome {
     pub project_clashes: Vec<PathBuf>,
     /// Skills or entries that failed, with why.
     pub failures: Vec<(String, String)>,
+    /// The credential command failed or the source refused the token: the user must sign in.
+    #[serde(default)]
+    pub sign_in_needed: bool,
+    /// Problems that don't stop an apply, such as a `report_url` on another origin.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// What happened to the report, when one was due.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<ReportDelivery>,
+    /// What the report is built from.
+    #[serde(default)]
+    pub snapshot: ReportSnapshot,
 }
 
 /// Apply the configured managed state.
@@ -117,7 +140,8 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
         )));
     }
 
-    let opened = fetch_and_open(context, &source, &enrollment, &mut outcome)?;
+    let remote = connect(context, &source, &mut outcome);
+    let opened = fetch_and_open(context, &source, remote.as_ref(), &enrollment, &mut outcome)?;
     enrollment.recorded = enrollment.recorded.accept(&opened.state);
     write_record(&layout.enrollment_file(), &enrollment)?;
 
@@ -126,7 +150,11 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
     outcome.issued_at = Some(state.issued_at);
     outcome.expires_at = Some(state.expires_at);
     outcome.expired = state.is_expired(context.now);
-    outcome.targets = targets(context);
+    let covered = covered_targets(context);
+    outcome.targets = covered.iter().map(|(dir, _)| dir.clone()).collect();
+    outcome
+        .warnings
+        .extend(super::report::state_warnings(state, &source));
 
     let mut ownership: Ownership = read_record(&layout.ownership_file())?;
     let mut run = Run {
@@ -136,7 +164,7 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
         outcome: &mut outcome,
     };
     if !run.outcome.expired {
-        run.deploy_listed(&source);
+        run.deploy_listed(&source, remote.as_ref());
         run.remove_unlisted();
     }
     run.sweep_targets();
@@ -156,8 +184,48 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
 
     write_record(&layout.ownership_file(), &ownership)?;
     outcome.completed = outcome.failures.is_empty();
+    outcome.snapshot = super::report::snapshot(context, &covered, &ownership, &outcome);
+    super::report::send(
+        context,
+        &source,
+        state,
+        remote.as_ref(),
+        &mut enrollment,
+        &mut outcome,
+    )?;
     write_record(&layout.last_apply_file(), &outcome)?;
     Ok(ApplyResult::Done(Box::new(outcome)))
+}
+
+/// The https client for this run, with the credential command's token when one is configured.
+/// A failed command leaves no token and marks sign-in as needed.
+fn connect(
+    context: &ApplyContext,
+    source: &ManagedSource,
+    outcome: &mut ApplyOutcome,
+) -> Option<Remote> {
+    let token = match (&context.settings.credential_command, source) {
+        (Some(command), ManagedSource::Https(_)) => {
+            match run_credential_command(command, &context.config_dir, context.interactive) {
+                Ok(token) => Some(token),
+                Err(error) => {
+                    outcome.sign_in_needed = true;
+                    outcome.state_problem = Some(format!("sign-in needed: {error}"));
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    match Remote::new(source, token) {
+        Ok(remote) => Some(remote),
+        Err(error) => {
+            outcome
+                .failures
+                .push(("https".to_string(), error.to_string()));
+            None
+        }
+    }
 }
 
 /// Open the source's state and cache it, or open the cached one when the source's can't be
@@ -165,10 +233,22 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
 fn fetch_and_open(
     context: &ApplyContext,
     source: &ManagedSource,
+    remote: Option<&Remote>,
     enrollment: &Enrollment,
     outcome: &mut ApplyOutcome,
 ) -> Result<OpenedState, ServiceError> {
-    let fetched = fetch(source).and_then(|bytes| {
+    let fetched = if outcome.sign_in_needed {
+        Err(RemoteError {
+            message: outcome.state_problem.clone().unwrap_or_default(),
+            sign_in: true,
+        })
+    } else {
+        fetch(source, remote)
+    };
+    if fetched.as_ref().is_err_and(|error| error.sign_in) {
+        outcome.sign_in_needed = true;
+    }
+    let fetched = fetched.map_err(ServiceError::from).and_then(|bytes| {
         super::open(&bytes, &context.settings, &enrollment.recorded, context.now)
             .map(|opened| (bytes, opened))
             .map_err(ServiceError::from)
@@ -196,23 +276,31 @@ fn fetch_and_open(
 }
 
 /// Read the state's envelope from the source.
-pub fn fetch(source: &ManagedSource) -> Result<Vec<u8>, ServiceError> {
-    match source {
-        ManagedSource::File(path) => std::fs::read(path).map_err(|error| {
-            ServiceError::Io(std::io::Error::new(
-                error.kind(),
-                format!("can't read the managed state {}: {error}", path.display()),
-            ))
+pub fn fetch(source: &ManagedSource, remote: Option<&Remote>) -> Result<Vec<u8>, RemoteError> {
+    match (source, remote) {
+        (ManagedSource::File(path), _) => std::fs::read(path).map_err(|error| RemoteError {
+            message: format!("can't read the managed state {}: {error}", path.display()),
+            sign_in: false,
         }),
-        ManagedSource::Https(url) => Err(ServiceError::InvalidOperation(format!(
-            "reading the managed state from {url} isn't supported by this FastSkill yet"
-        ))),
+        (ManagedSource::Https(_), Some(remote)) => remote.get_state(),
+        (ManagedSource::Https(url), None) => Err(RemoteError {
+            message: format!("can't fetch the managed state from {url}: https isn't available"),
+            sign_in: false,
+        }),
     }
 }
 
 /// The Agent targets: the fewest per-user skills folders that reach the configured agents, or
 /// the agents present for this user.
 pub fn targets(context: &ApplyContext) -> Vec<PathBuf> {
+    covered_targets(context)
+        .into_iter()
+        .map(|(dir, _)| dir)
+        .collect()
+}
+
+/// The Agent targets with the agents each one covers.
+pub fn covered_targets(context: &ApplyContext) -> Vec<(PathBuf, Vec<&'static str>)> {
     let detected;
     let keys: Vec<&str> = match &context.settings.targets {
         Some(targets) => targets.iter().map(String::as_str).collect(),
@@ -222,9 +310,6 @@ pub fn targets(context: &ApplyContext) -> Vec<PathBuf> {
         }
     };
     aikit_sdk::fewest_skill_dirs(&context.home, &keys)
-        .into_iter()
-        .map(|(dir, _)| dir)
-        .collect()
 }
 
 /// The digest of a target entry's content, following one link at the entry itself.
@@ -275,11 +360,11 @@ impl Run<'_> {
         }
     }
 
-    fn deploy_listed(&mut self, source: &ManagedSource) {
+    fn deploy_listed(&mut self, source: &ManagedSource, remote: Option<&Remote>) {
         let store = ManagedStore::new(&self.context.layout);
         let targets = self.outcome.targets.clone();
         for skill in &self.state.skills {
-            let published = match store.ensure(skill, source) {
+            let published = match store.ensure(skill, source, remote) {
                 Ok(path) => path,
                 Err(error) => {
                     self.fail(skill.id.clone(), error);
@@ -443,7 +528,7 @@ impl Run<'_> {
 
 /// The skill entries of a folder with their digests, leaving out hidden entries such as a
 /// deploy's temporary ones and anything that isn't a readable skill folder.
-fn entries(folder: &Path) -> Vec<(PathBuf, String)> {
+pub(crate) fn entries(folder: &Path) -> Vec<(PathBuf, String)> {
     let Ok(read) = std::fs::read_dir(folder) else {
         return Vec::new();
     };

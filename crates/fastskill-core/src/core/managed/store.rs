@@ -3,6 +3,7 @@
 
 use super::config::ManagedSource;
 use super::layout::{create_private_dir, ManagedLayout};
+use super::remote::Remote;
 use super::state::StateSkill;
 use crate::core::content_digest::{content_digest, CONTENT_DIGEST_PREFIX};
 use crate::core::service::ServiceError;
@@ -47,16 +48,34 @@ impl ManagedStore {
     }
 
     /// Make `skill` available in the store, fetching it from its artifact when it isn't there.
+    /// An `https://` artifact is downloaded into private staging first.
     pub fn ensure(
         &self,
         skill: &StateSkill,
         source: &ManagedSource,
+        remote: Option<&Remote>,
     ) -> Result<PathBuf, ServiceError> {
         if let Some(path) = self.verified(&skill.digest)? {
             return Ok(path);
         }
-        let archive = artifact_path(&skill.artifact, source)?;
-        self.publish_archive(skill, &archive)
+        if !skill.artifact.contains("://") {
+            let archive = artifact_path(&skill.artifact, source)?;
+            return self.publish_archive(skill, &archive);
+        }
+        let remote = remote.ok_or_else(|| {
+            ServiceError::InvalidOperation(format!(
+                "can't fetch the artifact {:?}: https isn't available",
+                skill.artifact
+            ))
+        })?;
+        let staging = self.layout.staging();
+        create_private_dir(&staging)?;
+        let download = tempfile::Builder::new()
+            .prefix("download-")
+            .suffix(".zip")
+            .tempfile_in(&staging)?;
+        remote.download(&skill.artifact, download.path())?;
+        self.publish_archive(skill, download.path())
     }
 
     /// Extract `archive` into private staging, check its digest and identity, then rename it
@@ -116,7 +135,7 @@ impl ManagedStore {
 }
 
 /// Where a local artifact is: an absolute path, or one relative to the state file's folder.
-/// `https://` artifacts are fetched by the https source support, not here.
+/// Only a file source names local artifacts.
 pub fn artifact_path(artifact: &str, source: &ManagedSource) -> Result<PathBuf, ServiceError> {
     match source {
         ManagedSource::File(state_file) if !artifact.contains("://") => {
@@ -127,7 +146,7 @@ pub fn artifact_path(artifact: &str, source: &ManagedSource) -> Result<PathBuf, 
             })
         }
         _ => Err(ServiceError::InvalidOperation(format!(
-            "fetching the artifact {artifact:?} over https isn't supported by this FastSkill yet"
+            "the artifact {artifact:?} isn't an https:// URL"
         ))),
     }
 }

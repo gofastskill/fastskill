@@ -8,6 +8,7 @@
 //!   state.dsse        the last accepted envelope
 //!   ownership.json    every target entry FastSkill created
 //!   last-apply.json   what the last apply did
+//!   refusals.json     refused installs not yet reported, with refusals.lock
 //!   staging/          downloads and extraction, private to the user
 //!   store/<digest>/   published skills, never modified after publication
 //! <data>/quarantine/<time>-<n>/
@@ -56,6 +57,12 @@ impl ManagedLayout {
     }
     pub fn last_apply_file(&self) -> PathBuf {
         self.managed().join("last-apply.json")
+    }
+    pub fn refusals_file(&self) -> PathBuf {
+        self.managed().join("refusals.json")
+    }
+    pub fn refusals_lock(&self) -> PathBuf {
+        self.managed().join("refusals.lock")
     }
     pub fn staging(&self) -> PathBuf {
         self.managed().join("staging")

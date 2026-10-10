@@ -10,27 +10,26 @@ use super::state::StateSkill;
 use super::store::{artifact_path, ManagedStore};
 use super::tests::{pinned, sign};
 use crate::core::content_digest::content_digest;
-use crate::core::service::ServiceError;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-fn now() -> DateTime<Utc> {
+pub(super) fn now() -> DateTime<Utc> {
     "2026-10-09T12:00:00Z".parse().unwrap()
 }
 
-struct Fixture {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-    state_file: PathBuf,
-    layout: ManagedLayout,
-    project: PathBuf,
-    count: usize,
+pub(super) struct Fixture {
+    pub(super) _dir: tempfile::TempDir,
+    pub(super) root: PathBuf,
+    pub(super) state_file: PathBuf,
+    pub(super) layout: ManagedLayout,
+    pub(super) project: PathBuf,
+    pub(super) count: usize,
 }
 
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         std::fs::create_dir_all(root.join("home/.claude")).unwrap();
@@ -46,11 +45,11 @@ impl Fixture {
         }
     }
 
-    fn home(&self) -> PathBuf {
+    pub(super) fn home(&self) -> PathBuf {
         self.root.join("home")
     }
 
-    fn settings(&self) -> ManagedSettings {
+    pub(super) fn settings(&self) -> ManagedSettings {
         ManagedSettings {
             source: Some(ManagedSource::File(self.state_file.clone())),
             keys: vec![pinned("k1", 1)],
@@ -60,7 +59,7 @@ impl Fixture {
         }
     }
 
-    fn context(&self) -> ApplyContext {
+    pub(super) fn context(&self) -> ApplyContext {
         ApplyContext {
             layout: self.layout.clone(),
             settings: self.settings(),
@@ -68,15 +67,17 @@ impl Fixture {
             project_skills: Some(self.project.clone()),
             may_enroll: true,
             now: now(),
+            interactive: false,
+            config_dir: self.root.clone(),
         }
     }
 
-    fn target(&self) -> PathBuf {
+    pub(super) fn target(&self) -> PathBuf {
         targets(&self.context()).remove(0)
     }
 
     /// A skill folder named `id` whose body is `body`, outside any target.
-    fn folder(&mut self, id: &str, body: &str) -> PathBuf {
+    pub(super) fn folder(&mut self, id: &str, body: &str) -> PathBuf {
         self.count += 1;
         let folder = self.root.join(format!("src/{}/{id}", self.count));
         write_skill(&folder, id, body);
@@ -84,7 +85,7 @@ impl Fixture {
     }
 
     /// A listed skill with an archive in the source folder, relative to the state file.
-    fn skill(&mut self, id: &str, body: &str) -> StateSkill {
+    pub(super) fn skill(&mut self, id: &str, body: &str) -> StateSkill {
         let folder = self.folder(id, body);
         let name = format!("{id}-{}.zip", self.count);
         zip_folder(&folder, &self.root.join("source").join(&name));
@@ -95,7 +96,7 @@ impl Fixture {
         }
     }
 
-    fn publish(&self, skills: &[StateSkill], extra: Value) {
+    pub(super) fn publish(&self, skills: &[StateSkill], extra: Value) {
         let mut state = json!({
             "format_version": 1,
             "issued_at": "2026-10-09T11:00:00Z",
@@ -112,23 +113,23 @@ impl Fixture {
         std::fs::write(&self.state_file, envelope).unwrap();
     }
 
-    fn apply(&self) -> ApplyOutcome {
+    pub(super) fn apply(&self) -> ApplyOutcome {
         self.apply_with(&self.context())
     }
 
-    fn apply_with(&self, context: &ApplyContext) -> ApplyOutcome {
+    pub(super) fn apply_with(&self, context: &ApplyContext) -> ApplyOutcome {
         match apply(context).unwrap() {
             ApplyResult::Done(outcome) => *outcome,
             ApplyResult::Busy => panic!("busy"),
         }
     }
 
-    fn ownership(&self) -> Ownership {
+    pub(super) fn ownership(&self) -> Ownership {
         read_record(&self.layout.ownership_file()).unwrap()
     }
 }
 
-fn write_skill(folder: &Path, id: &str, body: &str) {
+pub(super) fn write_skill(folder: &Path, id: &str, body: &str) {
     std::fs::create_dir_all(folder).unwrap();
     std::fs::write(
         folder.join("SKILL.md"),
@@ -137,7 +138,7 @@ fn write_skill(folder: &Path, id: &str, body: &str) {
     .unwrap();
 }
 
-fn zip_folder(folder: &Path, archive: &Path) {
+pub(super) fn zip_folder(folder: &Path, archive: &Path) {
     let file = std::fs::File::create(archive).unwrap();
     let mut zip = zip::ZipWriter::new(file);
     let name = folder.file_name().unwrap().to_str().unwrap();
@@ -574,7 +575,7 @@ fn a_corrupt_store_entry_is_fetched_again() {
     assert!(store.verified(&pdf.digest).unwrap().is_none());
     assert!(!store.path(&pdf.digest).exists());
     let source = ManagedSource::File(fixture.state_file.clone());
-    let path = store.ensure(&pdf, &source).unwrap();
+    let path = store.ensure(&pdf, &source, None).unwrap();
     assert_eq!(content_digest(&path).unwrap(), pdf.digest);
 }
 
@@ -593,8 +594,22 @@ fn artifact_paths_and_https_sources() {
     assert!(artifact_path("https://example.com/a.zip", &file).is_err());
     let https = ManagedSource::parse("https://skills.example.com/state").unwrap();
     assert!(artifact_path("https://skills.example.com/a.zip", &https).is_err());
-    let error = fetch(&https).unwrap_err();
-    assert!(matches!(error, ServiceError::InvalidOperation(_)));
+    let error = fetch(&https, None).unwrap_err();
+    assert!(error.message.contains("https isn't available"), "{error}");
+    assert!(!error.sign_in);
+    let listed = StateSkill {
+        id: "pdf".to_string(),
+        digest: format!("sha256-tree-v2:{}", "0".repeat(64)),
+        artifact: "https://skills.example.com/a.zip".to_string(),
+    };
+    let fixture = Fixture::new();
+    let error = ManagedStore::new(&fixture.layout)
+        .ensure(&listed, &https, None)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("https isn't available"),
+        "{error}"
+    );
 }
 
 #[test]
