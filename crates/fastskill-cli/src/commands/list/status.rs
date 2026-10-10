@@ -7,10 +7,17 @@
 //! the renderers and the `--check` gate to account for it instead of silently
 //! treating it as a failure.
 
+use fastskill_core::core::managed::{ManagedSkillStatus, Situation};
+use std::path::Path;
+
 /// A single skill's status from comparing manifest (desired), lock (pinned) and
 /// skills directory (actual).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ReconciliationStatus {
+    /// The managed state blocks the installed content's digest.
+    ManagedBlocked,
+    /// The managed state allows only listed content, and the installed content isn't listed.
+    ManagedNotAllowed,
     /// Desired, pinned and actual agree.
     Ok,
     /// Owned by a bundle or override that the current selection excludes.
@@ -38,7 +45,9 @@ pub(super) enum ReconciliationStatus {
 impl ReconciliationStatus {
     /// Every status, so tests can assert over the whole vocabulary.
     #[cfg(test)]
-    pub(super) const ALL: [Self; 11] = [
+    pub(super) const ALL: [Self; 13] = [
+        Self::ManagedBlocked,
+        Self::ManagedNotAllowed,
         Self::Ok,
         Self::Excluded,
         Self::MissingLock,
@@ -56,6 +65,8 @@ impl ReconciliationStatus {
     /// table, JSON and XML renderings cannot drift apart.
     pub(super) fn as_str(self) -> &'static str {
         match self {
+            Self::ManagedBlocked => "managed-blocked",
+            Self::ManagedNotAllowed => "managed-not-allowed",
             Self::Ok => "ok",
             Self::Excluded => "excluded",
             Self::MissingLock => "missing-lock",
@@ -68,6 +79,22 @@ impl ReconciliationStatus {
             Self::OwnershipConflict => "ownership-conflict",
             Self::Extraneous => "extraneous",
         }
+    }
+
+    /// The managed status of installed content, which takes precedence over every other status.
+    /// Content that can't be digested is left to the content checks.
+    pub(super) fn managed(situation: &Situation, installed: &Path, mutable: bool) -> Option<Self> {
+        match situation.status_of(installed, mutable) {
+            Ok(Some(ManagedSkillStatus::Blocked)) => Some(Self::ManagedBlocked),
+            Ok(Some(ManagedSkillStatus::NotAllowed)) => Some(Self::ManagedNotAllowed),
+            Ok(None) | Err(_) => None,
+        }
+    }
+
+    /// Whether this status comes from the managed state. `skill list --check` fails on these
+    /// whether or not the current selection includes the skill.
+    pub(super) fn is_managed(self) -> bool {
+        matches!(self, Self::ManagedBlocked | Self::ManagedNotAllowed)
     }
 
     /// Whether `skill list --check` accepts this status. `excluded` counts as

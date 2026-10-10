@@ -271,3 +271,59 @@ async fn selected_roots_check_transitive_content_and_exclude_the_same_closure_by
     let rows: Vec<Value> = serde_json::from_str(&output).unwrap();
     assert_eq!(row(&rows, "edited")["reconciliation"], "excluded");
 }
+
+fn managed_situation(listed: &str, blocked: &str) -> fastskill_core::core::managed::Situation {
+    use fastskill_core::core::managed::{ManagedSource, ManagedState, Situation};
+    let source = ManagedSource::File(env::temp_dir().join("state.dsse"));
+    let state = serde_json::json!({
+        "format_version": 1,
+        "issued_at": "2026-10-09T11:00:00Z",
+        "expires_at": "2026-10-16T11:00:00Z",
+        "source": source.as_str(),
+        "subject": "team-a",
+        "skills": [{ "id": "listed", "digest": listed, "artifact": "listed.zip" }],
+        "allowed": "listed",
+        "blocked": [{ "digest": blocked }],
+    });
+    Situation::State {
+        state: Box::new(ManagedState::parse(&serde_json::to_vec(&state).unwrap()).unwrap()),
+        source,
+        expired: false,
+    }
+}
+
+// DIR_MUTEX is deliberately held across awaits so cwd-changing tests never run concurrently.
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn managed_statuses_take_precedence_and_fail_the_check() {
+    use fastskill_core::core::content_digest::content_digest;
+    let _lock = fastskill_core::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let fixture = ProjectFixture::new("");
+    let listed = fixture.skill("listed", "1.0.0");
+    fixture.skill("blocked", "1.0.0");
+    fixture.skill("stray", "1.0.0");
+    let mut lock = ProjectSkillsLock::new_empty();
+    lock.bundles = vec![bundle(
+        "team",
+        &[("listed", &listed), ("blocked", "recorded-elsewhere")],
+    )];
+    let listed_digest = content_digest(&fixture.storage.join("listed")).unwrap();
+    let blocked_digest = content_digest(&fixture.storage.join("blocked")).unwrap();
+    let service = fixture.service(&lock).await.with_managed_gate(
+        fastskill_core::core::managed::ManagedGate::fixed(managed_situation(
+            &listed_digest,
+            &blocked_digest,
+        )),
+    );
+
+    let (result, output) = crate::output::capture(execute_list(&service, json_args(), false)).await;
+    let error = result.unwrap_err().to_string();
+    let rows: Vec<Value> = serde_json::from_str(&output).unwrap();
+    assert_eq!(row(&rows, "listed")["reconciliation"], "ok");
+    assert_eq!(row(&rows, "blocked")["reconciliation"], "managed-blocked");
+    assert_eq!(row(&rows, "stray")["reconciliation"], "managed-not-allowed");
+    assert!(error.contains("blocked: managed-blocked"), "{error}");
+    assert!(error.contains("stray: managed-not-allowed"), "{error}");
+}

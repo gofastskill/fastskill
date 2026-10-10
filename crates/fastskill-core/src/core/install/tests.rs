@@ -1765,3 +1765,58 @@ fn content_digest_distinguishes_file_boundaries() {
         "a one-file tree and a two-file tree produced the same content digest"
     );
 }
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn the_managed_gate_refuses_blocked_content_before_installing() {
+    let _lock = crate::test_utils::DIR_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let (tmp, _guard, skills_dir) = setup_project();
+    let src = write_valid_skill(tmp.path(), "src-skill");
+    let digest = crate::core::content_digest::content_digest(&src).unwrap();
+    let service = make_service(&skills_dir).await.with_managed_gate(
+        crate::core::managed::ManagedGate::fixed(crate::core::managed::gate::test_situation(
+            &digest, None,
+        )),
+    );
+
+    let origin = Origin::Local {
+        path: src.clone(),
+        editable: false,
+    };
+    let error = service
+        .add_from_origin(origin, AddMode::Fresh, vec![])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("is blocked by the managed state: withdrawn"),
+        "{error}"
+    );
+    assert!(!skills_dir.join("test-skill").exists());
+    assert!(!tmp.path().join("skills.lock").exists());
+
+    let listed_elsewhere = make_service(&skills_dir).await.with_managed_gate(
+        crate::core::managed::ManagedGate::fixed(crate::core::managed::gate::test_situation(
+            &format!("sha256-tree-v2:{}", "0".repeat(64)),
+            Some(&format!("sha256-tree-v2:{}", "1".repeat(64))),
+        )),
+    );
+    let error = listed_elsewhere
+        .add_from_origin(
+            Origin::Local {
+                path: src,
+                editable: false,
+            },
+            AddMode::Fresh,
+            vec![],
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("isn't allowed by the managed state"),
+        "{error}"
+    );
+}

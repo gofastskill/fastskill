@@ -21,6 +21,8 @@ use std::future::Future;
 use std::sync::Arc;
 
 use crate::output::{self, Mode};
+use chrono::Utc;
+use fastskill_core::core::managed::{CommandPolicy, Situation};
 
 pub mod surface;
 
@@ -60,6 +62,7 @@ where
     let spec = Arc::new(T::command_spec());
     let id: Arc<str> = Arc::from(path.leaf().unwrap_or(""));
     let handler = Arc::new(handler);
+    let managed = follows_managed_policy(path);
 
     Command {
         id,
@@ -76,6 +79,9 @@ where
             // drain below.
             let fut = handler(ctx, typed);
             Box::pin(async move {
+                if managed {
+                    managed_policy(Situation::for_current_user(Utc::now()).command_policy())?;
+                }
                 match output::mode() {
                     Mode::Direct => fut.await,
                     Mode::Capture if output::has_active_sink() => fut.await,
@@ -91,6 +97,41 @@ where
                 }
             })
         }),
+    }
+}
+
+/// Command groups that read or change skills. They follow the managed state's command policy;
+/// `managed`, `cache`, `repo` and `cli` stay available so a machine can always recover.
+const SKILL_GROUPS: &[&str] = &[
+    "skill",
+    "bundle",
+    "project",
+    "analysis",
+    "index",
+    "eval",
+    "optimization",
+    "marketplace",
+];
+
+/// Whether the command at `path` follows the managed command policy.
+fn follows_managed_policy(path: &CommandPath) -> bool {
+    match path.0.as_slice() {
+        [group, ..] if SKILL_GROUPS.contains(&group.as_str()) => true,
+        [group, leaf] => leaf == "serve" && (group == "server" || group == "mcp"),
+        _ => false,
+    }
+}
+
+/// Apply a command policy: refuse with a configuration error, or print the warning to stderr
+/// and run.
+fn managed_policy(policy: CommandPolicy) -> anyhow::Result<()> {
+    match policy {
+        CommandPolicy::Run => Ok(()),
+        CommandPolicy::Warn(message) => {
+            eprintln!("warning: {message}");
+            Ok(())
+        }
+        CommandPolicy::Refuse(message) => Err(crate::error::CliError::Config(message).into()),
     }
 }
 
@@ -113,5 +154,46 @@ impl AppBuilderExt for AppBuilder {
     {
         let command = build_command::<T, F, Fut>(&path, handler, false);
         self.register_command_at(&path, command)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skill_commands_follow_the_managed_policy_and_recovery_commands_do_not() {
+        let path = |segments: &[&str]| CommandPath::new(segments).unwrap();
+        for segments in [
+            &["skill", "add"][..],
+            &["bundle", "override"],
+            &["project", "install"],
+            &["eval", "run"],
+            &["server", "serve"],
+            &["mcp", "serve"],
+        ] {
+            assert!(follows_managed_policy(&path(segments)), "{segments:?}");
+        }
+        for segments in [
+            &["managed", "apply"][..],
+            &["cache", "clean"],
+            &["repo", "list"],
+            &["cli", "doctor"],
+            &["mcp", "install"],
+            &["server"],
+        ] {
+            assert!(!follows_managed_policy(&path(segments)), "{segments:?}");
+        }
+    }
+
+    #[test]
+    fn a_refusal_is_a_configuration_error_and_a_warning_runs() {
+        assert!(managed_policy(CommandPolicy::Run).is_ok());
+        assert!(managed_policy(CommandPolicy::Warn("expired".to_string())).is_ok());
+        let error = managed_policy(CommandPolicy::Refuse("required".to_string())).unwrap_err();
+        let error = error.downcast_ref::<crate::error::CliError>().unwrap();
+        assert_eq!(error.exit_code(), 2);
+        assert!(error.to_string().contains("required"));
     }
 }

@@ -262,6 +262,8 @@ impl FastSkillService {
             }
         }
 
+        self.check_fetched(id.as_str(), &fetched, &recorded_origin)?;
+
         if let Some(expected) = expected {
             verify_resolved_facts(
                 expected_id.unwrap_or(id.as_str()),
@@ -703,6 +705,7 @@ impl FastSkillService {
         if mode == AddMode::Fresh && existing.is_some() {
             return Err(ServiceError::AlreadyIndexed(id.into_string()));
         }
+        self.check_managed(id.as_str(), &resolved, &skill_path, &origin)?;
 
         let storage_dir = self.config().skill_storage_path.join(id.as_str());
         let editable = matches!(&origin, Origin::Local { editable: true, .. });

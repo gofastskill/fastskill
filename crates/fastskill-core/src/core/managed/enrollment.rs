@@ -158,22 +158,29 @@ pub fn status(
         ..ManagedStatus::default()
     };
     if enrollment.is_enrolled() {
-        match std::fs::read(layout.cached_state()) {
-            Ok(bytes) => {
-                // The cached state is the newest accepted, so its own issued_at is allowed.
-                match super::open(&bytes, settings, &enrollment.recorded, now) {
-                    Ok(opened) => {
-                        status.subject = Some(opened.state.subject.clone());
-                        status.issued_at = Some(opened.state.issued_at);
-                        status.expires_at = Some(opened.state.expires_at);
-                        status.expired = opened.state.is_expired(now);
-                    }
-                    Err(error) => status.state_problem = Some(error.to_string()),
-                }
+        match open_cached(layout, settings, &enrollment, now) {
+            Ok(opened) => {
+                status.subject = Some(opened.state.subject.clone());
+                status.issued_at = Some(opened.state.issued_at);
+                status.expires_at = Some(opened.state.expires_at);
+                status.expired = opened.state.is_expired(now);
             }
-            Err(_) => status.state_problem = Some("no state has been accepted yet".to_string()),
+            Err(problem) => status.state_problem = Some(problem),
         }
         status.enrollment = Some(enrollment);
     }
     Ok(status)
+}
+
+/// Verify the cached state again, or say why it can't be used.
+pub(crate) fn open_cached(
+    layout: &ManagedLayout,
+    settings: &ManagedSettings,
+    enrollment: &Enrollment,
+    now: DateTime<Utc>,
+) -> Result<super::OpenedState, String> {
+    let bytes = std::fs::read(layout.cached_state())
+        .map_err(|_| "no state has been accepted yet".to_string())?;
+    // The cached state is the newest accepted, so its own issued_at is allowed.
+    super::open(&bytes, settings, &enrollment.recorded, now).map_err(|error| error.to_string())
 }

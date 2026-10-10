@@ -102,6 +102,27 @@ fastskill managed unenroll
 **Options** (every subcommand):
 - `--json`: Print the result as JSON
 
+## Installs and other commands
+
+While this user follows a state, every command that adds or replaces skill content checks it
+first, before anything changes: `skill add`, `skill update`, `bundle add`, `bundle update`,
+`bundle override` (and resetting one), `project install` and restoring personal overrides. The
+same check applies to `server serve` and `mcp serve`. Content whose digest is blocked is
+refused, and when the state allows only the listed skills, so is anything it doesn't list. An
+editable local skill changes with every edit, so it skips the list, but never the block.
+
+Other commands that read or change skills follow the state too:
+
+| Situation | `managed`, `cache`, `repo`, `cli` | Commands that read skills | Commands that change content |
+| --- | --- | --- | --- |
+| Expired state | run | run, with a warning | refused |
+| No valid state, `required = true` | run | refused | refused |
+| No valid state, not required | run | run, with a warning | run, with a warning |
+
+`skill list` reports installed content the state blocks as `managed-blocked`, and content it
+doesn't allow as `managed-not-allowed`; `skill list --check` fails on both. See
+[reconciliation](/skill-management/reconciliation).
+
 ## The quarantine
 
 Content is moved, not deleted, when its digest is blocked, when the state allows only the

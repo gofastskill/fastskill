@@ -8,6 +8,7 @@ use crate::core::content_digest::{
     DigestForms,
 };
 use crate::core::lock::{ProjectLockedPersonalOverride, ProjectSkillsLock};
+use crate::core::managed::Candidate;
 use crate::core::manifest::DependencySpec;
 use crate::core::origin::Origin;
 use crate::core::service::{ServiceError, SkillId};
@@ -434,6 +435,9 @@ pub(crate) fn preview_personal_override(
     }
     let source = source.canonicalize().map_err(ServiceError::Io)?;
     let target = DigestForms::of_directory(&source)?;
+    service
+        .managed_gate
+        .check(Candidate::digest(id, &target.current))?;
     let manifest_path = service.project_root.join("skill-project.toml");
     let content = fs::read_to_string(&manifest_path).map_err(ServiceError::Io)?;
     let tables: BundleManifestTables = toml::from_str(&content).map_err(|error| {
@@ -530,6 +534,20 @@ fn restore_personal_overrides_impl(
     let mut lock = ProjectSkillsLock::load_from_file(&lock_path)
         .map_err(|error| ServiceError::Config(format!("Failed to load skills.lock: {error}")))?;
     let ids = tables.overrides.keys().cloned().collect::<Vec<_>>();
+    let sources = tables
+        .overrides
+        .iter()
+        .map(|(id, declaration)| (id, PathBuf::from(&declaration.origin)))
+        .filter(|(_, source)| source.join("SKILL.md").is_file())
+        .collect::<Vec<_>>();
+    service
+        .managed_gate
+        .check_all(sources.iter().map(|(id, source)| Candidate {
+            id,
+            digest: None,
+            path: Some(source),
+            editable: false,
+        }))?;
     let state_guard = StateMutationLease::acquire_or_borrow(
         &service.project_root,
         Some(&service.skills_directory),
