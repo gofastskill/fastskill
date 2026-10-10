@@ -23,6 +23,10 @@ fn environment(dir: &TempDir, configured: bool, interactive: bool) -> Environmen
         project_skills: None,
         interactive,
         config_dir: dir.path().to_path_buf(),
+        exe: dir.path().join("fastskill"),
+        hooks: None,
+        timer: None,
+        background: |_| Ok(()),
     }
 }
 
@@ -33,7 +37,7 @@ fn human() -> ManagedArgs {
 fn json_args() -> ManagedArgs {
     ManagedArgs {
         json: true,
-        report: false,
+        ..ManagedArgs::default()
     }
 }
 
@@ -80,6 +84,9 @@ fn outcome(completed: bool) -> ApplyOutcome {
         } else {
             vec![("one".to_string(), "digest mismatch".to_string())]
         },
+        hooks: vec!["claude".to_string()],
+        hook_approvals: vec!["claude: approve it in /hooks".to_string()],
+        timer: Some("systemd user timer fastskill-managed-apply.timer".to_string()),
         ..ApplyOutcome::default()
     }
 }
@@ -106,6 +113,25 @@ fn args_read_the_flags() {
     assert!(!args.json && !args.report);
     assert!(!EnrollArgs::from_arg_value_map(&HashMap::new()).0.json);
     assert!(!UnenrollArgs::from_arg_value_map(&HashMap::new()).0.json);
+
+    let mut map = HashMap::new();
+    map.insert(
+        "hook".to_string(),
+        ArgValue::Str("fastskill-managed-claude".into()),
+    );
+    map.insert("timer".to_string(), ArgValue::Bool(true));
+    let args = ApplyArgs::from_arg_value_map(&map).0;
+    assert_eq!(args.hook.as_deref(), Some("fastskill-managed-claude"));
+    assert!(args.timer);
+    let mut map = HashMap::new();
+    map.insert("system".to_string(), ArgValue::Bool(true));
+    assert!(HooksArgs::from_arg_value_map(&map).0.system);
+    let names: Vec<_> = HooksArgs::command_spec()
+        .args
+        .iter()
+        .map(|arg| arg.name)
+        .collect();
+    assert_eq!(names, ["json", "system"]);
 }
 
 #[test]
@@ -162,6 +188,9 @@ fn a_completed_apply_is_reported() {
         "quarantined /home/u/.claude/skills/bad",
         "collision",
         "clash",
+        "hooks    claude",
+        "approve  claude: approve it in /hooks",
+        "timer    systemd user timer",
     ] {
         assert!(text.contains(expected), "{expected} in {text}");
     }
@@ -245,6 +274,7 @@ fn status_of_an_enrolled_user() {
     let report = ManagedArgs {
         json: false,
         report: true,
+        ..ManagedArgs::default()
     };
     assert!(run_status(&env, &report).unwrap().contains("deployed"));
 
@@ -255,6 +285,7 @@ fn status_of_an_enrolled_user() {
     let report = ManagedArgs {
         json: true,
         report: true,
+        ..ManagedArgs::default()
     };
     let value: Value = serde_json::from_str(&run_status(&env, &report).unwrap()).unwrap();
     assert_eq!(value["format_version"], 1);
@@ -352,6 +383,7 @@ fn status_shows_the_state_and_an_empty_quarantine() {
         "Subject:  team-a",
         "(expired)",
         "(completed)",
+        "hooks     claude",
         "Quarantine: empty",
     ] {
         assert!(text.contains(expected), "{expected} in {text}");
@@ -364,7 +396,33 @@ fn unenroll_removes_the_records_and_settings() {
     let env = environment(&dir, true, true);
     enroll_record(&env);
     std::fs::write(env.user_settings_file.as_ref().unwrap(), "").unwrap();
+    let hook = managed::hooks::hook_for("fastskill", "claude");
+    aikit_sdk::register_session_hook(&env.home, "claude", &hook).unwrap();
+    let timer = TimerSetup {
+        os: managed::TimerOs::Linux,
+        home: env.home.clone(),
+        exe: env.exe.clone(),
+        user: "u".to_string(),
+        run: |_| Ok(()),
+        system_present: |_| false,
+    };
+    managed::timer::install(&timer).unwrap();
+    std::fs::create_dir_all(env.home.join(".gemini")).unwrap();
+    std::fs::write(env.home.join(".gemini/settings.json"), "not json").unwrap();
+    let env = Environment {
+        timer: Some(timer),
+        ..env
+    };
     let text = run_unenroll(&env, &human()).unwrap();
+    assert!(
+        text.contains("removed     the claude session hook"),
+        "{text}"
+    );
+    assert!(text.contains("removed     the timer"), "{text}");
+    assert!(
+        text.contains("warning     can't remove the gemini"),
+        "{text}"
+    );
     assert!(text.starts_with("Unenrolled this user."), "{text}");
     assert!(text.contains("managed.toml"), "{text}");
     assert!(!env.layout.enrollment_file().exists());
@@ -384,6 +442,9 @@ fn unenroll_lists_removed_and_quarantined_entries() {
             ..QuarantineRecord::default()
         }],
         removed_settings: None,
+        removed_hooks: vec!["claude".to_string()],
+        removed_timer: true,
+        warnings: vec!["can't remove the gemini session hook".to_string()],
     };
     let value = unenroll_json(&outcome);
     assert_eq!(

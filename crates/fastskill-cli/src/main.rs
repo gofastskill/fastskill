@@ -553,40 +553,7 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
     };
 
     // ── managed: follow a signed managed state for this user's agents (ADR-0016) ──
-    let builder = builder
-        .register_group(&path!["managed"], managed::group_metadata())?
-        .register_out(
-            path!["managed", "enroll"],
-            |_ctx, args: managed::EnrollArgs| async move {
-                managed::execute_enroll(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
-        )?
-        .register_out(
-            path!["managed", "apply"],
-            |_ctx, args: managed::ApplyArgs| async move {
-                managed::execute_apply(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
-        )?
-        .register_out(
-            path!["managed", "status"],
-            |_ctx, args: managed::StatusArgs| async move {
-                managed::execute_status(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
-        )?
-        .register_out(
-            path!["managed", "unenroll"],
-            |_ctx, args: managed::UnenrollArgs| async move {
-                managed::execute_unenroll(args)
-                    .await
-                    .map_err(anyhow::Error::from)
-            },
-        )?;
+    let builder = managed::register(builder)?;
 
     // ── marketplace: fully migrated to typed API ─────────────────────────────
     let builder = {

@@ -10,7 +10,9 @@
 //!    collisions and removing owned entries that are no longer listed;
 //! 4. quarantines blocked content in the targets and the project skills folder, even when the
 //!    state has expired;
-//! 5. records ownership, the accepted state and what happened, and sends the report when the
+//! 5. registers the session-start hooks of the covered agents, and the timer when enrolling
+//!    (decision 16);
+//! 6. records ownership, the accepted state and what happened, and sends the report when the
 //!    state names one on an `https://` source's origin.
 //!
 //! An `https://` source is fetched with the token its credential command prints (decision 6).
@@ -18,6 +20,7 @@
 //! needed. Apply makes blocking requests: call it from a plain thread.
 
 use super::config::{ManagedSettings, ManagedSource};
+use super::hooks::HookSetup;
 use super::layout::{read_record, write_record, ManagedLayout};
 use super::quarantine::{quarantine, remove_entry, QuarantineReason, QuarantineRecord};
 use super::records::{Enrollment, EntryMode, OwnedEntry, Ownership};
@@ -25,6 +28,7 @@ use super::remote::{run_credential_command, Remote, RemoteError};
 use super::report::{ReportDelivery, ReportSnapshot};
 use super::state::{Allowed, ManagedState};
 use super::store::ManagedStore;
+use super::timer::TimerSetup;
 use super::OpenedState;
 use crate::core::content_digest::content_digest;
 use crate::core::service::ServiceError;
@@ -48,6 +52,10 @@ pub struct ApplyContext {
     pub interactive: bool,
     /// FastSkill's configuration folder, where the credential command runs.
     pub config_dir: PathBuf,
+    /// The session-start hooks to register; `None` registers none.
+    pub hooks: Option<HookSetup>,
+    /// The timer to install when enrolling; `None` installs none.
+    pub timer: Option<TimerSetup>,
 }
 
 /// Whether an apply ran.
@@ -104,10 +112,27 @@ pub struct ApplyOutcome {
     /// What the report is built from.
     #[serde(default)]
     pub snapshot: ReportSnapshot,
+    /// Covered agents with a session-start hook.
+    #[serde(default)]
+    pub hooks: Vec<String>,
+    /// How to approve hooks just added, for agents that ask first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hook_approvals: Vec<String>,
+    /// The timer installed by this apply, when it enrolled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timer: Option<String>,
 }
 
 /// Apply the configured managed state.
 pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
+    run_apply(context, false)
+}
+
+/// Apply, installing the timer when `enrolling` or when this apply enrolls.
+pub(crate) fn run_apply(
+    context: &ApplyContext,
+    enrolling: bool,
+) -> Result<ApplyResult, ServiceError> {
     let source = context
         .settings
         .source
@@ -155,6 +180,12 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
     outcome
         .warnings
         .extend(super::report::state_warnings(state, &source));
+    register(
+        context,
+        &covered,
+        enrolling || outcome.enrolled_now,
+        &mut outcome,
+    );
 
     let mut ownership: Ownership = read_record(&layout.ownership_file())?;
     let mut run = Run {
@@ -195,6 +226,33 @@ pub fn apply(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
     )?;
     write_record(&layout.last_apply_file(), &outcome)?;
     Ok(ApplyResult::Done(Box::new(outcome)))
+}
+
+/// Register the covered agents' hooks, and the timer when `with_timer`. A failure is a warning.
+fn register(
+    context: &ApplyContext,
+    covered: &[(PathBuf, Vec<&'static str>)],
+    with_timer: bool,
+    outcome: &mut ApplyOutcome,
+) {
+    if let Some(setup) = &context.hooks {
+        let agents: Vec<&str> = covered
+            .iter()
+            .flat_map(|(_, agents)| agents.iter().copied())
+            .collect();
+        let sync = super::hooks::sync(&context.home, setup, &agents);
+        outcome.hooks = sync.hooked;
+        outcome.hook_approvals = sync.approvals;
+        outcome.warnings.extend(sync.warnings);
+    }
+    if let (true, Some(timer)) = (with_timer, &context.timer) {
+        match super::timer::install(timer) {
+            Ok(installed) => outcome.timer = installed,
+            Err(error) => outcome
+                .warnings
+                .push(format!("can't install the timer: {error}")),
+        }
+    }
 }
 
 /// The https client for this run, with the credential command's token when one is configured.

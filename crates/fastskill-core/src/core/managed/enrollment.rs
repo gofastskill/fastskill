@@ -1,18 +1,21 @@
 //! Enrolling, unenrolling and the status of managed state for this user (ADR-0016 decision
 //! 17).
 
-use super::apply::{apply, entry_digest, ApplyContext, ApplyOutcome, ApplyResult};
+use super::apply::{entry_digest, run_apply, ApplyContext, ApplyOutcome, ApplyResult};
 use super::config::{ManagedSettings, ManagedSource};
+use super::hooks;
 use super::layout::{read_record, write_record, ManagedLayout};
 use super::quarantine::{self, quarantine, remove_entry, QuarantineReason, QuarantineRecord};
 use super::records::{Enrollment, OwnedEntry, Ownership};
 use super::report::{self, Report, ReportInput};
 use super::state::{ManagedState, Recorded};
+use super::timer::TimerSetup;
 use crate::core::service::ServiceError;
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
-/// Enroll this user with the configured source, then apply its first state.
+/// Enroll this user with the configured source, then apply its first state, registering the
+/// session-start hooks and the timer.
 ///
 /// Enrolling again with the same source keeps the machine id and the newest accepted
 /// `issued_at`, and forgets the recorded subject, so the next state may name another one.
@@ -39,7 +42,7 @@ pub fn enroll(context: &ApplyContext) -> Result<ApplyResult, ServiceError> {
         }
         write_record(&layout.enrollment_file(), &enrollment)?;
     }
-    apply(context)
+    run_apply(context, true)
 }
 
 /// What unenrolling did.
@@ -49,17 +52,26 @@ pub struct UnenrollOutcome {
     pub quarantined: Vec<QuarantineRecord>,
     /// The user managed settings file, when it was removed.
     pub removed_settings: Option<PathBuf>,
+    /// Agents whose session-start hook was removed.
+    pub removed_hooks: Vec<String>,
+    /// The timer was there and was removed.
+    pub removed_timer: bool,
+    /// Hooks or the timer that couldn't be removed, with why.
+    pub warnings: Vec<String>,
 }
 
 /// Remove what managed state put on this machine for this user: every owned target entry (a
 /// changed copy is quarantined instead), the store, the cached state, the records with the
-/// machine id, and the user managed settings file. The quarantine is kept.
+/// machine id, the session-start hooks, the timer and the user managed settings file. The
+/// quarantine is kept.
 ///
 /// Refused when the system file sets `required = true`, and while an apply runs.
 pub fn unenroll(
     layout: &ManagedLayout,
     settings: &ManagedSettings,
     user_settings_file: Option<&Path>,
+    home: &Path,
+    timer: Option<&TimerSetup>,
     now: DateTime<Utc>,
 ) -> Result<UnenrollOutcome, ServiceError> {
     if settings.required_by_system {
@@ -92,6 +104,15 @@ pub fn unenroll(
     if let Some(file) = user_settings_file.filter(|file| file.is_file()) {
         std::fs::remove_file(file)?;
         outcome.removed_settings = Some(file.to_path_buf());
+    }
+    (outcome.removed_hooks, outcome.warnings) = hooks::remove_all(home);
+    if let Some(timer) = timer {
+        match super::timer::remove(timer) {
+            Ok(removed) => outcome.removed_timer = removed,
+            Err(error) => outcome
+                .warnings
+                .push(format!("can't remove the timer: {error}")),
+        }
     }
     Ok(outcome)
 }

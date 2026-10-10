@@ -20,11 +20,11 @@ repository = "https://github.com/gofastskill/fastskill"
 # and compiles two mutually-incompatible copies into the binary.
 #
 # aikit-sdk for agent metadata file resolution
-aikit-sdk = { git = "https://github.com/goaikit/aikit.git", rev = "9de6b40db1703c921d1be327d0e417be1f734c03" }
+aikit-sdk = { git = "https://github.com/goaikit/aikit.git", rev = "b894e4f0d0da42465c316efd1b3eb4e9582219c8" }
 # aikit-evals provides the generic eval runner infrastructure
-aikit-evals = { git = "https://github.com/goaikit/aikit.git", rev = "9de6b40db1703c921d1be327d0e417be1f734c03" }
+aikit-evals = { git = "https://github.com/goaikit/aikit.git", rev = "b894e4f0d0da42465c316efd1b3eb4e9582219c8" }
 # aikit-skillopt provides the text-gradient skill optimization loop
-aikit-skillopt = { git = "https://github.com/goaikit/aikit.git", rev = "9de6b40db1703c921d1be327d0e417be1f734c03" }
+aikit-skillopt = { git = "https://github.com/goaikit/aikit.git", rev = "b894e4f0d0da42465c316efd1b3eb4e9582219c8" }
 
 # Async runtime
 tokio = { version = "1.52", features = ["rt-multi-thread", "net", "fs", "io-util", "macros", "process"] }
@@ -66,7 +66,7 @@ tower = { version = "0.5", features = ["util", "timeout", "limit"] }
 tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip", "fs"] }
 
 # CLI framework for versioned API server hosting
-cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "971134fd4257578ba19e95faae5d7a1c1bc74bde", default-features = false, features = ["api-server"] }
+cli-framework = { git = "https://github.com/aroff/cli-framework", rev = "ed0b3521f3f24b3b23713a810b2bbd73b84c5cc6", default-features = false, features = ["api-server"] }
 
 # MCP protocol types and transports. Version and feature set MUST track
 # cli-framework's own `rmcp` dependency: `fastskill mcp serve` wraps

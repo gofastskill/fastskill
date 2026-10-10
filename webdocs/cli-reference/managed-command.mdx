@@ -112,7 +112,8 @@ sending it.
 ### enroll
 
 Enroll this user with the configured source and apply its first state. Enrolling again with the
-same source keeps the machine id.
+same source keeps the machine id. Enrolling also registers the session-start hooks and installs
+the timer (see [Keeping up to date](#keeping-up-to-date)).
 
 ```bash
 fastskill managed enroll
@@ -128,6 +129,8 @@ quarantined.
 ```bash
 fastskill managed apply
 fastskill managed apply --json
+fastskill managed apply --hook fastskill-managed-claude   # as the agent's session-start hook
+fastskill managed apply --timer                           # as the timer: wait up to 10 minutes first
 ```
 
 Only one apply runs at a time for a user. A second apply started from a terminal says so; one
@@ -152,14 +155,46 @@ fastskill managed status --json --report   # only the body the next report carri
 Remove what managed state put on this machine for this user: the skills FastSkill deployed (a
 deployed copy that was changed is quarantined instead), the stored skills, the cached state,
 the records and the user settings file. The quarantine is kept. Refused when the system file
-sets `required = true`, and while an apply runs.
+sets `required = true`, and while an apply runs. The session-start hooks and the timer are
+removed too.
 
 ```bash
 fastskill managed unenroll
 ```
 
+### hooks
+
+Show this user's session-start hook for each agent that supports one, and the timer. With
+`--system`, print instead what an administrator installs for every user: the entry to merge
+into each agent's administrator-level settings, and the machine-wide timer files and commands.
+Nothing is written.
+
+```bash
+fastskill managed hooks
+fastskill managed hooks --system
+fastskill managed hooks --system --json
+```
+
 **Options** (every subcommand):
 - `--json`: Print the result as JSON
+
+## Keeping up to date
+
+Two things run `managed apply` without anyone typing it:
+
+- **Session-start hooks.** Every apply registers a hook in the user settings of each covered
+  agent that can run a command when a session starts (Claude Code and Gemini CLI), and removes
+  it from agents no longer covered. The hook starts an apply in the background and returns at
+  once. It prints nothing unless the user must act, such as to sign in, and then one notice.
+  Claude Code asks the user to approve a new hook once; the apply that adds it says so. An
+  agent whose administrator-level settings already hold the hook gets no user-level one.
+- **A timer.** Enrolling, including the first apply that enrolls, installs a timer that applies
+  shortly after login and then every hour, each time after a random wait of up to 10 minutes:
+  a systemd user timer on Linux, a launchd agent on macOS, and a scheduled task on Windows. No
+  user timer is installed when a machine-wide one is present. Set `FASTSKILL_MANAGED_TIMER=off`
+  to install none, for example on a machine without a user service manager.
+
+A hook or timer that can't be installed is a warning in the apply's report, not a failure.
 
 ## Installs and other commands
 

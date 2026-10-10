@@ -275,8 +275,8 @@ pub(crate) fn snapshot(
         agents: names
             .into_iter()
             .map(|name| ReportAgent {
+                hook: outcome.hooks.iter().any(|hooked| hooked == name),
                 name: name.to_string(),
-                hook: false,
             })
             .collect(),
         skills,

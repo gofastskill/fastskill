@@ -1,7 +1,7 @@
 //! `fastskill managed`: follow a signed managed state for this user's agents
 //! ([ADR-0016](../../../../docs/adr/0016-machines-follow-a-signed-managed-state.md)).
 //!
-//! `enroll`, `apply` and `unenroll` are writes, `status` is a read (ADR-0003). The work is in
+//! `enroll`, `apply` and `unenroll` are writes, `status` and `hooks` are reads (ADR-0003). The work is in
 //! `fastskill_core::core::managed`; this module reads the settings, runs it and renders it.
 
 use crate::error::{CliError, CliResult};
@@ -11,13 +11,53 @@ use cli_framework::spec::command_tree::{CommandSpec, GroupMetadata};
 use cli_framework::spec::value::ArgValue;
 use fastskill_core::core::managed::config::user_file_path;
 use fastskill_core::core::managed::{
-    self, ApplyContext, ApplyOutcome, ApplyResult, ManagedLayout, ManagedSettings, ManagedStatus,
-    UnenrollOutcome,
+    self, ApplyContext, ApplyOutcome, ApplyResult, HookSetup, ManagedLayout, ManagedSettings,
+    ManagedStatus, TimerSetup, UnenrollOutcome,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::PathBuf;
+
+/// Register the `managed` group and its commands.
+pub fn register(
+    builder: cli_framework::prelude::AppBuilder,
+) -> anyhow::Result<cli_framework::prelude::AppBuilder> {
+    use crate::registration::AppBuilderExt;
+    use cli_framework::path;
+    builder
+        .register_group(&path!["managed"], group_metadata())?
+        .register_out(
+            path!["managed", "enroll"],
+            |_ctx, args: EnrollArgs| async move {
+                execute_enroll(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "apply"],
+            |_ctx, args: ApplyArgs| async move {
+                execute_apply(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "status"],
+            |_ctx, args: StatusArgs| async move {
+                execute_status(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "hooks"],
+            |_ctx, args: HooksArgs| async move {
+                execute_hooks(args).await.map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
+            path!["managed", "unenroll"],
+            |_ctx, args: UnenrollArgs| async move {
+                execute_unenroll(args).await.map_err(anyhow::Error::from)
+            },
+        )
+}
 
 /// The `managed` group.
 pub fn group_metadata() -> GroupMetadata {
@@ -36,6 +76,12 @@ pub struct ManagedArgs {
     /// `status` only: include what the last apply did and the report body; with `--json`, print
     /// only the report body.
     pub report: bool,
+    /// `apply` only: run as the session-start hook with this id.
+    pub hook: Option<String>,
+    /// `apply` only: wait up to 10 minutes at random first, as the timer does.
+    pub timer: bool,
+    /// `hooks` only: print the administrator-level hooks and machine-wide timer.
+    pub system: bool,
 }
 
 fn json_arg() -> ArgSpec {
@@ -46,6 +92,18 @@ fn json_arg() -> ArgSpec {
         value_type: ArgValueType::Bool,
         cardinality: Cardinality::Optional,
         help: "Output in JSON format",
+        ..Default::default()
+    }
+}
+
+fn flag(name: &'static str, help: &'static str) -> ArgSpec {
+    ArgSpec {
+        name,
+        kind: ArgKind::Flag,
+        long: Some(name),
+        value_type: ArgValueType::Bool,
+        cardinality: Cardinality::Optional,
+        help,
         ..Default::default()
     }
 }
@@ -66,6 +124,12 @@ impl FromArgValueMap for ManagedArgs {
         Self {
             json: matches!(map.get("json"), Some(ArgValue::Bool(true))),
             report: matches!(map.get("report"), Some(ArgValue::Bool(true))),
+            hook: match map.get("hook") {
+                Some(ArgValue::Str(id)) => Some(id.clone()),
+                _ => None,
+            },
+            timer: matches!(map.get("timer"), Some(ArgValue::Bool(true))),
+            system: matches!(map.get("system"), Some(ArgValue::Bool(true))),
         }
     }
 }
@@ -97,14 +161,29 @@ managed_args!(
         vec!["fastskill managed enroll"],
     )
 );
-managed_args!(
-    ApplyArgs,
-    spec(
+managed_args!(ApplyArgs, {
+    let mut spec = spec(
         "Apply the managed state to this user's agents",
-        "managed apply [--json]",
+        "managed apply [--json] [--hook <id>] [--timer]",
         vec!["fastskill managed apply", "fastskill managed apply --json"],
-    )
-);
+    );
+    spec.args.push(ArgSpec {
+        name: "hook",
+        kind: ArgKind::Option,
+        long: Some("hook"),
+        value_type: ArgValueType::String,
+        cardinality: Cardinality::Optional,
+        conflicts_with: vec!["json", "timer"],
+        help: "Run as the session-start hook with this id: start an apply in the background, \
+               print a notice only when the user must act, and always succeed",
+        ..Default::default()
+    });
+    spec.args.push(flag(
+        "timer",
+        "Wait up to 10 minutes at random before applying, as the timer does",
+    ));
+    spec
+});
 managed_args!(StatusArgs, {
     let mut spec = spec(
         "Show the managed source, state, targets, collisions and quarantine",
@@ -115,16 +194,27 @@ managed_args!(StatusArgs, {
             "fastskill managed status --json --report",
         ],
     );
-    spec.args.push(ArgSpec {
-        name: "report",
-        kind: ArgKind::Flag,
-        long: Some("report"),
-        value_type: ArgValueType::Bool,
-        cardinality: Cardinality::Optional,
-        help: "Include everything the last apply did and the report body; with --json, print \
-               only the report body",
-        ..Default::default()
-    });
+    spec.args.push(flag(
+        "report",
+        "Include everything the last apply did and the report body; with --json, print only \
+         the report body",
+    ));
+    spec
+});
+managed_args!(HooksArgs, {
+    let mut spec = spec(
+        "Show this user's session-start hooks and timer, or the administrator-level ones",
+        "managed hooks [--system] [--json]",
+        vec![
+            "fastskill managed hooks",
+            "fastskill managed hooks --system",
+        ],
+    );
+    spec.args.push(flag(
+        "system",
+        "Print the administrator-level hook entry for each supported agent and a machine-wide \
+         timer; nothing is written",
+    ));
     spec
 });
 managed_args!(
@@ -147,12 +237,31 @@ pub struct Environment {
     pub interactive: bool,
     /// FastSkill's configuration folder, where the credential command runs.
     pub config_dir: PathBuf,
+    /// The FastSkill executable hooks and the timer run.
+    pub exe: PathBuf,
+    /// The session-start hooks an apply registers; `None` registers none.
+    pub hooks: Option<HookSetup>,
+    /// The timer enrolling installs; `None` installs none.
+    pub timer: Option<TimerSetup>,
+    /// Starts `managed apply` in the background, for a hook.
+    pub background: fn(&std::path::Path) -> std::io::Result<()>,
 }
+
+/// Set to `off` to install no timer, for machines without a user service manager.
+pub const TIMER_ENV: &str = "FASTSKILL_MANAGED_TIMER";
 
 impl Environment {
     /// This user's environment.
     pub fn current() -> CliResult<Self> {
         let settings = ManagedSettings::load().map_err(fastskill_core::ServiceError::from)?;
+        let home = dirs::home_dir()
+            .ok_or_else(|| CliError::Config("can't determine the home folder".to_string()))?;
+        let exe = std::env::current_exe()
+            .map_err(|error| CliError::Config(format!("can't find this executable: {error}")))?;
+        let timer = match std::env::var(TIMER_ENV) {
+            Ok(value) if value.eq_ignore_ascii_case("off") => None,
+            _ => TimerSetup::current(&home, &exe),
+        };
         Ok(Self {
             layout: ManagedLayout::for_current_user()?,
             settings,
@@ -160,10 +269,13 @@ impl Environment {
                 .and_then(|file| file.parent().map(PathBuf::from))
                 .unwrap_or_else(std::env::temp_dir),
             user_settings_file: user_file_path(),
-            home: dirs::home_dir()
-                .ok_or_else(|| CliError::Config("can't determine the home folder".to_string()))?,
+            home,
             project_skills: crate::config::resolve_skills_storage_directory(false).ok(),
             interactive: std::io::stdout().is_terminal(),
+            hooks: Some(HookSetup::new(managed::hooks::quote_program(&exe))),
+            timer,
+            exe,
+            background: super::managed_hooks::start_background_apply,
         })
     }
 
@@ -180,6 +292,8 @@ impl Environment {
             now: chrono::Utc::now(),
             interactive: self.interactive,
             config_dir: self.config_dir.clone(),
+            hooks: self.hooks.clone(),
+            timer: self.timer.clone(),
         })
     }
 }
@@ -197,7 +311,24 @@ pub async fn execute_enroll(args: EnrollArgs) -> CliResult<()> {
 }
 
 pub async fn execute_apply(args: ApplyArgs) -> CliResult<()> {
+    if let Some(id) = args.0.hook {
+        // A hook never fails and never says more than one notice.
+        if let Ok(env) = Environment::current() {
+            if let Some(notice) = super::managed_hooks::run_hook(&env, &id) {
+                crate::outln!("{notice}");
+            }
+        }
+        return Ok(());
+    }
+    if args.0.timer {
+        tokio::time::sleep(managed::timer::random_delay()).await;
+    }
     emit(off_runtime(move || run_apply(&Environment::current()?, &args.0)).await?)
+}
+
+pub async fn execute_hooks(args: HooksArgs) -> CliResult<()> {
+    let env = Environment::current()?;
+    emit(Ok(Some(super::managed_hooks::run_hooks(&env, &args.0)?)))
 }
 
 /// Run an apply on a blocking thread: it makes blocking https requests and runs the
@@ -338,6 +469,15 @@ pub fn render_outcome(outcome: &ApplyOutcome) -> String {
     for warning in &outcome.warnings {
         lines.push(format!("  warning  {warning}"));
     }
+    if !outcome.hooks.is_empty() {
+        lines.push(format!("  hooks    {}", outcome.hooks.join(", ")));
+    }
+    for note in &outcome.hook_approvals {
+        lines.push(format!("  approve  {note}"));
+    }
+    if let Some(timer) = &outcome.timer {
+        lines.push(format!("  timer    {timer}"));
+    }
     if let Some(report) = &outcome.report {
         lines.push(match (&report.problem, report.accepted) {
             (_, true) => format!("  report   #{} accepted", report.sequence),
@@ -382,6 +522,7 @@ fn status_json(status: &ManagedStatus, report: bool) -> Value {
         "report_to": status.report_note,
         "warnings": last.map(|l| l.warnings.clone()).unwrap_or_default(),
         "targets": last.map(|l| l.targets.clone()).unwrap_or_default(),
+        "hooks": last.map(|l| l.hooks.clone()).unwrap_or_default(),
         "collisions": last.map(|l| l.collisions.clone()).unwrap_or_default(),
         "owned": status.owned,
         "quarantine": status.quarantine.iter().map(|record| json!({
@@ -442,6 +583,9 @@ pub fn render_status(status: &ManagedStatus, report: bool) -> String {
         for target in &last.targets {
             lines.push(format!("  target    {}", target.display()));
         }
+        if !last.hooks.is_empty() {
+            lines.push(format!("  hooks     {}", last.hooks.join(", ")));
+        }
         for path in &last.collisions {
             lines.push(format!("  collision {}", path.display()));
         }
@@ -478,6 +622,8 @@ pub fn run_unenroll(env: &Environment, args: &ManagedArgs) -> CliResult<String> 
         &env.layout,
         &env.settings,
         env.user_settings_file.as_deref(),
+        &env.home,
+        env.timer.as_ref(),
         chrono::Utc::now(),
     )?;
     if args.json {
@@ -497,6 +643,15 @@ pub fn run_unenroll(env: &Environment, args: &ManagedArgs) -> CliResult<String> 
     if let Some(file) = &outcome.removed_settings {
         lines.push(format!("  removed     {}", file.display()));
     }
+    for agent in &outcome.removed_hooks {
+        lines.push(format!("  removed     the {agent} session hook"));
+    }
+    if outcome.removed_timer {
+        lines.push("  removed     the timer".to_string());
+    }
+    for warning in &outcome.warnings {
+        lines.push(format!("  warning     {warning}"));
+    }
     Ok(lines.join("\n"))
 }
 
@@ -508,6 +663,9 @@ fn unenroll_json(outcome: &UnenrollOutcome) -> Value {
             "former_path": record.former_path,
         })).collect::<Vec<_>>(),
         "removed_settings": outcome.removed_settings,
+        "removed_hooks": outcome.removed_hooks,
+        "removed_timer": outcome.removed_timer,
+        "warnings": outcome.warnings,
     })
 }
 
