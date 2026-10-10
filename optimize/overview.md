@@ -1,12 +1,12 @@
 # Skill Optimization Overview
 
-FastSkill 0.9.271
+FastSkill 0.9.272
 
 Source: https://docs.gofastskill.com/optimize/overview
 
-Release revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
+Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 
-Documentation revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
+Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 
 
 

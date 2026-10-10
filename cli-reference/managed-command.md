@@ -1,12 +1,12 @@
 # managed Command
 
-FastSkill 0.9.271
+FastSkill 0.9.272
 
 Source: https://docs.gofastskill.com/cli-reference/managed-command
 
-Release revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
+Release revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 
-Documentation revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
+Documentation revision: aaf72a3635a29208e6b04d1062cf1e290941025f
 
 
 
@@ -53,8 +53,65 @@ targets = ["claude"]
 required = true
 ```
 
-This release reads the state from a local file. The skill archives it lists are read from paths
-next to it.
+## Sources
+
+The source is either a local file or an `https://` URL.
+
+* **A file source** reads the state from a path. The skill archives it lists are read from paths
+  next to it, or from absolute paths.
+* **An `https://` source** fetches the state from the URL, and each listed skill archive from
+  its `https://` URL. Redirects to anything but `https://` are refused. The state can be at most
+  8 MiB and each archive at most 512 MiB.
+
+When the source needs a sign-in, name a credential command:
+
+```toml
+source = "https://skills.example.com/state"
+credential_command = ["example-login", "token"]
+```
+
+The command runs without a shell, from FastSkill's configuration folder, for at most 30
+seconds. The first line it prints, at most 16 KiB, is the token, sent as
+`Authorization: Bearer <token>`. The token is never stored or printed, and it is sent only to
+the source's origin (scheme, host and port): a request to another origin, including a redirect
+to one, goes without it. When there is a terminal, the command can prompt on it; without one,
+such as from an agent hook, `FASTSKILL_INTERACTIVE=0` is set so it can fail at once instead of
+waiting.
+
+When the command fails, or the source answers `401`, apply uses the last accepted state and
+reports **sign-in needed**; run `fastskill managed apply` in a terminal to sign in again.
+
+### Fields only an `https://` source honors
+
+| State field   | What it does                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `report_url`  | Where each apply sends its report. Must be on the source's origin.                                                                   |
+| `request_url` | A link template with `{digest}`, shown when an install is refused, so people can ask for the skill. Must be on the source's origin.  |
+| `editable`    | `blocked-only` (default) lets editable local skills skip the allow-list; `refused` refuses them when only listed skills are allowed. |
+
+A `report_url` or `request_url` on another origin is ignored with a warning. A file source
+ignores all three, and `fastskill managed status` names each one it ignores.
+
+## The report
+
+When the state names a `report_url`, each apply sends a JSON report to it, signed in with the
+same token. The body is fixed and holds no prompts, file contents, paths, usernames, project
+names or repository URLs:
+
+* `format_version`, `machine_id` and `sequence`, which goes up by one with each report;
+* `issued_at` of the state applied and whether the apply `completed`;
+* the covered `agents`, by name;
+* every skill entry in the agent folders: its id, digest, whether FastSkill placed it
+  (`origin_kind`), whether it is an editable local skill, and its outcome (`deployed`,
+  `adopted`, `collision`, `quarantined` or `unmanaged`);
+* the `quarantine`, and what this apply quarantined (`quarantined_now`), by id, digest and
+  reason;
+* `refusals`: installs the state refused since the last accepted report, by digest and command
+  name, never its arguments;
+* `project_skills`: the ids and digests in the current project's skills folder.
+
+`fastskill managed status --json --report` prints the body the next report would carry, without
+sending it.
 
 ## Subcommands
 
@@ -85,13 +142,15 @@ complete every step exits with an error after its report.
 
 ### status
 
-Show the source, the machine id, the state's subject and expiry, the last apply's targets and
-collisions, and the quarantine. Nothing is changed.
+Show the source, the machine id, the state's subject and expiry, whether a sign-in is needed,
+the fields this source ignores, where reports go, the last apply's targets, collisions and
+warnings, and the quarantine. Nothing is changed.
 
 ```bash
 fastskill managed status
-fastskill managed status --report   # include everything the last apply did
+fastskill managed status --report          # include everything the last apply did, and the report body
 fastskill managed status --json
+fastskill managed status --json --report   # only the body the next report carries
 ```
 
 ### unenroll
