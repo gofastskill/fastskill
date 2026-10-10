@@ -31,7 +31,7 @@ jobs:
               throw new Error('Only the latest published release can update documentation');
             }
             core.setOutput('tag', data.tag_name);
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Manual runs support docs corrections on main; publication verifies product parity.
           ref: ${{ github.event_name == 'release' && steps.release.outputs.tag || 'main' }}
@@ -96,7 +96,7 @@ jobs:
           script: |
             const { data } = await github.rest.repos.getLatestRelease(context.repo);
             if (data.tag_name !== '${{ needs.build.outputs.tag }}') throw new Error('A newer release was published');
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/download-artifact@v4

@@ -92,7 +92,7 @@ jobs:
 
       - name: Checkout code
         if: steps.guard.outputs.run == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Connect to the Tailnet
         if: steps.guard.outputs.run == 'true'
