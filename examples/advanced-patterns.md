@@ -1,12 +1,12 @@
 # Advanced Patterns
 
-FastSkill 0.9.270
+FastSkill 0.9.271
 
 Source: https://docs.gofastskill.com/examples/advanced-patterns
 
-Release revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
+Release revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
 
-Documentation revision: bc6d2a687a7f168a4a02c57d9d09b69c182909dc
+Documentation revision: 07ea8b97cb4c870e818452145c7ffddc925e14ea
 
 
 
