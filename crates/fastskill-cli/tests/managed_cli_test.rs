@@ -13,6 +13,8 @@ fn run(root: &Path, args: &[&str]) -> Output {
         .env("HOME", root.join("home"))
         .env("XDG_CONFIG_HOME", root.join("config"))
         .env("XDG_DATA_HOME", root.join("data"))
+        // Keep enrolling from touching this machine's service manager.
+        .env("FASTSKILL_MANAGED_TIMER", "off")
         .output()
         .unwrap()
 }
@@ -75,4 +77,29 @@ fn with_user_settings_enroll_status_and_unenroll() {
     let value: serde_json::Value = serde_json::from_slice(&unenroll.stdout).unwrap();
     assert!(value["removed_settings"].as_str().is_some(), "{value}");
     assert!(!settings.exists());
+}
+
+#[test]
+fn a_hook_without_settings_prints_nothing_and_succeeds() {
+    let root = TempDir::new().unwrap();
+    let hook = run(
+        root.path(),
+        &["managed", "apply", "--hook", "fastskill-managed-claude"],
+    );
+    assert!(hook.status.success(), "{}", text(&hook.stderr));
+    assert!(hook.stdout.is_empty(), "{}", text(&hook.stdout));
+}
+
+#[test]
+fn hooks_list_this_user_and_the_administrator_entries() {
+    let root = TempDir::new().unwrap();
+    let user = run(root.path(), &["managed", "hooks"]);
+    assert!(user.status.success(), "{}", text(&user.stderr));
+    assert!(text(&user.stdout).contains("Session-start hooks:"));
+    assert!(text(&user.stdout).contains("Timer: none on this platform"));
+
+    let system = run(root.path(), &["managed", "hooks", "--system", "--json"]);
+    assert!(system.status.success(), "{}", text(&system.stderr));
+    let value: serde_json::Value = serde_json::from_slice(&system.stdout).unwrap();
+    assert_eq!(value["hooks"][0]["agent"], "claude");
 }

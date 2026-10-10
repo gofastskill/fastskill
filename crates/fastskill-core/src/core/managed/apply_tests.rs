@@ -69,6 +69,8 @@ impl Fixture {
             now: now(),
             interactive: false,
             config_dir: self.root.clone(),
+            hooks: None,
+            timer: None,
         }
     }
 
@@ -197,7 +199,15 @@ fn a_second_apply_waits_for_none_while_one_runs() {
     let _held = fixture.layout.try_lock().unwrap().unwrap();
     assert_eq!(apply(&fixture.context()).unwrap(), ApplyResult::Busy);
     assert_eq!(enroll(&fixture.context()).unwrap(), ApplyResult::Busy);
-    let error = unenroll(&fixture.layout, &fixture.settings(), None, now()).unwrap_err();
+    let error = unenroll(
+        &fixture.layout,
+        &fixture.settings(),
+        None,
+        &fixture.home(),
+        None,
+        now(),
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("apply is running"), "{error}");
 }
 
@@ -514,6 +524,8 @@ fn unenrolling_removes_everything_but_the_quarantine() {
         &fixture.layout,
         &fixture.settings(),
         Some(&user_file),
+        &fixture.home(),
+        None,
         now(),
     )
     .unwrap();
@@ -526,7 +538,15 @@ fn unenrolling_removes_everything_but_the_quarantine() {
 
     let mut required = fixture.settings();
     required.required_by_system = true;
-    let error = unenroll(&fixture.layout, &required, None, now()).unwrap_err();
+    let error = unenroll(
+        &fixture.layout,
+        &required,
+        None,
+        &fixture.home(),
+        None,
+        now(),
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("can't unenroll"), "{error}");
 }
 

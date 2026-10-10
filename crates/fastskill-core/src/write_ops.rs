@@ -81,6 +81,7 @@ pub static READ_ONLY_COMMAND_PATHS: &[&[&str]] = &[
     &["eval", "report"],
     &["eval", "score"],
     &["eval", "validate"],
+    &["managed", "hooks"],
     &["managed", "status"],
     &["mcp", "list"],
     &["optimization", "inspect"],

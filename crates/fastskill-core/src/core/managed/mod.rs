@@ -23,6 +23,9 @@
 //!   command's token, and [`report`]: the fixed report an apply sends (decisions 5, 6, 15 and
 //!   21).
 //!
+//! - [`hooks`] and [`timer`]: the session-start hooks and the per-user timer that keep the
+//!   targets current (decision 16).
+//!
 //! [`open`] is the one entry point that turns envelope bytes into a state FastSkill may use.
 
 pub mod apply;
@@ -30,6 +33,7 @@ pub mod config;
 pub mod enrollment;
 pub mod envelope;
 pub mod gate;
+pub mod hooks;
 pub mod layout;
 pub mod quarantine;
 pub mod records;
@@ -39,6 +43,7 @@ pub mod state;
 pub mod store;
 #[cfg(test)]
 mod test_https;
+pub mod timer;
 
 #[cfg(test)]
 mod apply_tests;
@@ -50,6 +55,7 @@ pub use config::{ManagedSettings, ManagedSource, PinnedKey, SYSTEM_FILE_NAME, US
 pub use enrollment::{enroll, status, unenroll, ManagedStatus, UnenrollOutcome};
 pub use envelope::{verify_envelope, Verified, PAYLOAD_TYPE};
 pub use gate::{Candidate, CommandPolicy, ManagedGate, ManagedSkillStatus, Situation};
+pub use hooks::HookSetup;
 pub use layout::{ApplyLock, ManagedLayout};
 pub use quarantine::{QuarantineReason, QuarantineRecord};
 pub use records::{Enrollment, EntryMode, OwnedEntry, Ownership};
@@ -58,6 +64,7 @@ pub use state::{
     Allowed, BlockedDigest, Editable, ManagedState, Recorded, StateSkill, FORMAT_VERSION,
     MAX_CLOCK_SKEW,
 };
+pub use timer::{TimerOs, TimerSetup};
 
 use chrono::{DateTime, Utc};
 

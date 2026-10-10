@@ -580,6 +580,14 @@ fn build_app(builder: AppBuilder, state: Arc<FsState>) -> anyhow::Result<AppBuil
             },
         )?
         .register_out(
+            path!["managed", "hooks"],
+            |_ctx, args: managed::HooksArgs| async move {
+                managed::execute_hooks(args)
+                    .await
+                    .map_err(anyhow::Error::from)
+            },
+        )?
+        .register_out(
             path!["managed", "unenroll"],
             |_ctx, args: managed::UnenrollArgs| async move {
                 managed::execute_unenroll(args)

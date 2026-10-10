@@ -11,6 +11,7 @@ pub mod init;
 pub mod install;
 pub mod list;
 pub mod managed;
+pub mod managed_hooks;
 pub mod marketplace;
 pub mod mcp;
 pub mod read;
