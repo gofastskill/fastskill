@@ -1,12 +1,12 @@
 # Validate a skill
 
-FastSkill 0.9.273
+FastSkill 0.9.274
 
 Source: https://docs.gofastskill.com/skill-management/validation
 
-Release revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+Release revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
 
-Documentation revision: 65e1f5ddf59597a871554f64fabe4d453e7eb862
+Documentation revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
 
 
 
