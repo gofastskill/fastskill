@@ -112,7 +112,7 @@ include_dir = "0.7"
 semver = "1.0"
 
 # Server-side Markdown rendering (SKILL.md v2 HTML preview) + HTML sanitization
-comrak = "0.55.0"
+comrak = "0.56.0"
 ammonia = "4.1.4"
 
 
