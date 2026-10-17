@@ -272,7 +272,7 @@ impl Environment {
             home,
             project_skills: crate::config::resolve_skills_storage_directory(false).ok(),
             interactive: std::io::stdout().is_terminal(),
-            hooks: Some(HookSetup::new(managed::hooks::quote_program(&exe))),
+            hooks: Some(HookSetup::for_exe(&exe)),
             timer,
             exe,
             background: super::managed_hooks::start_background_apply,

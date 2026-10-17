@@ -6,7 +6,7 @@
 
 use super::managed::{Environment, ManagedArgs};
 use crate::error::CliResult;
-use fastskill_core::core::managed::hooks::{self, agent_of, hook_id, quote_program, HookSetup};
+use fastskill_core::core::managed::hooks::{self, agent_of, hook_id, HookSetup};
 use fastskill_core::core::managed::timer::{self, TimerOs};
 use fastskill_core::core::managed::{self, ManagedStatus};
 use serde_json::{json, Value};
@@ -84,7 +84,7 @@ pub fn run_hooks(env: &Environment, args: &ManagedArgs) -> CliResult<String> {
     let setup = env
         .hooks
         .clone()
-        .unwrap_or_else(|| HookSetup::new(quote_program(&env.exe)));
+        .unwrap_or_else(|| HookSetup::for_exe(&env.exe));
     let value = if args.system {
         system_json(&setup, TimerOs::current(), &env.exe)
     } else {
@@ -101,7 +101,7 @@ pub fn run_hooks(env: &Environment, args: &ManagedArgs) -> CliResult<String> {
 }
 
 fn user_json(env: &Environment, setup: &HookSetup) -> Value {
-    let agents: Vec<Value> = aikit_sdk::session_hook_agents()
+    let agents: Vec<Value> = hooks::hooked_agents()
         .into_iter()
         .map(|key| {
             let id = hook_id(key);
@@ -160,17 +160,26 @@ fn system_json(setup: &HookSetup, os: Option<TimerOs>, exe: &Path) -> Value {
 fn render_system(value: &Value) -> String {
     let mut lines = Vec::new();
     for hook in value["hooks"].as_array().into_iter().flatten() {
-        let file = hook["file"].as_str().unwrap_or("(no administrator file)");
-        lines.push(format!(
-            "{}: merge into {file}{}",
-            hook["agent"].as_str().unwrap_or_default(),
-            if hook["present"] == true {
-                " (already present)"
-            } else {
-                ""
-            }
-        ));
-        lines.push(serde_json::to_string_pretty(&hook["entry"]).unwrap_or_default());
+        let agent = hook["agent"].as_str().unwrap_or_default();
+        let (Some(file), Some(text)) = (hook["file"].as_str(), hook["text"].as_str()) else {
+            lines.push(format!(
+                "{agent}: no administrator-level location; the machine-wide timer covers it"
+            ));
+            lines.push(String::new());
+            continue;
+        };
+        let verb = if hook["format"] == "toml" {
+            "add to"
+        } else {
+            "merge into"
+        };
+        let present = if hook["present"] == true {
+            " (already present)"
+        } else {
+            ""
+        };
+        lines.push(format!("{agent}: {verb} {file}{present}"));
+        lines.push(text.trim_end().to_string());
         lines.push(String::new());
     }
     let plan = &value["timer"];
