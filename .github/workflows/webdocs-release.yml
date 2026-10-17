@@ -78,7 +78,7 @@ jobs:
         working-directory: webdocs
       - run: pnpm check:export
         working-directory: webdocs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: fastskill-static-docs
           path: webdocs/out
