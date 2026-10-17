@@ -1,12 +1,12 @@
 # managed Command
 
-FastSkill 0.9.274
+FastSkill 0.9.275
 
 Source: https://docs.gofastskill.com/cli-reference/managed-command
 
-Release revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Release revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
-Documentation revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Documentation revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
 
 
@@ -174,10 +174,12 @@ fastskill managed unenroll
 
 ### hooks
 
-Show this user's session-start hook for each agent that supports one, and the timer. With
-`--system`, print instead what an administrator installs for every user: the entry to merge
-into each agent's administrator-level settings, and the machine-wide timer files and commands.
-Nothing is written.
+Show this user's session-start hook for each of the four agents FastSkill hooks (Claude Code,
+Codex CLI, Cursor and Pi), and the timer. With `--system`, print instead what an administrator
+installs for every user: each agent's administrator-level entry in that file's format (JSON for
+Claude Code and Cursor, TOML for Codex), the file it goes in, and the machine-wide timer files and
+commands. Pi has no administrator-level location; the machine-wide timer covers it. With
+`--json`, each entry carries `agent`, `file`, `format`, `text` and `present`. Nothing is written.
 
 ```bash
 fastskill managed hooks
@@ -193,12 +195,25 @@ fastskill managed hooks --system --json
 
 Two things run `managed apply` without anyone typing it:
 
-* **Session-start hooks.** Every apply registers a hook in the user settings of each covered
-  agent that can run a command when a session starts (Claude Code and Gemini CLI), and removes
-  it from agents no longer covered. The hook starts an apply in the background and returns at
-  once. It prints nothing unless the user must act, such as to sign in, and then one notice.
-  Claude Code asks the user to approve a new hook once; the apply that adds it says so. An
-  agent whose administrator-level settings already hold the hook gets no user-level one.
+* **Session-start hooks.** Every apply registers a user-level hook in each covered agent of
+  the four FastSkill hooks, and removes FastSkill's hook from every other agent, Gemini CLI
+  included, which the timer alone keeps up to date. The hook starts an apply in the background
+  and returns at once. It prints nothing unless the user must act, such as to sign in, and then
+  one notice. An agent whose administrator-level settings already hold the hook gets no
+  user-level one. A hook file FastSkill can't change is a warning in the apply's report.
+
+  | Agent                | User-level hook                                  | Approval                                      | Where the notice shows                           |
+  | -------------------- | ------------------------------------------------ | --------------------------------------------- | ------------------------------------------------ |
+  | Claude Code          | `~/.claude/settings.json`                        | it may ask you to review the hook in `/hooks` | in the session                                   |
+  | Codex CLI            | `~/.codex/hooks.json`                            | trust it in `/hooks`; again after it changes  | a `Hook` line in the transcript                  |
+  | Cursor (IDE and CLI) | `~/.cursor/hooks.json`                           | none                                          | not shown; it reaches the model                  |
+  | Pi                   | `~/.pi/agent/extensions/fastskill-managed-pi.ts` | none                                          | a warning in Pi's interface; nothing without one |
+
+  The apply that adds a hook needing approval, or changes one, says so. Codex runs no hook from
+  `~/.codex/hooks.json` while `~/.codex/config.toml` defines hooks of its own, so FastSkill warns
+  and writes nothing there. FastSkill never overwrites or removes a Pi extension it didn't write.
+  Cursor's CLI runs the hook only when it starts a new chat, not for `/clear`, `--resume` or
+  `--continue`; the timer covers those.
 * **A timer.** Enrolling, including the first apply that enrolls, installs a timer that applies
   shortly after login and then every hour, each time after a random wait of up to 10 minutes:
   a systemd user timer on Linux, a launchd agent on macOS, and a scheduled task on Windows. No

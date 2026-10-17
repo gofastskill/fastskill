@@ -1,12 +1,12 @@
 # Hardening managed machines
 
-FastSkill 0.9.274
+FastSkill 0.9.275
 
 Source: https://docs.gofastskill.com/security/managed-machines
 
-Release revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Release revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
-Documentation revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Documentation revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
 
 
@@ -112,15 +112,21 @@ user's next `fastskill managed apply` from a terminal signs in again.
 
 ## Administrator-level hooks
 
-`fastskill managed hooks --system` prints, for each agent that runs a command at session start,
-the entry to merge into the agent's administrator-level settings. Device management places those
+`fastskill managed hooks --system` prints, for each agent FastSkill hooks, the entry to add to
+the agent's administrator-level file, in that file's format. Device management places those
 files; FastSkill never writes them. When an administrator-level FastSkill hook is present for an
 agent, apply registers no user-level one, so there is no hook for the user to approve.
 
-| Agent       | Linux                                    | macOS                                                           | Windows                                             |
-| ----------- | ---------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
-| Claude Code | `/etc/claude-code/managed-settings.json` | `/Library/Application Support/ClaudeCode/managed-settings.json` | `C:\Program Files\ClaudeCode\managed-settings.json` |
-| Gemini CLI  | `/etc/gemini-cli/settings.json`          | `/Library/Application Support/GeminiCli/settings.json`          | `C:\ProgramData\gemini-cli\settings.json`           |
+| Agent       | Format | Linux                                    | macOS                                                           | Windows                                             |
+| ----------- | ------ | ---------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Claude Code | JSON   | `/etc/claude-code/managed-settings.json` | `/Library/Application Support/ClaudeCode/managed-settings.json` | `C:\Program Files\ClaudeCode\managed-settings.json` |
+| Codex CLI   | TOML   | `/etc/codex/requirements.toml`           | `/etc/codex/requirements.toml`                                  | `C:\ProgramData\OpenAI\Codex\requirements.toml`     |
+| Cursor      | JSON   | `/etc/cursor/hooks.json`                 | `/Library/Application Support/Cursor/hooks.json`                | `C:\ProgramData\Cursor\hooks.json`                  |
+| Pi          | none   | none                                     | none                                                            | none                                                |
+
+Codex trusts hooks in `requirements.toml` by policy, so users approve nothing. Cursor's hooks can
+also be set from the team dashboard. Pi has no administrator-level location; the machine-wide
+timer covers it.
 
 ```bash
 fastskill managed hooks --system
@@ -148,26 +154,35 @@ only from the folders FastSkill manages. What each agent allows, as checked agai
 documentation on 2026-09-24. "Shared folder" says whether the agent reads `~/.agents/skills`;
 "same session" says whether a skill written by its session-start hook shows up in that session.
 
-| Agent                    | Shared folder | Command hook at session start            | Administrator-level hooks       | Same session |
-| ------------------------ | ------------- | ---------------------------------------- | ------------------------------- | ------------ |
-| Claude Code              | no            | yes; output reaches the model            | managed settings                | no           |
-| Cursor (IDE and CLI)     | yes           | yes, not awaited; output not shown       | `/etc/cursor/hooks.json`        | no           |
-| Codex CLI                | yes           | yes; user hooks need approval            | managed hooks, no approval      | later        |
-| Gemini CLI               | yes           | yes; output must be JSON                 | `/etc/gemini-cli/settings.json` | no           |
-| Qwen Code                | yes           | yes                                      | `/etc/qwen-code`                | later        |
-| GitHub Copilot (VS Code) | yes           | yes; only JSON context reaches the model | GitHub policy                   | no           |
-| GitHub Copilot CLI       | yes           | yes; 30 s timeout                        | `/etc/github-copilot/policy.d`  | no           |
-| Devin Desktop            | yes           | yes                                      | `/etc/devin/hooks.json`         | no           |
-| Auggie                   | yes           | yes                                      | `/etc/augment/settings.json`    | no           |
-| Kiro, CodeBuddy, Qoder   | no            | yes                                      | not checked                     | no           |
-| IBM Bob                  | no            | yes; 10 s timeout                        | enforced-hooks policy           | no           |
-| OpenCode, Amp, Pi, Kilo  | yes           | only through a plugin                    | not checked                     | no           |
-| Roo Code (archived)      | yes           | none                                     | none                            | no           |
+| Agent                    | Shared folder | Command hook at session start                  | Administrator-level hooks        | Same session |
+| ------------------------ | ------------- | ---------------------------------------------- | -------------------------------- | ------------ |
+| Claude Code              | no            | yes; output reaches the model                  | managed settings                 | no           |
+| Cursor (IDE and CLI)     | yes           | yes, not awaited; output not shown             | `/etc/cursor/hooks.json`         | no           |
+| Codex CLI                | yes           | yes; user hooks need trust in `/hooks`         | `requirements.toml`, no approval | later        |
+| Gemini CLI               | yes           | yes; output must be JSON                       | `/etc/gemini-cli/settings.json`  | no           |
+| Qwen Code                | yes           | yes                                            | `/etc/qwen-code`                 | later        |
+| GitHub Copilot (VS Code) | yes           | yes; only JSON context reaches the model       | GitHub policy                    | no           |
+| GitHub Copilot CLI       | yes           | yes; 30 s timeout                              | `/etc/github-copilot/policy.d`   | no           |
+| Devin Desktop            | yes           | yes                                            | `/etc/devin/hooks.json`          | no           |
+| Auggie                   | yes           | yes                                            | `/etc/augment/settings.json`     | no           |
+| Kiro, CodeBuddy, Qoder   | no            | yes                                            | not checked                      | no           |
+| IBM Bob                  | no            | yes; 10 s timeout                              | enforced-hooks policy            | no           |
+| Pi                       | yes           | through an extension; FastSkill writes its own | none                             | no           |
+| OpenCode, Amp, Kilo      | yes           | only through a plugin                          | not checked                      | no           |
+| Roo Code (archived)      | yes           | none                                           | none                             | no           |
 
 "Later" means the agent watches its skills folders and picks the skill up during the session.
-FastSkill registers session-start hooks where it has verified support (today Claude Code and
-Gemini CLI); every other agent is kept up to date by the timer. Agents add hooks and folders
-often, so check the agent's current documentation before relying on a row.
+FastSkill registers session-start hooks for four agents: Claude Code, Codex CLI, Cursor (IDE and
+CLI) and Pi, whose extension FastSkill writes and owns whole. Every other agent, Gemini CLI
+included, is kept up to date by the timer, and an apply removes a FastSkill hook left in any of
+them. Agents add hooks and folders often, so check the agent's current documentation before
+relying on a row.
+
+Known gaps: Pi installs that move the agent folder with `PI_CODING_AGENT_DIR` get no hook, and
+the timer still reaches them. Only Codex CLI is claimed, not Codex's IDE extension or app.
+Cursor passes the notice to the model, not the user, so check `fastskill managed status` when
+skills seem stale. The Cursor CLI runs the hook only when it starts a new chat; a chat started
+with `/clear`, `--resume` or `--continue` waits for the timer.
 
 ## Several users on one machine
 

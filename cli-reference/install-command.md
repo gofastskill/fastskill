@@ -1,12 +1,12 @@
 # project install
 
-FastSkill 0.9.274
+FastSkill 0.9.275
 
 Source: https://docs.gofastskill.com/cli-reference/install-command
 
-Release revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Release revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
-Documentation revision: 605bd729da6c4407ae8c7d9807a0f4ca6045adb6
+Documentation revision: ec7508360b560d7b0c5f12b6a9ce752c4d5ef0cd
 
 
 
