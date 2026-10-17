@@ -1,7 +1,7 @@
 # Machines can follow a signed managed state; FastSkill applies it and never decides it
 
 Status: accepted. Date: 2026-09-24. Revised: 2026-09-24. Amended: 2026-09-24. Accepted:
-2026-10-09. Implemented: 2026-10-10.
+2026-10-09. Implemented: 2026-10-10. Third amendment proposed: 2026-10-17.
 
 Related: [ADR-0001](0001-remove-sync-command.md),
 [ADR-0003](0003-serve-trust-boundary-and-edge-auth.md),
@@ -49,6 +49,19 @@ skills and run hooks (see Agent facts, at the end):
   (decision 17), and administrator-level hooks come from `managed hooks --system`.
 - The credential command is told when there is no terminal, and a sign-in that lapsed is shown
   instead of failing silently (decisions 6 and 16).
+
+**Third amendment** (proposed 2026-10-17). Session-start hooks are narrowed to four agents and
+widened to one that needs a plugin. The plan is
+[managed session hooks](../../specs/managed-session-hooks-prd.md):
+
+- FastSkill registers a session-start hook only for Claude Code, Codex, Cursor and Pi. Every other
+  agent, Gemini CLI included, is reached by the timer, and apply removes a FastSkill hook it
+  registered earlier for one of them (decision 16).
+- Pi runs a command at session start only from an extension. `aikit-sdk` writes that extension as
+  a file it owns whole, which reverses the deferral of plugins in Considered alternatives.
+- `managed hooks --system` prints Codex's entry as TOML for its requirements file, and says Pi has
+  no administrator-level location (decision 17).
+- Agent facts gains rows for the four agents, checked on 2026-10-17.
 
 ## Context
 
@@ -366,7 +379,8 @@ It doesn't protect against:
       don't wait for it at all. What an apply deploys is guaranteed from the next session, not
       the current one.
     - **The session-start hook.** Each covered agent that can run a command at session start
-      gets a hook that runs `managed apply --hook`. It starts an apply in the background and
+      gets a hook that runs `managed apply --hook`. The covered agents FastSkill hooks are Claude
+      Code, Codex, Cursor and Pi (third amendment). It starts an apply in the background and
       returns within a second. The per-user lock (decision 12) keeps applies from overlapping.
       The hook always exits successfully and writes no agent metadata files.
     - **What the hook prints.** Nothing, unless the last recorded apply left something the user
@@ -375,8 +389,8 @@ It doesn't protect against:
       differ in whether and where they show it. `managed status` always shows it.
     - **The timer.** A per-user timer runs `managed apply` at login and then hourly, each run
       shifted by up to ten minutes at random: a systemd user timer, a launchd agent or a scheduled
-      task. It is the only path for agents that can't run a command at session start, including
-      agents whose hooks must be plugins in their own language, which `aikit-sdk` doesn't ship.
+      task. It is the only path for every other agent, whether or not it could run a command at
+      session start.
     - **Who registers them.**
       - On a machine its user manages, `managed enroll` registers user-level hooks and the timer.
         For an agent that runs a new user-level hook only after its user approves it, enroll
@@ -550,8 +564,12 @@ It doesn't protect against:
 - **Only the shared `~/.agents/skills` folder** was rejected. Claude Code doesn't read it.
 - **FastSkill writing administrator-level hook files** was rejected. Those files belong to device
   management, and merging into them risks breaking its other settings.
-- **Plugins for agents whose hooks must be code in their own language** were deferred. The timer
-  reaches them, and the difference is at most an hour.
+- **Plugins for agents whose hooks must be code in their own language** were deferred, and then
+  taken up for Pi alone by the third amendment, as an extension file `aikit-sdk` owns whole. The
+  timer still reaches the other agents of that kind, and the difference is at most an hour.
+- **Hooks for every agent `aikit-sdk` supports** were rejected by the third amendment. Each agent
+  adds a file format, an approval flow and a notice to verify on real installs, and the timer
+  already reaches the rest.
 - **Deploying into agents' administrator skill folders**, which users can't change, was rejected.
   They are machine-wide, and a managed state is per user.
 - **Deleting disallowed content** was rejected. Quarantine loses nothing and can be reversed.
@@ -588,3 +606,12 @@ shows up in that session.
 | Roo Code (archived) | yes | none | none | no |
 
 "Later" means the agent watches its skills folders and picks the skill up during the session.
+
+Rechecked for the four hooked agents on 2026-10-17 (third amendment):
+
+| Agent | User hook file | Hook event and output | Approval | Administrator-level hooks |
+|---|---|---|---|---|
+| Claude Code | `~/.claude/settings.json` | `SessionStart`; `systemMessage` is shown | review in `/hooks` | managed settings |
+| Codex CLI | `~/.codex/hooks.json` | `SessionStart`, matcher `startup\|resume`; `systemMessage` is shown as a warning, plain output reaches the model | trust in `/hooks`, again whenever the hook changes | `[hooks]` in `requirements.toml`, trusted by policy |
+| Cursor | `~/.cursor/hooks.json` | `sessionStart`, not awaited; only `additional_context` reaches the model, nothing is shown | none | `/etc/cursor/hooks.json` and the team dashboard |
+| Pi | an extension in `~/.pi/agent/extensions` | `session_start` extension event, awaited; the extension shows a notice with `ctx.ui.notify` | none | none |
