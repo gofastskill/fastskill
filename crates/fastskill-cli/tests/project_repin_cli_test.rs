@@ -514,14 +514,11 @@ fn legacy_artifact(path: &Path, replacements: &[(&str, &str)]) {
         let mut file = archive.by_index(index).unwrap();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).unwrap();
-        if file.name() == "skills.lock" {
+        let name = file.name().unwrap().into_owned();
+        if name == "skills.lock" {
             bytes = replace_all(&String::from_utf8(bytes).unwrap(), replacements).into_bytes();
         }
-        entries.push((
-            file.name().to_string(),
-            file.unix_mode().unwrap_or(0o644),
-            bytes,
-        ));
+        entries.push((name, file.unix_mode().unwrap_or(0o644), bytes));
     }
     drop(archive);
     let mut writer = zip::ZipWriter::new(fs::File::create(path).unwrap());
