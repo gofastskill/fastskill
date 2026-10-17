@@ -16,6 +16,7 @@ ignore = [
     # Unmaintained crates with no drop-in replacement upstream.
     { id = "RUSTSEC-2025-0141", reason = "bincode 1.x (unmaintained) comes from comrak -> syntect; no safe upgrade available" },
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust (unmaintained) comes from comrak -> syntect; no safe upgrade available" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml (unmaintained) comes from serde_yaml, used here and by cli-framework; no safe drop-in replacement yet" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 (unmaintained) is a build-time proc-macro dep of validator_derive" },
 ]
 

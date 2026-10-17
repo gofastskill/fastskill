@@ -55,13 +55,12 @@ pub(crate) fn preflight_zip_archive<R: Read + io::Seek>(
             continue;
         }
 
+        let name = entry_name(&file, i)?;
         let declared = file.size();
         if declared > MAX_ENTRY_UNCOMPRESSED {
             return Err(ServiceError::Validation(format!(
                 "ZIP entry '{}' declares size {} bytes exceeding per-entry limit {}",
-                file.name(),
-                declared,
-                MAX_ENTRY_UNCOMPRESSED
+                name, declared, MAX_ENTRY_UNCOMPRESSED
             )));
         }
 
@@ -69,7 +68,7 @@ pub(crate) fn preflight_zip_archive<R: Read + io::Seek>(
         if compressed > 0 && declared / compressed > MAX_RATIO {
             return Err(ServiceError::Validation(format!(
                 "ZIP entry '{}' has compression ratio {} exceeding limit {} (possible ZIP bomb)",
-                file.name(),
+                name,
                 declared / compressed,
                 MAX_RATIO
             )));
@@ -77,6 +76,16 @@ pub(crate) fn preflight_zip_archive<R: Read + io::Seek>(
     }
 
     Ok(())
+}
+
+/// The name of entry `index`; a name that isn't valid text is refused.
+fn entry_name<R: io::Read>(
+    file: &zip::read::ZipFile<'_, R>,
+    index: usize,
+) -> Result<String, ServiceError> {
+    file.name().map(|name| name.into_owned()).map_err(|e| {
+        ServiceError::Validation(format!("Invalid ZIP entry name at index {}: {}", index, e))
+    })
 }
 
 pub struct ZipHandler;
@@ -134,7 +143,7 @@ impl ZipHandler {
                 ServiceError::Validation(format!("Failed to read ZIP entry: {}", e))
             })?;
 
-            let entry_name = file.name().to_string();
+            let entry_name = entry_name(&file, i)?;
             let archive_mode = file.unix_mode();
 
             // Determine directory-ness from the raw zip entry (BUG-11), not the
