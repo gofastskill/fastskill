@@ -173,3 +173,48 @@ fn disk_usage_does_not_follow_links() {
     assert_eq!(files, 1);
     assert!(bytes < 1 << 20, "{bytes}");
 }
+
+#[test]
+fn authorization_reaches_git_through_its_environment_scoped_to_the_url() {
+    let home = Path::new("/w/home");
+    let url = "https://example.com/acme/skills.git";
+    let mut cmd = isolated_git(home, "https");
+    let authorization = CloneAuthorization::new("Basic c2VjcmV0").unwrap();
+    authorize(&mut cmd, url, &authorization);
+    let value = |name: &str| {
+        cmd.as_std()
+            .get_envs()
+            .find(|(key, _)| key.to_string_lossy() == name)
+            .and_then(|(_, value)| value.map(|v| v.to_string_lossy().into_owned()))
+    };
+    assert_eq!(value("GIT_CONFIG_COUNT").as_deref(), Some("1"));
+    assert_eq!(
+        value("GIT_CONFIG_KEY_0").as_deref(),
+        Some("http.https://example.com/acme/skills.git.extraHeader")
+    );
+    assert_eq!(
+        value("GIT_CONFIG_VALUE_0").as_deref(),
+        Some("Authorization: Basic c2VjcmV0")
+    );
+    let options = IsolatedCloneOptions {
+        authorization: Some(authorization),
+        ..IsolatedCloneOptions::default()
+    };
+    let args = build_isolated_clone_args(url, Path::new("/w/tree"), home, None, &options);
+    assert!(args.iter().all(|arg| !arg.contains("c2VjcmV0")), "{args:?}");
+    assert!(!format!("{options:?}").contains("c2VjcmV0"));
+}
+
+#[test]
+fn authorization_values_are_one_printable_header_value() {
+    assert!(CloneAuthorization::new("Bearer abc.def-123").is_ok());
+    for bad in [
+        "",
+        "Basic a\r\nX-Other: 1",
+        "Basic a\nb",
+        "Basic \u{e9}",
+        "a\tb",
+    ] {
+        assert!(CloneAuthorization::new(bad).is_err(), "{bad:?}");
+    }
+}

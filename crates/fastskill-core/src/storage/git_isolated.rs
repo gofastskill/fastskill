@@ -16,6 +16,12 @@
 //! - is bounded by one overall deadline, a byte cap and a file cap, checked
 //!   while git runs, and killed when any is crossed.
 //!
+//! A caller that holds a credential for the repository -- a short-lived token
+//! minted for this one clone, say -- passes it as
+//! [`IsolatedCloneOptions::authorization`]. It reaches git through the clone's
+//! environment as an `http.<url>.extraHeader`, scoped to the cloned URL, and
+//! never through the command line, the URL or a file.
+//!
 //! The result is the checked-out tree at one commit, with its `.git` removed.
 //! Symbolic links stay as they are in the repository: deciding whether to
 //! accept them is the caller's job, and
@@ -79,6 +85,39 @@ pub struct IsolatedCloneOptions {
     pub follow_redirects: bool,
     /// Where to create the clone; the system temporary directory if `None`.
     pub parent_dir: Option<PathBuf>,
+    /// The `Authorization` header git sends with its HTTP requests under the
+    /// cloned URL, if any.
+    pub authorization: Option<CloneAuthorization>,
+}
+
+/// The value of an HTTP `Authorization` header for one clone, such as
+/// `Basic <base64>`. Its `Debug` output never shows the value.
+#[derive(Clone, PartialEq, Eq)]
+pub struct CloneAuthorization(String);
+
+impl CloneAuthorization {
+    /// `value` as a header value: printable ASCII, so it can't end the header
+    /// or add another one.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `value` is empty or holds anything but printable ASCII and
+    /// spaces.
+    pub fn new(value: impl Into<String>) -> Result<Self, ServiceError> {
+        let value = value.into();
+        if value.is_empty() || !value.bytes().all(|b| (b' '..=b'~').contains(&b)) {
+            return Err(ServiceError::Validation(
+                "an authorization header value must be non-empty printable ASCII".to_string(),
+            ));
+        }
+        Ok(Self(value))
+    }
+}
+
+impl std::fmt::Debug for CloneAuthorization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CloneAuthorization(<redacted>)")
+    }
 }
 
 impl Default for IsolatedCloneOptions {
@@ -90,6 +129,7 @@ impl Default for IsolatedCloneOptions {
             allowed_protocols: vec!["https".to_string()],
             follow_redirects: false,
             parent_dir: None,
+            authorization: None,
         }
     }
 }
@@ -148,6 +188,9 @@ pub async fn clone_isolated(
     let clone_args = build_isolated_clone_args(url, &tree, &home, branch, options);
     let mut clone = isolated_git(&home, &allow);
     clone.args(&clone_args);
+    if let Some(authorization) = &options.authorization {
+        authorize(&mut clone, url, authorization);
+    }
     let failed = |stderr: String| GitError::CloneFailed {
         url: safe_url.clone(),
         stderr,
@@ -261,6 +304,19 @@ pub(crate) fn isolated_git(home: &Path, allowed_protocols: &str) -> Command {
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     cmd
+}
+
+/// Have `cmd` send `authorization` with its HTTP requests under `url`, through
+/// git's environment (`GIT_CONFIG_COUNT`, git 2.31 or later), so the value is
+/// never on the command line. Call after [`isolated_git`], which clears the
+/// environment.
+pub(crate) fn authorize(cmd: &mut Command, url: &str, authorization: &CloneAuthorization) {
+    cmd.env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", format!("http.{url}.extraHeader"))
+        .env(
+            "GIT_CONFIG_VALUE_0",
+            format!("Authorization: {}", authorization.0),
+        );
 }
 
 /// Run `cmd` until it exits, the deadline passes or `watched` crosses a cap.
