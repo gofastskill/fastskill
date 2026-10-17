@@ -1,6 +1,6 @@
 # PRD: Managed session hooks for Claude Code, Codex, Cursor and Pi
 
-Status: proposed.
+Status: implemented (2026-10-17).
 Date: 2026-10-17.
 
 This PRD plans the third amendment of
@@ -134,6 +134,9 @@ entry for each of the four agents that has one from `managed hooks --system`.
   reaches them.
 - Whether Codex's IDE extension and app run hooks is not documented. Only Codex CLI is claimed.
 - Cursor shows the notice to the model, not the user.
+- The Cursor CLI (checked on 2026.10.16-e3cb207) runs the hook only when a process starts a new
+  chat; a chat started with `/clear`, `--resume` or `--continue` runs none, and the timer still
+  reaches it. Cursor's IDE wasn't checked.
 
 ## Testing decisions
 

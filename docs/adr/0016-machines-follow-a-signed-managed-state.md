@@ -1,7 +1,7 @@
 # Machines can follow a signed managed state; FastSkill applies it and never decides it
 
 Status: accepted. Date: 2026-09-24. Revised: 2026-09-24. Amended: 2026-09-24. Accepted:
-2026-10-09. Implemented: 2026-10-10. Third amendment proposed: 2026-10-17.
+2026-10-09. Implemented: 2026-10-10. Third amendment accepted and implemented: 2026-10-17.
 
 Related: [ADR-0001](0001-remove-sync-command.md),
 [ADR-0003](0003-serve-trust-boundary-and-edge-auth.md),
@@ -50,7 +50,7 @@ skills and run hooks (see Agent facts, at the end):
 - The credential command is told when there is no terminal, and a sign-in that lapsed is shown
   instead of failing silently (decisions 6 and 16).
 
-**Third amendment** (proposed 2026-10-17). Session-start hooks are narrowed to four agents and
+**Third amendment** (accepted and implemented 2026-10-17). Session-start hooks are narrowed to four agents and
 widened to one that needs a plugin. The plan is
 [managed session hooks](../../specs/managed-session-hooks-prd.md):
 
@@ -612,6 +612,11 @@ Rechecked for the four hooked agents on 2026-10-17 (third amendment):
 | Agent | User hook file | Hook event and output | Approval | Administrator-level hooks |
 |---|---|---|---|---|
 | Claude Code | `~/.claude/settings.json` | `SessionStart`; `systemMessage` is shown | review in `/hooks` | managed settings |
-| Codex CLI | `~/.codex/hooks.json` | `SessionStart`, matcher `startup\|resume`; `systemMessage` is shown as a warning, plain output reaches the model | trust in `/hooks`, again whenever the hook changes | `[hooks]` in `requirements.toml`, trusted by policy |
+| Codex CLI | `~/.codex/hooks.json` | `SessionStart`, matcher `startup\|resume`; `systemMessage` is shown as a `Hook` line in the transcript, plain output reaches the model | trust in `/hooks`, again whenever the hook changes | `[hooks]` in `requirements.toml`, trusted by policy |
 | Cursor | `~/.cursor/hooks.json` | `sessionStart`, not awaited; only `additional_context` reaches the model, nothing is shown | none | `/etc/cursor/hooks.json` and the team dashboard |
 | Pi | an extension in `~/.pi/agent/extensions` | `session_start` extension event, awaited; the extension shows a notice with `ctx.ui.notify` | none | none |
+
+Checked on real installs on 2026-10-17: Claude Code 2.1.302, Codex CLI 0.163.0, Cursor CLI
+2026.10.16-e3cb207 and Pi 1.3.0 each ran the hook and showed the notice as above. The Cursor CLI
+runs `sessionStart` only when a process starts a new chat; a chat started with `/clear`,
+`--resume` or `--continue` runs none, and the timer covers it. Cursor's IDE wasn't checked.

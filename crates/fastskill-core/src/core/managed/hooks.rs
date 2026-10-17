@@ -1,21 +1,25 @@
 //! Session-start hooks for the covered agents (ADR-0016 decisions 16 and 17).
 //!
-//! Each covered agent that can run a command when a session starts gets a user-level hook
-//! running `managed apply --hook <id>`, where `<id>` is [`hook_id`] for that agent. Every apply
-//! registers hooks for newly covered agents and removes those of agents no longer covered. An
-//! agent whose administrator-level settings already hold FastSkill's hook gets no user-level
-//! one. `unenroll` removes them all.
+//! FastSkill hooks only the agents in [`HOOKED_AGENTS`]: Claude Code, Codex, Cursor and Pi. Each
+//! covered one gets a user-level hook running `managed apply --hook <id>`, where `<id>` is
+//! [`hook_id`] for that agent. Every apply registers hooks for newly covered agents and removes
+//! FastSkill's hook from every other agent `aikit-sdk` supports, Gemini CLI included, which the
+//! timer alone reaches. An agent whose administrator-level settings already hold FastSkill's
+//! hook gets no user-level one. `unenroll` removes them all.
 
-use aikit_sdk::{HookChange, SessionHook};
-use std::path::Path;
+use aikit_sdk::{AdminHookFormat, HookChange, SessionHook};
+use std::path::{Path, PathBuf};
 
 /// The prefix of every hook id; the agent key follows it.
 pub const HOOK_ID_PREFIX: &str = "fastskill-managed-";
 
+/// The `aikit-sdk` keys of the agents FastSkill hooks at session start (third amendment).
+pub const HOOKED_AGENTS: &[&str] = &["claude", "codex", "cursor", "pi"];
+
 /// How to register hooks for one apply.
 #[derive(Debug, Clone)]
 pub struct HookSetup {
-    /// The program part of the hook command, already quoted for the agent's shell.
+    /// The absolute path of the FastSkill program the hooks run.
     pub program: String,
     /// Whether the administrator-level settings of agent `key` hold the hook with id `id`.
     pub admin_present: fn(&str, &str) -> bool,
@@ -28,6 +32,11 @@ impl HookSetup {
             program: program.into(),
             admin_present: aikit_sdk::admin_hook_present,
         }
+    }
+
+    /// Hooks that run the executable at `path`.
+    pub fn for_exe(path: &Path) -> Self {
+        Self::new(path.to_string_lossy())
     }
 
     /// The hook for agent `key`.
@@ -47,18 +56,21 @@ pub fn agent_of(id: &str) -> Option<&str> {
         .filter(|key| !key.is_empty())
 }
 
-/// The hook running `program` for agent `key`.
+/// The hook running `program managed apply --hook <id>` for agent `key`. `aikit-sdk` derives the
+/// shell command agents store from these arguments.
 pub fn hook_for(program: &str, key: &str) -> SessionHook {
     let id = hook_id(key);
-    SessionHook {
-        command: format!("{program} managed apply --hook {id}"),
-        id,
-    }
+    SessionHook::from_argv(id.clone(), program, ["managed", "apply", "--hook", &id])
 }
 
-/// Quote `path` as the program of a hook command.
-pub fn quote_program(path: &Path) -> String {
-    format!("\"{}\"", path.display().to_string().replace('"', "\\\""))
+/// The hooked agents `aikit-sdk` supports, in [`HOOKED_AGENTS`] order.
+pub fn hooked_agents() -> Vec<&'static str> {
+    let supported = aikit_sdk::session_hook_agents();
+    HOOKED_AGENTS
+        .iter()
+        .copied()
+        .filter(|key| supported.contains(key))
+        .collect()
 }
 
 /// What registering hooks did.
@@ -66,24 +78,26 @@ pub fn quote_program(path: &Path) -> String {
 pub struct HookSync {
     /// Covered agents with a hook, user- or administrator-level.
     pub hooked: Vec<String>,
-    /// Notes for hooks just added to an agent that needs the user to approve them.
+    /// Notes for hooks just added or changed in an agent that needs the user to approve them.
     pub approvals: Vec<String>,
     /// Hooks that couldn't be registered or removed, with why.
     pub warnings: Vec<String>,
 }
 
-/// Register the hook for every covered agent that supports one, and remove FastSkill's
-/// user-level hook from every other supported agent.
+/// Register the hook for every covered agent FastSkill hooks, and remove FastSkill's user-level
+/// hook from every other agent `aikit-sdk` supports.
 pub fn sync(home: &Path, setup: &HookSetup, covered: &[&str]) -> HookSync {
     let mut sync = HookSync::default();
     for key in aikit_sdk::session_hook_agents() {
         let id = hook_id(key);
-        let admin = covered.contains(&key) && (setup.admin_present)(key, &id);
-        if covered.contains(&key) && !admin {
+        let wanted = HOOKED_AGENTS.contains(&key) && covered.contains(&key);
+        let admin = wanted && (setup.admin_present)(key, &id);
+        if wanted && !admin {
             match aikit_sdk::register_session_hook(home, key, &setup.hook(key)) {
                 Ok(change) => {
                     sync.hooked.push(key.to_string());
-                    if change == HookChange::Added {
+                    // An agent that approves hooks asks again when one changes.
+                    if matches!(change, HookChange::Added | HookChange::Updated) {
                         if let Some(note) = aikit_sdk::session_hook_support(key)
                             .and_then(|support| support.approval_note)
                         {
@@ -123,28 +137,38 @@ pub fn remove_all(home: &Path) -> (Vec<String>, Vec<String>) {
     (removed, warnings)
 }
 
-/// One agent's administrator-level hook: where it goes and what to merge there.
+/// One hooked agent's administrator-level hook: where it goes and what to add there.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct AdminHook {
     pub agent: String,
-    pub file: Option<std::path::PathBuf>,
-    pub entry: serde_json::Value,
+    /// The administrator file, or `None` when the agent has no administrator-level location.
+    pub file: Option<PathBuf>,
+    /// `json` or `toml`, the administrator file's format; `None` without a location.
+    pub format: Option<&'static str>,
+    /// The fragment to merge into `file`; `None` without a location.
+    pub text: Option<String>,
     pub present: bool,
 }
 
-/// The administrator-level hook entry for every supported agent, writing nothing.
+/// The administrator-level hook entry for every hooked agent, writing nothing. An agent without
+/// an administrator-level location (Pi) has no file, format or text; the machine-wide timer
+/// covers it.
 pub fn admin_hooks(setup: &HookSetup) -> Vec<AdminHook> {
-    aikit_sdk::session_hook_agents()
+    hooked_agents()
         .into_iter()
-        .filter_map(|key| {
+        .map(|key| {
             let hook = setup.hook(key);
-            let entry = aikit_sdk::admin_hook_entry(key, &hook).ok()?;
-            Some(AdminHook {
+            let entry = aikit_sdk::admin_hook_entry(key, &hook).ok();
+            AdminHook {
                 agent: key.to_string(),
-                file: aikit_sdk::admin_hook_file(key),
+                file: entry.as_ref().and_then(|_| aikit_sdk::admin_hook_file(key)),
+                format: entry.as_ref().map(|entry| match entry.format {
+                    AdminHookFormat::Json => "json",
+                    AdminHookFormat::Toml => "toml",
+                }),
                 present: (setup.admin_present)(key, &hook.id),
-                entry,
-            })
+                text: entry.map(|entry| entry.text),
+            }
         })
         .collect()
 }

@@ -105,6 +105,25 @@ fn a_hook_starts_an_apply_and_prints_what_the_user_must_act_on() {
 }
 
 #[test]
+fn each_agent_gets_the_notice_in_its_own_form() {
+    let dir = TempDir::new().unwrap();
+    let env = environment(&dir, true, false);
+    enroll_record(&env);
+    let notice =
+        notice(&managed::status(&env.layout, &env.settings, chrono::Utc::now()).unwrap()).unwrap();
+    let printed = |agent: &str| run_hook(&env, &hook_id(agent)).unwrap();
+    let field = |agent: &str, key: &str| {
+        let value: Value = serde_json::from_str(&printed(agent)).unwrap();
+        value[key].as_str().unwrap().to_string()
+    };
+    assert_eq!(field("claude", "systemMessage"), notice);
+    assert_eq!(field("codex", "systemMessage"), notice);
+    // Cursor passes the text to the model; Pi shows plain text in its interface.
+    assert_eq!(field("cursor", "additional_context"), notice);
+    assert_eq!(printed("pi"), notice);
+}
+
+#[test]
 fn a_hook_does_nothing_when_there_is_nothing_to_do() {
     let dir = TempDir::new().unwrap();
     // Not one of FastSkill's ids, not configured, or not enrolled with a user source.
@@ -165,14 +184,20 @@ fn hooks_show_each_agent_and_the_timer() {
     let dir = TempDir::new().unwrap();
     let mut env = environment(&dir, true, false);
     let setup = hook_setup(no_admin);
-    aikit_sdk::register_session_hook(&env.home, "claude", &setup.hook("claude")).unwrap();
-    std::fs::create_dir_all(env.home.join(".gemini")).unwrap();
-    std::fs::write(env.home.join(".gemini/settings.json"), "not json").unwrap();
+    for agent in ["claude", "pi"] {
+        aikit_sdk::register_session_hook(&env.home, agent, &setup.hook(agent)).unwrap();
+    }
+    std::fs::create_dir_all(env.home.join(".cursor")).unwrap();
+    std::fs::write(env.home.join(".cursor/hooks.json"), "not json").unwrap();
     env.hooks = Some(setup);
 
     let text = run_hooks(&env, &args(false, false)).unwrap();
     assert!(text.contains("claude   user-level"), "{text}");
-    assert!(text.contains("gemini   unknown: "), "{text}");
+    assert!(text.contains("codex    none"), "{text}");
+    assert!(text.contains("cursor   unknown: "), "{text}");
+    assert!(text.contains("pi       user-level"), "{text}");
+    // Gemini CLI is reached by the timer alone.
+    assert!(!text.contains("gemini"), "{text}");
     assert!(text.contains("Timer: none on this platform"), "{text}");
 
     let mut timer = TimerSetup {
@@ -192,7 +217,15 @@ fn hooks_show_each_agent_and_the_timer() {
 
     timer::install(&timer).unwrap();
     let value: Value = serde_json::from_str(&run_hooks(&env, &args(true, false)).unwrap()).unwrap();
+    let agents: Vec<&str> = value["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|agent| agent["agent"].as_str().unwrap())
+        .collect();
+    assert_eq!(agents, vec!["claude", "codex", "cursor", "pi"]);
     assert_eq!(value["agents"][0]["user"], true);
+    assert!(value["agents"][2]["problem"].is_string());
     assert_eq!(value["timer"]["installed"], true);
     let text = run_hooks(&env, &args(false, false)).unwrap();
     assert!(
@@ -222,18 +255,39 @@ fn system_hooks_print_what_an_administrator_installs() {
     let dir = TempDir::new().unwrap();
     let env = environment(&dir, true, false);
     let value: Value = serde_json::from_str(&run_hooks(&env, &args(true, true)).unwrap()).unwrap();
-    assert_eq!(value["hooks"][0]["agent"], "claude");
+    let hooks = value["hooks"].as_array().unwrap();
+    let agents: Vec<&str> = hooks
+        .iter()
+        .map(|hook| hook["agent"].as_str().unwrap())
+        .collect();
+    assert_eq!(agents, vec!["claude", "codex", "cursor", "pi"]);
     assert_eq!(value["timer"].is_null(), TimerOs::current().is_none());
     // Without a setup, the hooks run this executable.
-    assert!(value["hooks"][0]["entry"]
-        .to_string()
+    assert_eq!(hooks[0]["format"], "json");
+    assert!(hooks[0]["text"]
+        .as_str()
+        .unwrap()
         .contains("managed apply --hook fastskill-managed-claude"));
+    assert_eq!(hooks[1]["format"], "toml");
+    assert!(hooks[1]["text"]
+        .as_str()
+        .unwrap()
+        .contains("[[hooks.SessionStart]]"));
+    assert!(hooks[3]["file"].is_null() && hooks[3]["text"].is_null());
 
     let setup = hook_setup(claude_admin);
     for os in [TimerOs::Linux, TimerOs::MacOs, TimerOs::Windows] {
         let text = render_system(&system_json(&setup, Some(os), &env.exe));
         assert!(text.contains("claude: merge into "), "{text}");
         assert!(text.contains("(already present)"), "{text}");
+        assert!(text.contains("codex: add to "), "{text}");
+        assert!(text.contains("[[hooks.SessionStart]]"), "{text}");
+        assert!(text.contains("cursor: merge into "), "{text}");
+        assert!(
+            text.contains("pi: no administrator-level location; the machine-wide timer covers it"),
+            "{text}"
+        );
+        assert!(!text.contains("gemini"), "{text}");
         assert!(text.contains("Machine-wide timer:\n"), "{text}");
         // A machine-wide launch agent loads at each user's next login.
         assert_eq!(text.contains("then run: "), os != TimerOs::MacOs, "{text}");

@@ -4,7 +4,7 @@ use super::*;
 
 fn setup(admin_present: fn(&str, &str) -> bool) -> HookSetup {
     HookSetup {
-        program: quote_program(Path::new("/opt/fast skill/fastskill")),
+        program: "/opt/fast skill/fastskill".to_string(),
         admin_present,
     }
 }
@@ -21,41 +21,93 @@ fn has(home: &Path, key: &str) -> bool {
     aikit_sdk::has_session_hook(home, key, &hook_id(key)).unwrap()
 }
 
+const ALL: &[&str] = &["claude", "codex", "cursor", "pi", "gemini", "copilot"];
+
 #[test]
 fn a_hook_names_its_agent_and_runs_apply_in_hook_mode() {
     let hook = setup(no_admin).hook("claude");
     assert_eq!(hook.id, "fastskill-managed-claude");
     assert_eq!(
-        hook.command,
-        "\"/opt/fast skill/fastskill\" managed apply --hook fastskill-managed-claude"
+        hook.argv.as_deref(),
+        Some(
+            &[
+                "/opt/fast skill/fastskill",
+                "managed",
+                "apply",
+                "--hook",
+                "fastskill-managed-claude"
+            ]
+            .map(String::from)[..]
+        )
     );
+    if cfg!(unix) {
+        assert_eq!(
+            hook.command,
+            "'/opt/fast skill/fastskill' managed apply --hook fastskill-managed-claude"
+        );
+    }
     assert_eq!(agent_of("fastskill-managed-gemini"), Some("gemini"));
     assert_eq!(agent_of("fastskill-managed-"), None);
     assert_eq!(agent_of("other"), None);
-    assert_eq!(quote_program(Path::new("a\"b")), "\"a\\\"b\"");
     assert_eq!(HookSetup::new("x").program, "x");
+    assert_eq!(HookSetup::for_exe(Path::new("/bin/fs")).program, "/bin/fs");
+    assert_eq!(hooked_agents(), HOOKED_AGENTS);
 }
 
 #[test]
-fn sync_registers_covered_agents_and_removes_the_others() {
+fn sync_hooks_the_four_agents_and_no_other() {
     let home = tempfile::tempdir().unwrap();
     let setup = setup(no_admin);
 
-    let first = sync(home.path(), &setup, &["claude", "gemini", "codex"]);
-    assert_eq!(first.hooked, vec!["claude", "gemini"]);
+    let first = sync(home.path(), &setup, ALL);
+    assert_eq!(first.hooked, vec!["claude", "codex", "cursor", "pi"]);
     assert!(first.warnings.is_empty(), "{:?}", first.warnings);
-    assert_eq!(first.approvals.len(), 1);
-    assert!(first.approvals[0].starts_with("claude: "));
-    assert!(has(home.path(), "claude") && has(home.path(), "gemini"));
+    let noted: Vec<&str> = first
+        .approvals
+        .iter()
+        .map(|note| note.split(':').next().unwrap())
+        .collect();
+    assert_eq!(noted, vec!["claude", "codex"]);
+    for key in HOOKED_AGENTS {
+        assert!(has(home.path(), key), "{key}");
+    }
+    assert!(!has(home.path(), "gemini"));
 
-    let again = sync(home.path(), &setup, &["claude", "gemini"]);
-    assert_eq!(again.hooked, vec!["claude", "gemini"]);
+    let again = sync(home.path(), &setup, ALL);
+    assert_eq!(again.hooked, first.hooked);
     assert!(again.approvals.is_empty());
 
-    let fewer = sync(home.path(), &setup, &["claude"]);
-    assert_eq!(fewer.hooked, vec!["claude"]);
-    assert!(has(home.path(), "claude"));
+    let fewer = sync(home.path(), &setup, &["claude", "pi"]);
+    assert_eq!(fewer.hooked, vec!["claude", "pi"]);
+    assert!(has(home.path(), "claude") && has(home.path(), "pi"));
+    assert!(!has(home.path(), "codex") && !has(home.path(), "cursor"));
+}
+
+#[test]
+fn sync_removes_a_gemini_hook_left_from_before() {
+    let home = tempfile::tempdir().unwrap();
+    let setup = setup(no_admin);
+    aikit_sdk::register_session_hook(home.path(), "gemini", &setup.hook("gemini")).unwrap();
+    assert!(has(home.path(), "gemini"));
+
+    let synced = sync(home.path(), &setup, &["claude", "gemini"]);
+    assert_eq!(synced.hooked, vec!["claude"]);
+    assert!(synced.warnings.is_empty(), "{:?}", synced.warnings);
     assert!(!has(home.path(), "gemini"));
+}
+
+#[test]
+fn a_changed_codex_hook_asks_for_approval_again() {
+    let home = tempfile::tempdir().unwrap();
+    sync(home.path(), &setup(no_admin), &["codex"]);
+    let moved = HookSetup {
+        program: "/usr/local/bin/fastskill".to_string(),
+        admin_present: no_admin,
+    };
+    let synced = sync(home.path(), &moved, &["codex"]);
+    assert_eq!(synced.approvals.len(), 1, "{:?}", synced.approvals);
+    assert!(synced.approvals[0].starts_with("codex: "));
+    assert!(sync(home.path(), &moved, &["codex"]).approvals.is_empty());
 }
 
 #[test]
@@ -66,11 +118,12 @@ fn an_administrator_hook_replaces_the_user_one() {
 
     let synced = sync(home.path(), &setup(claude_admin), &["claude"]);
     assert_eq!(synced.hooked, vec!["claude"]);
+    assert!(synced.approvals.is_empty());
     assert!(!has(home.path(), "claude"));
 }
 
 #[test]
-fn a_settings_file_that_cannot_be_changed_is_a_warning() {
+fn a_hook_file_that_cannot_be_changed_is_a_warning() {
     let home = tempfile::tempdir().unwrap();
     for folder in [".claude", ".gemini"] {
         std::fs::create_dir_all(home.path().join(folder)).unwrap();
@@ -88,25 +141,69 @@ fn a_settings_file_that_cannot_be_changed_is_a_warning() {
 }
 
 #[test]
+fn a_codex_config_with_hooks_and_a_foreign_pi_file_are_warnings() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    let config = "[[hooks.SessionStart]]\nhooks = []\n";
+    std::fs::write(home.path().join(".codex/config.toml"), config).unwrap();
+    let extensions = home.path().join(".pi/agent/extensions");
+    std::fs::create_dir_all(&extensions).unwrap();
+    let mine = extensions.join("fastskill-managed-pi.ts");
+    std::fs::write(&mine, "export default function () {}\n").unwrap();
+
+    let synced = sync(home.path(), &setup(no_admin), &["codex", "pi"]);
+    assert!(synced.hooked.is_empty(), "{:?}", synced.hooked);
+    assert!(synced.approvals.is_empty());
+    assert_eq!(synced.warnings.len(), 2, "{:?}", synced.warnings);
+    assert!(synced.warnings[0].contains("can't register the codex"));
+    assert!(synced.warnings[1].contains("can't register the pi"));
+    assert_eq!(
+        std::fs::read_to_string(home.path().join(".codex/config.toml")).unwrap(),
+        config
+    );
+    assert!(!home.path().join(".codex/hooks.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(&mine).unwrap(),
+        "export default function () {}\n"
+    );
+    // Unenrolling leaves the file FastSkill didn't write in place too.
+    remove_all(home.path());
+    assert!(mine.exists());
+}
+
+#[test]
 fn remove_all_removes_every_user_hook() {
     let home = tempfile::tempdir().unwrap();
-    sync(home.path(), &setup(no_admin), &["claude", "gemini"]);
+    let setup = setup(no_admin);
+    sync(home.path(), &setup, ALL);
+    aikit_sdk::register_session_hook(home.path(), "gemini", &setup.hook("gemini")).unwrap();
     let (removed, warnings) = remove_all(home.path());
-    assert_eq!(removed, vec!["claude", "gemini"]);
-    assert!(warnings.is_empty());
-    assert!(!has(home.path(), "claude") && !has(home.path(), "gemini"));
+    assert_eq!(removed, vec!["claude", "gemini", "codex", "cursor", "pi"]);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    for key in ["claude", "codex", "cursor", "gemini", "pi"] {
+        assert!(!has(home.path(), key), "{key}");
+    }
     assert_eq!(remove_all(home.path()).0, Vec::<String>::new());
 }
 
 #[test]
-fn admin_hooks_give_each_agent_its_entry_without_writing() {
+fn admin_hooks_give_each_hooked_agent_its_entry_without_writing() {
     let hooks = admin_hooks(&setup(claude_admin));
     let agents: Vec<&str> = hooks.iter().map(|hook| hook.agent.as_str()).collect();
-    assert_eq!(agents, vec!["claude", "gemini"]);
+    assert_eq!(agents, HOOKED_AGENTS);
     assert!(hooks[0].present && !hooks[1].present);
-    let text = hooks[1].entry.to_string();
-    assert!(text.contains("SessionStart"), "{text}");
-    assert!(text.contains("--hook fastskill-managed-gemini"), "{text}");
+    let formats: Vec<Option<&str>> = hooks.iter().map(|hook| hook.format).collect();
+    assert_eq!(
+        formats,
+        vec![Some("json"), Some("toml"), Some("json"), None]
+    );
+    let codex = hooks[1].text.as_deref().unwrap();
+    assert!(codex.contains("[[hooks.SessionStart]]"), "{codex}");
+    assert!(codex.contains("fastskill-managed-codex"), "{codex}");
+    let cursor = hooks[2].text.as_deref().unwrap();
+    assert!(cursor.contains("sessionStart"), "{cursor}");
+    let pi = &hooks[3];
+    assert!(pi.file.is_none() && pi.text.is_none() && !pi.present);
 }
 
 mod with_apply {
