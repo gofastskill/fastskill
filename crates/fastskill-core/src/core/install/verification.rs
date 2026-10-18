@@ -4,6 +4,24 @@ use crate::core::origin::{GitRef, Origin, Resolved};
 use crate::core::service::{FastSkillService, ServiceError};
 use std::path::Path;
 
+/// Whether content whose own id is `actual` may install as `expected` from `origin`.
+///
+/// Identity comes from content (ADR-0014), so the two normally match exactly. One exception:
+/// an http-registry names its packages `scope/name`, the scope being the publisher's namespace
+/// in that registry, while the skill's own files usually declare only `name`. A repository
+/// reference `scope/name` therefore also accepts content declaring the bare `name`. Content
+/// declaring another scope, or another name, is still refused.
+pub(super) fn identity_matches(expected: &str, actual: &str, origin: &Origin) -> bool {
+    if expected == actual {
+        return true;
+    }
+    matches!(origin, Origin::Repository { .. })
+        && !actual.contains('/')
+        && expected
+            .split_once('/')
+            .is_some_and(|(_, name)| name == actual)
+}
+
 pub(super) fn offline_resolution(
     service: &FastSkillService,
     origin: &Origin,

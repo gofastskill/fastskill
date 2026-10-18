@@ -1820,3 +1820,28 @@ async fn the_managed_gate_refuses_blocked_content_before_installing() {
         "{error}"
     );
 }
+
+#[test]
+fn a_registry_scope_may_be_absent_from_the_content_id_and_nothing_else_may_differ() {
+    let repository = Origin::Repository {
+        repo: "hub".to_string(),
+        skill: "acme/widget".to_string(),
+        version: None,
+    };
+    let git = Origin::Git {
+        url: "https://example.com/acme/widget".to_string(),
+        r#ref: Default::default(),
+        subdir: None,
+    };
+    assert!(identity_matches("widget", "widget", &git));
+    assert!(identity_matches("acme/widget", "acme/widget", &repository));
+    assert!(identity_matches("acme/widget", "widget", &repository));
+    assert!(!identity_matches("acme/widget", "widget", &git));
+    assert!(!identity_matches(
+        "acme/widget",
+        "other/widget",
+        &repository
+    ));
+    assert!(!identity_matches("acme/widget", "gadget", &repository));
+    assert!(!identity_matches("widget", "acme/widget", &repository));
+}
