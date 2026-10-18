@@ -254,7 +254,7 @@ impl FastSkillService {
         let frontmatter = read_skill_frontmatter(&fetched.skill_path).await?;
         let (id, _) = derive_skill_id_and_version(&fetched.skill_path, &frontmatter)?;
         if let Some(expected_id) = expected_id {
-            if id.as_str() != expected_id {
+            if !identity_matches(expected_id, id.as_str(), &recorded_origin) {
                 return Err(ServiceError::Validation(format!(
                     "origin for '{expected_id}' produced skill '{}'; refusing to install under the wrong identity",
                     id.as_str()
