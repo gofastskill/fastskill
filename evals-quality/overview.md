@@ -1,12 +1,12 @@
 # Evals and Quality Overview
 
-FastSkill 0.9.276
+FastSkill 0.9.277
 
 Source: https://docs.gofastskill.com/evals-quality/overview
 
-Release revision: e9817985823c0f9bea00f7791f51c011bc9afb70
+Release revision: 71df8b2415045789e4ca040ed232891aaa8e326a
 
-Documentation revision: e9817985823c0f9bea00f7791f51c011bc9afb70
+Documentation revision: 71df8b2415045789e4ca040ed232891aaa8e326a
 
 
 
